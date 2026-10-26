@@ -1,0 +1,104 @@
+"""普通工作文件归属只使用完整项目名和明确尾缀。"""
+
+import pytest
+
+from file_matcher import match_work_file_projects
+
+
+@pytest.mark.parametrize(('filename', 'name'), [
+    ('隔离测试项目3系统_代码（C#）.docx', '隔离测试项目3系统'),
+    ('隔离测试项目4系统_代码（C#+Python）.docx', '隔离测试项目4系统'),
+    ('隔离测试项目1系统_代码（C#+Python）.docx', '隔离测试项目1系统'),
+    ('隔离测试项目2系统_代码（C++）.docx', '隔离测试项目2系统'),
+    ('隔离测试项目5系统_代码(C++).docx', '隔离测试项目5系统'),
+    ('隔离测试项目5系统_代码段_Cpp.docx', '隔离测试项目5系统'),
+    ('隔离测试项目2系统 (1).txt', '隔离测试项目2系统'),
+])
+def test_reported_filenames_match_project_without_reading_documents(filename, name):
+    project = {'id': 1, 'name': name}
+    assert match_work_file_projects(filename, [project])['candidates'] == [project]
+
+
+@pytest.mark.parametrize('filename', [
+    '甲系统_代码（Python）.txt',
+    '甲系统_源代码(C++).txt',
+    '甲系统_代码段（C#）.txt',
+    '甲系统_源程序(C#+Python).txt',
+    '甲系统_代码（Java）.txt',
+    '甲系统_代码(ASP.NET).txt',
+    '甲系统_代码段_Cpp.txt',
+    '甲系统_代码_CSharp.txt',
+    '甲系统_代码.txt',
+    '甲系统_操作手册.docx',
+    '甲系统_用户手册.docx',
+    '甲系统_申请书.docx',
+    '甲系统_申请表.docx',
+    '甲系统_代码（Python） (1).txt',
+    '甲系统_代码（Python）_v1.0_交付_20261023.txt',
+])
+def test_explicit_work_file_suffix_matches_whole_project(filename):
+    project = {'id': 1, 'name': '甲系统', 'batch_name': '本批'}
+    result = match_work_file_projects(filename, [project])
+    assert result['candidates'] == [project]
+    assert result['candidates'][0] is project
+    assert result['recognized_name'] == '甲系统'
+    assert result['basis']
+
+
+def test_complete_project_name_precedes_suffix_and_download_copy_rules():
+    projects = [
+        {'id': 1, 'name': '甲系统'},
+        {'id': 2, 'name': '甲系统_代码（Python）'},
+        {'id': 3, 'name': '甲系统_代码（Python） (1)'},
+    ]
+    assert match_work_file_projects('甲系统_代码（Python）.txt', projects)['candidates'] == [projects[1]]
+    assert match_work_file_projects('甲系统_代码（Python） (1).txt', projects)['candidates'] == [projects[2]]
+
+
+@pytest.mark.parametrize('filename', [
+    '甲系统_未知.txt',
+    '甲系统_代码（待审核）.txt',
+    '甲系统代码(Python).txt',
+    '甲系统操作手册.docx',
+    '甲系统_代码（Python）(1).txt',
+    '甲系统2_代码（Python）.txt',
+    '甲_代码（Python）.txt',
+    '甲系统_代码（Python）_草稿.txt',
+    '甲系统_代码（Python）.zip',
+])
+def test_unknown_or_partial_names_do_not_guess_project(filename):
+    result = match_work_file_projects(filename, [{'id': 1, 'name': '甲系统'}])
+    assert result['candidates'] == []
+    assert result['recognized_name'] is None
+
+
+def test_duplicate_project_names_return_all_batches():
+    projects = [
+        {'id': 1, 'name': '甲系统', 'batch_name': '第一批'},
+        {'id': 2, 'name': '甲系统', 'batch_name': '第二批'},
+    ]
+    assert match_work_file_projects('甲系统_代码（Python）.txt', projects)['candidates'] == projects
+
+
+@pytest.mark.parametrize('name', ['A+C', 'AC', 'C++平台2', 'C#平台2', 'C平台2'])
+def test_language_symbols_and_project_numbers_remain_distinct(name):
+    projects = [{'id': index, 'name': value} for index, value in enumerate(
+        ['A+C', 'AC', 'C++平台2', 'C#平台2', 'C平台2'], 1)]
+    expected = [project for project in projects if project['name'] == name]
+    assert match_work_file_projects(name + '_代码（C#+Python）.txt', projects)['candidates'] == expected
+
+
+def test_normalization_supports_fullwidth_latin_and_consistent_whitespace():
+    project = {'id': 1, 'name': 'My Project C#'}
+    assert match_work_file_projects('Ｍｙ  Project C＃_代码（Java）.txt', [project])['candidates'] == [project]
+
+
+def test_download_copy_does_not_remove_project_number_without_space():
+    project = {'id': 1, 'name': '甲系统(1)'}
+    assert match_work_file_projects('甲系统(1)_代码（Python） (2).txt', [project])['candidates'] == [project]
+
+
+def test_full_name_with_version_takes_priority_over_shorter_project():
+    projects = [{'id': 1, 'name': '甲系统'}, {'id': 2, 'name': '甲系统_v1.0'}]
+    assert match_work_file_projects('甲系统_v1.0.txt', projects)['candidates'] == [projects[1]]
+    assert match_work_file_projects('甲系统_v1.0_代码（Python）.txt', projects)['candidates'] == [projects[1]]
