@@ -4,10 +4,14 @@
 Cloudflare Worker 使用固定 GitHub Release 地址流式提供同域名下载，并支持单段断点续传。
 下载不需要登录，不传递访问者 Cookie 或 Authorization；网站不接收项目文件。
 
+`/stats/` 提供仅所有者可看的浏览量、下载开始次数和每日趋势。
+统计口径、密钥设置和验收方法见 [ANALYTICS.md](ANALYTICS.md)。
+站内下载量不包含 GitHub 直链下载；备用链接点击单独列出。
+
 ## 本地检查
 
 ```powershell
-node --test website/worker.test.mjs
+node --test website/worker.test.mjs website/tracking.test.mjs website/analytics.test.mjs
 npx wrangler@4.127.1 dev --config website/wrangler.jsonc
 ```
 

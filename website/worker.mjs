@@ -1,3 +1,5 @@
+import { analyticsRoute, record, uuid, privateHeaders } from './admin.mjs';
+export { SiteMetrics } from './analytics.mjs';
 // 固定版本的公开下载入口；不读取、转发访问者的登录信息。
 export const release = Object.freeze({
   version: '1.0.0',
@@ -18,8 +20,10 @@ function unavailable() {
   });
 }
 
-export async function handleRequest(request, env, fetcher = fetch) {
-  const { pathname } = new URL(request.url);
+export async function handleRequest(request, env, fetcher = fetch, context = null) {
+  const url = new URL(request.url);
+  const { pathname } = url;
+  if(pathname.startsWith('/api/')) return analyticsRoute(request,env);
   if (!['GET', 'HEAD'].includes(request.method)) {
     return new Response('仅支持 GET 和 HEAD。', { status: 405, headers: { ...safeHeaders, Allow: 'GET, HEAD' } });
   }
@@ -28,11 +32,22 @@ export async function handleRequest(request, env, fetcher = fetch) {
       headers: { ...safeHeaders, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
     });
   }
+  if(pathname==='/' || pathname==='/stats' || pathname==='/stats/') {
+    url.pathname=pathname==='/' ? '/index.html' : '/stats.html';url.search='';
+    const response=await env.ASSETS.fetch(new Request(url,request));
+    return new Response(response.body,{status:response.status,headers:{...Object.fromEntries(response.headers),
+      ...(pathname==='/' ? {} : privateHeaders)}});
+  }
   if (!pathname.startsWith('/download/')) return env.ASSETS.fetch(request);
   if (pathname !== downloadPath) return new Response('未找到这个版本的安装包。', { status: 404, headers: safeHeaders });
   const range = request.headers.get('Range');
   if (range && !/^bytes=(?:\d+-\d*|-\d+)$/.test(range)) {
     return new Response(null, { status: 416, headers: { ...safeHeaders, 'Content-Range': `bytes */${release.size}` } });
+  }
+  const downloadId=url.searchParams.get('download');
+  if(env.METRICS && request.method==='GET' && !uuid.test(downloadId||'')) {
+    url.search='';url.searchParams.set('download',crypto.randomUUID());
+    return new Response(null,{status:307,headers:{...safeHeaders,'Cache-Control':'no-store',Location:url.toString()}});
   }
   const headers = new Headers({ Accept: 'application/octet-stream', 'User-Agent': 'WorkBox-Public-Downloads' });
   if (range) headers.set('Range', range);
@@ -58,16 +73,22 @@ export async function handleRequest(request, env, fetcher = fetch) {
     'Content-Type': 'application/octet-stream',
     'Content-Disposition': `attachment; filename="${release.filename}"`,
     'Accept-Ranges': 'bytes',
-    'Cache-Control': 'public, max-age=86400, immutable',
+    'Cache-Control': env.METRICS ? 'private, no-store' : 'public, max-age=86400, immutable',
   });
   for (const key of ['Content-Length', 'Content-Range', 'ETag', 'Last-Modified']) {
     if (upstream.headers.has(key)) output.set(key, upstream.headers.get(key));
+  }
+  if(env.METRICS && request.method==='GET' && (!range || /^bytes=0-/.test(range))) {
+    // 只记有效下载响应的开始；后续分段和同一标识重试由存储去重。
+    const recording=record(request,env,{type:'download_start',id:downloadId});
+    if(context?.waitUntil) context.waitUntil(recording);
+    else await recording;
   }
   return new Response(request.method === 'HEAD' ? null : upstream.body, { status: upstream.status, headers: output });
 }
 
 export default {
-  fetch(request, env) {
-    return handleRequest(request, env);
+  fetch(request, env, context) {
+    return handleRequest(request, env, fetch, context);
   },
 };

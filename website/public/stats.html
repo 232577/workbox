@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN" class="stats-document">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <meta name="referrer" content="no-referrer">
+  <title>网站统计 · WorkBox 工作箱</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/stats.css">
+  <script src="/stats.js" defer></script>
+</head>
+<body class="stats-page">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="header wrap stats-header">
+    <a class="brand" href="/" aria-label="WorkBox 工作箱首页"><img src="/favicon.svg" width="36" height="36" alt=""><span>WorkBox<span class="brand-sub">工作箱 · 网站统计</span></span></a>
+    <a class="text-link" href="/">返回下载页</a>
+  </header>
+  <main id="main" class="wrap stats-main">
+    <div class="stats-heading"><div><p class="eyebrow">所有者专用</p><h1>网站统计</h1><p class="stats-subtitle">查看下载页的访问与安装包下载记录。</p></div><button id="logout" class="stats-button" type="button" hidden>退出登录</button></div>
+    <p id="session-status" class="stats-status" role="status" aria-live="polite">正在检查登录状态…</p>
+    <section id="login-panel" class="stats-login" aria-labelledby="login-title" hidden>
+      <h2 id="login-title">登录查看统计</h2>
+      <p>输入所有者密码。统计数据仅在登录后显示。</p>
+      <form id="login-form" novalidate>
+        <label for="owner-key">所有者密码</label>
+        <div class="stats-password"><input id="owner-key" name="key" type="password" autocomplete="current-password" required aria-describedby="login-error"><button id="toggle-password" type="button" class="stats-button" aria-pressed="false" aria-controls="owner-key">显示密码</button></div>
+        <p id="login-error" class="stats-field-error" role="alert"></p>
+        <button id="login-submit" class="stats-button stats-primary" type="submit">登录</button>
+      </form>
+    </section>
+    <section id="dashboard" aria-label="网站统计数据" hidden>
+      <div class="stats-toolbar"><div><label for="day-range">每日趋势范围</label><select id="day-range"><option value="7">最近 7 天</option><option value="30" selected>最近 30 天</option><option value="90">最近 90 天</option></select></div><div class="stats-actions"><button id="refresh" class="stats-button" type="button">刷新统计</button><button id="export-csv" class="stats-button" type="button" disabled>下载每日 CSV</button></div></div>
+      <div class="stats-update"><p id="updated-at">尚未取得统计数据</p><p>统计时区：北京时间（UTC+8）</p></div>
+      <div id="data-error" class="stats-error" role="alert" hidden><p id="data-error-text"></p><button id="retry" class="stats-button" type="button">重试</button></div>
+      <div id="data-content" hidden>
+        <div class="stats-summary"><section class="stats-summary-group" aria-labelledby="today-title"><div class="stats-group-title"><h2 id="today-title">今日</h2><span id="today-date"></span></div><dl><div><dt>页面浏览</dt><dd id="today-views"></dd></div><div><dt>安装包下载</dt><dd id="today-downloads"></dd></div></dl><p class="stats-fallback">GitHub 备用点击 <strong id="today-fallback"></strong></p></section><section class="stats-summary-group stats-total" aria-labelledby="total-title"><div class="stats-group-title"><h2 id="total-title">累计</h2><span>自统计启用起</span></div><dl><div><dt>页面浏览</dt><dd id="total-views"></dd></div><div><dt>安装包下载</dt><dd id="total-downloads"></dd></div></dl><p class="stats-fallback">GitHub 备用点击 <strong id="total-fallback"></strong></p></section></div>
+        <section class="stats-trend" aria-labelledby="trend-title"><div class="stats-section-heading"><h2 id="trend-title">每日趋势</h2><p id="trend-range"></p></div><ul class="stats-legend" aria-label="图表图例"><li><span class="stats-views-mark" aria-hidden="true"></span>页面浏览 · 实线</li><li><span class="stats-downloads-mark" aria-hidden="true"></span>安装包下载 · 虚线</li></ul><div id="trend-chart" class="stats-chart"></div><p id="empty-note" class="stats-empty" hidden>所选日期内还没有记录。后续访问与下载会在这里显示。</p></section>
+        <section class="stats-daily" aria-labelledby="daily-title"><h2 id="daily-title">每日明细</h2><p class="stats-table-hint">表格包含趋势图的完整数据，可横向滚动。</p><div class="stats-table-scroll" tabindex="0" role="region" aria-label="每日统计明细，可横向滚动"><table><caption id="daily-caption">每日网站统计</caption><thead><tr><th scope="col">日期</th><th scope="col">页面浏览</th><th scope="col">安装包下载</th><th scope="col">GitHub 备用点击</th></tr></thead><tbody id="daily-rows"></tbody></table></div></section>
+      </div>
+      <aside class="stats-notes" aria-labelledby="notes-title"><h2 id="notes-title">统计口径</h2><ul><li>页面浏览按下载页访问计次，同一人多次访问可能产生多条记录。</li><li>安装包下载按成功开始传输计次，不代表已完整下载或安装；同一次下载的续传去重。</li><li>GitHub 备用下载只记录点击，单独列出，不计入安装包下载。</li><li id="started-note">仅从统计启用起记录，不补造此前的访问和下载。</li></ul></aside>
+    </section>
+    <noscript><p class="stats-error">请启用 JavaScript 后登录查看统计。</p></noscript>
+  </main>
+  <footer class="wrap stats-footer">WorkBox · 所有者统计</footer>
+</body>
+</html>
