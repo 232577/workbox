@@ -187,6 +187,8 @@ class CompactPanel(DropSurface, QWidget):
     delivery_requested = Signal(int, object)
     rename_requested = Signal(int, str)
     bulk_requested = Signal(object, object)
+    delete_requested = Signal(int)
+    restore_deleted_requested = Signal(int)
     workspace_requested = Signal(int)
     scan_requested = Signal()
     approve_requested = Signal(int)
@@ -279,7 +281,7 @@ class CompactPanel(DropSurface, QWidget):
         views = QHBoxLayout()
         self.archive_filter = QComboBox()
         self.archive_filter.setAccessibleName('项目归档筛选')
-        for caption, value in (('日常项目', False), ('已归档', True), ('全部项目', None)):
+        for caption, value in (('日常项目', False), ('已归档', True), ('全部项目', None), ('已删除', 'deleted')):
             self.archive_filter.addItem(caption, value)
         self.due_filter = QComboBox()
         self.due_filter.setAccessibleName('截止日期筛选')
@@ -473,7 +475,11 @@ class CompactPanel(DropSurface, QWidget):
             self.batch_filter.blockSignals(False)
             status = next((s for s, b in self.status_buttons.items() if b.isChecked()), None)
             scope = (self.search.text(), status, self.batch_filter.currentData(), self.archive_filter.currentData(), self.due_filter.currentData(), self.urgent_filter.isChecked())
-            rows = self.service.list_projects(scope[0], scope[1], scope[2], scope[5], archived=scope[3], due_filter=scope[4])
+            deleted_view = scope[3] == 'deleted'
+            if deleted_view and self.bulk_mode.isChecked():
+                self.bulk_mode.setChecked(False)
+            rows = self.service.list_projects(scope[0], scope[1], scope[2], scope[5],
+                archived=None if deleted_view else scope[3], due_filter=scope[4], deleted=deleted_view)
             populate(self.project_list, rows, self.project_caption, clear_selection=scope != self.project_scope)
             self.project_scope = scope
             self.empty.setVisible(not rows)
@@ -498,6 +504,8 @@ class CompactPanel(DropSurface, QWidget):
             self.tabs.setTabText(2, f'待核对 {len(receipts)}' if receipts else '待核对')
             counts = self.service.db.counts()
             self.summary.setText(f"共 {counts['projects']} 个项目 · 当前 {len(rows)} 项 · {counts['zips']} 个交付包")
+            if deleted_view:
+                self.summary.setText(f'已删除 {len(rows)} 项 · 原文件、归档和交付记录保留')
         finally:
             self.refreshing = False
         self.select_project()
@@ -590,8 +598,10 @@ class CompactPanel(DropSurface, QWidget):
             control.setEnabled(not self.busy)
         count = len(self.project_list.selectedItems())
         self.selection_count.setText(f'已选 {count} 项 / 当前 {self.project_list.count()} 项')
-        self.bulk_apply.setEnabled(bool(count) and count <= 500 and not self.busy)
-        self.bulk_action.setEnabled(not self.busy)
+        bulk_allowed = not self.busy and self.archive_filter.currentData() != 'deleted'
+        self.bulk_mode.setEnabled(bulk_allowed)
+        self.bulk_apply.setEnabled(bool(count) and count <= 500 and bulk_allowed)
+        self.bulk_action.setEnabled(bulk_allowed)
         self.settings_button.setEnabled(not self.busy)
         self.scan_button.setEnabled(not self.busy)
         zid = selected(self.zip_list)
@@ -662,8 +672,12 @@ class CompactPanel(DropSurface, QWidget):
                        lambda _checked=False, zid=version['id']: self.locate_project_zip(project_id, zid), active)
             item.setToolTip(version['path'])
         menu.addSeparator()
-        add(menu, '恢复项目' if project.get('archived_at') else '归档项目',
-            lambda: self.archive_project(project_id), active)
+        if project.get('deleted_at'):
+            add(menu, '恢复已删除项目', lambda: self.restore_deleted_project(project_id), active)
+        else:
+            add(menu, '恢复项目' if project.get('archived_at') else '归档项目',
+                lambda: self.archive_project(project_id), active)
+            add(menu, '删除项目…', lambda: self.delete_project(project_id), active)
         return menu
 
     def show_project_context_menu(self, project_id, position):
@@ -735,7 +749,9 @@ class CompactPanel(DropSurface, QWidget):
             parts.append(caption)
         if project.get('notes'):
             parts.append('有备注')
-        if project.get('archived_at'):
+        if project.get('deleted_at'):
+            parts.append('已删除')
+        elif project.get('archived_at'):
             parts.append('已归档')
         parts.append(f"{project['zip_count']} 个交付包")
         return f"{'加急  ' if project['urgent'] else ''}{project['name']}\n" + '    '.join(parts)
@@ -758,14 +774,30 @@ class CompactPanel(DropSurface, QWidget):
 
     def archive_project(self, project_id):
         project = self._action_project(project_id)
-        if not project:
+        if not project or project.get('deleted_at'):
             return
         archived = not bool(project.get('archived_at'))
         self.request_bulk([project_id], {'archived': archived})
 
+    def delete_project(self, project_id):
+        project = self._action_project(project_id)
+        if not project or project.get('deleted_at'):
+            return
+        answer = QMessageBox.question(self, '删除项目',
+            '将项目“'+project['name']+'”移入已删除？\n\n'
+            '原文件、工作目录、归档和历史交付记录及统计均保留。\n'
+            '可在项目筛选中的“已删除”里恢复。', QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if answer == QMessageBox.Yes:
+            self.delete_requested.emit(project_id)
+
+    def restore_deleted_project(self, project_id):
+        project = self._action_project(project_id)
+        if project and project.get('deleted_at'):
+            self.restore_deleted_requested.emit(project_id)
+
     def apply_bulk(self):
         ids = [item.data(Qt.UserRole) for item in self.project_list.selectedItems()]
-        if not ids or self.busy:
+        if not ids or self.busy or self.archive_filter.currentData() == 'deleted':
             return
         action = self.bulk_action.currentData()
         if action.startswith('status:'):

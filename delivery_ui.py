@@ -234,7 +234,7 @@ class TodayDeliveryDialog(QDialog):
             if event['voided'] and not self.show_voided.isChecked():
                 continue
             row = grouped.setdefault(event['project_id'],dict(project_id=event['project_id'],project_name=event['project_name'],
-                batch_name=event['batch_name'],first_at=event['first_at'],counted=False,has_valid=False))
+                batch_name=event['batch_name'],first_at=event['first_at'],prior_delivery=event.get('prior_delivery',False),counted=False,has_valid=False))
             row['counted'] |= event['counted']
             row['has_valid'] |= not event['voided']
         self.rows = list(grouped.values())
@@ -242,7 +242,7 @@ class TodayDeliveryDialog(QDialog):
         for row in self.rows:
             state = '计数 1 项' if row['counted'] else '补交不计' if row['has_valid'] else '已撤销'
             records.append((row['project_id'],(row['project_name'],row['batch_name'],
-                beijing_timestamp(row['first_at']) or '无有效交付',state),{}))
+                beijing_timestamp(row['first_at']) or ('历史已交付，日期未记录' if row['prior_delivery'] else '无有效交付'),state),{}))
         self._replace_rows(self.table,records)
         self.show_details()
 
@@ -264,6 +264,10 @@ class TodayDeliveryDialog(QDialog):
             records = []
             for event in events:
                 tip = '首次有效交付：'+(beijing_timestamp(event['first_at']) or '无')
+                if event.get('prior_delivery'):
+                    tip = '历史已交付，首次日期未记录；本次作为补交，不增加交付数。'
+                    if event.get('prior_delivery_reason'):
+                        tip += '\n历史交付说明：'+event['prior_delivery_reason']
                 if event['management_reason']:
                     tip += '\n管理备注：'+event['management_reason']
                 if event['managed_at']:

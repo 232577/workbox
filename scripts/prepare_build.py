@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
-from ui import app_icon
+from branding import write_ico
 
 
 def main():
@@ -12,10 +12,8 @@ def main():
     output = root / 'build'
     output.mkdir(exist_ok=True)
     application = QApplication.instance() or QApplication([])
-    icon = app_icon()
     path = output / 'WorkBox.ico'
-    if not icon.pixmap(64, 64).save(str(path), 'ICO'):
-        raise RuntimeError('Could not generate the Windows icon')
+    write_ico(path)
     print(f'Generated: {path}')
     return application
 

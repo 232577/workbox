@@ -86,6 +86,7 @@ class FloatingController(QObject):
         self.owns_lock = False
         self.silent_current = False
         self.background_mode = False
+        self.choosing_intake = False
         self.monitor_timer = QTimer(self)
         self.monitor_timer.setInterval(2000)
         self.monitor_timer.timeout.connect(lambda: self.check_archives(silent=True))
@@ -95,12 +96,12 @@ class FloatingController(QObject):
 
     @property
     def busy(self):
-        return self.worker is not None or bool(self.queue)
+        return self.choosing_intake or self.worker is not None or bool(self.queue)
 
     @property
     def foreground_busy(self):
         # 监视仍占用同一个串行任务槽，但不能每两秒禁用界面。
-        return ((self.worker is not None and not self.silent_current)
+        return (self.choosing_intake or (self.worker is not None and not self.silent_current)
                 or any(not item[2] for item in self.queue))
 
     def _sync_panel_busy(self):
@@ -151,6 +152,8 @@ class FloatingController(QObject):
         self.panel.urgent_requested.connect(lambda pid, urgent: self.enqueue('加急标记已更新', lambda **_: self.service.set_urgent(pid, urgent)))
         self.panel.rename_requested.connect(lambda pid, name: self.enqueue('项目名称已更新', lambda **_: self.service.rename_project(pid, name)))
         self.panel.bulk_requested.connect(self.update_projects)
+        self.panel.delete_requested.connect(lambda pid: self.set_project_deleted(pid, True))
+        self.panel.restore_deleted_requested.connect(lambda pid: self.set_project_deleted(pid, False))
         self.panel.workspace_requested.connect(self.open_workspace)
         self.panel.scan_requested.connect(lambda: self.check_archives(silent=False))
         self.panel.approve_requested.connect(lambda zid: self.enqueue('已标记为可用版本', lambda **_: self.service.snapshots.approve_version(zid)))
@@ -219,6 +222,14 @@ class FloatingController(QObject):
         ids, changes = list(project_ids), dict(options)
         operation = '已归档' if changes.get('archived') else ('已恢复' if changes.get('archived') is False else '已更新')
         self.enqueue(f'{operation} {len(ids)} 个项目', lambda **_: self.service.bulk_update_projects(ids, **changes))
+
+    def set_project_deleted(self, project_id, deleted):
+        if self.foreground_busy:
+            return
+        def change(**_):
+            result = self.service.delete_project(project_id, confirmed=True) if deleted else self.service.restore_deleted_project(project_id)
+            return {'project_lifecycle': result}
+        self.enqueue('正在删除项目' if deleted else '正在恢复项目', change)
 
     def show_panel(self):
         if self.panel is None or self.closed:
@@ -339,41 +350,13 @@ class FloatingController(QObject):
         elif payload.get('kind') == 'files':
             paths = payload.get('paths', [])
             if not paths or len(paths) > 100 or len(self.queue)+len(paths) > 100:
-                self.notify('一次最多接收 100 个本地文件。')
+                self.notify('一次最多接收 100 个文件或文件夹。')
                 return
             for path in dict.fromkeys(paths):
-                ordinary = Path(path).suffix.casefold() != '.zip'
-                routing = {}
-                try:
-                    if self.service.is_bundle_candidate(Path(path).name):
-                        self.enqueue('收进多项目 ZIP：' + Path(path).name, lambda p=path, **kw: self.service.receive_file(p, **kw))
-                        continue
-                    routing = self.service.file_routing(path)
-                    candidates = routing['candidates']
-                    project_id = candidates[0]['id'] if len(candidates) == 1 else None
-                    manual = False
-                    if routing.get('requires_choice') or len(candidates) > 1:
-                        if ordinary:
-                            self.service.record_file_decision(path, 'needs-choice', routing)
-                        project_id = self.panel.choose_file_project(Path(path).name)
-                        if project_id is None:
-                            if ordinary:
-                                self.service.record_file_decision(path, 'cancelled', routing, message='已取消项目选择；原件保留')
-                            self.notify('已取消该文件，原件保留：' + Path(path).name)
-                            continue
-                        manual = True
-                    self.enqueue('收进文件：' + Path(path).name,
-                        lambda p=path, pid=project_id, chosen=manual, **kw: self.service.receive_file(p, pid, manual=chosen, **kw),
-                        on_cancel=(lambda p=path, r=routing, pid=project_id, chosen=manual:
-                            self.service.record_file_decision(p, 'cancelled', r, project_id=pid, manual=chosen,
-                                message='已取消尚未开始的收录；原件保留')) if ordinary else None)
-                except (OSError, ValueError) as error:
-                    if ordinary:
-                        try:
-                            self.service.record_file_decision(path, 'failed', routing, message=str(error))
-                        except Exception as log_error:
-                            self.notify('收录记录写入失败：' + str(log_error))
-                    self.notify(str(error))
+                self.enqueue('收进文件或文件夹：' + Path(path).name,
+                    lambda p=path, **kw: self.service.receive_path(p, **kw),
+                    on_cancel=lambda p=path: self.service.record_file_decision(p, 'cancelled', {},
+                        message='已取消尚未开始的收录，尚未判断归属；原件保留'))
         else:
             self.notify(payload.get('message', '没有收到项目文字或本地文件。'))
 
@@ -384,10 +367,12 @@ class FloatingController(QObject):
             self.errors.clear()
         self.queue.append((caption, operation, silent, on_cancel))
         self._sync_panel_busy()
-        if self.worker is None:
+        if self.worker is None and not self.choosing_intake:
             self._next()
 
     def _next(self):
+        if self.choosing_intake:
+            return
         if self.quitting or not self.queue:
             if self.orb.busy:
                 self.orb.set_progress(False)
@@ -419,6 +404,22 @@ class FloatingController(QObject):
         elif worker.error:
             message = '处理失败：' + worker.error
             self.errors.append(self.caption + '：' + worker.error)
+        elif isinstance(worker.result, dict) and 'intake_choice' in worker.result:
+            message = '请为文件选择对应的项目；原件保留。'
+        elif isinstance(worker.result, dict) and worker.result.get('kind') == 'folder_result':
+            result = worker.result
+            message = (f"文件夹处理{'已取消' if result.get('cancelled') else '完成'}："
+                       f"收进 {result['copied']} 个文件，重复 {result['duplicate']} 个，"
+                       f"ZIP 待归档 {result['watching']} 个，"
+                       f"失败 {result['failed']} 个，待选择 {result['needs_choice']} 个。原件保留。")
+            if result['watching']:
+                message += '\nZIP 稳定后按每个项目的文件数判断交付。'
+            details = [item.get('source_path', '') + '：' + item.get('message', '')
+                       for item in result.get('items', []) if item.get('status') in ('failed', 'needs_choice')]
+            if details:
+                message += '\n' + '\n'.join(details[:20])
+            if result['failed']:
+                self.errors.append(message)
         elif isinstance(worker.result, dict) and 'state' in worker.result:
             result = worker.result
             message = '已保留消息，请点击「待核对」检查项目名。' if result['state'] == 'needs-review' else f"{'已收录过，未重复创建' if result.get('duplicate') else '已收录'} {len(result['project_ids'])} 个项目。"
@@ -443,7 +444,17 @@ class FloatingController(QObject):
             self.open_folder(worker.result['open_folder'])
             message = '工作目录已打开。'
         elif isinstance(worker.result, dict) and 'archive' in worker.result and 'project' in worker.result:
-            message = '项目工作文件已按原名归档，已设为已交付并计入今日统计。\n' + worker.result['archive']['path']
+            event = next((row for row in self.service.db.delivery_events_for_project(worker.result['project']['id'])
+                if row['id'] == worker.result.get('event_id')), None)
+            counting = ('本次首次交付已计入今日统计。' if event and event['counted'] else
+                        '本次为补交，不增加今日首次交付数。' if event and event['counting_role'] == 'repeat' else
+                        '交付记录已保存。')
+            message = '项目工作文件已按原名归档，已设为已交付。' + counting + '\n' + worker.result['archive']['path']
+        elif isinstance(worker.result, dict) and 'project_lifecycle' in worker.result:
+            result = worker.result['project_lifecycle']
+            message = ('项目已移入已删除，原文件、归档和历史交付记录保留。' if result['deleted'] else
+                       '项目已恢复到已归档列表，原文件保留。' if result['archived'] else
+                       '项目已恢复到日常列表，原文件保留。')
         elif isinstance(worker.result, dict) and 'archived' in worker.result:
             result = worker.result
             message = '' if self.silent_current else f"本次归档 {len(result['archived'])} 个版本，{result['pending']} 个文件等待稳定。"
@@ -494,7 +505,54 @@ class FloatingController(QObject):
             target = None
         if message:
             self.notify(message, target=target)
+        if not worker.cancelled and not worker.error and isinstance(worker.result, dict):
+            self._resolve_intake_choices(worker.result)
         self._next()
+
+    def _resolve_intake_choices(self, result):
+        if self.quitting or self.closed:
+            return
+        pending = []
+        if result.get('intake_choice'):
+            pending.append((result['intake_choice'], result['routing'], '', None))
+        elif (result.get('kind') == 'folder_result' and not result.get('cancelled')
+                and not result.get('manual_choice_attempted')):
+            groups = {}
+            for item in result.get('items', []):
+                if item.get('status') == 'needs_choice' and item.get('retry_path'):
+                    key = (item.get('root_path', item['retry_path']),
+                           str(Path(item.get('relative_path', '.')).parent),
+                           tuple(sorted(item.get('candidate_ids', []))))
+                    groups.setdefault(key, []).append(item)
+            for items in groups.values():
+                item = items[0]
+                pending.append((item['retry_path'], {'basis': item.get('basis', ''), 'candidates': []},
+                                item.get('message', ''), items))
+        self.choosing_intake = bool(pending)
+        self._sync_panel_busy()
+        try:
+            seen = set()
+            for path, routing, explanation, folder_items in pending:
+                if self.quitting or self.closed or path in seen:
+                    continue
+                seen.add(path)
+                title = Path(path).name + ('\n' + explanation if explanation else '')
+                if folder_items and len(folder_items) > 1:
+                    title = f"同目录的 {len(folder_items)} 个待选择文件\n" + '\n'.join(
+                        Path(item['retry_path']).name for item in folder_items[:5]) + '\n' + explanation
+                project_id = self.panel.choose_file_project(title)
+                if project_id is None:
+                    for cancelled_path in ([item['retry_path'] for item in folder_items] if folder_items else [path]):
+                        self.service.record_file_decision(cancelled_path, 'cancelled', routing,
+                            message='已取消项目选择；原件保留')
+                    self.notify('已取消该项，原件保留：' + Path(path).name)
+                else:
+                    self.enqueue('收进文件或文件夹：' + Path(path).name,
+                        lambda p=path, pid=project_id, items=folder_items, **kw:
+                            self.service.receive_path(p, pid, manual=True, folder_items=items, **kw))
+        finally:
+            self.choosing_intake = False
+            self._sync_panel_busy()
 
     def _link_zip(self, zip_id, project_id):
         self.service.link_zip(zip_id, project_id)
@@ -525,7 +583,9 @@ class FloatingController(QObject):
             return ('projects', tuple(result['created_project_ids']))
         if isinstance(result.get('project'), dict) and result['project'].get('id'):
             return ('projects', (result['project']['id'],))
-        if 'state' in result:
+        if result.get('kind') == 'folder_result':
+            ids = result.get('project_ids') or []
+        elif 'state' in result:
             if result['state'] == 'needs-review':
                 return ('tab', 2)
             ids = result.get('project_ids') or []

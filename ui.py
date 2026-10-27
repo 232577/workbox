@@ -11,7 +11,7 @@ from functools import partial
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QTimer, Signal, Slot
-from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
+from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView, QButtonGroup, QCheckBox, QComboBox, QDialog, QFileDialog,
     QFrame, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox,
@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from app import WorkBox
+from branding import brand_icon
 from database import STATUSES
 from parser import ParsedProject, parse_message
 
@@ -126,18 +127,7 @@ def human_size(size: int) -> str:
 
 
 def app_icon() -> QIcon:
-    pixmap = QPixmap(64, 64)
-    pixmap.fill(Qt.transparent)
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.Antialiasing)
-    painter.setPen(Qt.NoPen)
-    painter.setBrush(QColor("#246449"))
-    painter.drawRoundedRect(0, 0, 64, 64, 14, 14)
-    painter.setPen(QColor("white"))
-    painter.setFont(QFont("Segoe UI", 31, QFont.Bold))
-    painter.drawText(pixmap.rect(), Qt.AlignCenter, "W")
-    painter.end()
-    return QIcon(pixmap)
+    return brand_icon()
 
 
 class CaptureDialog(QDialog):

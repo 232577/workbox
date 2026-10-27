@@ -1,19 +1,27 @@
 import { analyticsRoute, record, uuid, privateHeaders } from './admin.mjs';
 export { SiteMetrics } from './analytics.mjs';
 // 固定版本的公开下载入口；不读取、转发访问者的登录信息。
-export const release = Object.freeze({
+export const releases = Object.freeze([Object.freeze({
   version: '1.0.0',
+  tag: 'v1.0.0-enhanced.20261027',
+  edition: '增强版',
+  date: '2026-10-27',
+  filename: 'WorkBox-1.0.0-Enhanced-20261027-Setup-x64.exe',
+  size: 35528321,
+  sha256: 'bcd0724ac1fc9dc311d08205034e4995aa32889c6c60798315425b13fbae0c2a',
+}), Object.freeze({
+  version: '1.0.0',
+  tag: 'v1.0.0',
   date: '2026-10-26',
   filename: 'WorkBox-1.0.0-Setup-x64.exe',
   size: 35436529,
   sha256: 'ad5025a6ca868609cbff621ed2ee6225c635626d50a0e5b25eda357695a859d8',
-});
+})]);
+export const release = releases[0];
 
-const source = `https://github.com/232577/workbox/releases/download/v${release.version}/${release.filename}`;
-const downloadPath = `/download/${release.filename}`;
 const safeHeaders = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin' };
 
-function unavailable() {
+function unavailable(source) {
   return new Response(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>下载暂时不可用 · 工作箱</title><h1>下载暂时不可用</h1><p>请稍后重试，或使用 <a href="${source}">GitHub 备用下载</a>。</p><p><a href="/">返回工作箱下载页</a></p></html>`, {
     status: 502,
     headers: { ...safeHeaders, 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
@@ -39,10 +47,12 @@ export async function handleRequest(request, env, fetcher = fetch, context = nul
       ...(pathname==='/' ? {} : privateHeaders)}});
   }
   if (!pathname.startsWith('/download/')) return env.ASSETS.fetch(request);
-  if (pathname !== downloadPath) return new Response('未找到这个版本的安装包。', { status: 404, headers: safeHeaders });
+  const fileRelease = releases.find(item => pathname === `/download/${item.filename}`);
+  if (!fileRelease) return new Response('未找到这个版本的安装包。', { status: 404, headers: safeHeaders });
+  const source = `https://github.com/232577/workbox/releases/download/${fileRelease.tag}/${fileRelease.filename}`;
   const range = request.headers.get('Range');
   if (range && !/^bytes=(?:\d+-\d*|-\d+)$/.test(range)) {
-    return new Response(null, { status: 416, headers: { ...safeHeaders, 'Content-Range': `bytes */${release.size}` } });
+    return new Response(null, { status: 416, headers: { ...safeHeaders, 'Content-Range': `bytes */${fileRelease.size}` } });
   }
   const downloadId=url.searchParams.get('download');
   if(env.METRICS && request.method==='GET' && !uuid.test(downloadId||'')) {
@@ -56,22 +66,22 @@ export async function handleRequest(request, env, fetcher = fetch, context = nul
   try {
     upstream = await fetcher(source, { method: request.method, headers, redirect: 'follow' });
   } catch {
-    return unavailable();
+    return unavailable(source);
   }
   if (upstream.status === 416) {
-    return new Response(null, { status: 416, headers: { ...safeHeaders, 'Content-Range': `bytes */${release.size}` } });
+    return new Response(null, { status: 416, headers: { ...safeHeaders, 'Content-Range': `bytes */${fileRelease.size}` } });
   }
   const length = upstream.headers.get('Content-Length');
   if (![200, 206].includes(upstream.status)
       || /text\/|json|xml/i.test(upstream.headers.get('Content-Type') || '')
-      || (upstream.status === 200 && length !== null && Number(length) !== release.size)
+      || (upstream.status === 200 && length !== null && Number(length) !== fileRelease.size)
       || (upstream.status === 206 && !upstream.headers.has('Content-Range'))) {
     await upstream.body?.cancel();
-    return unavailable();
+    return unavailable(source);
   }
   const output = new Headers({ ...safeHeaders,
     'Content-Type': 'application/octet-stream',
-    'Content-Disposition': `attachment; filename="${release.filename}"`,
+    'Content-Disposition': `attachment; filename="${fileRelease.filename}"`,
     'Accept-Ranges': 'bytes',
     'Cache-Control': env.METRICS ? 'private, no-store' : 'public, max-age=86400, immutable',
   });

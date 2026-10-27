@@ -4,4 +4,5 @@
 *.txt text eol=lf
 *.ini text eol=lf
 *.json text eol=lf
+*.svg text eol=lf
 *.ps1 text eol=crlf

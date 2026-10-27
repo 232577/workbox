@@ -14,7 +14,10 @@ _CODE_SUFFIX = re.compile(
     rf'(?:\s*[（(]{_LANGUAGE}[）)]|[ _-]+{_LANGUAGE})?$',
     re.IGNORECASE,
 )
-_DOCUMENT_SUFFIX = re.compile(r'(?P<name>.+?)[ _.-]+(?:操作手册|用户手册|申请书|申请表)$')
+_DOCUMENT_SUFFIX = re.compile(
+    r'(?P<name>.+?)[ _.-]+(?:操作手册|用户手册|申请书|申请表)'
+    r'(?:[ _.-]*(?:重新下载|下载说明|下载链接))?$'
+)
 _DOWNLOAD_COPY = re.compile(r'(?P<name>.+) \([1-9]\d*\)$')
 _RELEASE_SUFFIX = re.compile(
     r'(?P<name>.+?)[ _.-]+(?:v?\d+\.\d+(?:\.\d+)*|20\d{6}|'

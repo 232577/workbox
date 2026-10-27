@@ -14,7 +14,7 @@ from managed_archive import ManagedArchive
 from parser import MAX_MESSAGE_LENGTH, NUMBERED, PROJECT_LABEL, TITLE, TITLE_END, ParsedProject, parse_message
 from workspace_manager import WorkspaceManager, _path, _zip_structure
 from snapshot_manager import SnapshotManager
-from native_files import ZipLease, cancelled, plain_path
+from native_files import ZipLease, cancelled, plain_path, path_is_within
 from zip_manager import match_projects
 from file_matcher import match_work_file_projects, new_file_project_name
 from bundle_analyzer import analyze_bundle, bundle_hint
@@ -190,7 +190,10 @@ class DesktopService(WorkBox):
             connection.execute('INSERT INTO desktop_settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', (key, json.dumps(value)))
 
     def import_zip(self, path, *, cancel_event=None, progress=None):
-        candidates = self.file_candidates(path)
+        routing = self.file_routing(path)
+        if routing.get('requires_choice'):
+            raise ValueError('文件归属未确定，请恢复项目或选择文件对应的项目。')
+        candidates = routing['candidates']
         project_id = candidates[0]['id'] if len(candidates) == 1 else None
         return self.snapshots.archive_now(path, project_id, cancel_event=cancel_event, progress=progress)
 
@@ -198,27 +201,36 @@ class DesktopService(WorkBox):
         return self.file_routing(path)['candidates']
 
     def file_routing(self, path):
-        source = plain_path(path)
-        all_projects = {row['id']: row for row in self.list_projects(archived=None)}
+        source = plain_path(path, allow_network=True)
+        all_projects = {row['id']: row for row in self.list_projects(archived=None, deleted=None)}
         registered = self.workspaces.list_workspaces(include_archived=True)
-        if any(all_projects.get(row['project_id'], {}).get('archived_at')
-               and source.is_relative_to(Path(row['path'])) for row in registered):
+        protected = [all_projects.get(row['project_id'], {}) for row in registered
+                     if path_is_within(source, row['path'])]
+        if any(row.get('deleted_at') for row in protected):
+            return dict(candidates=[], basis='来源位于已删除项目工作目录，请恢复项目或人工选择', requires_choice=True)
+        if any(row.get('archived_at') for row in protected):
             return dict(candidates=[], basis='来源位于已归档项目工作目录，请恢复项目或人工选择', requires_choice=True)
+        retained = [row for row in all_projects.values() if not row.get('deleted_at')]
+        deleted = [row for row in all_projects.values() if row.get('deleted_at')]
         active = self.list_projects()
         by_id = {row['id']: row for row in active}
         inside = [by_id[row['project_id']] for row in self.workspaces.list_workspaces()
-                  if row['project_id'] in by_id and source.is_relative_to(Path(row['path']))]
+                  if row['project_id'] in by_id and path_is_within(source, row['path'])]
         if source.suffix.casefold() == '.zip':
-            named = match_projects(source.name, self.list_projects(archived=None))
+            named = match_projects(source.name, retained)
             if any(row.get('archived_at') for row in named):
                 return dict(candidates=[row for row in named if not row.get('archived_at')],
                     basis='ZIP 名称涉及已归档项目，请恢复项目或人工选择', requires_choice=True)
+            if not named and match_projects(source.name, deleted):
+                return dict(candidates=inside, basis='ZIP 名称涉及已删除项目，请恢复项目或人工选择', requires_choice=True)
             return dict(candidates=inside or named, basis='ZIP 专门匹配规则')
-        named = match_work_file_projects(source.name, self.list_projects(archived=None))
+        named = match_work_file_projects(source.name, retained)
         if any(row.get('archived_at') for row in named['candidates']):
             # 已归档的完整名称仍是名称边界，不能继续剥尾缀命中另一个活动项目。
             return dict(candidates=[row for row in named['candidates'] if not row.get('archived_at')],
                 basis=named['basis'] + '，涉及已归档项目，请恢复项目或人工选择', requires_choice=True)
+        if not named['candidates'] and match_work_file_projects(source.name, deleted)['candidates']:
+            return dict(candidates=inside, basis='材料名称涉及已删除项目，请恢复项目或人工选择', requires_choice=True)
         if not inside:
             return named
         if not named['candidates']:
@@ -244,7 +256,7 @@ class DesktopService(WorkBox):
             return False
         normalized = lambda name: ' '.join(unicodedata.normalize('NFKC', name).split()).casefold()
         stem = normalized(Path(filename).stem)
-        return not any(normalized(p['name']) == stem for p in self.list_projects(archived=None))
+        return not any(normalized(p['name']) == stem for p in self.list_projects(archived=None, deleted=None))
 
     def _capture_file_projects(self, source, names):
         """名称检查与收件提交共用事务，重复拖入不能产生第二组项目。"""
@@ -318,11 +330,43 @@ class DesktopService(WorkBox):
                 raise RuntimeError('ZIP 来源在收录期间变化，工作副本未通过核对。')
             return metadata
 
+    def receive_path(self, path, project_id=None, *, cancel_event=None, progress=None, manual=None, folder_items=None):
+        """在后台判断文件/目录与归属；需要人工选择时返回事实，界面线程再提问。"""
+        routing = {}
+        try:
+            if folder_items is not None:
+                if manual is not True or project_id is None:
+                    raise ValueError('请明确选择文件夹材料对应的项目。')
+                from folder_intake import FolderIntake
+                return FolderIntake(self).receive_items(folder_items, project_id,
+                    cancel_event=cancel_event, progress=progress)
+            source = _path(path, allow_network=True)
+            cancelled(cancel_event)
+            if source.is_dir():
+                from folder_intake import FolderIntake
+                result = FolderIntake(self).receive(source, project_id, cancel_event=cancel_event,
+                    progress=progress, manual=manual)
+                result['manual_choice_attempted'] = manual is True
+                return result
+            if project_id is None and not self.is_bundle_candidate(source.name):
+                routing = self.file_routing(source)
+                candidates = routing['candidates']
+                if routing.get('requires_choice') or len(candidates) > 1:
+                    self.record_file_decision(source, 'needs-choice', routing)
+                    return {'intake_choice': str(source), 'routing': routing}
+                project_id = candidates[0]['id'] if len(candidates) == 1 else None
+                manual = False
+        except Exception as error:
+            self.record_file_decision(path, 'cancelled' if isinstance(error, CancelledError) else 'failed',
+                routing, project_id=project_id, manual=manual, message=str(error))
+            raise
+        return self.receive_file(source, project_id, cancel_event=cancel_event, progress=progress, manual=manual)
+
     def receive_file(self, path, project_id=None, *, cancel_event=None, progress=None, manual=None):
         ordinary = Path(path).suffix.casefold() != '.zip'
         routing, failure_status, created = {}, 'failed', {}
         try:
-            source = _path(path)
+            source = _path(path, allow_network=True)
             cancelled(cancel_event)
             if not source.is_file():
                 raise ValueError('请选择本机普通文件，不能收录目录。')
@@ -337,10 +381,10 @@ class DesktopService(WorkBox):
                 failure_status = 'needs-choice'
                 raise ValueError('文件归属未确定，请恢复已归档项目或选择文件对应的项目。')
             if self.is_bundle_candidate(source.name):
-                plan = analyze_bundle(source, self.list_projects(archived=None))
+                plan = analyze_bundle(source, self.list_projects(archived=None, deleted=None))
                 if plan['provision_names'] and not routing.get('requires_choice'):
                     created = self._capture_file_projects(source, plan['provision_names'])
-                    plan = analyze_bundle(source, self.list_projects(archived=None))
+                    plan = analyze_bundle(source, self.list_projects(archived=None, deleted=None))
                 working = None
                 if plan['state'] == 'matched':
                     self.ensure_workspaces(plan['project_ids'][0])

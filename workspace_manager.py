@@ -41,14 +41,14 @@ CREATE INDEX IF NOT EXISTS idx_work_files_project_hash ON work_files(project_id,
 '''
 
 
-def _path(value):
+def _path(value, *, allow_network=False):
     if not isinstance(value, (str, Path)) or not str(value).strip():
         raise ValueError('请选择本机有效路径。')
     # 在转为绝对路径前检查，避免把网络或设备路径折叠为本机路径。
-    if str(value).startswith(('\\\\', '//')):
+    if not allow_network and str(value).startswith(('\\\\', '//')):
         raise ValueError('不接受网络路径或设备路径。')
-    path = plain_path(value)
-    if os.name == 'nt':
+    path = plain_path(value, allow_network=allow_network)
+    if os.name == 'nt' and not allow_network:
         api = ctypes.WinDLL('kernel32', use_last_error=True)
         api.GetDriveTypeW.argtypes = [ctypes.c_wchar_p]
         api.GetDriveTypeW.restype = ctypes.c_uint
@@ -120,7 +120,7 @@ def _zip_structure(stream, cancel_event=None):
 
 def copy_verified(source, target, *, cancel_event=None, progress=None, require_zip=False):
     """稳定读取原件，校验副本，再以无覆盖的原子改名发布。原件始终保留。"""
-    source, target = _path(source), _path(target)
+    source, target = _path(source, allow_network=True), _path(target)
     cancelled(cancel_event)
     if not source.is_file():
         raise ValueError('请选择本机普通文件，不能收录目录。')
@@ -310,10 +310,10 @@ class WorkspaceManager:
                     pass
             raise
 
-    def import_file(self, source, project_id, *, cancel_event=None, progress=None, routing=None):
+    def import_file(self, source, project_id, *, cancel_event=None, progress=None, routing=None, relative_path=None):
         if type(project_id) is not int or project_id < 1:
             raise ValueError('请先明确选择文件所属项目。')
-        source = _path(source)
+        source = _path(source, allow_network=True)
         if not source.is_file():
             raise ValueError('请选择本机普通文件，不能收录目录。')
         with self.db.connect() as connection:
@@ -321,6 +321,18 @@ class WorkspaceManager:
         workspace = self.get_workspace(project_id) or self.ensure_projects([project_id])[0]
         directory = _path(workspace['path'])
         directory.mkdir(parents=True, exist_ok=True)
+        relative = Path(relative_path) if relative_path is not None else None
+        if relative is not None:
+            if (relative.is_absolute() or not relative.parts or '..' in relative.parts
+                    or relative.name != source.name or any(':' in part for part in relative.parts)):
+                raise ValueError('收录相对路径无效，不能越出项目工作目录或改写文件名。')
+            parent = _path(directory / relative.parent)
+            if not parent.is_relative_to(directory):
+                raise ValueError('收录相对路径超出项目工作目录。')
+            parent.mkdir(parents=True, exist_ok=True)
+            _path(parent)
+        else:
+            parent = directory
         own_copy = None
         try:
             with ZipLease(source, movable=False) as lease:
@@ -338,6 +350,8 @@ class WorkspaceManager:
                             connection=connection)
                     for row in connection.execute('SELECT * FROM work_files WHERE project_id=? AND sha256=? AND size=? ORDER BY id', (project_id, digest, size)):
                         saved = _path(row['path'])
+                        if relative is not None and (saved.parent != parent or Path(row['source_path']).name != source.name):
+                            continue
                         if not saved.is_file():
                             continue
                         with ZipLease(saved, movable=False) as saved_lease:
@@ -349,12 +363,12 @@ class WorkspaceManager:
                         metadata = dict(path=str(source), source_path=str(source), filename=source.name, size=size,
                                         sha256=digest, mtime_ns=source.stat().st_mtime_ns)
                     else:
-                        target = directory / source.name
+                        target = parent / source.name
                         if target.exists():
-                            target = directory / f'{source.stem} ({digest[:8]}){source.suffix}'
+                            target = parent / f'{source.stem} ({digest[:8]}){source.suffix}'
                         index = 2
                         while target.exists():
-                            target = directory / f'{source.stem} ({digest[:8]}) ({index}){source.suffix}'
+                            target = parent / f'{source.stem} ({digest[:8]}) ({index}){source.suffix}'
                             index += 1
                         metadata = copy_verified(source, target, cancel_event=cancel_event, progress=progress)
                         own_copy = metadata

@@ -62,6 +62,11 @@ CREATE TABLE IF NOT EXISTS project_details (
     due_date TEXT,
     archived_at TEXT
 );
+CREATE TABLE IF NOT EXISTS project_deletions (
+    project_id INTEGER PRIMARY KEY REFERENCES projects(id),
+    deleted_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    previous_archived_at TEXT
+);
 CREATE TABLE IF NOT EXISTS zip_bundles (
     zip_id INTEGER PRIMARY KEY REFERENCES zips(id),
     declared_count INTEGER,
@@ -124,6 +129,23 @@ CREATE TRIGGER IF NOT EXISTS delivery_event_actions_no_update BEFORE UPDATE ON d
 BEGIN SELECT RAISE(ABORT,'交付管理记录仅允许追加，不能修改。'); END;
 CREATE TRIGGER IF NOT EXISTS delivery_event_actions_no_delete BEFORE DELETE ON delivery_event_actions
 BEGIN SELECT RAISE(ABORT,'交付管理记录仅允许追加，不能删除。'); END;
+CREATE TABLE IF NOT EXISTS project_delivery_history_markers (
+    id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    effective_day TEXT NOT NULL CHECK(length(effective_day)=10 AND
+        effective_day GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+    active INTEGER NOT NULL CHECK(active IN (0,1)),
+    reason TEXT NOT NULL DEFAULT '' CHECK(length(reason)<=1000),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_project_delivery_history_markers_project
+    ON project_delivery_history_markers(project_id,id DESC);
+CREATE TRIGGER IF NOT EXISTS project_delivery_history_markers_no_update
+    BEFORE UPDATE ON project_delivery_history_markers
+BEGIN SELECT RAISE(ABORT,'历史交付统计规则仅允许追加，不能修改。'); END;
+CREATE TRIGGER IF NOT EXISTS project_delivery_history_markers_no_delete
+    BEFORE DELETE ON project_delivery_history_markers
+BEGIN SELECT RAISE(ABORT,'历史交付统计规则仅允许追加，不能删除。'); END;
 CREATE TABLE IF NOT EXISTS delivery_event_migrations (
     name TEXT PRIMARY KEY
 );
@@ -158,10 +180,13 @@ class Database:
 
     def counts(self) -> dict[str, int]:
         with self.connect() as connection:
-            return {
+            result = {
                 table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
                 for table in ("projects", "batches", "zips")
             }
+            result['projects'] = connection.execute('''SELECT COUNT(*) FROM projects p
+                WHERE NOT EXISTS (SELECT 1 FROM project_deletions x WHERE x.project_id=p.id)''').fetchone()[0]
+            return result
 
     @staticmethod
     def _migrate_delivery_events(connection: sqlite3.Connection) -> None:
@@ -215,7 +240,8 @@ class Database:
                     archive_path=event['archive_path'], kind=event['kind'], counted=False,
                     first_at=event['first_at'], repeat_count=0, voided_count=0,
                     last_action_id=event['last_action_id'], last_action=event['last_action'],
-                    management_reason=event['management_reason'], managed_at=event['managed_at'])
+                    management_reason=event['management_reason'], managed_at=event['managed_at'],
+                    prior_delivery=event['prior_delivery'], prior_delivery_reason=event['prior_delivery_reason'])
             projects[pid]['delivery_count'] += 1
             projects[pid]['counted'] |= event['counted']
             projects[pid]['repeat_count'] += event['counting_role'] == 'repeat'
@@ -259,21 +285,72 @@ class Database:
                 SELECT id,project_id,occurred_at,
                     ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY julianday(occurred_at),id) AS position
                 FROM effective WHERE voided=0
-            ), firsts AS (SELECT id,project_id,occurred_at FROM ranked WHERE position=1)
-            SELECT e.*,f.occurred_at AS first_at,
-                CASE WHEN e.voided=1 THEN 'voided' WHEN e.id=f.id THEN 'first' ELSE 'repeat' END AS counting_role
-            FROM effective e LEFT JOIN firsts f ON f.project_id=e.project_id''' + where +
+            ), firsts AS (SELECT id,project_id,occurred_at FROM ranked WHERE position=1), prior_rules AS (
+                SELECT m.project_id,m.reason FROM project_delivery_history_markers m
+                LEFT JOIN firsts f ON f.project_id=m.project_id
+                WHERE m.id=(SELECT MAX(id) FROM project_delivery_history_markers WHERE project_id=m.project_id)
+                    AND m.active=1 AND (f.id IS NULL OR date(f.occurred_at,'+8 hours')>=m.effective_day)
+            )
+            SELECT e.*,CASE WHEN p.project_id IS NOT NULL THEN NULL ELSE f.occurred_at END AS first_at,
+                CASE WHEN e.voided=1 THEN 'voided' WHEN p.project_id IS NOT NULL THEN 'repeat'
+                    WHEN e.id=f.id THEN 'first' ELSE 'repeat' END AS counting_role,
+                p.project_id IS NOT NULL AS prior_delivery,COALESCE(p.reason,'') AS prior_delivery_reason
+            FROM effective e LEFT JOIN firsts f ON f.project_id=e.project_id
+                LEFT JOIN prior_rules p ON p.project_id=e.project_id''' + where +
                 ' ORDER BY julianday(e.occurred_at) DESC,e.id DESC', parameters).fetchall()
         events = []
         for row in rows:
             event = dict(row)
             event['voided'] = bool(event['voided'])
+            event['prior_delivery'] = bool(event['prior_delivery'])
             event['counted'] = event['counting_role'] == 'first'
             events.append(event)
         return dict(day=current, project_count=sum(event['counted'] for event in events),
             event_count=len(events), repeat_count=sum(event['counting_role'] == 'repeat' for event in events),
             voided_count=sum(event['voided'] for event in events),
             valid_event_count=sum(not event['voided'] for event in events), events=events)
+
+    def set_prior_delivery_projects(self, project_ids, *, effective_day: date, active: bool = True,
+                                    confirmed: bool = False, reason: str = '') -> dict:
+        """追加首次交付日期未知的统计规则；生效日不是交付日期，不改项目与交付事实。"""
+        if (not isinstance(project_ids, (list, tuple, set)) or not 1 <= len(project_ids) <= 500
+                or any(type(pid) is not int or pid <= 0 for pid in project_ids)
+                or len(set(project_ids)) != len(project_ids)):
+            raise ValueError('请选择 1 至 500 个不同的有效项目。')
+        if type(effective_day) is not date:
+            raise ValueError('统计规则生效日必须是日期。')
+        if type(active) is not bool or type(confirmed) is not bool:
+            raise ValueError('启用和确认标记必须是是/否。')
+        if not isinstance(reason, str) or len(reason) > 1000:
+            raise ValueError('历史交付统计原因不能超过 1000 个字符。')
+        selected, day = sorted(project_ids), effective_day.isoformat()
+        result = dict(changed_count=0, project_ids=selected, changed_project_ids=[], active=active,
+                      confirmed=confirmed, effective_day=day)
+        if not confirmed:
+            return result
+        with self.connect() as connection:
+            # 写锁内校验整批存在性与当前规则，避免并发重复追加或部分保存。
+            connection.execute('BEGIN IMMEDIATE')
+            placeholders = ','.join('?' for _ in selected)
+            existing = connection.execute(f'SELECT id FROM projects WHERE id IN ({placeholders})', selected).fetchall()
+            if len(existing) != len(selected):
+                raise ValueError('所选项目不存在，未修改任何统计规则。')
+            markers = {row['project_id']: row for row in connection.execute(f'''
+                SELECT m.* FROM project_delivery_history_markers m
+                WHERE m.project_id IN ({placeholders}) AND m.id=(
+                    SELECT MAX(id) FROM project_delivery_history_markers WHERE project_id=m.project_id)
+                ''', selected)}
+            for pid in selected:
+                previous = markers.get(pid)
+                if not active and (previous is None or not previous['active']):
+                    continue
+                if active and previous is not None and previous['active'] and previous['effective_day'] == day:
+                    continue
+                connection.execute('''INSERT INTO project_delivery_history_markers(
+                    project_id,effective_day,active,reason) VALUES (?,?,?,?)''', (pid, day, int(active), reason.strip()))
+                result['changed_project_ids'].append(pid)
+        result['changed_count'] = len(result['changed_project_ids'])
+        return result
 
     def set_delivery_events_voided(self, event_ids, *, voided: bool, confirmed: bool = False, reason: str = '') -> dict:
         """撤销统计与退回待交付同事务提交；恢复只恢复统计，保留原事件和归档。"""
@@ -725,7 +802,7 @@ class Database:
         self, query: str = "", status: str | None = None,
         batch_id: int | None = None, urgent_only: bool = False,
         *, archived: bool | None = False, due_filter: str | None = None,
-        today: date | None = None,
+        today: date | None = None, deleted: bool | None = False,
     ) -> list[dict]:
         clauses = ["1=1"]
         parameters: list = []
@@ -738,7 +815,11 @@ class Database:
             parameters.extend([query.strip()] * 4)
         if archived is not None and type(archived) is not bool:
             raise ValueError('归档筛选必须为是、否或全部。')
-        if archived is not None:
+        if deleted is not None and type(deleted) is not bool:
+            raise ValueError('删除筛选必须为是、否或全部。')
+        if deleted is not None:
+            clauses.append('x.deleted_at IS NOT NULL' if deleted else 'x.deleted_at IS NULL')
+        if archived is not None and deleted is not True:
             clauses.append('d.archived_at IS NOT NULL' if archived else 'd.archived_at IS NULL')
         if due_filter not in (None, 'overdue', 'today', 'week', 'unscheduled'):
             raise ValueError('无效的截止日期筛选。')
@@ -769,11 +850,12 @@ class Database:
         if urgent_only:
             clauses.append("p.urgent=1")
         sql = """SELECT p.*, b.name AS batch_name, COALESCE(d.notes,'') AS notes,
-            d.due_date, d.archived_at,
+            d.due_date, d.archived_at, x.deleted_at,
             (SELECT COUNT(*) FROM zip_project_links l WHERE l.project_id=p.id) AS zip_count,
             (SELECT filename FROM zips z JOIN zip_project_links l ON l.zip_id=z.id WHERE l.project_id=p.id ORDER BY z.id DESC LIMIT 1) AS zip_name
             FROM projects p JOIN batches b ON b.id=p.batch_id
-            LEFT JOIN project_details d ON d.project_id=p.id WHERE """
+            LEFT JOIN project_details d ON d.project_id=p.id
+            LEFT JOIN project_deletions x ON x.project_id=p.id WHERE """
         sql += " AND ".join(clauses) + " ORDER BY p.urgent DESC, d.due_date IS NULL, d.due_date ASC, p.id DESC"
         with self.connect() as connection:
             return [dict(row) for row in connection.execute(sql, parameters)]
@@ -791,9 +873,10 @@ class Database:
         with self.connect() as connection:
             row = connection.execute("""
                 SELECT p.*, b.name AS batch_name, m.raw_text,
-                    COALESCE(d.notes,'') AS notes, d.due_date, d.archived_at FROM projects p
+                    COALESCE(d.notes,'') AS notes, d.due_date, d.archived_at, x.deleted_at FROM projects p
                 JOIN batches b ON b.id=p.batch_id JOIN messages m ON m.id=p.message_id
                 LEFT JOIN project_details d ON d.project_id=p.id
+                LEFT JOIN project_deletions x ON x.project_id=p.id
                 WHERE p.id=?
             """, (project_id,)).fetchone()
             if row is None:
@@ -803,6 +886,44 @@ class Database:
                 "SELECT z.* FROM zips z JOIN zip_project_links l ON l.zip_id=z.id WHERE l.project_id=? ORDER BY z.id DESC", (project_id,)
             )]
             return result
+
+    def delete_project(self, project_id: int, *, confirmed: bool = False) -> dict:
+        if type(project_id) is not int or project_id <= 0:
+            raise ValueError('项目编号必须是正整数。')
+        if confirmed is not True:
+            raise ValueError('删除项目必须由你明确确认。')
+        # 与文件归档共用操作锁；只记录删除边界，不接触磁盘和原始项目事实。
+        with getattr(self, '_operation_lock', nullcontext()), self.connect() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            row = connection.execute('''SELECT p.id,d.archived_at,x.deleted_at FROM projects p
+                LEFT JOIN project_details d ON d.project_id=p.id
+                LEFT JOIN project_deletions x ON x.project_id=p.id WHERE p.id=?''', (project_id,)).fetchone()
+            if row is None:
+                raise KeyError('项目不存在，请刷新列表。')
+            changed = row['deleted_at'] is None
+            if changed:
+                connection.execute('INSERT INTO project_deletions(project_id,previous_archived_at) VALUES (?,?)',
+                                   (project_id, row['archived_at']))
+                connection.execute('INSERT OR IGNORE INTO project_details(project_id) VALUES (?)', (project_id,))
+                connection.execute("UPDATE project_details SET archived_at=COALESCE(archived_at,strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE project_id=?", (project_id,))
+            return dict(project_id=project_id, deleted=True, changed=changed, archived=True)
+
+    def restore_deleted_project(self, project_id: int) -> dict:
+        if type(project_id) is not int or project_id <= 0:
+            raise ValueError('项目编号必须是正整数。')
+        with getattr(self, '_operation_lock', nullcontext()), self.connect() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            row = connection.execute('''SELECT p.id,d.archived_at,x.deleted_at,x.previous_archived_at FROM projects p
+                LEFT JOIN project_details d ON d.project_id=p.id
+                LEFT JOIN project_deletions x ON x.project_id=p.id WHERE p.id=?''', (project_id,)).fetchone()
+            if row is None:
+                raise KeyError('项目不存在，请刷新列表。')
+            changed = row['deleted_at'] is not None
+            archived_at = row['previous_archived_at'] if changed else row['archived_at']
+            if changed:
+                connection.execute('UPDATE project_details SET archived_at=? WHERE project_id=?', (archived_at, project_id))
+                connection.execute('DELETE FROM project_deletions WHERE project_id=?', (project_id,))
+            return dict(project_id=project_id, deleted=False, changed=changed, archived=archived_at is not None)
 
     def set_status(self, project_id: int, status: str) -> None:
         self.bulk_update_projects([project_id], status=status)
@@ -824,11 +945,7 @@ class Database:
                 raise ValueError('截止日期不是有效日期。') from error
         with self.connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
-            row = connection.execute('SELECT p.id,d.archived_at FROM projects p LEFT JOIN project_details d ON d.project_id=p.id WHERE p.id=?', (project_id,)).fetchone()
-            if row is None:
-                raise KeyError('项目不存在，请刷新列表。')
-            if row['archived_at'] is not None:
-                raise ValueError('请先恢复归档项目，再编辑。')
+            self._assert_projects_editable(connection, project_id)
             connection.execute('INSERT INTO project_details(project_id,notes,due_date) VALUES (?,?,?) ON CONFLICT(project_id) DO UPDATE SET notes=excluded.notes,due_date=excluded.due_date', (project_id, notes, due_date))
             connection.execute("UPDATE projects SET updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?", (project_id,))
 
@@ -849,9 +966,13 @@ class Database:
         with getattr(self, '_operation_lock', nullcontext()), self.connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
             marks = ','.join('?' for _ in project_ids)
-            rows = connection.execute(f'SELECT p.id,d.archived_at FROM projects p LEFT JOIN project_details d ON d.project_id=p.id WHERE p.id IN ({marks})', project_ids).fetchall()
+            rows = connection.execute(f'''SELECT p.id,d.archived_at,x.deleted_at FROM projects p
+                LEFT JOIN project_details d ON d.project_id=p.id
+                LEFT JOIN project_deletions x ON x.project_id=p.id WHERE p.id IN ({marks})''', project_ids).fetchall()
             if len(rows) != len(project_ids):
                 raise KeyError('部分项目不存在，请刷新列表。')
+            if any(row['deleted_at'] is not None for row in rows):
+                raise ValueError('请先从已删除中恢复项目，再编辑或归档。')
             if archived is None and any(row['archived_at'] is not None for row in rows):
                 raise ValueError('请先恢复归档项目，再编辑。')
             if archived is not None:
@@ -873,8 +994,12 @@ class Database:
     @staticmethod
     def _assert_projects_editable(connection, *project_ids):
         for project_id in set(project_ids) - {None}:
-            row = connection.execute('SELECT p.id,d.archived_at FROM projects p LEFT JOIN project_details d ON d.project_id=p.id WHERE p.id=?', (project_id,)).fetchone()
+            row = connection.execute('''SELECT p.id,d.archived_at,x.deleted_at FROM projects p
+                LEFT JOIN project_details d ON d.project_id=p.id
+                LEFT JOIN project_deletions x ON x.project_id=p.id WHERE p.id=?''', (project_id,)).fetchone()
             if row is None:
                 raise KeyError('项目不存在，请刷新列表。')
+            if row['deleted_at'] is not None:
+                raise ValueError('请先从已删除中恢复项目，再编辑或交付。')
             if row['archived_at'] is not None:
                 raise ValueError('请先恢复归档项目，再编辑或交付。')

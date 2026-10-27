@@ -29,9 +29,17 @@ class WorkBox:
         self, query: str = "", status: str | None = None,
         batch_id: int | None = None, urgent_only: bool = False,
         *, archived: bool | None = False, due_filter: str | None = None, today=None,
+        deleted: bool | None = False,
     ) -> list[dict]:
         return self.db.list_projects(query, status, batch_id, urgent_only,
-                                     archived=archived, due_filter=due_filter, today=today)
+                                     archived=archived, due_filter=due_filter, today=today,
+                                     deleted=deleted)
+
+    def delete_project(self, project_id: int, *, confirmed: bool = False) -> dict:
+        return self.db.delete_project(project_id, confirmed=confirmed)
+
+    def restore_deleted_project(self, project_id: int) -> dict:
+        return self.db.restore_deleted_project(project_id)
 
     def update_project_details(self, project_id: int, notes: str, due_date: str | None) -> None:
         self.db.update_project_details(project_id, notes, due_date)

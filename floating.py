@@ -6,8 +6,10 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 from PySide6.QtCore import QPoint, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QRadialGradient
+from PySide6.QtGui import QColor, QFont, QPainter, QPen, QRadialGradient
 from PySide6.QtWidgets import QApplication, QMenu, QWidget
+
+from branding import draw_mark
 
 
 class _TextHTML(HTMLParser):
@@ -34,10 +36,11 @@ class _TextHTML(HTMLParser):
 
 
 def decode_mime(mime):
-    unsupported = {'kind': 'unsupported', 'message': '请拖入项目文字或已下载的本地文件；不接收网址、文件夹和虚拟附件。'}
+    unsupported = {'kind': 'unsupported', 'message': '请拖入项目文字、文件或文件夹；支持可访问的共享路径，不接收网址和虚拟附件。'}
     if mime.hasUrls():
         urls = mime.urls()
-        if not urls or len(urls) > 100 or any(not u.isLocalFile() or Path(u.toLocalFile()).is_dir() for u in urls):
+        # 网络目录检查可能很慢；这里只读拖放数据，实际检查交给后台收件任务。
+        if not urls or len(urls) > 100 or any(not u.isLocalFile() for u in urls):
             return unsupported
         return {'kind': 'files', 'paths': [str(Path(u.toLocalFile())) for u in urls]}
     if mime.hasText() and mime.text().strip():
@@ -143,16 +146,7 @@ class FloatingBall(DropSurface, QWidget):
         p.setBrush(Qt.NoBrush)
         p.setPen(QPen(QColor('#FFFFFF' if self.drop_kind else '#6F9DB2'), 2 if self.drop_kind else 1))
         p.drawEllipse(QRectF(10, 9, 56, 56))
-        p.setPen(QPen(QColor('white'), 2.6, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-        tray = QPainterPath()
-        tray.moveTo(23, 40)
-        tray.lineTo(23, 49)
-        tray.lineTo(53, 49)
-        tray.lineTo(53, 40)
-        p.drawPath(tray)
-        p.drawLine(38, 24, 38, 40)
-        p.drawLine(32, 34, 38, 40)
-        p.drawLine(38, 40, 44, 34)
+        draw_mark(p, QRectF(10, 9, 56, 56))
         if self.busy:
             p.setPen(QPen(QColor('#A9DBED'), 3, Qt.SolidLine, Qt.RoundCap))
             p.drawArc(QRectF(3, 2, 70, 70), 90 * 16, -int(max(12, self.percent * 3.6) * 16))

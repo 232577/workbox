@@ -2,7 +2,7 @@
 
 import pytest
 
-from file_matcher import match_work_file_projects
+from file_matcher import match_work_file_projects, new_file_project_name
 
 
 @pytest.mark.parametrize(('filename', 'name'), [
@@ -10,8 +10,8 @@ from file_matcher import match_work_file_projects
     ('隔离测试项目4系统_代码（C#+Python）.docx', '隔离测试项目4系统'),
     ('隔离测试项目1系统_代码（C#+Python）.docx', '隔离测试项目1系统'),
     ('隔离测试项目2系统_代码（C++）.docx', '隔离测试项目2系统'),
-    ('隔离测试项目5系统_代码(C++).docx', '隔离测试项目5系统'),
-    ('隔离测试项目5系统_代码段_Cpp.docx', '隔离测试项目5系统'),
+    ('隔离测试项目6系统_代码(C++).docx', '隔离测试项目6系统'),
+    ('隔离测试项目6系统_代码段_Cpp.docx', '隔离测试项目6系统'),
     ('隔离测试项目2系统 (1).txt', '隔离测试项目2系统'),
 ])
 def test_reported_filenames_match_project_without_reading_documents(filename, name):
@@ -102,3 +102,37 @@ def test_full_name_with_version_takes_priority_over_shorter_project():
     projects = [{'id': 1, 'name': '甲系统'}, {'id': 2, 'name': '甲系统_v1.0'}]
     assert match_work_file_projects('甲系统_v1.0.txt', projects)['candidates'] == [projects[1]]
     assert match_work_file_projects('甲系统_v1.0_代码（Python）.txt', projects)['candidates'] == [projects[1]]
+
+
+@pytest.mark.parametrize('suffix', [
+    '_申请表重新下载', '_申请书_重新下载', '_操作手册 下载说明',
+    '_用户手册-下载链接', '_申请表_下载链接_v1.0 (2)',
+    '_申请表重新下载_最终版 (1)',
+])
+def test_explicit_material_download_suffix_matches_and_provisions_consistently(suffix):
+    project = {'id': 1, 'name': '图像分析系统'}
+    filename = project['name'] + suffix + '.txt'
+    assert match_work_file_projects(filename, [project])['candidates'] == [project]
+    assert new_file_project_name(filename) == project['name']
+
+
+@pytest.mark.parametrize('suffix', [
+    '_申请表重新下载备份', '_申请表下载', '_申请表任意内容下载链接',
+    '_申请表下载链接地址', '_重新下载', '_下载说明', '申请表重新下载',
+])
+def test_material_download_suffix_does_not_strip_unknown_text(suffix):
+    filename = '图像分析系统' + suffix + '.txt'
+    assert match_work_file_projects(filename, [{'id': 1, 'name': '图像分析系统'}])['candidates'] == []
+    assert new_file_project_name(filename) == '图像分析系统' + suffix
+
+
+def test_material_complete_name_checked_after_each_copy_and_version_layer():
+    projects = [{'id': 1, 'name': '图像分析系统'},
+                {'id': 2, 'name': '图像分析系统_申请表重新下载'},
+                {'id': 3, 'name': '图像分析系统_申请表重新下载_v1.0'}]
+    for filename, expected in [
+        ('图像分析系统_申请表重新下载.txt', projects[1]),
+        ('图像分析系统_申请表重新下载 (1).txt', projects[1]),
+        ('图像分析系统_申请表重新下载_v1.0 (2).txt', projects[2]),
+    ]:
+        assert match_work_file_projects(filename, projects)['candidates'] == [expected]

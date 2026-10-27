@@ -1,6 +1,7 @@
 import time
 from pathlib import Path
 from zipfile import ZipFile
+from datetime import date
 
 import pytest
 from PySide6.QtCore import QTimer
@@ -75,6 +76,7 @@ def test_word_only_confirmation_archives_then_records_one_project_twice(controll
     summary=service.db.today_delivery_summary()
     assert (summary['project_count'],summary['event_count']) == (1,1)
     assert panel.today_button.text() == '今日交付 1'
+    assert '首次交付已计入今日统计' in panel.notice.text()
     events=service.db.delivery_events_for_project(1)
     archive=Path(events[0]['archive_path'])
     assert (archive/'甲平台_申请书.docx').read_bytes()==b'isolated word-only fixture'
@@ -87,6 +89,18 @@ def test_word_only_confirmation_archives_then_records_one_project_twice(controll
     summary=service.db.today_delivery_summary()
     assert (summary['project_count'],summary['event_count']) == (1,2)
     assert panel.today_button.text() == '今日交付 1'
+    assert '本次为补交，不增加今日首次交付数' in panel.notice.text()
+
+
+def test_prior_delivery_confirmation_feedback_does_not_claim_a_new_count(controller):
+    service=controller.service
+    service.db.set_prior_delivery_projects([1],effective_day=date.fromisoformat(service.db.today_delivery_summary()['day']),
+        confirmed=True,reason='隔离历史交付说明')
+    deliver_work_files(controller.panel)
+    wait(controller)
+    assert service.get_project(1)['status']=='已交付'
+    assert controller.panel.today_button.text()=='今日交付 0'
+    assert '本次为补交，不增加今日首次交付数' in controller.panel.notice.text()
 
 
 def test_cancel_word_delivery_does_not_archive_or_count(controller):

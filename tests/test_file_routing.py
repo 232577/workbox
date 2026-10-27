@@ -144,7 +144,8 @@ def test_cancelling_queued_files_records_each_attempt(service, tmp_path, monkeyp
         controller.cancel_jobs()
         events = service.intake_log.list_recent()
         assert len(events) == 2 and all(e['status'] == 'cancelled' for e in events)
-        assert {e['project_id'] for e in events} == {1, 2}
+        # 尚未运行的任务没有做路径/归属检查，不能把猜测项目写成事实。
+        assert {e['project_id'] for e in events} == {None}
         assert first.is_file() and second.is_file()
     finally:
         controller.shutdown()
@@ -160,6 +161,12 @@ def test_preflight_failure_is_logged_without_copy(service, tmp_path, monkeypatch
     monkeypatch.setattr(service, 'file_routing', invalid_path)
     try:
         controller.receive({'kind': 'files', 'paths': [str(source)]})
+        import time
+        end = time.monotonic() + 8
+        while controller.busy and time.monotonic() < end:
+            app.processEvents()
+            time.sleep(.01)
+        assert not controller.busy
         event = service.intake_log.list_recent()[0]
         assert event['status'] == 'failed' and '目录联接' in event['message']
         assert not controller.queue

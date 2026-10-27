@@ -23,8 +23,8 @@ function reportEvent(type, id = crypto.randomUUID()) {
     body, keepalive: true, credentials: 'same-origin' }).catch(() => {});
 }
 
-function downloadIdentity() {
-  const storageKey = 'workbox-download-attempt';
+function downloadIdentity(filename) {
+  const storageKey = 'workbox-download-attempt:' + filename;
   try {
     const stored = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
     if (stored && stored.expires > Date.now() && /^[a-f0-9-]{36}$/.test(stored.id)) return stored.id;
@@ -37,7 +37,7 @@ function downloadIdentity() {
 document.querySelectorAll('.download-link').forEach(link => {
   const prepare = () => {
     const target = new URL(link.href);
-    target.searchParams.set('download', downloadIdentity());
+    target.searchParams.set('download', downloadIdentity(target.pathname));
     link.href = target.toString();
   };
   prepare();

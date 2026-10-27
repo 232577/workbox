@@ -1,5 +1,5 @@
 import time
-from datetime import datetime,timezone
+from datetime import datetime,timezone,date
 from pathlib import Path
 
 import pytest
@@ -61,6 +61,20 @@ def test_today_separates_first_deliveries_from_repeats(dialog):
     assert '补交 1 条' in dialog.summary.text()
     select_project(dialog,1)
     assert any('不计' in dialog.details.item(0,col).text() for col in range(dialog.details.columnCount()))
+
+
+def test_prior_delivery_marker_shows_unknown_historical_date_as_repeat(dialog):
+    before=dialog.service.db.get_project(2)
+    dialog.service.db.set_prior_delivery_projects([2],effective_day=date(2026,10,26),
+        confirmed=True,reason='用户确认原先已交付，本次为修正补交')
+    dialog.refresh()
+    assert '首次交付 0 个项目' in dialog.summary.text()
+    select_project(dialog,2)
+    row=next(i for i in range(dialog.table.rowCount()) if dialog.table.item(i,0).data(Qt.UserRole)==2)
+    assert dialog.table.item(row,2).text()=='历史已交付，日期未记录'
+    assert dialog.table.item(row,3).text()=='补交不计'
+    assert '原先已交付' in dialog.details.item(0,1).toolTip()
+    assert dialog.service.db.get_project(2)==before
 
 
 def test_first_show_rechecks_bounds_after_native_window_placement(dialog,qapp):
