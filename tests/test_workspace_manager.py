@@ -52,7 +52,8 @@ def test_settings_restart_and_old_paths_stay(context, tmp_path):
     old = manager.ensure_projects([pid])[0]
     manager.configure(tmp_path / 'new-work', tmp_path / 'new-zip', stable_seconds=15)
     restarted = WorkspaceManager(WorkBox(service.db.path))
-    assert restarted.settings() == dict(work_root=str(tmp_path / 'new-work'), archive_root=str(tmp_path / 'new-zip'), stable_seconds=15)
+    assert restarted.settings() == dict(work_root=str(tmp_path / 'new-work'), archive_root=str(tmp_path / 'new-zip'), stable_seconds=15,
+                                        auto_create_projects=True, auto_deliver_zip=True, zip_delivery_min_files=4)
     assert restarted.get_workspace(pid)['path'] == old['path']
 
 

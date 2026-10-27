@@ -16,6 +16,7 @@ from zipfile import BadZipFile, ZipFile
 
 from native_files import ZipLease, cancelled, identity, plain_path
 from intake_log import FileIntakeLog
+from workflow_policy import DEFAULTS as POLICY_DEFAULTS, read_policy, validate as validate_policy
 
 
 SCHEMA = '''
@@ -200,7 +201,8 @@ class WorkspaceManager:
 
     def settings(self):
         defaults = dict(work_root=str(self.db.path.parent / '工作项目'),
-                        archive_root=str(self.db.path.parent / 'ZIP归档'), stable_seconds=10)
+                        archive_root=str(self.db.path.parent / 'ZIP归档'), stable_seconds=10,
+                        **POLICY_DEFAULTS)
         with self.db.connect() as connection:
             for row in connection.execute('SELECT key,value FROM workflow_settings'):
                 if row['key'] in defaults:
@@ -216,7 +218,12 @@ class WorkspaceManager:
     def _overlap(left, right):
         return left == right or left.is_relative_to(right) or right.is_relative_to(left)
 
-    def configure(self, work_root, archive_root, stable_seconds=10):
+    def configure(self, work_root, archive_root, stable_seconds=10, *, auto_create_projects=None,
+                  auto_deliver_zip=None, zip_delivery_min_files=None):
+        policy_changes = dict(auto_create_projects=auto_create_projects, auto_deliver_zip=auto_deliver_zip,
+                              zip_delivery_min_files=zip_delivery_min_files)
+        validate_policy({key: POLICY_DEFAULTS[key] if value is None else value
+                         for key, value in policy_changes.items()})
         work, archive = _path(work_root), _path(archive_root)
         if self._overlap(work, archive):
             raise ValueError('工作目录与 ZIP 归档目录必须独立，不能相同或互相包含。')
@@ -225,6 +232,9 @@ class WorkspaceManager:
         settings = dict(work_root=str(work), archive_root=str(archive), stable_seconds=stable_seconds)
         with self.db.connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
+            policy = read_policy(connection)
+            policy.update({key: value for key, value in policy_changes.items() if value is not None})
+            settings.update(policy)
             history = [Path(row['path']) for row in connection.execute('SELECT path FROM workflow_archive_roots')]
             if any(self._overlap(work, root) for root in history):
                 raise ValueError('工作目录不能与当前或历史 ZIP 归档目录相同或互相包含。')
@@ -350,7 +360,9 @@ class WorkspaceManager:
                             connection=connection)
                     for row in connection.execute('SELECT * FROM work_files WHERE project_id=? AND sha256=? AND size=? ORDER BY id', (project_id, digest, size)):
                         saved = _path(row['path'])
-                        if relative is not None and (saved.parent != parent or Path(row['source_path']).name != source.name):
+                        if Path(row['source_path']).name != source.name:
+                            continue
+                        if relative is not None and saved.parent != parent:
                             continue
                         if not saved.is_file():
                             continue

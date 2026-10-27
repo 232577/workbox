@@ -6,14 +6,16 @@
   <meta name="description" content="WorkBox 是 Windows 上的个人项目收件与交付管理工具。整理项目消息、工作文件和 ZIP 版本，数据保存在本机。">
   <meta name="theme-color" content="#155970">
   <title>WorkBox 工作箱 · Windows 项目与交付管理</title>
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=20261027-enhanced">
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/support.css">
   <script src="/script.js" defer></script>
+  <script type="module" src="/support.js"></script>
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="header wrap">
-    <a class="brand" href="#top" aria-label="WorkBox 工作箱首页"><img src="/favicon.svg" width="36" height="36" alt=""><span>WorkBox<span class="brand-sub">工作箱 · 本地项目管理</span></span></a>
+    <a class="brand" href="#top" aria-label="WorkBox 工作箱首页"><img src="/favicon.svg?v=20261027-enhanced" width="36" height="36" alt=""><span>WorkBox<span class="brand-sub">工作箱 · 本地项目管理</span></span></a>
     <nav aria-label="主要导航"><a href="#workflow">怎么用</a><a href="#download">下载与校验</a><a href="https://github.com/232577/workbox">GitHub <span aria-hidden="true">↗</span></a></nav>
   </header>
   <main id="main">
@@ -40,7 +42,7 @@
     <section class="principles wrap" aria-label="主要功能">
       <article><span class="feature-mark" aria-hidden="true">↳</span><h2>消息落成目录</h2><p>主动粘贴或拖入项目消息，建立工作目录。不读取微信，也不监控剪贴板。</p></article>
       <article><span class="feature-mark" aria-hidden="true">▱</span><h2>文件和版本放一起</h2><p>文件和整个文件夹都能收进项目，也支持共享目录；保留子目录、原件和 ZIP 历史版本。</p></article>
-      <article><span class="feature-mark" aria-hidden="true">✓</span><h2>交付记得准确</h2><p>按项目首次有效交付统计。补交保留记录；撤销误记后，项目回到待交付。</p></article>
+      <article><span class="feature-mark" aria-hidden="true">✓</span><h2>交付按你的规则</h2><p>自动建项、交付门槛和归档等待都可配置。首次交付计数，补交保留记录；误记可撤销。</p></article>
     </section>
     <section id="workflow" class="guide-section">
       <div class="wrap guide-layout"><div class="section-intro"><p class="eyebrow">开始使用</p><h2>从桌面上的<br>一个小入口开始。</h2><p>悬浮球收件，点击打开管理面板。项目操作在项目行的右键菜单里。</p><p class="guide-boundary">归档和交付操作保留原文件。不同版本与交付记录各自留存，方便回看。</p></div>
@@ -48,8 +50,8 @@
     </section>
     <section id="download" class="wrap release-section" aria-labelledby="release-title">
       <div class="section-heading"><div><p class="eyebrow">公开下载</p><h2 id="release-title">WorkBox 1.0.0 增强版</h2></div><p>发布于 2026 年 10 月 27 日</p></div>
-      <div class="release-grid"><div class="release-main"><span class="platform-label">WINDOWS · x64</span><h3>下载后，安装即可使用。</h3><p>支持 Windows 10 1809 及以上版本、Windows 11 的 x64 电脑。暂不支持 macOS、ARM 和 32 位系统。</p><a class="button primary download-link" href="/download/WorkBox-1.0.0-Enhanced-20261027-Setup-x64.exe">下载 Windows 增强版 <span aria-hidden="true">↓</span></a><a class="text-link backup" href="https://github.com/232577/workbox/releases/download/v1.0.0-enhanced.20261027/WorkBox-1.0.0-Enhanced-20261027-Setup-x64.exe">GitHub 备用下载 ↗</a><p class="file-meta">WorkBox-1.0.0-Enhanced-20261027-Setup-x64.exe<br>35,528,321 字节（约 35.5 MB）</p><p class="signature-note">新增共享文件与整目录收录、可恢复删除、材料匹配修正和统一 Logo。升级前请备份数据并退出工作箱。</p><a class="text-link download-link" href="/download/WorkBox-1.0.0-Setup-x64.exe">下载旧版 1.0.0（2026-10-26）</a></div>
-      <div class="release-details"><h3>下载校验</h3><p>可用 SHA-256 核对下载文件是否与发布文件一致。</p><div class="hash-box"><span class="mini-label">SHA-256</span><code id="checksum">bcd0724ac1fc9dc311d08205034e4995aa32889c6c60798315425b13fbae0c2a</code><button id="copy-checksum" class="copy-button" type="button">复制校验值</button><p id="copy-status" class="copy-status" role="status" aria-live="polite"></p></div><p class="signature-note">此安装包未进行商业代码签名，Windows 可能提示未知发布者。请确认下载来源并核对文件校验值；不确定时先不要运行。</p><a class="text-link" href="https://github.com/232577/workbox">查看公开源码 <span aria-hidden="true">↗</span></a></div></div>
+      <div class="release-grid"><div class="release-main"><span class="platform-label">WINDOWS · x64</span><h3>下载后，安装即可使用。</h3><p>支持 Windows 10 1809 及以上版本、Windows 11 的 x64 电脑。暂不支持 macOS、ARM 和 32 位系统。</p><a class="button primary download-link" href="/download/WorkBox-1.0.0-Enhanced-20261027-Setup-x64.exe">下载 Windows 增强版 <span aria-hidden="true">↓</span></a><a class="text-link backup" href="https://github.com/232577/workbox/releases/download/v1.0.0-enhanced.20261027/WorkBox-1.0.0-Enhanced-20261027-Setup-x64.exe">GitHub 备用下载 ↗</a><p class="file-meta">WorkBox-1.0.0-Enhanced-20261027-Setup-x64.exe<br>35,531,055 字节（约 35.5 MB）</p><p class="signature-note">新增共享与整目录收录、工作规则配置、可恢复删除、材料识别修正和统一 Logo。升级前请备份数据并退出工作箱。</p><a class="text-link download-link" href="/download/WorkBox-1.0.0-Setup-x64.exe">下载旧版 1.0.0（2026-10-26）</a></div>
+      <div class="release-details"><h3>下载校验</h3><p>可用 SHA-256 核对下载文件是否与发布文件一致。</p><div class="hash-box"><span class="mini-label">SHA-256</span><code id="checksum">a01018e5d0b9c866ce77c33b26a142cec524f9dd2b9a42c125a50a82a29645c8</code><button id="copy-checksum" class="copy-button" type="button">复制校验值</button><p id="copy-status" class="copy-status" role="status" aria-live="polite"></p></div><p class="signature-note">此安装包未进行商业代码签名，Windows 可能提示未知发布者。请确认下载来源并核对文件校验值；不确定时先不要运行。</p><a class="text-link" href="https://github.com/232577/workbox">查看公开源码 <span aria-hidden="true">↗</span></a></div></div>
     </section>
     <section id="faq" class="wrap faq-section" aria-labelledby="faq-title"><div class="section-heading"><div><p class="eyebrow">使用前了解</p><h2 id="faq-title">常见问题</h2></div></div><div class="faq-list">
       <details><summary>需要账号或登录吗？</summary><p>不需要。安装后直接使用，项目、工作文件和归档数据保存在本机。</p></details>
@@ -59,8 +61,9 @@
       <details><summary>撤销交付会删除文件吗？</summary><p>不会。撤销误记会修正交付统计，并把项目恢复为待交付；原文件、归档文件和历史记录均保留。恢复记录只恢复统计有效性，不自动将项目改为已交付。</p></details>
       <details><summary>下载失败或遇到问题怎么办？</summary><p>可尝试 <a href="https://github.com/232577/workbox/releases/download/v1.0.0-enhanced.20261027/WorkBox-1.0.0-Enhanced-20261027-Setup-x64.exe">GitHub 备用下载</a>。使用问题可到 <a href="https://github.com/232577/workbox/issues">GitHub Issues</a> 反馈；提交前请移除个人信息和真实项目资料。</p></details>
     </div></section>
+    <section id="support" hidden></section>
   </main>
-  <footer class="footer wrap"><a class="brand footer-brand" href="#top">WorkBox<span class="footer-tagline">把工作收好。</span></a><div><a href="https://github.com/232577/workbox">公开源码 ↗</a><a href="https://github.com/232577/workbox/releases">版本记录 ↗</a><a href="#download">下载增强版 ↑</a><a href="/stats/">站点统计</a></div></footer>
+  <footer class="footer wrap"><a class="brand footer-brand" href="#top">WorkBox<span class="footer-tagline">把工作收好。</span></a><div><a href="https://github.com/232577/workbox">公开源码 ↗</a><a href="https://github.com/232577/workbox/releases">版本记录 ↗</a><a href="#download">下载增强版 ↑</a><a href="/stats/">站点统计</a><a href="#support" data-support-link hidden>支持工作箱</a></div></footer>
   <p class="wrap signature-note">本站记录匿名页面打开、站内下载开始和备用链接点击次数，用于了解使用情况；不收集你的项目文件。统计数据仅站点所有者登录可见。</p>
 </body>
 </html>

@@ -101,8 +101,8 @@ def test_watching_feedback_explains_threshold_and_original_filename(controller, 
     wait(controller)
     text = controller.bubble.text.text()
     assert '稳定' in text and '保留原名' in text
-    assert '超过 3 个文件' in text and '已交付' in text
-    assert '不足 4 个文件' in text and '待交付' in text
+    assert '至少 4 个文件' in text and '已交付' in text
+    assert '少于 4 个文件' in text and '待交付' in text
 
 
 def test_matched_bundle_feedback_uses_per_project_count_facts(controller, tmp_path):
@@ -218,5 +218,5 @@ def test_recognition_dialog_explains_per_project_rule(controller, tmp_path):
                 dialog.reject()
     QTimer.singleShot(40, inspect_dialog)
     panel.recognize_package()
-    assert found and '超过 3 个文件' in found[0] and '不足 4 个文件' in found[0]
+    assert found and '至少 4 个文件' in found[0] and '少于 4 个文件' in found[0]
     assert '统一标记待交付' not in found[0]

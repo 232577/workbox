@@ -8,6 +8,10 @@ Cloudflare Worker 使用固定 GitHub Release 地址流式提供同域名下载�
 统计口径、密钥设置和验收方法见 [ANALYTICS.md](ANALYTICS.md)。
 站内下载量不包含 GitHub 直链下载；备用链接点击单独列出。
 
+赞助模块由 `public/support.json` 控制，默认关闭。只有所有者提供并核验本人收款码后才启用；
+微信/支付宝图片放在 `public/support/`，图片未配置、加载失败或配置不合法时入口隐藏。
+赞助完全自愿，不影响免费下载使用；手机号不能替代已经确认的收款二维码。
+
 ## 本地检查
 
 ```powershell

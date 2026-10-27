@@ -11,6 +11,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from contextlib import ExitStack, contextmanager, nullcontext
 from pathlib import Path, PurePosixPath
 from typing import Iterator
+from workflow_policy import read_policy
 
 STATUSES = ("待开发", "开发中", "待交付", "已交付")
 DELIVERY_TIMEZONE = timezone(timedelta(hours=8))
@@ -97,6 +98,13 @@ CREATE TABLE IF NOT EXISTS zip_project_file_counts (
     decided_status TEXT NOT NULL CHECK(decided_status IN ('待交付','已交付')),
     rule TEXT NOT NULL CHECK(rule='zip-file-count-v1'),
     checked_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    PRIMARY KEY(zip_id,project_id)
+);
+CREATE TABLE IF NOT EXISTS zip_file_count_policies (
+    zip_id INTEGER NOT NULL REFERENCES zips(id),
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    auto_deliver_zip INTEGER NOT NULL CHECK(auto_deliver_zip IN (0,1)),
+    zip_delivery_min_files INTEGER NOT NULL CHECK(zip_delivery_min_files BETWEEN 1 AND 10000),
     PRIMARY KEY(zip_id,project_id)
 );
 CREATE TABLE IF NOT EXISTS delivery_events (
@@ -579,13 +587,20 @@ class Database:
             return connection.execute('SELECT 1 FROM zip_project_links WHERE zip_id=? AND project_id=?',
                                       (zip_id, project_id)).fetchone() is not None
 
-    def get_zip_file_counts(self, zip_id: int) -> list[dict]:
+    def get_zip_file_counts(self, zip_id: int, *, include_unlinked=False) -> list[dict]:
         """返回实际收录时的自动判断事实；旧 ZIP 没有记录时返回空列表。"""
         with self.connect() as connection:
-            return [dict(row) for row in connection.execute('''
-                SELECT f.*,p.name AS project_name FROM zip_project_file_counts f
-                JOIN projects p ON p.id=f.project_id WHERE f.zip_id=? ORDER BY f.project_id
-            ''', (zip_id,))]
+            rows = connection.execute('''
+                SELECT f.*,p.name AS project_name,
+                    COALESCE(policy.auto_deliver_zip,1) AS auto_deliver_zip,
+                    COALESCE(policy.zip_delivery_min_files,4) AS zip_delivery_min_files
+                FROM zip_project_file_counts f JOIN projects p ON p.id=f.project_id
+                LEFT JOIN zip_file_count_policies policy ON policy.zip_id=f.zip_id AND policy.project_id=f.project_id
+                WHERE f.zip_id=? AND (? OR EXISTS (
+                    SELECT 1 FROM zip_project_links l WHERE l.zip_id=f.zip_id AND l.project_id=f.project_id))
+                ORDER BY f.project_id
+            ''', (zip_id, include_unlinked))
+            return [dict(row, auto_deliver_zip=bool(row['auto_deliver_zip'])) for row in rows]
 
     def _mark_work_file_pending(
         self, connection: sqlite3.Connection, project_id: int, work_file_id: int,
@@ -627,21 +642,32 @@ class Database:
             raise ValueError('文件数量必须覆盖 ZIP 的全部关联项目。')
         self._assert_projects_editable(connection, *linked)
         # 验证全部项目后再写入；判断事实与项目状态由调用方一次提交。
-        marks = ','.join('?' for _ in linked)
-        connection.execute(f'DELETE FROM zip_project_file_counts WHERE zip_id=? AND project_id NOT IN ({marks})',
-                           [zip_id, *sorted(linked)])
+        policy = read_policy(connection)
         for pid, count in sorted(counts.items()):
-            status = '已交付' if count > 3 else '待交付'
-            connection.execute('''
-                INSERT INTO zip_project_file_counts(zip_id,project_id,file_count,decided_status,rule)
-                VALUES (?,?,?,?,'zip-file-count-v1')
-                ON CONFLICT(zip_id,project_id) DO UPDATE SET file_count=excluded.file_count,
-                    decided_status=excluded.decided_status,rule=excluded.rule,
-                    checked_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
-                WHERE file_count!=excluded.file_count OR decided_status!=excluded.decided_status
-                    OR rule!=excluded.rule
-            ''', (zip_id, pid, count, status))
-            if count > 3:
+            # 判定事实不可改写；设置变化时，旧内容不能被当成使用新规则的新版本。
+            previous = connection.execute('''SELECT f.decided_status,
+                    COALESCE(p.auto_deliver_zip,1) AS auto_deliver_zip,
+                    COALESCE(p.zip_delivery_min_files,4) AS zip_delivery_min_files
+                FROM zip_project_file_counts f LEFT JOIN zip_file_count_policies p
+                    ON p.zip_id=f.zip_id AND p.project_id=f.project_id
+                WHERE f.zip_id=? AND f.project_id=?''', (zip_id, pid)).fetchone()
+            if previous:
+                if (bool(previous['auto_deliver_zip']) != policy['auto_deliver_zip']
+                        or previous['zip_delivery_min_files'] != policy['zip_delivery_min_files']):
+                    continue
+                # 沿用明确重复收件的既有行为，但使用原判定而非重算历史事实。
+                delivered = previous['decided_status'] == '已交付'
+            else:
+                delivered = policy['auto_deliver_zip'] and count >= policy['zip_delivery_min_files']
+                status = '已交付' if delivered else '待交付'
+                connection.execute('''
+                    INSERT INTO zip_project_file_counts(zip_id,project_id,file_count,decided_status,rule)
+                    VALUES (?,?,?,?,'zip-file-count-v1')
+                ''', (zip_id, pid, count, status))
+                connection.execute('''INSERT INTO zip_file_count_policies
+                    (zip_id,project_id,auto_deliver_zip,zip_delivery_min_files) VALUES (?,?,?,?)''',
+                    (zip_id, pid, policy['auto_deliver_zip'], policy['zip_delivery_min_files']))
+            if delivered:
                 changed = connection.execute('''
                     UPDATE projects SET status='已交付',delivered_zip_id=?,
                         delivered_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),

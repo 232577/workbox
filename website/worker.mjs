@@ -7,8 +7,8 @@ export const releases = Object.freeze([Object.freeze({
   edition: '增强版',
   date: '2026-10-27',
   filename: 'WorkBox-1.0.0-Enhanced-20261027-Setup-x64.exe',
-  size: 35528321,
-  sha256: 'bcd0724ac1fc9dc311d08205034e4995aa32889c6c60798315425b13fbae0c2a',
+  size: 35531055,
+  sha256: 'a01018e5d0b9c866ce77c33b26a142cec524f9dd2b9a42c125a50a82a29645c8',
 }), Object.freeze({
   version: '1.0.0',
   tag: 'v1.0.0',

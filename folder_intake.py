@@ -11,6 +11,7 @@ from pathlib import Path
 from native_files import ZipLease, cancelled, path_is_within
 from workspace_manager import _folder_name, _path, _zip_structure
 from bundle_analyzer import analyze_bundle
+from workflow_policy import creation_disabled_message
 
 
 def _normalized(name):
@@ -186,12 +187,22 @@ class FolderIntake:
                             _zip_structure(lease.stream, cancel_event)
                     if item['is_bundle']:
                         plan = analyze_bundle(source, self.service.list_projects(archived=None, deleted=None))
+                        if plan['state'] != 'matched' and not self.workspaces.settings()['auto_create_projects']:
+                            message = creation_disabled_message(bool(self.service.list_projects()))
+                            item['routing']['basis'] = message
+                            self._log(item, 'needs-choice', message)
+                            append(item, 'needs_choice', message)
+                            continue
                         if plan['state'] != 'matched' and not plan['provision_names']:
                             item['routing']['basis'] = plan['reason']
                             self._log(item, 'needs-choice', plan['reason'])
                             append(item, 'needs_choice', plan['reason'])
                             continue
                         watched = self.service.receive_file(source, cancel_event=cancel_event, manual=False)
+                        if watched.get('intake_choice'):
+                            item['routing'] = watched['routing']
+                            append(item, 'needs_choice', watched['routing']['basis'])
+                            continue
                         plan = analyze_bundle(source, self.service.list_projects(archived=None, deleted=None))
                         created_ids = watched.get('created_project_ids', [])
                         result['created_project_ids'].extend(created_ids)
@@ -207,6 +218,12 @@ class FolderIntake:
                             item['routing'] = current
                             self._log(item, 'needs-choice', '项目边界发生变化，请重新选择。')
                             append(item, 'needs_choice', '项目边界发生变化，请重新选择。')
+                            continue
+                        if not current['candidates'] and not self.workspaces.settings()['auto_create_projects']:
+                            message = creation_disabled_message(bool(self.service.list_projects()))
+                            item['routing'].update(requires_choice=True, basis=message)
+                            self._log(item, 'needs-choice', message)
+                            append(item, 'needs_choice', message)
                             continue
                         proposed = _path(Path(self.workspaces.settings()['work_root']) / _folder_name(item['provision_name']))
                         if not current['candidates'] and proposed.exists():

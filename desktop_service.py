@@ -18,6 +18,7 @@ from native_files import ZipLease, cancelled, plain_path, path_is_within
 from zip_manager import match_projects
 from file_matcher import match_work_file_projects, new_file_project_name
 from bundle_analyzer import analyze_bundle, bundle_hint
+from workflow_policy import read_policy, creation_disabled_message
 import unicodedata
 
 EXTENSIONS = '''
@@ -266,6 +267,8 @@ class DesktopService(WorkBox):
             raise ValueError('项目名称或项目数量无效。')
         with self.db.connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
+            if not read_policy(connection)['auto_create_projects']:
+                raise ValueError(creation_disabled_message(bool(connection.execute('SELECT 1 FROM projects LIMIT 1').fetchone())))
             existing = [dict(row) for row in connection.execute('''SELECT p.id,p.name,d.archived_at
                 FROM projects p LEFT JOIN project_details d ON d.project_id=p.id''')
                 if normalized(row['name']) in wanted]
@@ -354,6 +357,10 @@ class DesktopService(WorkBox):
                 if routing.get('requires_choice') or len(candidates) > 1:
                     self.record_file_decision(source, 'needs-choice', routing)
                     return {'intake_choice': str(source), 'routing': routing}
+                if not candidates and not self.workspaces.settings()['auto_create_projects']:
+                    routing.update(requires_choice=True, basis=creation_disabled_message(bool(self.list_projects())))
+                    self.record_file_decision(source, 'needs-choice', routing)
+                    return {'intake_choice': str(source), 'routing': routing}
                 project_id = candidates[0]['id'] if len(candidates) == 1 else None
                 manual = False
         except Exception as error:
@@ -382,6 +389,10 @@ class DesktopService(WorkBox):
                 raise ValueError('文件归属未确定，请恢复已归档项目或选择文件对应的项目。')
             if self.is_bundle_candidate(source.name):
                 plan = analyze_bundle(source, self.list_projects(archived=None, deleted=None))
+                if plan['state'] != 'matched' and not self.workspaces.settings()['auto_create_projects']:
+                    routing.update(requires_choice=True, basis=creation_disabled_message(bool(self.list_projects())))
+                    self.record_file_decision(source, 'needs-choice', routing)
+                    return {'intake_choice': str(source), 'routing': routing}
                 if plan['provision_names'] and not routing.get('requires_choice'):
                     created = self._capture_file_projects(source, plan['provision_names'])
                     plan = analyze_bundle(source, self.list_projects(archived=None, deleted=None))
@@ -408,6 +419,9 @@ class DesktopService(WorkBox):
                     failure_status = 'needs-choice'
                     raise ValueError('文件归属未确定，请选择文件对应的项目。')
                 else:
+                    if not self.workspaces.settings()['auto_create_projects']:
+                        failure_status = 'needs-choice'
+                        raise ValueError(creation_disabled_message(bool(self.list_projects())))
                     name = new_file_project_name(source.name) if ordinary else source.stem.strip()
                     if not name or len(name) > 200:
                         raise ValueError('项目名称需要 1 至 200 个字符，请调整文件名。')

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from datetime import date, datetime
+import sqlite3
 
 from PySide6.QtCore import Qt, Signal, QSize, QDate, QLocale, QPoint, QSignalBlocker, QTimer
 from PySide6.QtGui import QColor, QPalette, QContextMenuEvent, QActionGroup
@@ -88,6 +89,13 @@ class StandardScrollMetrics(QProxyStyle):
     def pixelMetric(self, metric, option=None, widget=None):
         value = super().pixelMetric(metric, option, widget)
         return max(32, value) if metric == QStyle.PM_ScrollBarSliderMin else value
+
+
+def zip_delivery_hint(settings):
+    if not settings.get('auto_deliver_zip', True):
+        return 'ZIP 自动交付已关闭，新版本归档后为待交付；请在项目右键人工确认交付。'
+    minimum = settings.get('zip_delivery_min_files', 4)
+    return f'每项目至少 {minimum} 个文件自动设为已交付，少于 {minimum} 个文件设为待交付。'
 
 
 class ProjectList(QListWidget):
@@ -237,7 +245,7 @@ class CompactPanel(DropSurface, QWidget):
         self.paste_button = button('粘贴消息')
         self.files_button = button('收进文件', True)
         self.root_button = button('归档目录')
-        self.settings_button = button('目录设置')
+        self.settings_button = button('工作设置')
         top.addWidget(self.paste_button)
         top.addWidget(self.files_button)
         top.addWidget(self.root_button)
@@ -270,8 +278,8 @@ class CompactPanel(DropSurface, QWidget):
             filters.addWidget(item)
             item.clicked.connect(self.refresh)
         self.status_buttons[None].setChecked(True)
-        self.status_buttons['待交付'].setToolTip('普通文件成功收录后设为待交付；ZIP 中该项目不足 4 个文件时也设为待交付。')
-        self.status_buttons['已交付'].setToolTip('ZIP 中该项目超过 3 个文件时自动设为已交付；也可通过项目右键菜单手动确认。')
+        self.status_buttons['待交付'].setToolTip('普通文件成功收录后设为待交付。' + zip_delivery_hint(service.workspaces.settings()))
+        self.status_buttons['已交付'].setToolTip(zip_delivery_hint(service.workspaces.settings()))
         filters.addStretch()
         self.batch_filter = QComboBox()
         self.batch_filter.setMaximumWidth(190)
@@ -391,7 +399,8 @@ class CompactPanel(DropSurface, QWidget):
         row.addWidget(self.zip_locate)
         row.addStretch()
         zl.addLayout(row)
-        zl.addWidget(label('原 ZIP 保留，归档保留原名；新内容另存版本。每项目超过 3 个文件自动设为已交付，标记可用版本仍独立保留。', 'subtle', True))
+        self.zip_policy_note = label('', 'subtle', True)
+        zl.addWidget(self.zip_policy_note)
         self.tabs.addTab(zips, 'ZIP 库')
         pending = QWidget()
         rl = QVBoxLayout(pending)
@@ -514,9 +523,13 @@ class CompactPanel(DropSurface, QWidget):
         sources = self.service.snapshots.list_sources()
         errors = sum(s.get('state') == 'error' for s in sources)
         pending_count = sum(s.get('state') == 'pending' for s in sources)
-        delay = self.service.workspaces.settings()['stable_seconds']
+        settings = self.service.workspaces.settings()
+        delay = settings['stable_seconds']
         self.archive_status.setText(f'稳定 {delay} 秒后归档 · {pending_count} 个等待 · {errors} 个异常 · {len(sources)} 个来源')
         self.archive_status.setToolTip('仅在软件运行时监视登记目录及主动提交的 ZIP。异常详情可在「监视详情」查看。')
+        self.status_buttons['待交付'].setToolTip('普通文件成功收录后设为待交付。' + zip_delivery_hint(settings))
+        self.status_buttons['已交付'].setToolTip(zip_delivery_hint(settings) + ' 也可通过项目右键菜单人工确认。')
+        self.zip_policy_note.setText('原 ZIP 保留，归档保留原名；新内容另存版本。' + zip_delivery_hint(settings))
         self.refresh_today_count()
 
     def refresh_today_count(self):
@@ -930,7 +943,8 @@ class CompactPanel(DropSurface, QWidget):
         dialog.resize(600, 380)
         layout = QVBoxLayout(dialog)
         layout.addWidget(label(record['filename'], 'title', True))
-        layout.addWidget(label('按原始文件名和包内目录核对。全部匹配后分别统计每个项目：超过 3 个文件设为已交付，不足 4 个文件设为待交付。待核对时不猜测项目状态。', 'subtle', True))
+        layout.addWidget(label('按原始文件名和包内目录核对。当前新版本规则：' + zip_delivery_hint(self.service.workspaces.settings()) +
+            ' 已有归档保留原判定；待核对时不猜测项目状态。', 'subtle', True))
         members = QPlainTextEdit()
         members.setReadOnly(True)
         members.setPlainText(('\n'.join(bundle['member_names']) + '\n\n' + bundle['reason']) if bundle else '此包尚未识别。点击下方按钮读取包内项目名称。')
@@ -956,7 +970,7 @@ class CompactPanel(DropSurface, QWidget):
     def edit_directories(self):
         if DirectorySettingsDialog(self.service, self).exec() == QDialog.Accepted:
             self.refresh()
-            self.show_notice('目录设置已保存。已有工作目录和归档保留原位置。')
+            self.show_notice('工作设置已保存。已有文件、历史判定和交付记录保留。')
 
     def show_intake_log(self):
         FileIntakeLogDialog(self.service, self).exec()
@@ -1201,9 +1215,9 @@ class DirectorySettingsDialog(QDialog):
     def __init__(self, service, parent=None):
         super().__init__(parent)
         self.service = service
-        self.setWindowTitle('工作目录与交付归档设置')
+        self.setWindowTitle('工作目录与收录规则设置')
         self.setStyleSheet(STYLE)
-        self.resize(620, 330)
+        self.resize(620, 540)
         settings = service.workspaces.settings()
         layout = QVBoxLayout(self)
         self.work_root = QLineEdit(settings['work_root'])
@@ -1219,6 +1233,25 @@ class DirectorySettingsDialog(QDialog):
             browse.clicked.connect(lambda _, target=edit: self.browse(target))
             row.addWidget(browse)
             layout.addLayout(row)
+        self.auto_create_projects = QCheckBox('无法匹配时自动创建项目')
+        self.auto_create_projects.setChecked(settings.get('auto_create_projects', True))
+        self.auto_create_projects.setToolTip('仅在名称和目录归属明确时自动创建；有歧义时始终需要选择。关闭后仍可粘贴消息创建项目。')
+        layout.addWidget(self.auto_create_projects)
+        self.auto_deliver_zip = QCheckBox('根据 ZIP 文件数自动确认交付')
+        self.auto_deliver_zip.setChecked(settings.get('auto_deliver_zip', True))
+        layout.addWidget(self.auto_deliver_zip)
+        threshold_row = QHBoxLayout()
+        threshold_row.addWidget(label('每个项目的最少文件数'))
+        self.zip_delivery_min_files = QSpinBox()
+        self.zip_delivery_min_files.setRange(1, 10000)
+        self.zip_delivery_min_files.setSuffix(' 个')
+        self.zip_delivery_min_files.setValue(settings.get('zip_delivery_min_files', 4))
+        self.zip_delivery_min_files.setAccessibleName('ZIP 自动交付最少文件数')
+        self.zip_delivery_min_files.setEnabled(self.auto_deliver_zip.isChecked())
+        self.auto_deliver_zip.toggled.connect(self.zip_delivery_min_files.setEnabled)
+        threshold_row.addWidget(self.zip_delivery_min_files)
+        threshold_row.addStretch()
+        layout.addLayout(threshold_row)
         row = QHBoxLayout()
         row.addWidget(label('文件稳定等待'))
         self.stable_seconds = QSpinBox()
@@ -1229,14 +1262,19 @@ class DirectorySettingsDialog(QDialog):
         row.addWidget(self.stable_seconds)
         row.addStretch()
         layout.addLayout(row)
-        layout.addWidget(label('新目录用于以后创建和归档；已有文件不搬迁。\n原 ZIP 保留，归档保留原名并另存版本；软件退出后暂停监视。', 'subtle', True))
+        layout.addWidget(label('按单个项目统计实际文件，包含子目录，不计文件夹本身。\n规则用于新收录、新版本；已有归档保留原判定和历史记录。\n新目录用于以后创建和归档，已有文件不搬迁。原件保留，退出后暂停监视。', 'subtle', True))
         self.error = label('', 'subtle', True)
         layout.addWidget(self.error)
         actions = QHBoxLayout()
+        self.reset_rules_button = button('恢复默认规则')
+        self.reset_rules_button.setToolTip('填回默认规则，点击保存后生效；不改变目录。')
+        self.reset_rules_button.clicked.connect(self.reset_rules)
+        actions.addWidget(self.reset_rules_button)
         actions.addStretch()
         cancel = button('取消')
         cancel.clicked.connect(self.reject)
         save = button('保存设置', True)
+        save.setDefault(True)
         save.clicked.connect(self.save)
         actions.addWidget(cancel)
         actions.addWidget(save)
@@ -1247,11 +1285,20 @@ class DirectorySettingsDialog(QDialog):
         if path:
             edit.setText(path)
 
+    def reset_rules(self):
+        self.auto_create_projects.setChecked(True)
+        self.auto_deliver_zip.setChecked(True)
+        self.zip_delivery_min_files.setValue(4)
+        self.stable_seconds.setValue(10)
+
     def save(self):
         try:
-            self.service.workspaces.configure(self.work_root.text(), self.archive_root.text(), self.stable_seconds.value())
-        except (OSError, ValueError) as error:
-            self.error.setText(str(error))
+            self.service.workspaces.configure(self.work_root.text(), self.archive_root.text(), self.stable_seconds.value(),
+                auto_create_projects=self.auto_create_projects.isChecked(),
+                auto_deliver_zip=self.auto_deliver_zip.isChecked(),
+                zip_delivery_min_files=self.zip_delivery_min_files.value())
+        except (OSError, ValueError, sqlite3.Error) as error:
+            self.error.setText('设置未保存，请检查后重试：' + str(error))
             return
         self.accept()
 

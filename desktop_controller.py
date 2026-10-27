@@ -9,7 +9,7 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QDialog, QFileDialog, QFrame, QHBoxLayout, QMessageBox, QPlainTextEdit, QSystemTrayIcon, QVBoxLayout
 
-from compact_ui import CompactPanel, STYLE, button, label
+from compact_ui import CompactPanel, STYLE, button, label, zip_delivery_hint
 from floating import FloatingBall, decode_mime
 from ui import FileJob, app_icon
 from native_files import plain_path
@@ -413,7 +413,7 @@ class FloatingController(QObject):
                        f"ZIP 待归档 {result['watching']} 个，"
                        f"失败 {result['failed']} 个，待选择 {result['needs_choice']} 个。原件保留。")
             if result['watching']:
-                message += '\nZIP 稳定后按每个项目的文件数判断交付。'
+                message += '\nZIP 稳定后复制归档。' + zip_delivery_hint(self.service.workspaces.settings())
             details = [item.get('source_path', '') + '：' + item.get('message', '')
                        for item in result.get('items', []) if item.get('status') in ('failed', 'needs_choice')]
             if details:
@@ -431,7 +431,7 @@ class FloatingController(QObject):
             message = '已开始观察 ZIP，原件保留。文件稳定后自动复制归档，保留原名。'
             if worker.result.get('working_zip_path'):
                 message = 'ZIP 已按原名收进工作目录，原件保留。文件稳定后自动复制归档，保留原名。'
-            message += ' 匹配项目后，每项目超过 3 个文件自动设为已交付，不足 4 个文件设为待交付。'
+            message += ' ' + zip_delivery_hint(self.service.workspaces.settings())
             if self.service.is_bundle_candidate(Path(worker.result.get('source_path', '')).name):
                 message += ' 合包先核对全部项目，待核对时不修改项目状态。'
             elif worker.result.get('project_id') is None:
@@ -511,6 +511,9 @@ class FloatingController(QObject):
 
     def _resolve_intake_choices(self, result):
         if self.quitting or self.closed:
+            return
+        if (result.get('intake_choice') or result.get('needs_choice')) and not self.service.list_projects():
+            self.notify('还没有可选项目。请先用「粘贴消息」创建项目，或恢复已有项目，再收进文件；原件保留。')
             return
         pending = []
         if result.get('intake_choice'):

@@ -219,4 +219,3 @@ def test_filters_do_not_hide_real_earlier_first_and_make_rule_exclude_later_reco
     assert result['project_count'] == 0 and result['repeat_count'] == 1
     assert record['first_at'] == '2026-10-25T01:00:00.000Z'
     assert record['prior_delivery'] is False
-
