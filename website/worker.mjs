@@ -29,6 +29,35 @@ export const release = releases[0];
 
 const safeHeaders = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin' };
 
+async function videoResponse(request, env) {
+  // 静态资源路径在实际环境未声明范围能力，显式处理有限大小的教程视频。
+  const sourceHeaders = new Headers(request.headers);
+  sourceHeaders.delete('Range'); sourceHeaders.delete('If-Range');
+  const source = await env.ASSETS.fetch(new Request(request.url, {method:request.method, headers:sourceHeaders}));
+  if(source.status!==200) return source;
+  const headers = new Headers(source.headers);
+  headers.set('Accept-Ranges','bytes');
+  let range=request.headers.get('Range');
+  const ifRange=request.headers.get('If-Range');
+  if(ifRange && ifRange!==headers.get('ETag') && ifRange!==headers.get('Last-Modified')) range=null;
+  if(request.method==='HEAD' || !range) return new Response(request.method==='HEAD'?null:source.body,{headers});
+  const bytes=await source.arrayBuffer();
+  const size=bytes.byteLength;
+  if(size>25*1024*1024) return new Response('视频文件过大。',{status:502,headers:safeHeaders});
+  const match=/^bytes=(\d*)-(\d*)$/.exec(range);
+  let start=0,end=size-1;
+  if(match && match[1]) {start=Number(match[1]);if(match[2])end=Math.min(Number(match[2]),end);}
+  else if(match && match[2]) start=Math.max(0,size-Number(match[2]));
+  if(!match || (!match[1]&&!match[2]) || !Number.isSafeInteger(start) || !Number.isSafeInteger(end)
+      || start<0 || start>=size || end<start) {
+    return new Response(null,{status:416,headers:{...safeHeaders,'Content-Range':`bytes */${size}`}});
+  }
+  headers.delete('Content-Encoding');
+  headers.set('Content-Range',`bytes ${start}-${end}/${size}`);
+  headers.set('Content-Length',String(end-start+1));
+  return new Response(bytes.slice(start,end+1),{status:206,headers});
+}
+
 function unavailable(source) {
   return new Response(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>下载暂时不可用 · 工作箱</title><h1>下载暂时不可用</h1><p>请稍后重试，或使用 <a href="${source}">GitHub 备用下载</a>。</p><p><a href="/">返回工作箱下载页</a></p></html>`, {
     status: 502,
@@ -48,6 +77,7 @@ export async function handleRequest(request, env, fetcher = fetch, context = nul
       headers: { ...safeHeaders, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
     });
   }
+  if(pathname.startsWith('/media/') && pathname.endsWith('.mp4')) return videoResponse(request,env);
   if(pathname==='/' || pathname==='/stats' || pathname==='/stats/') {
     url.pathname=pathname==='/' ? '/index.html' : '/stats.html';url.search='';
     const response=await env.ASSETS.fetch(new Request(url,request));

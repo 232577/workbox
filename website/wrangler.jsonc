@@ -8,7 +8,7 @@
     "directory": "./public",
     "binding": "ASSETS",
     "html_handling": "none",
-    "run_worker_first": ["/", "/download/*", "/healthz", "/api/*", "/stats", "/stats/"]
+    "run_worker_first": ["/", "/download/*", "/media/*", "/healthz", "/api/*", "/stats", "/stats/"]
   },
   "durable_objects": {
     "bindings": [{"name":"METRICS", "class_name":"SiteMetrics"}]
