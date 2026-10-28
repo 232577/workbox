@@ -15,7 +15,7 @@ Cloudflare Worker 使用固定 GitHub Release 地址流式提供同域名下载�
 ## 本地检查
 
 ```powershell
-node --test website/worker.test.mjs website/tracking.test.mjs website/analytics.test.mjs
+node --test website/*.test.mjs
 npx wrangler@4.127.1 dev --config website/wrangler.jsonc
 ```
 
@@ -30,3 +30,7 @@ npx wrangler@4.127.1 dev --config website/wrangler.jsonc
 
 Cloudflare 静态资源单文件上限低于本安装包大小，所以安装包放在 GitHub Releases，
 不混入静态网站目录。页面始终提供 GitHub 备用下载链接。
+
+首页由 `public/index.html`、`homepage.css`、`homepage.js` 组成，继承公共基础样式，
+但不改变统计页布局。四步流程支持键盘切换，无 JavaScript 时仍显示全部内容。
+官网只说明桌面功能，不接收项目文件，也不能在网页上修改桌面工作规则。
