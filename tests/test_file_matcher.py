@@ -6,13 +6,13 @@ from file_matcher import match_work_file_projects, new_file_project_name
 
 
 @pytest.mark.parametrize(('filename', 'name'), [
-    ('隔离测试项目3系统_代码（C#）.docx', '隔离测试项目3系统'),
-    ('隔离测试项目4系统_代码（C#+Python）.docx', '隔离测试项目4系统'),
-    ('隔离测试项目1系统_代码（C#+Python）.docx', '隔离测试项目1系统'),
-    ('隔离测试项目2系统_代码（C++）.docx', '隔离测试项目2系统'),
-    ('隔离测试项目6系统_代码(C++).docx', '隔离测试项目6系统'),
-    ('隔离测试项目6系统_代码段_Cpp.docx', '隔离测试项目6系统'),
-    ('隔离测试项目2系统 (1).txt', '隔离测试项目2系统'),
+    ('隔离测试项目4系统_代码（C#）.docx', '隔离测试项目4系统'),
+    ('隔离测试项目5系统_代码（C#+Python）.docx', '隔离测试项目5系统'),
+    ('隔离测试项目2系统_代码（C#+Python）.docx', '隔离测试项目2系统'),
+    ('隔离测试项目3系统_代码（C++）.docx', '隔离测试项目3系统'),
+    ('隔离测试项目7系统_代码(C++).docx', '隔离测试项目7系统'),
+    ('隔离测试项目7系统_代码段_Cpp.docx', '隔离测试项目7系统'),
+    ('隔离测试项目3系统 (1).txt', '隔离测试项目3系统'),
 ])
 def test_reported_filenames_match_project_without_reading_documents(filename, name):
     project = {'id': 1, 'name': name}

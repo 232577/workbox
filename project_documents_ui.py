@@ -5,7 +5,7 @@ from PySide6.QtCore import Qt, QTimer, QSignalBlocker, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QHeaderView, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QSizePolicy, QMessageBox
 
-from compact_ui import button, label, local_timestamp, standard_list_scrolling
+from compact_ui import button, label, local_timestamp, standard_list_scrolling, WrappedNameDelegate
 from native_files import plain_path
 from project_documents import list_project_documents
 from ui import FileJob, human_size
@@ -14,6 +14,15 @@ from ui import FileJob, human_size
 DOCUMENT_EXTENSIONS = {'.txt', '.md', '.pdf', '.doc', '.docx', '.rtf', '.odt',
     '.xls', '.xlsx', '.csv', '.ppt', '.pptx', '.png', '.jpg', '.jpeg', '.gif',
     '.bmp', '.webp', '.zip', '.7z', '.rar', '.json', '.xml', '.yaml', '.yml', '.log'}
+
+
+class DocumentTable(QTableWidget):
+    width_about_to_change = Signal()
+
+    def resizeEvent(self, event):
+        if event.oldSize().width() != event.size().width():
+            self.width_about_to_change.emit()
+        super().resizeEvent(event)
 
 
 class ProjectDocumentsPane(QWidget):
@@ -40,7 +49,7 @@ class ProjectDocumentsPane(QWidget):
         self.hint.setMinimumWidth(0)
         self.hint.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Fixed)
         layout.addWidget(self.hint)
-        self.table = QTableWidget(0, 3)
+        self.table = DocumentTable(0, 3)
         self.table.setObjectName('documentTable')
         self.table.setAccessibleName('项目文档列表')
         self.table.setHorizontalHeaderLabels(['文件名称', '类别', '大小'])
@@ -49,15 +58,24 @@ class ProjectDocumentsPane(QWidget):
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.table.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
-        self.table.setTextElideMode(Qt.ElideMiddle)
-        self.table.setWordWrap(False)
+        self.table.setTextElideMode(Qt.ElideNone)
+        self.table.setWordWrap(True)
+        self.table.setShowGrid(False)
+        self.table.setItemDelegateForColumn(0, WrappedNameDelegate(self.table))
         standard_list_scrolling(self.table)
         self.table.setMinimumHeight(90)
         self.table.verticalHeader().hide()
         self.table.verticalHeader().setDefaultSectionSize(40)
+        self.table.verticalHeader().setMinimumSectionSize(40)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self._row_layout_timer = QTimer(self)
+        self._row_layout_timer.setSingleShot(True)
+        self._row_layout_anchor = None
+        self._row_layout_timer.timeout.connect(self._resize_rows_preserving_anchor)
+        self.table.width_about_to_change.connect(self._queue_row_layout)
+        self.table.horizontalHeader().sectionResized.connect(self._queue_row_layout)
         layout.addWidget(self.table, 1)
         actions = QHBoxLayout()
         actions.setSpacing(4)
@@ -91,6 +109,8 @@ class ProjectDocumentsPane(QWidget):
         self._generation += 1
         self._signature = None
         self._deferred = None
+        self._row_layout_timer.stop()
+        self._row_layout_anchor = None
         self.documents = []
         self._read_error = self._result_errors = False
         self.table.setRowCount(0)
@@ -191,6 +211,9 @@ class ProjectDocumentsPane(QWidget):
             elif old_ids != new_ids:
                 self.table.clearSelection()
                 self.table.setCurrentCell(-1,-1)
+            # 由 Qt 标准委托按当前列宽计算换行高度，再恢复可见锚点。
+            self.table.resizeRowsToContents()
+            self.table.updateGeometries()
             if anchor_id in new_ids:
                 self.table.scrollToItem(self.table.item(new_ids.index(anchor_id),0),QAbstractItemView.PositionAtTop)
                 self.table.verticalScrollBar().setValue(self.table.verticalScrollBar().value()-anchor_top)
@@ -232,6 +255,36 @@ class ProjectDocumentsPane(QWidget):
     def _apply_deferred(self):
         if self._deferred:
             self.apply_result(self._deferred)
+
+    def _resize_rows_preserving_anchor(self):
+        anchor = self._row_layout_anchor
+        self._row_layout_anchor = None
+        if anchor is None:
+            anchor = self._document_anchor()
+        anchor_id, anchor_top = anchor
+        self.table.resizeRowsToContents()
+        self.table.updateGeometries()
+        if anchor_id is not None and not self.table.verticalScrollBar().isSliderDown():
+            row = next((i for i in range(self.table.rowCount())
+                        if self.table.item(i, 0).data(Qt.UserRole) == anchor_id), None)
+            if row is not None:
+                self.table.scrollToItem(self.table.item(row, 0), QAbstractItemView.PositionAtTop)
+                offset = max(anchor_top, 1 - self.table.rowHeight(row))
+                bar = self.table.verticalScrollBar()
+                bar.setValue(bar.value() - offset)
+
+    def _document_anchor(self):
+        row = self.table.rowAt(0)
+        item = self.table.item(row, 0) if row >= 0 else None
+        anchor_id = item.data(Qt.UserRole) if item else None
+        anchor_top = self.table.rowViewportPosition(row) if item else 0
+        return anchor_id, anchor_top
+
+    def _queue_row_layout(self, *_):
+        if self._row_layout_anchor is None:
+            self._row_layout_anchor = self._document_anchor()
+        # 连续拖动分栏时只在停顿后测量一次，不逐次阻塞界面。
+        self._row_layout_timer.start(80)
 
     def current_document(self):
         row = self.table.currentRow()

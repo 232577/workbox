@@ -4,21 +4,21 @@ WorkBox 是 Windows 本地项目与交付文件管理工具。通过悬浮球打
 
 ## 下载与安装
 
-在 [工作箱下载站](https://workbox.ltxiangzi.dpdns.org/) 或 [增强版 Release](https://github.com/232577/workbox/releases/tag/v1.0.0-enhanced-ui.20261028) 下载 `WorkBox-1.0.0-Enhanced-UI-20261028-Setup-x64.exe`，下载和使用均无需登录。本次为 2026-10-28 UI 增强构建，软件版本保持 1.0.0。安装包适用于 Windows 10 1809 及以上版本、Windows 11 x64，没有商业数字签名。[上一增强版](https://github.com/232577/workbox/releases/tag/v1.0.0-enhanced.20261027) 与 [初始公开版](https://github.com/232577/workbox/releases/tag/v1.0.0) 均保留。
+在 [工作箱下载站](https://workbox.ltxiangzi.dpdns.org/) 或 [增强版 Release](https://github.com/232577/workbox/releases/tag/v1.0.0-enhanced-fluent.20261028) 下载 `WorkBox-1.0.0-Enhanced-Fluent-20261028-Setup-x64.exe`，下载和使用均无需登录。本次为 2026-10-28 Fluent 控件增强构建，软件版本保持 1.0.0。安装包适用于 Windows 10 1809 及以上版本、Windows 11 x64，没有商业数字签名。[双主题界面版](https://github.com/232577/workbox/releases/tag/v1.0.0-enhanced-ui.20261028)、[首次引导版](https://github.com/232577/workbox/releases/tag/v1.0.0-enhanced.20261028)、[上一增强版](https://github.com/232577/workbox/releases/tag/v1.0.0-enhanced.20261027) 与 [初始公开版](https://github.com/232577/workbox/releases/tag/v1.0.0) 均保留。
 
 安装包不包含原电脑的项目、数据库和交付记录。首次启动建立空白数据目录；数据保存在安装目录的 `data` 文件夹。升级前请退出程序并备份数据。卸载保留运行后创建的数据。下载后可用 PowerShell 核对摘要：
 
 ```powershell
-Get-FileHash .\WorkBox-1.0.0-Enhanced-UI-20261028-Setup-x64.exe -Algorithm SHA256
+Get-FileHash .\WorkBox-1.0.0-Enhanced-Fluent-20261028-Setup-x64.exe -Algorithm SHA256
 ```
 
-增强版安装包 SHA256：`09a30ba343ad48f7f50e24f8423de44c7ecdcee385be260109d8ad237dc0afa3`。
+安装包大小为 39,666,409 字节。SHA256：`4c5c09b1e7c2d0599a8e3c9cd1887a5449559bbbcf82fe35ff7a41513d53a2f2`。
 
 ## 界面与皮肤
 
 桌面右上角“外观”可选择浅色、深色或跟随系统。界面、菜单、弹窗和悬浮球使用统一颜色；切换不改变项目、工作目录和交付规则，保留当前选择与滚动。官网及私密统计页也支持三种外观，浏览器偏好与桌面独立保存。
 
-界面使用Qt标准控件和QDarkStyle基础，不是原生WinUI。完整第三方许可随包保留；Windows系统文件选择器以系统支持的外观为准。
+本次更新让长中文项目名与文件名换行显示，按钮在各状态保留完整文字，调整分栏后保持阅读位置。基础按钮、输入框、复选框、数值控件与徽章使用 QFluentWidgets 1.11.3，外观仍由 WorkBox 统一管理；窗口边框、菜单和滚动保留 Qt 原生机制。完整第三方许可随包保留。
 
 ## 第一次使用
 
@@ -58,7 +58,7 @@ python -m venv .venv
 运行公开测试及生成冻结程序：
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe -m scripts.run_tests -q
 powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
@@ -68,6 +68,6 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 
 ## 源码与第三方组件
 
-源码公开于 [232577/workbox](https://github.com/232577/workbox)，目前尚未选择 WorkBox 自有代码的开源许可证。
+WorkBox 自有代码从本次 Fluent 增强构建起按 GPL-3.0-only 公开发布，许可全文见 [LICENSE](LICENSE)。源码、构建说明及对应安装包保留在 [232577/workbox](https://github.com/232577/workbox)。旧版发布记录保持原样。
 
 第三方组件遵循各自许可证，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 与 `licenses/`。Qt 动态库单独存放于冻结程序的 `_internal` 中，第三方说明包含对应上游源码链接及替换说明。

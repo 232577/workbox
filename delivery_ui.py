@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QDateEdit, QDialog,
 
 from compact_ui import button, label
 from theme import apply_to
+from ui_components import LineEdit as QLineEdit, CheckBox as QCheckBox
 from database import DELIVERY_TIMEZONE
 from ui import FileJob
 

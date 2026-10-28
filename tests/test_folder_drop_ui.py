@@ -39,7 +39,7 @@ def test_decoder_accepts_folder_without_filesystem_access(tmp_path, monkeypatch)
     mime = QMimeData()
     mime.setUrls([QUrl.fromLocalFile(str(tmp_path))])
     def no_io(*args, **kwargs):
-        raise AssertionError('隔离测试项目5系统')
+        raise AssertionError('隔离测试项目6系统')
     monkeypatch.setattr(Path, 'is_dir', no_io)
     assert decode_mime(mime) == {'kind': 'files', 'paths': [str(tmp_path)]}
 

@@ -4,10 +4,11 @@ from collections import deque
 import hashlib
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QLockFile, QPoint, QRect, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, QLockFile, QPoint, QRect, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QDialog, QFileDialog, QFrame, QHBoxLayout, QMessageBox, QPlainTextEdit, QSystemTrayIcon, QVBoxLayout
+import shiboken6
 
 from compact_ui import CompactPanel, button, label, zip_delivery_hint
 from floating import FloatingBall, decode_mime
@@ -400,7 +401,9 @@ class FloatingController(QObject):
         self.caption, operation, self.silent_current, _ = self.queue.popleft()
         self.worker = FileJob(operation, self)
         if not self.silent_current:
-            self.worker.progress_changed.connect(lambda percent: self.orb.set_progress(True, percent))
+            # wait() 结束后仍可能有已排队进度；停机后不再访问已释放的窗口。
+            self.worker.progress_changed.connect(
+                lambda percent: self.orb.set_progress(True, percent) if not self.closed else None)
         self.worker.finished.connect(self._completed)
         if not self.silent_current or self.orb.busy:
             self.orb.set_progress(not self.silent_current)
@@ -693,3 +696,26 @@ class FloatingController(QObject):
             self.lock.unlock()
             self.owns_lock = False
         self.closed = True
+
+    def dispose_ui(self):
+        """真实入口在安全停机之后、QApplication 仍存活时释放本控制器的根窗口。"""
+        if not self.closed:
+            raise RuntimeError('请先完成业务停机，再释放窗口。')
+        application = QApplication.instance()
+        if application is None or QThread.currentThread() != application.thread():
+            raise RuntimeError('窗口必须在 QApplication 存活的界面线程中释放。')
+        roots = [widget for widget in (self.orb, self.panel, self.bubble)
+                 if widget is not None and shiboken6.isValid(widget)]
+        threads = self.findChildren(QThread)
+        for widget in roots:
+            threads.extend(widget.findChildren(QThread))
+        if self.worker is not None or any(thread.isRunning() for thread in threads):
+            raise RuntimeError('后台任务尚未结束，窗口保持，不强制释放。')
+        if self.tray is not None and shiboken6.isValid(self.tray):
+            # 托盘菜单归悬浮球所有；先解除平台托盘对该菜单的引用。
+            self.tray.setContextMenu(None)
+        for widget in roots:
+            widget.close()
+            widget.deleteLater()
+        # 主事件循环已返回，必须在 QApplication 析构前消费 Qt 延迟销毁事件。
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)

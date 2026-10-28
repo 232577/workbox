@@ -121,6 +121,11 @@ QPushButton, QToolButton {
     color: %(ink)s; background: %(surface)s; border: 1px solid %(border)s;
     border-radius: 8px; padding: 7px 10px; min-height: 20px;
 }
+/* QDarkStyle 的状态规则自带 2px padding。显式覆盖，避免 Qt 在禁用或选中时
+   缓存较小 sizeHint，恢复普通状态后用较大的内边距裁掉按钮文字。 */
+QPushButton:disabled, QPushButton:checked, QPushButton:checked:disabled {
+    padding: 7px 10px;
+}
 QPushButton:hover, QToolButton:hover { background: %(hover)s; border-color: %(accent)s; }
 QPushButton:pressed, QToolButton:pressed { background: %(raised)s; }
 QPushButton:focus, QToolButton:focus { border: 2px solid %(accent)s; padding: 6px 9px; }
@@ -154,17 +159,18 @@ QAbstractItemView, QListView, QListWidget, QTreeView, QTreeWidget, QTableView, Q
     border-radius: 8px; gridline-color: %(border)s; selection-background-color: %(selection)s; selection-color: %(selection_text)s; outline: 0;
 }
 QListWidget#projectList, QTableWidget#documentTable { border: none; border-radius: 0; }
-QAbstractItemView::item { padding: 8px 10px; border: none; }
-QAbstractItemView::item:hover { background: %(hover)s; color: %(ink)s; }
+QAbstractItemView::item { padding: 8px 10px; border: 1px solid transparent; }
+QAbstractItemView::item:hover { background: %(hover)s; color: %(ink)s; border: 1px solid transparent; }
 QAbstractItemView::item:selected, QAbstractItemView::item:selected:hover,
 QListView::item:selected:active, QListView::item:selected:!active,
 QTreeView::item:selected:active, QTreeView::item:selected:!active,
 QTableView::item:selected:active, QTableView::item:selected:!active {
-    background: %(selection)s; color: %(selection_text)s;
+    background: %(selection)s; color: %(selection_text)s; border: 1px solid transparent;
 }
 QListView::item:!selected:hover, QTreeView::item:!selected:hover,
 QTableView::item:!selected:hover { background: %(hover)s; color: %(ink)s; }
-QAbstractItemView::item:focus { border: 1px solid %(accent)s; }
+QAbstractItemView::item:focus, QAbstractItemView::item:selected:focus,
+QAbstractItemView::item:hover:focus, QAbstractItemView::item:selected:hover:focus { border: 1px solid %(accent)s; }
 QHeaderView { color: %(muted)s; background: %(raised)s; }
 QHeaderView::section, QTableCornerButton::section {
     background: %(raised)s; color: %(muted)s; border: none; border-bottom: 1px solid %(border)s; padding: 9px; font-weight: 600;
@@ -373,6 +379,8 @@ class ThemeManager(QObject):
         # 设置应用级样式与 palette，使无父级菜单、系统提示也得到同一主题。
         self.app.setStyleSheet(stylesheet(self.resolved))
         self.app.setPalette(_palette(self.resolved))
+        from ui_components import init_fluent_theme
+        init_fluent_theme(self.resolved, tokens(self.resolved)['accent'])
         for widget, role in list(self._widgets.items()):
             if shiboken6.isValid(widget):
                 self._style_native_window(widget)

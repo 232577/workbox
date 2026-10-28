@@ -1,8 +1,8 @@
 {
   "kind": "verified-screenshot-walkthrough",
-  "source_exe_sha256": "36de791b9eefc48772350d9977e747a2b7d8d7f07379a85ad62eaf7494ad4d0e",
+  "source_exe_sha256": "c1eac5a870941f4a81146c66104e1c6e5f38ba88afc8d8a4ad4b02ac0af2e489",
   "privacy_reviewed": true,
-  "description": "当前双主题界面与悬浮收件截图步骤演示，隔离示例资料；旧入门媒体保留其逐文件构建来源。",
+  "description": "当前Fluent控件与完整中文名称截图步骤演示；隔离中性项目，首次目录画面为未提交的填写示例；旧媒体保留独立构建来源。",
   "duration_seconds": 55,
   "files": {
     "public/media/workbox-quickstart-20261028.mp4": {
@@ -44,7 +44,32 @@
       "size": 950,
       "sha256": "7625171d3900dbbbf5a99555eef81c7be2c9baded08e20f7705096050f30838d",
       "source_exe_sha256": "36de791b9eefc48772350d9977e747a2b7d8d7f07379a85ad62eaf7494ad4d0e"
+    },
+    "public/media/workbox-desktop-light-fluent-20261028.png": {
+      "size": 95220,
+      "sha256": "38f1a1aff40116794f9ffb65af15d4fc9762ddda5884cbbd24e9bc8fef5b2788",
+      "source_exe_sha256": "c1eac5a870941f4a81146c66104e1c6e5f38ba88afc8d8a4ad4b02ac0af2e489"
+    },
+    "public/media/workbox-desktop-dark-fluent-20261028.png": {
+      "size": 95624,
+      "sha256": "420df5a8cc6a745080b33fb79f3106862dfbbab67adffce0d3e665340bf31f63",
+      "source_exe_sha256": "c1eac5a870941f4a81146c66104e1c6e5f38ba88afc8d8a4ad4b02ac0af2e489"
+    },
+    "public/media/workbox-floating-intake-fluent-20261028.mp4": {
+      "size": 1870350,
+      "sha256": "1545810378f7150c5a858fbd4a3395fe5865945c5a97c05b4ac504e3420fbc34",
+      "source_exe_sha256": "c1eac5a870941f4a81146c66104e1c6e5f38ba88afc8d8a4ad4b02ac0af2e489"
+    },
+    "public/media/workbox-floating-intake-fluent-20261028.poster.png": {
+      "size": 163000,
+      "sha256": "0fad69d2c0ae6df9310ea6567178b11a957ab589da3c5b09843e476bcb5a2973",
+      "source_exe_sha256": "c1eac5a870941f4a81146c66104e1c6e5f38ba88afc8d8a4ad4b02ac0af2e489"
+    },
+    "public/media/workbox-floating-intake-fluent-20261028.vtt": {
+      "size": 995,
+      "sha256": "22dd36a1bdae7038199d60e43e4299eb31f919d38daa63c89a677f3b1f48348e",
+      "source_exe_sha256": "c1eac5a870941f4a81146c66104e1c6e5f38ba88afc8d8a4ad4b02ac0af2e489"
     }
   },
-  "active_video": "public/media/workbox-floating-intake-20261028.mp4"
+  "active_video": "public/media/workbox-floating-intake-fluent-20261028.mp4"
 }

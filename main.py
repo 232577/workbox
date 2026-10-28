@@ -66,6 +66,7 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         if controller is not None:
             controller.shutdown()
+            controller.dispose_ui()
 
 
 if __name__ == "__main__":

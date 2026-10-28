@@ -1,4 +1,5 @@
 /* 只调整官网首页；统计页保留 styles.css 的既有样式。 */
+:root{scrollbar-color:var(--site-line,#a5b6bb) var(--site-canvas,#f3f5f5);scrollbar-width:auto}
 .home-page{--wb-navy:#102d40;--wb-green:#167364;--wb-mint:#d4f1e7;--wb-paper:#f5f8f9;--wb-line:#d9e3e7;--wb-muted:#526471;--wb-aqua:#8ae7da;--wb-shadow:0 20px 60px -30px #102d4040;color:var(--wb-navy);background:#fff;line-height:1.75}
 .home-page [hidden]{display:none!important}.home-page a,.home-page button,.home-page summary{touch-action:manipulation}.home-page a:active{transform:none}.home-page :focus-visible{outline:3px solid var(--focus);outline-offset:5px}.home-page section[id]{scroll-margin-top:100px}.home-page .skip{position:fixed;z-index:30}
 .wb-symbols{position:absolute;width:0;height:0;overflow:hidden}.wb-icon,.wb-feature-icon{width:22px;height:22px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round}.wb-wrap{width:min(1200px,calc(100% - 96px));margin-inline:auto}

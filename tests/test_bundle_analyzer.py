@@ -5,8 +5,8 @@ from zipfile import ZipFile
 import pytest
 
 
-FIRST = '隔离测试项目6系统'
-SECOND = '隔离测试项目7系统'
+FIRST = '隔离测试项目7系统'
+SECOND = '隔离测试项目8系统'
 
 
 def analyzer():

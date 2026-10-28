@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 
 from compact_ui import button, label
 from theme import apply_to
+from ui_components import LineEdit as QLineEdit, SpinBox as QSpinBox
 from ui import app_icon
 
 

@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from theme import apply_to, stylesheet, tokens, theme_signal
 from dialog_lifecycle import transient_dialog
+from ui_components import button as fluent_button, LineEdit as QLineEdit, CheckBox as QCheckBox, ComboBox as QComboBox
 from app import WorkBox
 from branding import brand_icon
 from database import STATUSES
@@ -39,11 +40,7 @@ def label(text: str = "", role: str = "", wrap: bool = False) -> QLabel:
 
 
 def button(text: str, role: str = "") -> QPushButton:
-    widget = QPushButton(text)
-    widget.setCursor(Qt.PointingHandCursor)
-    if role:
-        widget.setObjectName(role)
-    return widget
+    return fluent_button(text, role)
 
 
 def table(headers: list[str]) -> QTableWidget:

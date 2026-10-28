@@ -3,18 +3,22 @@
 from pathlib import Path
 from datetime import date, datetime
 import sqlite3
+import re
 
 from PySide6.QtCore import Qt, Signal, QSize, QDate, QLocale, QPoint, QSignalBlocker, QTimer
 from PySide6.QtGui import QColor, QPalette, QContextMenuEvent, QActionGroup
 from PySide6.QtWidgets import (
     QAbstractItemView, QButtonGroup, QCheckBox, QComboBox, QDateEdit, QDialog, QFrame,
     QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem, QFileDialog, QSpinBox, QScrollArea,
-    QMessageBox, QPlainTextEdit, QPushButton, QTabWidget, QTableWidget, QMenu,
+    QMessageBox, QPlainTextEdit, QPushButton, QTabWidget, QTableWidget, QMenu, QListView,
     QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QSizePolicy, QScrollBar, QStyleFactory, QProxyStyle, QStyle, QSplitter,
+    QStyledItemDelegate, QStyleOptionViewItem,
 )
 
 from theme import apply_to, apply_scrollbar, stylesheet, install_theme, set_theme, current_mode, theme_signal
 from dialog_lifecycle import transient_dialog
+from ui_components import button as fluent_button, LineEdit as QLineEdit, CheckBox as QCheckBox, SpinBox as QSpinBox, ComboBox as QComboBox
+from qfluentwidgets import FluentIcon, InfoBadge, InfoLevel
 from database import STATUSES
 from floating import DropSurface
 from parser import ParsedProject
@@ -32,11 +36,7 @@ def label(text='', name='', wrap=False):
 
 
 def button(text, primary=False):
-    item = QPushButton(text)
-    item.setCursor(Qt.PointingHandCursor)
-    if primary:
-        item.setObjectName('primary')
-    return item
+    return fluent_button(text, primary)
 
 
 def local_timestamp(value):
@@ -65,9 +65,44 @@ def zip_delivery_hint(settings):
     return f'每项目至少 {minimum} 个文件自动设为已交付，少于 {minimum} 个文件设为待交付。'
 
 
+class WrappedNameDelegate(QStyledItemDelegate):
+    """只提供断行提示和可用宽度，测量与绘制均沿用 Qt 标准委托。"""
+    def initStyleOption(self, option, index):
+        super().initStyleOption(option, index)
+        # Qt 的 WordWrap 不拆无空格长英文；显示选项加入零宽断行机会，模型原文不变。
+        option.text = re.sub(r'[A-Za-z0-9_./\\-]{12,}',
+                             lambda match: '\u200b'.join(match.group()), option.text)
+        option.features |= QStyleOptionViewItem.WrapText
+        option.textElideMode = Qt.ElideNone
+
+    def sizeHint(self, option, index):
+        view = self.parent()
+        option = QStyleOptionViewItem(option)
+        if isinstance(view, QListWidget):
+            option.rect.setWidth(view.viewport().width())
+        elif isinstance(view, QTableWidget):
+            option.rect.setWidth(view.columnWidth(index.column()))
+        self.initStyleOption(option, index)
+        # 样式表的单元格内边距必须先从可用宽度扣除，否则 Qt 会按更宽的行测量高度。
+        text_rect = view.style().subElementRect(QStyle.SE_ItemViewItemText, option, view)
+        option.rect.setWidth(max(1, text_rect.width()))
+        size = super().sizeHint(option, index)
+        if isinstance(view, QListWidget):
+            size.setWidth(view.viewport().width())
+        return size
+
+
 class ProjectList(QListWidget):
     """用实际右击行或键盘焦点行定位菜单，空白区域不借用旧选择。"""
     project_context_requested = Signal(int, object)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWordWrap(True)
+        self.setTextElideMode(Qt.ElideNone)
+        self.setResizeMode(QListView.Adjust)
+        self.setItemDelegate(WrappedNameDelegate(self))
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
     def contextMenuEvent(self, event):
         keyboard = event.reason() == QContextMenuEvent.Keyboard
@@ -77,13 +112,28 @@ class ProjectList(QListWidget):
             self.project_context_requested.emit(item.data(Qt.UserRole), self.viewport().mapToGlobal(point))
         event.accept()
 
+    def resizeEvent(self, event):
+        # 宽度变化会改变换行高度；按当前正在阅读的顶行定位，不借用选中行。
+        item = self.itemAt(QPoint(2, 0))
+        anchor_id = item.data(Qt.UserRole) if item else None
+        anchor_top = self.visualItemRect(item).top() if item else 0
+        super().resizeEvent(event)
+        self.doItemsLayout()
+        if anchor_id is not None and not self.verticalScrollBar().isSliderDown():
+            item = next((self.item(i) for i in range(self.count())
+                         if self.item(i).data(Qt.UserRole) == anchor_id), None)
+            if item is not None:
+                self.scrollToItem(item, QAbstractItemView.PositionAtTop)
+                offset = max(anchor_top, 1 - self.visualItemRect(item).height())
+                self.verticalScrollBar().setValue(self.verticalScrollBar().value() - offset)
+
 
 def standard_list_scrolling(widget):
     """采用 Qt 官方滚动条和 Windows 标准样式，保留原生拖动、箭头及键盘行为。"""
     widget.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
     widget.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
     if hasattr(widget,'setUniformItemSizes'):
-        widget.setUniformItemSizes(True)
+        widget.setUniformItemSizes(not isinstance(widget, ProjectList))
     style = StandardScrollMetrics(QStyleFactory.create('Windows') or QStyleFactory.create('Fusion'))
     style.setParent(widget)
     widget._scrollbar_style = style
@@ -113,11 +163,20 @@ def populate(widget, rows, caption, *, clear_selection=False):
     try:
         if same_order:
             # 空轮询不重建模型，也不重新选择当前项，避免滚动回跳与拖动中断。
+            changed = False
             for index, (_, text) in enumerate(values):
                 item = widget.item(index)
                 if item.text() != text:
                     item.setText(text)
                     item.setToolTip(text)
+                    changed = True
+            if changed and isinstance(widget, ProjectList):
+                widget.doItemsLayout()
+                anchor = next((widget.item(i) for i in range(widget.count())
+                               if widget.item(i).data(Qt.UserRole) == anchor_id), None)
+                if anchor is not None:
+                    widget.scrollToItem(anchor, QAbstractItemView.PositionAtTop)
+                    bar.setValue(bar.value() - max(anchor_top, 1 - widget.visualItemRect(anchor).height()))
             if clear_selection:
                 widget.setCurrentItem(None)
                 widget.clearSelection()
@@ -127,7 +186,8 @@ def populate(widget, rows, caption, *, clear_selection=False):
         for pid, text in values:
             item = QListWidgetItem(text)
             item.setData(Qt.UserRole, pid)
-            item.setSizeHint(QSize(0, 68))
+            if not isinstance(widget, ProjectList):
+                item.setSizeHint(QSize(0, 68))
             item.setToolTip(text)
             widget.addItem(item)
             if pid == previous:
@@ -206,15 +266,19 @@ class CompactPanel(DropSurface, QWidget):
         heading.addWidget(self.summary)
         top.addLayout(heading, 1)
         self.today_button = button('今日交付 0')
-        self.today_button.setFixedWidth(112)
+        self.today_button.setMinimumWidth(112)
+        self.today_button.setIcon(FluentIcon.CALENDAR)
         self.today_button.setAccessibleName('今日首次交付项目数')
         self.today_button.setToolTip('按北京时间统计今日首次交付；同一项目终身只计首次有效交付，补交只保留记录。点击查看并管理今日交付项目。')
         self.today_button.clicked.connect(self.show_today_deliveries)
         top.addWidget(self.today_button)
         self.paste_button = button('粘贴消息')
+        self.paste_button.setIcon(FluentIcon.PASTE)
         self.files_button = button('收进文件', True)
+        self.files_button.setIcon(FluentIcon.ADD)
         self.root_button = button('归档目录')
         self.settings_button = button('工作设置')
+        self.settings_button.setIcon(FluentIcon.SETTING)
         self.appearance_button = button('外观')
         self.appearance_button.setAccessibleName('外观主题')
         self.appearance_button.setToolTip('切换浅色、深色或跟随系统，只改变界面外观。')
@@ -262,7 +326,7 @@ class CompactPanel(DropSurface, QWidget):
         self.status_group = QButtonGroup(self)
         self.status_buttons = {}
         for index, state in enumerate((None, *STATUSES)):
-            item = button(state or '全部')
+            item = button(state or '全部', 'filter')
             item.setObjectName('filter')
             item.setCheckable(True)
             self.status_group.addButton(item, index)
@@ -326,18 +390,24 @@ class CompactPanel(DropSurface, QWidget):
         document_layout = self.document_card_layout = QVBoxLayout(document_side)
         document_layout.setContentsMargins(14,12,14,10)
         document_layout.setSpacing(10)
-        self.project_title = label('选择项目，查看对应文档', 'title')
+        self.project_title = label('选择项目，查看对应文档', 'title', True)
         self.project_title.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
-        document_layout.addWidget(self.project_title)
+        document_heading = QHBoxLayout()
+        document_heading.addWidget(self.project_title, 1)
+        self.project_status_badge = InfoBadge('', document_side)
+        self.project_status_badge.setAccessibleName('所选项目当前状态')
+        self.project_status_badge.hide()
+        document_heading.addWidget(self.project_status_badge, 0, Qt.AlignTop)
+        document_layout.addLayout(document_heading)
         from project_documents_ui import ProjectDocumentsPane
         self.document_pane = ProjectDocumentsPane(service)
         self.document_pane.folder_requested.connect(self.folder_requested)
         document_layout.addWidget(self.document_pane, 1)
         self.project_splitter.addWidget(project_side)
         self.project_splitter.addWidget(document_side)
-        self.project_splitter.setStretchFactor(0,1)
-        self.project_splitter.setStretchFactor(1,2)
-        self.project_splitter.setSizes([310,690])
+        self.project_splitter.setStretchFactor(0,2)
+        self.project_splitter.setStretchFactor(1,3)
+        self.project_splitter.setSizes([400,600])
         pl.addWidget(self.project_splitter,1)
         self.bulk_bar = QFrame()
         bulk_layout = QVBoxLayout(self.bulk_bar)
@@ -606,6 +676,12 @@ class CompactPanel(DropSurface, QWidget):
             self.current_project = self.service.get_project(pid) if pid is not None else None
             p = self.current_project
             self.project_title.setText(p['name'] if p else '选择一个项目，查看对应文档')
+            self.project_status_badge.setVisible(p is not None)
+            if p is not None:
+                self.project_status_badge.setText(p['status'])
+                levels = {'待开发': InfoLevel.INFOAMTION, '开发中': InfoLevel.ATTENTION,
+                          '待交付': InfoLevel.WARNING, '已交付': InfoLevel.SUCCESS}
+                self.project_status_badge.setLevel(levels[p['status']])
             self.project_title.setToolTip((p['name'] + '\n' + (p.get('workspace') or {}).get('path', '工作目录尚未创建')) if p else '')
         finally:
             self.refreshing = False
@@ -1070,7 +1146,10 @@ class CompactPanel(DropSurface, QWidget):
     def _reveal_current_after_resize(self):
         item = self.project_list.currentItem()
         if item and not self.project_list.verticalScrollBar().isSliderDown():
-            self.project_list.scrollToItem(item, QAbstractItemView.EnsureVisible)
+            self.project_list.doItemsLayout()
+            # 仅补全当前已在视野中的选中行；选中项在屏外时保留正在阅读的顶行。
+            if self.project_list.viewport().rect().intersects(self.project_list.visualItemRect(item)):
+                self.project_list.scrollToItem(item, QAbstractItemView.EnsureVisible)
 
 
 class ProjectDeliveryDialog(QDialog):

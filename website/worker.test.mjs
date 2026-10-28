@@ -22,10 +22,10 @@ test('公开下载固定版本并流式保留文件字节，不转发访问者�
   });
   assert.equal(response.status, 200);
   assert.deepEqual([...new Uint8Array(await response.arrayBuffer())], [77, 90, 1, 2]);
-  assert.equal(requested.target, 'https://github.com/232577/workbox/releases/download/v1.0.0-enhanced-ui.20261028/WorkBox-1.0.0-Enhanced-UI-20261028-Setup-x64.exe');
+  assert.equal(requested.target, 'https://github.com/232577/workbox/releases/download/v1.0.0-enhanced-fluent.20261028/WorkBox-1.0.0-Enhanced-Fluent-20261028-Setup-x64.exe');
   assert.equal(requested.options.headers.has('Cookie'), false);
   assert.equal(requested.options.headers.has('Authorization'), false);
-  assert.match(response.headers.get('Content-Disposition'), /attachment; filename="WorkBox-1.0.0-Enhanced-UI-20261028-Setup-x64.exe"/);
+  assert.match(response.headers.get('Content-Disposition'), /attachment; filename="WorkBox-1.0.0-Enhanced-Fluent-20261028-Setup-x64.exe"/);
 });
 
 test('断点续传保留206和Content-Range', async () => {
@@ -72,11 +72,23 @@ test('版本信息公开且页面回退到静态资源', async () => {
 });
 
 test('增强版独立标签与旧版安装入口同时保留', async () => {
-  assert.equal(release.tag,'v1.0.0-enhanced-ui.20261028');
-  assert.equal(release.filename,'WorkBox-1.0.0-Enhanced-UI-20261028-Setup-x64.exe');
-  assert.equal(releases.length,4);
-  assert.equal(releases[1].sha256,'4eb62d51a2e00777e3e4ad393268b38bf3c6232df7a1b338f9af586cbf4c642b');
-  assert.equal(releases[2].sha256,'a01018e5d0b9c866ce77c33b26a142cec524f9dd2b9a42c125a50a82a29645c8');
+  assert.equal(release.tag,'v1.0.0-enhanced-fluent.20261028');
+  assert.equal(release.filename,'WorkBox-1.0.0-Enhanced-Fluent-20261028-Setup-x64.exe');
+  assert.equal(release.size,39666409);
+  assert.equal(release.sha256,'4c5c09b1e7c2d0599a8e3c9cd1887a5449559bbbcf82fe35ff7a41513d53a2f2');
+  assert.equal(releases.length,5);
+  assert.equal(releases[1].sha256,'09a30ba343ad48f7f50e24f8423de44c7ecdcee385be260109d8ad237dc0afa3');
+  assert.equal(releases[2].sha256,'4eb62d51a2e00777e3e4ad393268b38bf3c6232df7a1b338f9af586cbf4c642b');
+  assert.equal(releases[3].sha256,'a01018e5d0b9c866ce77c33b26a142cec524f9dd2b9a42c125a50a82a29645c8');
+  for (const item of releases) {
+    let upstream;
+    const response=await handleRequest(new Request(`https://workbox.ltxiangzi.dpdns.org/download/${item.filename}`,{method:'HEAD'}),{},async target=>{
+      upstream=target;
+      return new Response(null,{headers:{'Content-Length':String(item.size),'Content-Type':'application/octet-stream'}});
+    });
+    assert.equal(response.status,200);
+    assert.equal(upstream,`https://github.com/232577/workbox/releases/download/${item.tag}/${item.filename}`);
+  }
   const oldUrl='https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64.exe';
   let requested;
   const old=await handleRequest(new Request(oldUrl,{method:'HEAD'}),{},async (target)=>{

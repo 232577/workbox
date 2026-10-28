@@ -15,3 +15,7 @@ pywin32-ctypes==0.2.3
 QDarkStyle==3.2.3
 QtPy==2.4.3
 shiboken6==6.8.3
+PySide6-Fluent-Widgets==1.11.3
+PySideSix-Frameless-Window==0.8.2
+darkdetect==0.8.0
+pywin32==312

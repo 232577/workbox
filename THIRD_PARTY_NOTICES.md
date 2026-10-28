@@ -11,6 +11,21 @@ include personal data or development/verification directories.
 
 ## Components
 
+- WorkBox's own source in the Fluent enhanced build is released under GPL-3.0-only,
+  as authorized by the project owner on 2026-10-28. See `licenses/GPL-3.0.txt`
+  in this package, or `LICENSE` in the source repository. Third-party components
+  retain their own notices.
+- PySide6-Fluent-Widgets 1.11.3: GPLv3, Copyright zhiyiYo. The application uses
+  its basic widgets and icon resources, with WorkBox compatibility adapters;
+  see `licenses/QFluentWidgets-LICENSE.txt`.
+- PySideSix-Frameless-Window 0.8.2: LGPLv3; an import dependency of Fluent Widgets.
+  WorkBox keeps its native window frame and Qt menus. See
+  `licenses/QtFramelessWindow-LICENSE.txt`.
+- darkdetect 0.8.0: BSD 3-Clause; see `licenses/Darkdetect-LICENSE.txt`.
+- pywin32 312: Python Software Foundation and component-specific notices.
+  Its eight declared license files and additional MAPI attribution notice are
+  retained as `licenses/PyWin32-*.txt`.
+
 - CPython 3.11.9: Python Software Foundation License and notices in `licenses/Python-LICENSE.txt`.
 - Qt / PySide6 / Shiboken6 6.8.3: Qt for Python Community Edition, LGPLv3/GPLv3 alternatives.
   See the unmodified LGPL/GPL texts under `licenses/` and the Qt documentation below.
@@ -44,5 +59,9 @@ does not prohibit replacement of those libraries or debugging modifications to t
 - QDarkStyle sources and theme images: https://github.com/ColinDuquesnoy/QDarkStyleSheet
 - QDarkStyle code/image licenses: https://github.com/ColinDuquesnoy/QDarkStyleSheet/blob/master/LICENSE.rst
 - QtPy source and license: https://github.com/spyder-ide/qtpy
+- PySide6 Fluent Widgets source: https://github.com/zhiyiYo/PyQt-Fluent-Widgets/tree/PySide6
+- Qt Frameless Window source: https://github.com/zhiyiYo/PyQt-Frameless-Window
+- darkdetect source: https://github.com/albertosottile/darkdetect
+- pywin32 source: https://github.com/mhammond/pywin32/tree/b312
 
 开发交付包与干净安装包均保留上述说明、对应上游源代码链接及随包许可证。

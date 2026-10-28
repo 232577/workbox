@@ -39,9 +39,9 @@ test('步骤视频使用可访问的原生控件、字幕和备用链接，不�
   assert.equal(video.attrs.preload, 'none');
   assert.equal(video.attrs.width, '1920');
   assert.equal(video.attrs.height, '1080');
-  assert.equal(video.attrs.poster, '/media/workbox-floating-intake-20261028.poster.png');
+  assert.equal(video.attrs.poster, '/media/workbox-floating-intake-fluent-20261028.poster.png');
   assert.ok(video.attrs['aria-label']);
-  const base = '/media/workbox-floating-intake-20261028';
+  const base = '/media/workbox-floating-intake-fluent-20261028';
   assert.ok(tags.some(tag => tag.name === 'source' && tag.attrs.src === `${base}.mp4`));
   assert.ok(tags.some(tag => tag.name === 'track' && tag.attrs.src === `${base}.vtt` && tag.attrs.kind === 'captions' && tag.attrs.srclang === 'zh'));
   assert.ok(tags.some(tag => tag.name === 'a' && tag.attrs.href === `${base}.mp4`));
@@ -76,6 +76,11 @@ test('新旧安装包和 GitHub 备用源保持发布目录中的真实地址，
   const checksum = html.match(/<code\b[^>]*\bid=["']checksum["'][^>]*>([\s\S]*?)<\/code>/i)?.[1].trim();
   assert.equal(checksum, release.sha256);
   for (const id of ['copy-checksum', 'copy-status']) assert.ok(tags.some(tag => tag.attrs.id === id), id);
+  assert.match(html, /39,666,409 字节/);
+  assert.match(html, /双主题界面版（历史）/);
+  assert.match(html, /长中文项目名与文件名换行看全/);
+  assert.match(html, /调整分栏后保持阅读位置/);
+  assert.ok(links.includes('https://github.com/232577/workbox/blob/main/LICENSE'));
 });
 
 test('下载统计和赞助沿用实际脚本及关闭的付款配置', async () => {
@@ -261,7 +266,7 @@ test('所有者统计接入同一外观选择，保留私密登录与空数据�
 
 test('Hero使用实际浅深界面原图链接并保留有尺寸的文件夹流程图后备', () => {
   for (const theme of ['light','dark']) {
-    const path=`/media/workbox-desktop-${theme}-20261028.png`;
+    const path=`/media/workbox-desktop-${theme}-fluent-20261028.png`;
     assert.ok(tags.some(tag=>tag.name==='img'&&tag.attrs.src===path&&tag.attrs['data-desktop-image']===theme&&tag.attrs.width==='1120'&&tag.attrs.height==='760'));
     assert.ok(tags.some(tag=>tag.name==='a'&&tag.attrs.href===path));
   }
