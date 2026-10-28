@@ -185,7 +185,10 @@ class DesktopService(WorkBox):
             return json.loads(row[0]) if row else default
 
     def set_setting(self, key, value):
-        if key not in {'orb_position', 'manager_geometry'} or not isinstance(value, list) or not all(type(v) is int for v in value) or len(value) not in (2, 4):
+        if key == 'appearance_theme':
+            if type(value) is not str or value not in ('light', 'dark', 'system'):
+                raise ValueError('外观只支持浅色、深色或跟随系统。')
+        elif key not in {'orb_position', 'manager_geometry'} or not isinstance(value, list) or not all(type(v) is int for v in value) or len(value) not in (2, 4):
             raise ValueError('无效的窗口位置设置。')
         with self.db.connect() as connection:
             connection.execute('INSERT INTO desktop_settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', (key, json.dumps(value)))

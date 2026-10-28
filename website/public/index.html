@@ -5,12 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="WorkBox 工作箱是免费的 Windows 本地项目与交付管理工具。粘贴项目名建目录，拖入文件自动归位，ZIP 按版本归档，首次交付统计不重复，工作规则可配置。">
   <meta name="theme-color" content="#102d40">
+  <meta name="color-scheme" content="light dark">
+  <script src="/theme.js?v=20261028-fluent"></script>
   <title>WorkBox 工作箱 · 项目收进来，交付理清楚</title>
   <link rel="canonical" href="https://workbox.ltxiangzi.dpdns.org/">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=20261027-enhanced">
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/homepage.css?v=20261028">
   <link rel="stylesheet" href="/support.css">
+  <link rel="stylesheet" href="/theme.css?v=20261028-fluent">
   <script src="/script.js" defer></script>
   <script src="/homepage.js?v=20261028" defer></script>
   <script type="module" src="/support.js"></script>
@@ -32,19 +35,23 @@
   <header class="wb-header"><div class="wb-wrap wb-header-inner">
     <a class="wb-brand" href="#top" aria-label="WorkBox 工作箱首页"><img src="/favicon.svg?v=20261027-enhanced" width="38" height="38" alt=""><span>WorkBox <small>工作箱</small></span></a>
     <nav class="wb-nav" aria-label="主要导航"><a href="#workflow">功能介绍</a><a href="#settings">工作规则</a><a href="#faq">常见问题</a><a href="https://github.com/232577/workbox" class="wb-source">GitHub ↗</a></nav>
+    <div class="wb-theme-control" data-theme-control hidden><label for="site-theme">网站外观</label><select id="site-theme" data-theme-select aria-describedby="site-theme-note"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select><span id="site-theme-note" class="wb-sr-only">仅影响本站，与桌面软件的外观设置独立。</span></div>
     <a class="wb-nav-download" href="#download">免费下载 <svg class="wb-icon" aria-hidden="true"><use href="#i-download"/></svg></a>
   </div></header>
   <main id="main">
     <section class="wb-hero wb-wrap" aria-labelledby="hero-title">
       <div class="wb-hero-copy">
-        <a class="wb-release-pill" href="#download"><span aria-hidden="true"></span> 1.0.0 增强版现已发布 <span aria-hidden="true">↗</span></a>
-        <h1 id="hero-title">把项目收进来。<br><em>把交付理清楚。</em></h1>
-        <p class="wb-lead">给每天接项目、整理材料、反复交付的你。<br class="wb-desktop-break">从项目名建目录，到文件归位、ZIP 留档和交付记录，工作箱帮你接着整理。</p>
-        <div class="wb-hero-actions"><a class="wb-button wb-button-primary download-link" href="/download/WorkBox-1.0.0-Enhanced-20261028-Setup-x64.exe"><svg class="wb-icon" aria-hidden="true"><use href="#i-download"/></svg>下载 Windows 版</a><a class="wb-button wb-button-plain" href="#quickstart-video">看步骤视频 <svg class="wb-icon" aria-hidden="true"><use href="#i-arrow"/></svg></a><a class="wb-button wb-button-plain" href="#workflow">看看怎么用 <svg class="wb-icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></div>
-        <p class="wb-meta">Windows 10 / 11 · x64 · 35.5 MB</p>
+        <a class="wb-release-pill" href="#download"><span aria-hidden="true"></span> 1.0.0 双主题增强版现已发布 <span aria-hidden="true">↗</span></a>
+        <h1 id="hero-title">项目，随手收好。<br><em>交付，清楚留档。</em></h1>
+        <p class="wb-lead">桌面上，一个顺手的悬浮球。<br class="wb-desktop-break">把项目文字、文件或整个文件夹拖进来，接着整理项目、归档版本，记清每次交付。</p>
+        <div class="wb-hero-actions"><a class="wb-button wb-button-primary download-link" href="/download/WorkBox-1.0.0-Enhanced-UI-20261028-Setup-x64.exe"><svg class="wb-icon" aria-hidden="true"><use href="#i-download"/></svg>下载 Windows 版</a><a class="wb-button wb-button-plain" href="#quickstart-video">看步骤视频 <svg class="wb-icon" aria-hidden="true"><use href="#i-arrow"/></svg></a><a class="wb-button wb-button-plain" href="#floating-inbox">看看怎么用 <svg class="wb-icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></div>
+        <p class="wb-meta">Windows 10 / 11 · x64 · 37.7 MB</p>
         <ul class="wb-assurances" aria-label="产品特点"><li>源码公开</li><li>无需账号</li><li>数据留在本机</li></ul>
+        <p class="wb-first-use"><strong>第一次用？从通用模式开始。</strong><span>首次向导带你选目录、定模式；ZIP 自动归档，交付由你确认。</span></p>
       </div>
-      <figure class="wb-scene" aria-label="工作箱将项目消息、工作文件和 ZIP 整理到项目与归档中的流程图">
+      <figure class="wb-desktop-showcase" aria-label="WorkBox 项目与文档管理界面及流程说明">
+        <div class="wb-preview-stage" data-desktop-stage>
+        <div class="wb-scene wb-preview-fallback" aria-label="工作箱将项目消息、工作文件和 ZIP 整理到项目与归档中的流程图">
         <div class="wb-scene-grid" aria-hidden="true"></div>
         <div class="wb-scene-heading"><span>你的项目，有自己的位置。</span><span class="wb-scene-caption">功能流程</span></div>
         <div class="wb-input wb-input-message"><span class="wb-file-type wb-type-message">Aa</span><div><small>收到项目名</small><strong>新项目，从这里开始</strong></div></div>
@@ -52,14 +59,33 @@
         <div class="wb-folder-back" aria-hidden="true"></div><div class="wb-folder-paper" aria-hidden="true"><i></i><i></i><i></i></div>
         <div class="wb-folder-front"><img src="/favicon.svg?v=20261027-enhanced" width="44" height="44" alt=""><div><strong>工作项目</strong><span>按项目收好每一份材料</span></div><svg class="wb-icon" aria-hidden="true"><use href="#i-folder"/></svg></div>
         <div class="wb-archive-slip"><span class="wb-file-type wb-type-zip">ZIP</span><div><strong>交付包，按版本留档</strong><small>原名保留 · 原件不动</small></div><span class="wb-checkmark" aria-hidden="true">✓</span></div>
-        <figcaption>消息 → 项目目录 → 文件归位 → 交付留档</figcaption>
+        <p class="wb-scene-flow">消息 → 项目目录 → 文件归位 → 交付留档</p>
+        </div>
+        <a class="wb-desktop-image-link" data-desktop-link="light" href="/media/workbox-desktop-light-20261028.png" target="_blank" rel="noopener" aria-label="查看浅色实际界面原图，在新标签页打开"><img data-desktop-image="light" src="/media/workbox-desktop-light-20261028.png" width="1120" height="760" alt="WorkBox 浅色实际界面，左侧项目清单与右侧对应文档，内容为示例资料" decoding="async" fetchpriority="high"></a>
+        <a class="wb-desktop-image-link" data-desktop-link="dark" href="/media/workbox-desktop-dark-20261028.png" target="_blank" rel="noopener" aria-label="查看深色实际界面原图，在新标签页打开"><img data-desktop-image="dark" src="/media/workbox-desktop-dark-20261028.png" width="1120" height="760" alt="WorkBox 深色实际界面，左侧项目清单与右侧对应文档，内容为示例资料" decoding="async"></a>
+        </div>
+        <figcaption><span class="wb-preview-image-caption">实际界面 · 示例资料 <span aria-hidden="true">｜</span> 点击图片查看原图 ↗</span><span class="wb-preview-flow-caption">功能流程示意 · 消息、文件与 ZIP 各有归处</span></figcaption>
       </figure>
     </section>
     <div class="wb-quickline wb-wrap" aria-label="支持的工作材料"><span>从手头的材料开始</span><div><span>项目消息</span><span>Word / 代码文件</span><span>整个文件夹</span><span>单项目 / 多项目 ZIP</span><span>可读取的共享盘文件</span></div></div>
 
     <section id="quickstart-video" class="wb-wrap wb-video-section" aria-labelledby="video-title">
-      <div class="wb-video-intro"><p class="wb-kicker">上手前，先看一遍</p><h2 id="video-title">从建项目到记交付。</h2><p>跟着真实软件截图，了解工作箱里的几个关键步骤。</p><p class="wb-video-note">截图步骤演示 · 无声字幕 · 不是连续录屏</p><p class="wb-video-mobile">手机上可横屏观看，或直接打开视频放大查看。</p><a class="wb-inline-link" href="/media/workbox-quickstart-20261028.mp4">直接查看或下载视频 ↗</a></div>
-      <div class="wb-video-frame"><video controls playsinline preload="none" width="1920" height="1080" poster="/media/workbox-quickstart-20261028.poster.png" aria-label="WorkBox 截图步骤演示"><source src="/media/workbox-quickstart-20261028.mp4" type="video/mp4"><track kind="captions" src="/media/workbox-quickstart-20261028.vtt" srclang="zh" label="中文字幕" default>你的浏览器无法播放视频，请使用旁边的直接查看或下载链接。</video></div>
+      <div class="wb-video-intro"><p class="wb-kicker">上手前，先看一遍</p><h2 id="video-title">从建项目到记交付。</h2><p>跟着真实软件截图，了解工作箱里的几个关键步骤。</p><p class="wb-video-note">截图步骤演示 · 无声字幕 · 不是连续录屏</p><p class="wb-video-mobile">手机上可横屏观看，或直接打开视频放大查看。</p><a class="wb-inline-link" href="/media/workbox-floating-intake-20261028.mp4">直接查看或下载视频 ↗</a></div>
+      <div class="wb-video-frame"><video controls playsinline preload="none" width="1920" height="1080" poster="/media/workbox-floating-intake-20261028.poster.png" aria-label="WorkBox 截图步骤演示"><source src="/media/workbox-floating-intake-20261028.mp4" type="video/mp4"><track kind="captions" src="/media/workbox-floating-intake-20261028.vtt" srclang="zh" label="中文字幕" default>你的浏览器无法播放视频，请使用旁边的直接查看或下载链接。</video></div>
+    </section>
+
+    <section id="floating-inbox" class="wb-section wb-wrap wb-inbox" aria-labelledby="inbox-title">
+      <div class="wb-section-heading"><div><p class="wb-kicker">桌面上的收件入口</p><h2 id="inbox-title">拖到悬浮球，收进工作箱。</h2></div><p>不用先打开管理面板。<br>把手头的项目文字或材料，拖到桌面悬浮球上。</p></div>
+      <div class="wb-inbox-materials">
+        <article><h3>项目文字 → 建项目</h3><p>选中项目文字拖入，核对项目清单后，创建项目和对应工作目录。也可以右键选择“粘贴项目消息”。</p></article>
+        <article><h3>文件 / 整个文件夹 / ZIP → 收材料</h3><p>材料按项目名称和命名规则匹配，复制收录，原件保留；文件夹保留相对目录。遇到归属歧义，先由你核对选择。</p></article>
+      </div>
+      <p class="wb-boundary wb-inbox-source">来源须是可访问的实际文件或目录，可读取的共享盘、映射盘也能收；网址和虚拟附件不支持，请先把附件保存为文件。普通文件收录成功后为“待交付”，ZIP 等待稳定后归档，是否自动交付按当前模式和门槛判断。</p>
+      <div class="wb-inbox-details">
+        <div><h3>悬浮球怎么用</h3><dl class="wb-inbox-actions"><div><dt>单击打开 · 按住移动</dt><dd>单击打开项目管理面板；按住移动悬浮球，放到顺手的位置。</dd></div><div><dt>右键打开更多操作</dt><dd>粘贴项目消息、选择文件收进项目、打开 ZIP 归档目录，也可以后台运行或退出 WorkBox。</dd></div><div><dt>角标与进度</dt><dd>角标显示未交付项目数；收件忙碌时，悬浮球外圈显示处理进度。</dd></div></dl></div>
+        <div><h3>收件反馈框怎么看</h3><dl class="wb-inbox-actions"><div><dt>“查看”定位本次结果</dt><dd>打开本次涉及的项目；需要核对 ZIP 时，转到对应的 ZIP 页面。</dd></div><div><dt>“收起”仅隐藏提示</dt><dd>不会停止收件。处理中可点“取消处理”，保留已完成项，原件继续保留。</dd></div><div><dt>关闭、后台和退出</dt><dd>关闭管理面板，悬浮球仍在；后台运行隐藏面板和悬浮球，保留托盘与归档监视，点击托盘可恢复。托盘不可用时保留可见悬浮球。退出 WorkBox 会等待当前文件操作安全结束，再停止程序和监视。</dd></div></dl></div>
+      </div>
+      <a class="wb-inline-link" href="#workflow">继续看收件后的整理流程 <svg class="wb-icon" aria-hidden="true"><use href="#i-arrow"/></svg></a>
     </section>
 
     <section id="workflow" class="wb-section wb-wrap" aria-labelledby="workflow-title">
@@ -99,9 +125,9 @@
     </section>
 
     <section id="download" class="wb-download-section" aria-labelledby="download-title"><div class="wb-wrap">
-      <div class="wb-download-heading"><div><p class="wb-kicker">从下一份项目开始</p><h2 id="download-title">给工作，准备一个箱子。</h2><p>WorkBox 1.0.0 增强版 · 2026 年 10 月 28 日发布</p></div><img src="/favicon.svg?v=20261027-enhanced" width="84" height="84" alt="工作箱标志" loading="lazy"></div>
-      <div class="wb-download-grid"><div class="wb-download-main"><a class="wb-button wb-button-light download-link" href="/download/WorkBox-1.0.0-Enhanced-20261028-Setup-x64.exe"><svg class="wb-icon" aria-hidden="true"><use href="#i-download"/></svg>免费下载 Windows 版</a><a class="wb-download-fallback" href="https://github.com/232577/workbox/releases/download/v1.0.0-enhanced.20261028/WorkBox-1.0.0-Enhanced-20261028-Setup-x64.exe">GitHub 备用下载 ↗</a><p>支持 Windows 10 1809 及以上、Windows 11 的 x64 电脑。暂不支持 macOS、ARM 和 32 位系统。</p><p class="wb-package-name">WorkBox-1.0.0-Enhanced-20261028-Setup-x64.exe<br>35,542,595 字节（约 35.5 MB）</p><div class="wb-release-links"><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-20261027-Setup-x64.exe">10 月 27 日增强版</a><a class="download-link" href="/download/WorkBox-1.0.0-Setup-x64.exe">旧版 1.0.0 下载</a><a href="https://github.com/232577/workbox/releases">版本记录 ↗</a><a href="https://github.com/232577/workbox">公开源码 ↗</a></div></div>
-      <div class="wb-download-details"><h3>安装前，确认这几件事</h3><ul><li>安装包不包含已有项目，首次使用自动建立数据目录。</li><li>升级前备份 data 及另外设置的工作、归档目录，退出工作箱后在原位置安装。</li><li>安装包未做商业代码签名，Windows 可能提示未知发布者。请核对来源与校验值，不确定时先不要运行。</li></ul><details class="wb-checksum-details"><summary>查看 SHA-256 校验值</summary><div class="wb-hash-content"><code id="checksum">4eb62d51a2e00777e3e4ad393268b38bf3c6232df7a1b338f9af586cbf4c642b</code><button id="copy-checksum" class="copy-button" type="button">复制校验值</button><p id="copy-status" class="copy-status" role="status" aria-live="polite"></p></div></details></div></div>
+      <div class="wb-download-heading"><div><p class="wb-kicker">从下一份项目开始</p><h2 id="download-title">给工作，准备一个箱子。</h2><p>WorkBox 1.0.0 双主题增强版 · 2026 年 10 月 28 日发布</p></div><img src="/favicon.svg?v=20261027-enhanced" width="84" height="84" alt="工作箱标志" loading="lazy"></div>
+      <div class="wb-download-grid"><div class="wb-download-main"><a class="wb-button wb-button-light download-link" href="/download/WorkBox-1.0.0-Enhanced-UI-20261028-Setup-x64.exe"><svg class="wb-icon" aria-hidden="true"><use href="#i-download"/></svg>免费下载 Windows 版</a><a class="wb-download-fallback" href="https://github.com/232577/workbox/releases/download/v1.0.0-enhanced-ui.20261028/WorkBox-1.0.0-Enhanced-UI-20261028-Setup-x64.exe">GitHub 备用下载 ↗</a><p>支持 Windows 10 1809 及以上、Windows 11 的 x64 电脑。暂不支持 macOS、ARM 和 32 位系统。</p><p class="wb-package-name">WorkBox-1.0.0-Enhanced-UI-20261028-Setup-x64.exe<br>37,655,551 字节（约 37.7 MB）</p><div class="wb-release-links"><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-20261028-Setup-x64.exe">10 月 28 日引导版</a><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-20261027-Setup-x64.exe">10 月 27 日增强版</a><a class="download-link" href="/download/WorkBox-1.0.0-Setup-x64.exe">旧版 1.0.0 下载</a><a href="https://github.com/232577/workbox/releases">版本记录 ↗</a><a href="https://github.com/232577/workbox">公开源码 ↗</a></div></div>
+      <div class="wb-download-details"><h3>安装前，确认这几件事</h3><ul><li>安装包不包含已有项目，首次使用自动建立数据目录。</li><li>升级前备份 data 及另外设置的工作、归档目录，退出工作箱后在原位置安装。</li><li>安装包未做商业代码签名，Windows 可能提示未知发布者。请核对来源与校验值，不确定时先不要运行。</li></ul><details class="wb-checksum-details"><summary>查看 SHA-256 校验值</summary><div class="wb-hash-content"><code id="checksum">09a30ba343ad48f7f50e24f8423de44c7ecdcee385be260109d8ad237dc0afa3</code><button id="copy-checksum" class="copy-button" type="button">复制校验值</button><p id="copy-status" class="copy-status" role="status" aria-live="polite"></p></div></details></div></div>
     </div></section>
 
     <section id="faq" class="wb-section wb-wrap wb-faq" aria-labelledby="faq-title"><div><p class="wb-kicker">使用前了解</p><h2 id="faq-title">你可能还想知道。</h2><p>从收件到交付，<br>这些边界说清楚。</p><a class="wb-inline-link" href="https://github.com/232577/workbox/issues">反馈使用问题 ↗</a></div><div class="wb-faq-list">
@@ -113,10 +139,10 @@
       <details><summary>已交付项目又修改了，今天会重复计数吗？</summary><p>不会因为补交而重复计数。同一项目只在首次有效交付日计入交付数，后续交付继续留明细。撤销早期记录后，会按剩余有效记录重新确定首次交付；统计日期使用北京时间。</p></details>
       <details><summary>误点交付或删除项目，还能恢复吗？</summary><p>交付记录可撤销，项目自动退回“待交付”，原文件和归档保留。恢复交付记录只恢复统计有效性，不自动改变当前项目状态。删除项目会移入“已删除”，可以恢复，不删除目录和历史文件。</p></details>
       <details><summary>退出以后，还会自动归档吗？</summary><p>不会。“退出”会停止程序和监视任务。“后台运行”会保留托盘入口并继续归档。自动归档只监视已登记的工作目录和主动提交的 ZIP，默认等文件稳定 10 秒后再复制。</p></details>
-      <details><summary>下载失败，或换一台电脑使用怎么办？</summary><p>下载失败可使用 <a href="https://github.com/232577/workbox/releases/download/v1.0.0-enhanced.20261028/WorkBox-1.0.0-Enhanced-20261028-Setup-x64.exe">GitHub 备用下载</a>。新电脑安装后即可使用，但不会自动带上旧电脑数据。如需迁移，请备份并迁移项目数据和对应工作、归档目录；反馈问题时请移除个人信息与真实项目资料。</p></details>
+      <details><summary>下载失败，或换一台电脑使用怎么办？</summary><p>下载失败可使用 <a href="https://github.com/232577/workbox/releases/download/v1.0.0-enhanced-ui.20261028/WorkBox-1.0.0-Enhanced-UI-20261028-Setup-x64.exe">GitHub 备用下载</a>。新电脑安装后即可使用，但不会自动带上旧电脑数据。如需迁移，请备份并迁移项目数据和对应工作、归档目录；反馈问题时请移除个人信息与真实项目资料。</p></details>
     </div></section>
     <section id="support" hidden></section>
   </main>
-  <footer class="wb-footer"><div class="wb-wrap"><div class="wb-footer-top"><a class="wb-brand" href="#top"><img src="/favicon.svg?v=20261027-enhanced" width="34" height="34" alt=""><span>WorkBox <small>把工作收好。</small></span></a><div class="wb-footer-links"><a href="https://github.com/232577/workbox">GitHub ↗</a><a href="https://github.com/232577/workbox/releases">版本记录 ↗</a><a href="/stats/">站点统计</a><a href="#support" data-support-link hidden>支持工作箱</a><a href="#top">回到顶部 ↑</a></div></div><p>本站记录匿名浏览、站内下载开始和备用链接点击次数，统计仅所有者可见；不收集你的项目文件。</p></div></footer>
+  <footer class="wb-footer"><div class="wb-wrap"><div class="wb-footer-top"><a class="wb-brand" href="#top"><img src="/favicon.svg?v=20261027-enhanced" width="34" height="34" alt=""><span>WorkBox <small>把工作收好。</small></span></a><div class="wb-footer-links"><a href="https://github.com/232577/workbox">GitHub ↗</a><a href="https://github.com/232577/workbox/releases">版本记录 ↗</a><a href="https://github.com/232577/workbox/blob/main/THIRD_PARTY_NOTICES.md">第三方许可</a><a href="/stats/">站点统计</a><a href="#support" data-support-link hidden>支持工作箱</a><a href="#top">回到顶部 ↑</a></div></div><p>本站记录匿名浏览、站内下载开始和备用链接点击次数，统计仅所有者可见；不收集你的项目文件。</p></div></footer>
 </body>
 </html>

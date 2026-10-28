@@ -37,6 +37,8 @@ def main(argv: list[str] | None = None) -> int:
     from desktop_service import DesktopService
     from desktop_controller import FloatingController
     from onboarding_ui import FirstRunDialog
+    from theme import install_theme
+    from dialog_lifecycle import transient_dialog
 
     application = QApplication(sys.argv[:1])
     application.setApplicationName("WorkBox")
@@ -47,9 +49,13 @@ def main(argv: list[str] | None = None) -> int:
     controller = None
     try:
         service = DesktopService(data_dir / "workbox.db")
+        install_theme(service)
         controller = FloatingController(service, tray_enabled=not args.no_tray)
         controller.exit_requested.connect(application.quit)
-        if not controller.start(setup_callback=lambda: FirstRunDialog(service).exec() == QDialog.Accepted):
+        def first_run_setup():
+            with transient_dialog(FirstRunDialog(service)) as dialog:
+                return dialog.exec() == QDialog.Accepted
+        if not controller.start(setup_callback=first_run_setup):
             return 0
         if args.panel:
             controller.show_panel()

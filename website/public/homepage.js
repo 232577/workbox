@@ -36,3 +36,17 @@ if (workflowTabs) {
     workflowTabs.hidden = false;
   }
 }
+
+// 图片未完成或不可读时继续显示流程图；两种外观独立确认加载结果。
+const desktopStage = document.querySelector('[data-desktop-stage]');
+if (desktopStage) {
+  desktopStage.querySelectorAll('img[data-desktop-image]').forEach(image => {
+    const name = image.dataset.desktopImage;
+    if (!['light', 'dark'].includes(name)) return;
+    const mark = () => { desktopStage.dataset[name + 'Ready'] = String(image.naturalWidth > 0); };
+    desktopStage.dataset[name + 'Ready'] = 'false';
+    image.addEventListener('load', mark);
+    image.addEventListener('error', () => { desktopStage.dataset[name + 'Ready'] = 'false'; });
+    if (image.complete) mark();
+  });
+}

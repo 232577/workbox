@@ -13,47 +13,14 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QSizePolicy, QScrollBar, QStyleFactory, QProxyStyle, QStyle, QSplitter,
 )
 
+from theme import apply_to, apply_scrollbar, stylesheet, install_theme, set_theme, current_mode, theme_signal
+from dialog_lifecycle import transient_dialog
 from database import STATUSES
 from floating import DropSurface
 from parser import ParsedProject
 from ui import human_size, app_icon
 
-STYLE = '''
-QWidget { font-family:'Microsoft YaHei UI','Segoe UI';font-size:13px;color:#172A3A; }
-QWidget#manager,QDialog {background:#FFFFFF;}
-QLabel#heading {font-size:24px;font-weight:700;}
-QLabel#subtle {color:#3D5266;font-size:12px;}
-QLabel#title {font-size:16px;font-weight:600;}
-QLabel#notice {background:#E8F0F5;border:1px solid #7890A1;border-radius:7px;padding:8px;color:#163C52;}
-QLineEdit,QPlainTextEdit,QComboBox,QDateEdit {border:1px solid #7890A1;border-radius:6px;background:#FFFFFF;padding:7px;selection-background-color:#155970;selection-color:#FFFFFF;}
-QLineEdit:focus,QComboBox:focus,QPlainTextEdit:focus,QDateEdit:focus {border:1px solid #005FCC;}
-QPushButton {border:1px solid #7890A1;border-radius:6px;background:#FFFFFF;padding:7px 11px;min-height:18px;}
-QPushButton:hover {background:#E1ECF3;border-color:#40566B;}
-QPushButton:pressed {background:#CDDDE8;}
-QPushButton:focus {border:2px solid #005FCC;}
-QPushButton:disabled {color:#657585;background:#E5EBF0;border-color:#BCCBD6;}
-QPushButton#primary {background:#155970;color:#FFFFFF;border-color:#155970;}
-QPushButton#primary:hover {background:#10465A;}
-QPushButton#primary:disabled {background:#E5EBF0;color:#657585;border-color:#BCCBD6;}
-QPushButton#filter {border:none;background:transparent;padding:6px 10px;}
-QPushButton#filter:checked {background:#155970;color:#FFFFFF;font-weight:600;}
-QListWidget {border:1px solid #7890A1;background:#F1F5F8;border-radius:6px;outline:0;font-size:14px;}
-QListWidget::item {padding:10px 12px;border-bottom:1px solid #BCCBD6;}
-QListWidget::item:hover {background:#E1ECF3;}
-QListWidget::item:selected,QListWidget::item:selected:hover {background:#155970;color:#FFFFFF;}
-QListWidget::item:focus {border:1px solid #005FCC;}
-QTabWidget::pane {border:none;}
-QTabBar::tab {padding:10px 16px;background:#FFFFFF;color:#40566B;border-bottom:2px solid #BCCBD6;}
-QTabBar::tab:selected {color:#155970;border-bottom:3px solid #155970;font-weight:700;}
-QCheckBox {spacing:6px;}
-QTableWidget {border:1px solid #7890A1;selection-background-color:#155970;selection-color:#FFFFFF;}
-QHeaderView::section {border:none;border-bottom:1px solid #7890A1;background:#E8F0F5;padding:8px;font-weight:600;}
-QMenu {background:#FFFFFF;color:#172A3A;border:1px solid #7890A1;}
-QMenu::item {padding:6px 24px 6px 12px;}
-QMenu::item:selected {background:#155970;color:#FFFFFF;}
-QMenu::item:disabled {color:#657585;}
-QMenu::separator {height:1px;background:#BCCBD6;margin:4px 8px;}
-'''
+STYLE = stylesheet('light')
 
 
 def label(text='', name='', wrap=False):
@@ -124,12 +91,7 @@ def standard_list_scrolling(widget):
     bar.setStyle(style)
     bar.setMinimumWidth(18)
     bar.setAccessibleName((widget.accessibleName() or '列表') + '滚动条')
-    palette = bar.palette()
-    for role, color in ((QPalette.Button, '#7890A1'), (QPalette.ButtonText, '#172A3A'),
-                        (QPalette.Dark, '#40566B'), (QPalette.Shadow, '#172A3A'),
-                        (QPalette.Window, '#E8F0F5')):
-        palette.setColor(role, QColor(color))
-    bar.setPalette(palette)
+    apply_scrollbar(bar)
     bar.setTracking(True)
     widget.setVerticalScrollBar(bar)
     widget.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
@@ -221,17 +183,24 @@ class CompactPanel(DropSurface, QWidget):
         self.setObjectName('manager')
         self.setWindowTitle('WorkBox 工作箱 v1.0 · 项目管理')
         self.setWindowIcon(app_icon())
-        self.setStyleSheet(STYLE)
+        apply_to(self)
         self.setAcceptDrops(True)
-        self.resize(840, 670)
+        self.resize(1120, 760)
         self.setMinimumSize(660, 480)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 12, 18, 10)
-        layout.setSpacing(8)
+        layout.setContentsMargins(22, 18, 22, 14)
+        layout.setSpacing(14)
         top = QHBoxLayout()
         heading = QVBoxLayout()
         heading.setSpacing(4)
-        heading.addWidget(label('工作箱', 'heading'))
+        brand_row = QHBoxLayout()
+        mark = QLabel()
+        mark.setPixmap(app_icon().pixmap(36, 36))
+        mark.setFixedSize(38, 38)
+        brand_row.addWidget(mark)
+        brand_row.addWidget(label('WorkBox 工作箱', 'heading'))
+        brand_row.addStretch()
+        heading.addLayout(brand_row)
         self.summary = label('收项目建目录，ZIP 稳定后复制归档。', 'subtle')
         self.summary.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         heading.addWidget(self.summary)
@@ -246,16 +215,38 @@ class CompactPanel(DropSurface, QWidget):
         self.files_button = button('收进文件', True)
         self.root_button = button('归档目录')
         self.settings_button = button('工作设置')
-        top.addWidget(self.paste_button)
-        top.addWidget(self.files_button)
-        top.addWidget(self.root_button)
+        self.appearance_button = button('外观')
+        self.appearance_button.setAccessibleName('外观主题')
+        self.appearance_button.setToolTip('切换浅色、深色或跟随系统，只改变界面外观。')
+        theme_menu = QMenu(self.appearance_button)
+        self.theme_actions = {}
+        theme_group = QActionGroup(theme_menu)
+        theme_group.setExclusive(True)
+        for key, caption in (('light', '浅色'), ('dark', '深色'), ('system', '跟随系统')):
+            action = theme_menu.addAction(caption)
+            action.setCheckable(True)
+            action.setData(key)
+            theme_group.addAction(action)
+            action.triggered.connect(lambda _checked=False, mode=key: self.change_theme(mode))
+            self.theme_actions[key] = action
+        self.appearance_button.setMenu(theme_menu)
+        theme_menu.aboutToShow.connect(self.sync_theme_menu)
+        theme_signal().connect(self.sync_theme_menu)
+        self.sync_theme_menu()
+        top.addWidget(self.appearance_button)
         top.addWidget(self.settings_button)
         layout.addLayout(top)
         self.search = QLineEdit()
         self.search.setPlaceholderText('搜索项目、备注、批次或 ZIP 名称')
         self.search.setAccessibleName('搜索项目、备注、批次或 ZIP 名称')
         self.search.setClearButtonEnabled(True)
-        layout.addWidget(self.search)
+        intake_bar = QHBoxLayout()
+        intake_bar.setSpacing(10)
+        intake_bar.addWidget(self.search, 1)
+        intake_bar.addWidget(self.paste_button)
+        intake_bar.addWidget(self.files_button)
+        intake_bar.addWidget(self.root_button)
+        layout.addLayout(intake_bar)
         self.notice = label('', 'notice')
         self.notice.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.notice.setMaximumHeight(72)
@@ -264,8 +255,9 @@ class CompactPanel(DropSurface, QWidget):
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs, 1)
         projects = QWidget()
-        pl = QVBoxLayout(projects)
-        pl.setContentsMargins(0, 8, 0, 0)
+        pl = self.project_page_layout = QVBoxLayout(projects)
+        pl.setContentsMargins(14, 14, 14, 12)
+        pl.setSpacing(12)
         filters = QHBoxLayout()
         self.status_group = QButtonGroup(self)
         self.status_buttons = {}
@@ -308,6 +300,7 @@ class CompactPanel(DropSurface, QWidget):
         views.addWidget(self.intake_log_button)
         pl.addLayout(views)
         self.project_list = ProjectList()
+        self.project_list.setObjectName('projectList')
         self.project_list.setMinimumHeight(72)
         self.project_list.setAccessibleName('项目列表')
         self.project_list.setAccessibleDescription('双击项目打开对应的工作文件夹；右键或按菜单键管理该项目。')
@@ -317,18 +310,22 @@ class CompactPanel(DropSurface, QWidget):
         self.project_splitter.setAccessibleName('项目与文档分栏')
         self.project_splitter.setChildrenCollapsible(False)
         self.project_splitter.setHandleWidth(6)
-        project_side = QWidget()
+        project_side = QFrame()
+        project_side.setObjectName('projectSurface')
         project_side.setMinimumWidth(180)
-        project_layout = QVBoxLayout(project_side)
-        project_layout.setContentsMargins(0,0,0,0)
+        project_layout = self.project_card_layout = QVBoxLayout(project_side)
+        project_layout.setContentsMargins(10,10,10,10)
+        self.project_list_heading = label('项目清单', 'title')
+        project_layout.addWidget(self.project_list_heading)
         self.empty.setWordWrap(True)
         project_layout.addWidget(self.empty)
         project_layout.addWidget(self.project_list,1)
-        document_side = self.document_side = QWidget()
+        document_side = self.document_side = QFrame()
+        document_side.setObjectName('documentSurface')
         document_side.setMinimumWidth(350)
-        document_layout = QVBoxLayout(document_side)
-        document_layout.setContentsMargins(0,0,0,0)
-        document_layout.setSpacing(4)
+        document_layout = self.document_card_layout = QVBoxLayout(document_side)
+        document_layout.setContentsMargins(14,12,14,10)
+        document_layout.setSpacing(10)
         self.project_title = label('选择项目，查看对应文档', 'title')
         self.project_title.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         document_layout.addWidget(self.project_title)
@@ -340,7 +337,7 @@ class CompactPanel(DropSurface, QWidget):
         self.project_splitter.addWidget(document_side)
         self.project_splitter.setStretchFactor(0,1)
         self.project_splitter.setStretchFactor(1,2)
-        self.project_splitter.setSizes([250,550])
+        self.project_splitter.setSizes([310,690])
         pl.addWidget(self.project_splitter,1)
         self.bulk_bar = QFrame()
         bulk_layout = QVBoxLayout(self.bulk_bar)
@@ -372,7 +369,7 @@ class CompactPanel(DropSurface, QWidget):
         self.tabs.addTab(projects, '项目')
         zips = QWidget()
         zl = QVBoxLayout(zips)
-        zl.setContentsMargins(0, 10, 0, 0)
+        zl.setContentsMargins(16, 16, 16, 12)
         self.unmatched = QCheckBox('只看待关联 ZIP')
         zip_head = QHBoxLayout()
         zip_head.addWidget(self.unmatched)
@@ -404,7 +401,7 @@ class CompactPanel(DropSurface, QWidget):
         self.tabs.addTab(zips, 'ZIP 库')
         pending = QWidget()
         rl = QVBoxLayout(pending)
-        rl.setContentsMargins(0, 10, 0, 0)
+        rl.setContentsMargins(16, 16, 16, 12)
         rl.addWidget(label('只有不明确的文字需要核对；原文会保留到你处理。', 'subtle'))
         self.receipt_list = QListWidget()
         self.receipt_list.setAccessibleName('待核对文字')
@@ -788,11 +785,11 @@ class CompactPanel(DropSurface, QWidget):
     def edit_details(self, project_id):
         project = self._action_project(project_id)
         if project:
-            dialog = ProjectDetailsDialog(self.service, project, self)
-            if dialog.exec() == QDialog.Accepted:
-                self.refresh()
-                self.data_changed.emit()
-                self.show_notice('项目备注与截止日期已保存。')
+            with transient_dialog(ProjectDetailsDialog(self.service, project, self)) as dialog:
+                if dialog.exec() == QDialog.Accepted:
+                    self.refresh()
+                    self.data_changed.emit()
+                    self.show_notice('项目备注与截止日期已保存。')
 
     def archive_project(self, project_id):
         project = self._action_project(project_id)
@@ -848,16 +845,16 @@ class CompactPanel(DropSurface, QWidget):
         project = self._action_project(project_id, editable=True)
         if not project or project['status'] != '待交付':
             return
-        dialog = ProjectDeliveryDialog(project, self)
-        if dialog.exec() != QDialog.Accepted:
-            return
-        project = self._action_project(project_id, editable=True)
-        if not project or project['status'] != '待交付':
-            return
-        zid = dialog.version_box.currentData()
-        version = next((version for version in project['zips'] if version['id'] == zid), None)
-        if zid is None or (version and version.get('bundle_state') != 'needs-review'):
-            self.delivery_requested.emit(project_id, zid)
+        with transient_dialog(ProjectDeliveryDialog(project, self)) as dialog:
+            if dialog.exec() != QDialog.Accepted:
+                return
+            project = self._action_project(project_id, editable=True)
+            if not project or project['status'] != '待交付':
+                return
+            zid = dialog.version_box.currentData()
+            version = next((version for version in project['zips'] if version['id'] == zid), None)
+            if zid is None or (version and version.get('bundle_state') != 'needs-review'):
+                self.delivery_requested.emit(project_id, zid)
 
     def locate_project_zip(self, project_id, zip_id):
         project = self._action_project(project_id)
@@ -890,7 +887,8 @@ class CompactPanel(DropSurface, QWidget):
             close = button('关闭')
             close.clicked.connect(dialog.accept)
             layout.addWidget(close)
-            dialog.exec()
+            with transient_dialog(dialog):
+                dialog.exec()
 
     def link_package(self):
         zid = selected(self.zip_list)
@@ -928,8 +926,9 @@ class CompactPanel(DropSurface, QWidget):
         choices.itemSelectionChanged.connect(lambda: confirm.setEnabled(bool(choices.selectedItems())))
         layout.addWidget(confirm)
         confirm.clicked.connect(lambda: dialog.accept() if selected(choices) is not None else None)
-        if dialog.exec() == QDialog.Accepted:
-            return selected(choices)
+        with transient_dialog(dialog):
+            if dialog.exec() == QDialog.Accepted:
+                return selected(choices)
         return None
 
     def approve_package(self):
@@ -973,20 +972,24 @@ class CompactPanel(DropSurface, QWidget):
         row.addWidget(cancel)
         row.addWidget(confirm)
         layout.addLayout(row)
-        if dialog.exec() == QDialog.Accepted:
-            self.bundle_requested.emit(zid, batch.currentData())
+        with transient_dialog(dialog):
+            if dialog.exec() == QDialog.Accepted:
+                self.bundle_requested.emit(zid, batch.currentData())
 
     def edit_directories(self):
-        if DirectorySettingsDialog(self.service, self).exec() == QDialog.Accepted:
-            self.refresh()
-            self.show_notice('工作设置已保存。已有文件、历史判定和交付记录保留。')
+        with transient_dialog(DirectorySettingsDialog(self.service, self)) as dialog:
+            if dialog.exec() == QDialog.Accepted:
+                self.refresh()
+                self.show_notice('工作设置已保存。已有文件、历史判定和交付记录保留。')
 
     def show_quick_start(self):
         from onboarding_ui import QuickStartDialog
-        QuickStartDialog(self.service, self).exec()
+        with transient_dialog(QuickStartDialog(self.service, self)) as dialog:
+            dialog.exec()
 
     def show_intake_log(self):
-        FileIntakeLogDialog(self.service, self).exec()
+        with transient_dialog(FileIntakeLogDialog(self.service, self)) as dialog:
+            dialog.exec()
 
     def show_sources(self):
         dialog = QDialog(self)
@@ -1001,13 +1004,15 @@ class CompactPanel(DropSurface, QWidget):
         close = button('关闭')
         close.clicked.connect(dialog.accept)
         layout.addWidget(close)
-        dialog.exec()
+        with transient_dialog(dialog):
+            dialog.exec()
 
     def review_text(self, *_):
         rid = selected(self.receipt_list)
         row = next((r for r in self.service.pending_receipts() if r['id'] == rid), None)
         if row:
-            ReviewDialog(self.service, row, self).exec()
+            with transient_dialog(ReviewDialog(self.service, row, self)) as dialog:
+                dialog.exec()
             self.refresh()
             self.data_changed.emit()
 
@@ -1027,13 +1032,38 @@ class CompactPanel(DropSurface, QWidget):
         self.hide()
         event.ignore()
 
+    def sync_theme_menu(self, *_):
+        for mode, action in self.theme_actions.items():
+            action.setChecked(mode == current_mode())
+
+    def change_theme(self, mode):
+        try:
+            set_theme(mode, self.service)
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as error:
+            self.show_notice('外观未保存，原主题保留：' + str(error))
+        self.sync_theme_menu()
+
     def resizeEvent(self, event):
         # 小窗口优先保留操作控件和可滚动项目列表。
         compact = self.height() < 560
+        density_changed = self.property('dense') != compact
+        self.setProperty('dense', compact)
         self.document_pane.set_compact(compact)
         self.summary.setVisible(not compact)
-        self.layout().setSpacing(4 if compact else 8)
-        self.layout().setContentsMargins(18, 8 if compact else 12, 18, 8 if compact else 10)
+        self.project_list_heading.setVisible(not compact)
+        self.project_page_layout.setContentsMargins(8 if compact else 14, 8 if compact else 14,
+                                                   8 if compact else 14, 8 if compact else 12)
+        self.project_page_layout.setSpacing(6 if compact else 12)
+        self.project_card_layout.setContentsMargins(8 if compact else 10, 6 if compact else 10,
+                                                   8 if compact else 10, 6 if compact else 10)
+        self.document_card_layout.setContentsMargins(8 if compact else 14, 6 if compact else 12,
+                                                    8 if compact else 14, 6 if compact else 10)
+        self.document_card_layout.setSpacing(4 if compact else 10)
+        self.layout().setSpacing(4 if compact else 14)
+        self.layout().setContentsMargins(12 if compact else 22, 8 if compact else 18,
+                                       12 if compact else 22, 8 if compact else 14)
+        if density_changed:
+            apply_to(self)
         super().resizeEvent(event)
         QTimer.singleShot(0, self._reveal_current_after_resize)
 
@@ -1117,7 +1147,7 @@ class FileIntakeLogDialog(QDialog):
         self.service = service
         self.rows = []
         self.setWindowTitle('普通文件收录记录')
-        self.setStyleSheet(STYLE)
+        apply_to(self)
         self.resize(860, 610)
         self.setMinimumSize(640, 460)
         layout = QVBoxLayout(self)
@@ -1229,7 +1259,7 @@ class DirectorySettingsDialog(QDialog):
         super().__init__(parent)
         self.service = service
         self.setWindowTitle('工作目录与收录规则设置')
-        self.setStyleSheet(STYLE)
+        apply_to(self)
         available = self.screen().availableGeometry()
         self.resize(min(620, available.width() - 32), min(620, available.height() - 32))
         settings = service.workspaces.settings()
@@ -1301,6 +1331,7 @@ class DirectorySettingsDialog(QDialog):
         row.addStretch()
         layout.addLayout(row)
         layout.addWidget(label('按单个项目统计实际文件，包含子目录，不计文件夹本身。\n规则用于新收录、新版本；已有归档保留原判定和历史记录。\n新目录用于以后创建和归档，已有文件不搬迁。原件保留，退出后暂停监视。', 'subtle', True))
+        layout.addStretch()
         self.error = label('', 'subtle', True)
         outer.addWidget(self.error)
         actions = QHBoxLayout()
@@ -1347,7 +1378,7 @@ class ProjectDetailsDialog(QDialog):
         self.service, self.project = service, project
         self.read_only = bool(project.get('archived_at'))
         self.setWindowTitle('项目备注与截止日期')
-        self.setStyleSheet(STYLE)
+        apply_to(self)
         self.resize(560, 420)
         layout = QVBoxLayout(self)
         title = label(project['name'], 'title', True)
@@ -1421,7 +1452,7 @@ class ReviewDialog(QDialog):
     def __init__(self, service, receipt, parent=None):
         super().__init__(parent)
         self.setWindowTitle('核对项目消息')
-        self.setStyleSheet(STYLE)
+        apply_to(self)
         self.resize(600, 520)
         self.service, self.receipt = service, receipt
         layout = QVBoxLayout(self)

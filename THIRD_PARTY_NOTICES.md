@@ -17,6 +17,16 @@ include personal data or development/verification directories.
   The commercial-license reference shipped in the wheel is not a commercial license grant to this application.
 - SQLite: supplied through Python's sqlite3 module; upstream describes SQLite as public domain.
 - PyInstaller 6.22.0 bootloader: see `licenses/PyInstaller-COPYING.txt`, including its distribution exception.
+- QDarkStyle 3.2.3: code under the MIT License; theme images under Creative Commons
+  Attribution 4.0 International. Copyright Colin Duquesnoy (2013–2019) and,
+  for images, Daniel Cosmo Pizetta (2019). WorkBox uses the unmodified compiled
+  theme resources and adds its own stylesheet after the upstream stylesheet;
+  the resource images are unmodified. See `licenses/QDarkStyle-LICENSE.txt`
+  for the complete code and image license texts and attribution conditions.
+- QtPy 2.4.3: MIT License; see `licenses/QtPy-LICENSE.txt`.
+- packaging 26.3: Apache License 2.0 or BSD 2-Clause License; a runtime dependency
+  of QtPy. See `licenses/Packaging-LICENSE.txt`,
+  `licenses/Packaging-LICENSE-APACHE.txt` and `licenses/Packaging-LICENSE-BSD.txt`.
 
 Qt libraries are shipped as separate shared libraries in `_internal/`. Rebuilding
 WorkBox with a compatible Qt for Python distribution is documented; this project
@@ -31,5 +41,8 @@ does not prohibit replacement of those libraries or debugging modifications to t
 - Python 3.11.9: https://www.python.org/downloads/release/python-3119/
 - SQLite copyright information: https://sqlite.org/copyright.html
 - PyInstaller source: https://github.com/pyinstaller/pyinstaller/tree/v6.22.0
+- QDarkStyle sources and theme images: https://github.com/ColinDuquesnoy/QDarkStyleSheet
+- QDarkStyle code/image licenses: https://github.com/ColinDuquesnoy/QDarkStyleSheet/blob/master/LICENSE.rst
+- QtPy source and license: https://github.com/spyder-ide/qtpy
 
 开发交付包与干净安装包均保留上述说明、对应上游源代码链接及随包许可证。

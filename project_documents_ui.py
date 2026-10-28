@@ -41,6 +41,7 @@ class ProjectDocumentsPane(QWidget):
         self.hint.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Fixed)
         layout.addWidget(self.hint)
         self.table = QTableWidget(0, 3)
+        self.table.setObjectName('documentTable')
         self.table.setAccessibleName('项目文档列表')
         self.table.setHorizontalHeaderLabels(['文件名称', '类别', '大小'])
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -53,7 +54,7 @@ class ProjectDocumentsPane(QWidget):
         standard_list_scrolling(self.table)
         self.table.setMinimumHeight(90)
         self.table.verticalHeader().hide()
-        self.table.verticalHeader().setDefaultSectionSize(32)
+        self.table.verticalHeader().setDefaultSectionSize(40)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
@@ -220,6 +221,7 @@ class ProjectDocumentsPane(QWidget):
         self._sync_layout()
 
     def _sync_layout(self):
+        self.layout().setContentsMargins(0, 0 if self._compact else 6, 0, 0)
         show=not self._compact or not self.documents or self._read_error or self._result_errors
         if self.hint.isHidden()==show:
             self.hint.setVisible(show)

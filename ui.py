@@ -19,56 +19,14 @@ from PySide6.QtWidgets import (
     QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
+from theme import apply_to, stylesheet, tokens, theme_signal
+from dialog_lifecycle import transient_dialog
 from app import WorkBox
 from branding import brand_icon
 from database import STATUSES
 from parser import ParsedProject, parse_message
 
-STYLE = """
-QWidget { font-family: 'Microsoft YaHei UI', 'Segoe UI'; font-size: 13px; color: #24382f; }
-QMainWindow, QDialog { background: #fafbf8; }
-QFrame#sidebar { background: #eff3ed; border-right: 1px solid #dbe3d9; }
-QLabel#brandMark { background: #246449; color: white; border-radius: 12px; font-size: 27px; font-weight: 700; }
-QLabel#brand { font-size: 24px; font-weight: 700; letter-spacing: -1px; }
-QLabel#pageTitle { font-size: 27px; font-weight: 700; }
-QLabel#sectionTitle { font-size: 17px; font-weight: 600; }
-QLabel#muted { color: #728176; font-size: 12px; }
-QLabel#count { font-size: 21px; font-weight: 650; }
-QLabel#emptyTitle { font-size: 22px; font-weight: 600; }
-QLabel#notice { background: #eaf3ec; border: 1px solid #d3e3d6; padding: 10px 14px; border-radius: 8px; }
-QLabel#error { color: #a34832; }
-QFrame#card { background: white; border: 1px solid #dde5dc; border-radius: 12px; }
-QPushButton { background: white; border: 1px solid #d4ded3; border-radius: 7px; padding: 9px 14px; font-weight: 500; }
-QPushButton:hover { background: #edf4ec; border-color: #a9bca8; }
-QPushButton:pressed { background: #dfeadc; }
-QPushButton:focus { border: 2px solid #619077; }
-QPushButton:disabled { color: #98a197; background: #f1f3ef; border-color: #e0e5dd; }
-QPushButton#primary { background: #246449; color: white; border-color: #246449; }
-QPushButton#primary:hover { background: #18563b; }
-QPushButton#primary:disabled { background: #afc6b5; border-color: #afc6b5; color: #edf3ee; }
-QPushButton#nav { text-align: left; padding: 12px 14px; border: none; background: transparent; }
-QPushButton#nav:checked { background: #dae8d8; color: #20573b; font-weight: 650; }
-QPushButton#filter { background: transparent; border: 1px solid transparent; padding: 8px 12px; }
-QPushButton#filter:checked { background: #e5efe2; border-color: #cbdcc6; color: #215637; }
-QLineEdit, QComboBox, QPlainTextEdit { background: white; border: 1px solid #d8e1d6; border-radius: 7px; padding: 8px; selection-background-color: #d5e8d6; selection-color: #193929; }
-QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus { border-color: #70a17c; }
-QComboBox { min-height: 22px; padding-right: 22px; }
-QComboBox::drop-down { border: none; width: 21px; }
-QTableWidget { background: white; border: none; gridline-color: #edf1e9; selection-background-color: #e8f1e3; selection-color: #244331; }
-QTableWidget::item { padding: 7px 9px; border-bottom: 1px solid #edf1e9; }
-QTableWidget::item:selected { background: #e5efdf; color: #244331; }
-QHeaderView::section { background: #f5f7f1; border: none; border-bottom: 1px solid #e1e8dc; padding: 12px 9px; color: #73816e; font-size: 12px; font-weight: 500; }
-QCheckBox { spacing: 7px; }
-QCheckBox::indicator { width: 15px; height: 15px; }
-QScrollArea { border: none; background: transparent; }
-QScrollBar:vertical { width: 8px; background: transparent; margin: 0; }
-QScrollBar::handle:vertical { background: #c7d2c4; border-radius: 4px; min-height: 30px; }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-QSplitter::handle { background: transparent; width: 14px; }
-QProgressBar { border: none; background: #e5ebdf; border-radius: 3px; max-height: 6px; }
-QProgressBar::chunk { background: #408159; border-radius: 3px; }
-QStatusBar { color: #869081; background: #f3f6ef; border-top: 1px solid #e4eadd; font-size: 11px; }
-"""
+STYLE = stylesheet('light')
 
 
 def label(text: str = "", role: str = "", wrap: bool = False) -> QLabel:
@@ -135,7 +93,7 @@ class CaptureDialog(QDialog):
         super().__init__(parent)
         self.service = service
         self.setWindowTitle("收录项目消息 · WorkBox")
-        self.setStyleSheet(STYLE)
+        apply_to(self)
         self.resize(820, 740)
         self.setMinimumSize(680, 610)
         layout = QVBoxLayout(self)
@@ -277,12 +235,22 @@ class MainWindow(QMainWindow):
         self._refreshing = False
         self.setWindowTitle("WorkBox 工作箱 v1.0")
         self.setWindowIcon(app_icon())
-        self.setStyleSheet(STYLE)
+        apply_to(self)
         self.resize(1320, 860)
         self.setMinimumSize(1120, 720)
         self.setAcceptDrops(True)
         self._build()
         self.refresh()
+        theme_signal().connect(self._update_status_colors)
+
+    def _update_status_colors(self, _mode):
+        colors = tokens()
+        names = {'待开发': 'state_new', '开发中': 'state_working',
+                 '待交付': 'state_pending', '已交付': 'state_delivered'}
+        for row in range(self.project_table.rowCount()):
+            item = self.project_table.item(row, 2)
+            if item and item.text() in names:
+                item.setForeground(QColor(colors[names[item.text()]]))
 
     @property
     def busy(self) -> bool:
@@ -561,9 +529,9 @@ class MainWindow(QMainWindow):
             self.project_table.clearSelection()
             self.project_table.setCurrentCell(-1, -1)
             for index, project in enumerate(projects):
-                self.project_table.item(index, 2).setForeground(QColor({
-                    "待开发": "#647263", "开发中": "#287293", "待交付": "#906614", "已交付": "#26734c",
-                }[project["status"]]))
+                self.project_table.item(index, 2).setForeground(QColor(tokens()[{
+                    "待开发": "state_new", "开发中": "state_working", "待交付": "state_pending", "已交付": "state_delivered",
+                }[project["status"]]]))
                 if project["id"] == chosen:
                     self.project_table.selectRow(index)
             self.project_table.blockSignals(False)
@@ -653,11 +621,10 @@ class MainWindow(QMainWindow):
     def capture(self):
         if self.busy:
             return
-        dialog = CaptureDialog(self.service, self)
-        if dialog.exec() == QDialog.Accepted:
-            self.notify("消息已收录，原文和项目已保存在本机。")
-            self.refresh()
-        dialog.deleteLater()
+        with transient_dialog(CaptureDialog(self.service, self)) as dialog:
+            if dialog.exec() == QDialog.Accepted:
+                self.notify("消息已收录，原文和项目已保存在本机。")
+                self.refresh()
 
     def change_status(self, status):
         if self.current_project_id is None or self._refreshing or self.busy:
@@ -793,11 +760,11 @@ class MainWindow(QMainWindow):
         box.button(QMessageBox.Yes).setText("是，确认已交付")
         box.button(QMessageBox.No).setText("尚未交付")
         box.setDefaultButton(QMessageBox.No)
-        if box.exec() == QMessageBox.Yes:
-            self._start_job("delivery", record["filename"], partial(
-                self.service.confirm_delivery, project_id, zip_id, confirmed=True
-            ))
-        box.deleteLater()
+        with transient_dialog(box):
+            if box.exec() == QMessageBox.Yes:
+                self._start_job("delivery", record["filename"], partial(
+                    self.service.confirm_delivery, project_id, zip_id, confirmed=True
+                ))
 
     def choose_zip_project(self, *_):
         zip_id = selected_id(self.zip_table)
@@ -823,14 +790,14 @@ class MainWindow(QMainWindow):
         choice.currentIndexChanged.connect(lambda: confirm.setEnabled(choice.currentData() is not None))
         confirm.clicked.connect(dialog.accept)
         layout.addWidget(confirm, 0, Qt.AlignRight)
-        if dialog.exec() == QDialog.Accepted:
-            try:
-                self.service.link_zip(zip_id, choice.currentData())
-                self.notify("ZIP 已关联，尚未确认交付。")
-            except (ValueError, KeyError, sqlite3.Error) as exc:
-                self.notify(str(exc))
-            self.refresh()
-        dialog.deleteLater()
+        with transient_dialog(dialog):
+            if dialog.exec() == QDialog.Accepted:
+                try:
+                    self.service.link_zip(zip_id, choice.currentData())
+                    self.notify("ZIP 已关联，尚未确认交付。")
+                except (ValueError, KeyError, sqlite3.Error) as exc:
+                    self.notify(str(exc))
+                self.refresh()
 
     def closeEvent(self, event):
         if self.worker is not None:

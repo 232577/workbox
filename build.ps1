@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
 $env:PYTHONUTF8 = '1'
 $env:PYTHONIOENCODING = 'utf-8'
+$env:QT_API = 'pyside6'
 $Python = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
 $VersionFile = Join-Path $PSScriptRoot 'assets\windows-version.txt'
 $Icon = Join-Path $PSScriptRoot 'build\WorkBox.ico'
@@ -16,6 +17,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Tests failed; build stopped.' }
 if ($LASTEXITCODE -ne 0) { throw 'Build asset preparation failed.' }
 & $Python -m PyInstaller --noconfirm --clean --onedir --windowed --noupx `
     --name WorkBox --icon $Icon --version-file $VersionFile `
+    --hidden-import qdarkstyle.dark.darkstyle_rc --hidden-import qdarkstyle.light.lightstyle_rc `
     --specpath build --workpath build/pyinstaller --distpath dist main.py
 if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed.' }
 if (-not (Test-Path -LiteralPath 'dist\WorkBox\WorkBox.exe')) { throw 'Missing executable.' }

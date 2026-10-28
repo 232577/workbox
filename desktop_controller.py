@@ -9,10 +9,12 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QDialog, QFileDialog, QFrame, QHBoxLayout, QMessageBox, QPlainTextEdit, QSystemTrayIcon, QVBoxLayout
 
-from compact_ui import CompactPanel, STYLE, button, label, zip_delivery_hint
+from compact_ui import CompactPanel, button, label, zip_delivery_hint
 from floating import FloatingBall, decode_mime
 from ui import FileJob, app_icon
 from native_files import plain_path
+from theme import apply_to
+from dialog_lifecycle import transient_dialog
 
 
 def clamp_position(position, size):
@@ -33,7 +35,7 @@ class FeedbackBubble(QFrame):
         self.setWindowTitle('WorkBox 收件反馈')
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.navigation_target = None
-        self.setStyleSheet(STYLE + 'FeedbackBubble {background:#F3F8FB;border:1px solid #C3D6E0;border-radius:9px;}')
+        apply_to(self, 'feedback')
         self.setFixedWidth(318)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 12, 14, 12)
@@ -320,7 +322,7 @@ class FloatingController(QObject):
         else:
             dialog = QDialog(self.panel)
             dialog.setWindowTitle('粘贴项目消息')
-            dialog.setStyleSheet(STYLE)
+            apply_to(dialog)
             dialog.resize(560, 340)
             layout = QVBoxLayout(dialog)
             edit = QPlainTextEdit()
@@ -329,8 +331,9 @@ class FloatingController(QObject):
             confirm = button('收录项目', True)
             layout.addWidget(confirm)
             confirm.clicked.connect(dialog.accept)
-            if dialog.exec() == QDialog.Accepted:
-                self.receive({'kind': 'text', 'text': edit.toPlainText()})
+            with transient_dialog(dialog):
+                if dialog.exec() == QDialog.Accepted:
+                    self.receive({'kind': 'text', 'text': edit.toPlainText()})
 
     def choose_files(self):
         paths, _ = QFileDialog.getOpenFileNames(self.panel if self.panel.isVisible() else self.orb,

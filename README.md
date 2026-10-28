@@ -4,15 +4,21 @@ WorkBox 是 Windows 本地项目与交付文件管理工具。通过悬浮球打
 
 ## 下载与安装
 
-在 [工作箱下载站](https://workbox.ltxiangzi.dpdns.org/) 或 [增强版 Release](https://github.com/232577/workbox/releases/tag/v1.0.0-enhanced.20261028) 下载 `WorkBox-1.0.0-Enhanced-20261028-Setup-x64.exe`，下载和使用均无需登录。本次为 2026-10-28 增强构建，软件版本保持 1.0.0。安装包适用于 Windows 10 1809 及以上版本、Windows 11 x64，没有商业数字签名。[上一增强版](https://github.com/232577/workbox/releases/tag/v1.0.0-enhanced.20261027) 与 [初始公开版](https://github.com/232577/workbox/releases/tag/v1.0.0) 均保留。
+在 [工作箱下载站](https://workbox.ltxiangzi.dpdns.org/) 或 [增强版 Release](https://github.com/232577/workbox/releases/tag/v1.0.0-enhanced-ui.20261028) 下载 `WorkBox-1.0.0-Enhanced-UI-20261028-Setup-x64.exe`，下载和使用均无需登录。本次为 2026-10-28 UI 增强构建，软件版本保持 1.0.0。安装包适用于 Windows 10 1809 及以上版本、Windows 11 x64，没有商业数字签名。[上一增强版](https://github.com/232577/workbox/releases/tag/v1.0.0-enhanced.20261027) 与 [初始公开版](https://github.com/232577/workbox/releases/tag/v1.0.0) 均保留。
 
 安装包不包含原电脑的项目、数据库和交付记录。首次启动建立空白数据目录；数据保存在安装目录的 `data` 文件夹。升级前请退出程序并备份数据。卸载保留运行后创建的数据。下载后可用 PowerShell 核对摘要：
 
 ```powershell
-Get-FileHash .\WorkBox-1.0.0-Enhanced-20261028-Setup-x64.exe -Algorithm SHA256
+Get-FileHash .\WorkBox-1.0.0-Enhanced-UI-20261028-Setup-x64.exe -Algorithm SHA256
 ```
 
-增强版安装包 SHA256：`4eb62d51a2e00777e3e4ad393268b38bf3c6232df7a1b338f9af586cbf4c642b`。
+增强版安装包 SHA256：`09a30ba343ad48f7f50e24f8423de44c7ecdcee385be260109d8ad237dc0afa3`。
+
+## 界面与皮肤
+
+桌面右上角“外观”可选择浅色、深色或跟随系统。界面、菜单、弹窗和悬浮球使用统一颜色；切换不改变项目、工作目录和交付规则，保留当前选择与滚动。官网及私密统计页也支持三种外观，浏览器偏好与桌面独立保存。
+
+界面使用Qt标准控件和QDarkStyle基础，不是原生WinUI。完整第三方许可随包保留；Windows系统文件选择器以系统支持的外观为准。
 
 ## 第一次使用
 

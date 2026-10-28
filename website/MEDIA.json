@@ -1,21 +1,50 @@
 {
   "kind": "verified-screenshot-walkthrough",
-  "source_exe_sha256": "2fe529ad872e20c611671e3956b3ca07171e726065eb29589a98cc033f2f8dbc",
+  "source_exe_sha256": "36de791b9eefc48772350d9977e747a2b7d8d7f07379a85ad62eaf7494ad4d0e",
   "privacy_reviewed": true,
-  "description": "最终冻结程序的隔离示例项目截图步骤演示，无客户资料，非连续录屏。",
-  "duration_seconds": 54,
+  "description": "当前双主题界面与悬浮收件截图步骤演示，隔离示例资料；旧入门媒体保留其逐文件构建来源。",
+  "duration_seconds": 55,
   "files": {
     "public/media/workbox-quickstart-20261028.mp4": {
+      "size": 1835029,
       "sha256": "3790ad7382e4a309b9a5464edc65fd5b3ef0dd984530aa065baed40b7f1addf9",
-      "size": 1835029
+      "source_exe_sha256": "2fe529ad872e20c611671e3956b3ca07171e726065eb29589a98cc033f2f8dbc"
     },
     "public/media/workbox-quickstart-20261028.poster.png": {
+      "size": 229216,
       "sha256": "76924b34478da7c886a471655162aa39535d738ad5c3d0dac2eb543504114b1a",
-      "size": 229216
+      "source_exe_sha256": "2fe529ad872e20c611671e3956b3ca07171e726065eb29589a98cc033f2f8dbc"
     },
     "public/media/workbox-quickstart-20261028.vtt": {
+      "size": 996,
       "sha256": "8b5f257eeceb3ab1848f424c214a510b8ca9b82ed782a867a814fce4f407f12f",
-      "size": 996
+      "source_exe_sha256": "2fe529ad872e20c611671e3956b3ca07171e726065eb29589a98cc033f2f8dbc"
+    },
+    "public/media/workbox-desktop-dark-20261028.png": {
+      "size": 77048,
+      "sha256": "5ed9ce83ae9f4ecb184cb41b49591c0d078f53e798d0f6888a4981029ce1a6f3",
+      "source_exe_sha256": "36de791b9eefc48772350d9977e747a2b7d8d7f07379a85ad62eaf7494ad4d0e"
+    },
+    "public/media/workbox-desktop-light-20261028.png": {
+      "size": 75925,
+      "sha256": "242f760529386fd702825d8664902ce7b66e27f849b51893c3e2af5836560220",
+      "source_exe_sha256": "36de791b9eefc48772350d9977e747a2b7d8d7f07379a85ad62eaf7494ad4d0e"
+    },
+    "public/media/workbox-floating-intake-20261028.mp4": {
+      "size": 1734491,
+      "sha256": "43ec704b4bde85d85c394a7f2f712bb2213d12c27ebbfa2c80e70e20d327ff28",
+      "source_exe_sha256": "36de791b9eefc48772350d9977e747a2b7d8d7f07379a85ad62eaf7494ad4d0e"
+    },
+    "public/media/workbox-floating-intake-20261028.poster.png": {
+      "size": 162019,
+      "sha256": "d76b04f1f24106aefb138623b32530cce65cf4c4b3b05d2730b1cdfc3763be58",
+      "source_exe_sha256": "36de791b9eefc48772350d9977e747a2b7d8d7f07379a85ad62eaf7494ad4d0e"
+    },
+    "public/media/workbox-floating-intake-20261028.vtt": {
+      "size": 950,
+      "sha256": "7625171d3900dbbbf5a99555eef81c7be2c9baded08e20f7705096050f30838d",
+      "source_exe_sha256": "36de791b9eefc48772350d9977e747a2b7d8d7f07379a85ad62eaf7494ad4d0e"
     }
-  }
+  },
+  "active_video": "public/media/workbox-floating-intake-20261028.mp4"
 }

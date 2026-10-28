@@ -6,7 +6,8 @@ from PySide6.QtCore import Qt, QDate, QLocale, QSignalBlocker, QTimer, Signal, Q
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QDateEdit, QDialog,
     QHBoxLayout, QHeaderView, QLineEdit, QMessageBox, QTableWidget, QTableWidgetItem, QVBoxLayout)
 
-from compact_ui import STYLE, button, label
+from compact_ui import button, label
+from theme import apply_to
 from database import DELIVERY_TIMEZONE
 from ui import FileJob
 
@@ -38,7 +39,7 @@ class TodayDeliveryDialog(QDialog):
         self.worker = None
         self.setWindowTitle('交付记录管理')
         self.setModal(False)
-        self.setStyleSheet(STYLE)
+        apply_to(self)
         self.setMinimumSize(680,460)
         area = self.screen().availableGeometry()
         self.resize(min(980,area.width()-24),min(680,area.height()-48))

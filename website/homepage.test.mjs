@@ -6,12 +6,30 @@ import { release, releases } from './worker.mjs';
 
 const html = await readFile(new URL('./public/index.html', import.meta.url), 'utf8');
 const source = await readFile(new URL('./public/homepage.js', import.meta.url), 'utf8').catch(() => '');
+const themeSource = await readFile(new URL('./public/theme.js', import.meta.url), 'utf8').catch(() => '');
 const tags = [...html.matchAll(/<([a-z][\w-]*)\b([^>]*)>/gi)].map(([, name, raw]) => {
   const attrs = Object.fromEntries([...raw.matchAll(/([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g)]
     .map(([, key, double, single, bare]) => [key.toLowerCase(), double ?? single ?? bare ?? '']));
   return { name: name.toLowerCase(), attrs };
 });
 const has = (tag, name) => Object.hasOwn(tag.attrs, name);
+
+test('悬浮入口教程独立可定位，说明拖入材料、操作反馈和运行边界', () => {
+  const section = html.match(/<section\b[^>]*id="floating-inbox"[^>]*>([\s\S]*?)<\/section>/)?.[1];
+  assert.ok(section, '应有独立的悬浮入口教程');
+  assert.ok(tags.some(tag => tag.name === 'a' && tag.attrs.href === '#floating-inbox'));
+  assert.ok(html.indexOf('id="quickstart-video"') < html.indexOf('id="floating-inbox"'));
+  assert.ok(html.indexOf('id="floating-inbox"') < html.indexOf('id="workflow"'));
+  for (const phrase of ['拖到悬浮球，收进工作箱', '项目文字', '整个文件夹', '复制收录', '原件保留',
+    '共享盘', '虚拟附件', '网址', '待交付', '当前模式', '按住移动', '右键', '粘贴项目消息',
+    '选择文件收进项目', '打开 ZIP 归档目录', '未交付项目数', '进度', '查看', '收起', '取消处理',
+    '已完成项', '关闭管理面板', '后台运行', '托盘', '退出 WorkBox']) assert.ok(section.includes(phrase), phrase);
+  assert.match(section, /歧义[^。]*核对选择/);
+  assert.match(section, /收起[^。]*仅[^。]*提示/);
+  assert.match(section, /托盘不可用[^。]*悬浮球/);
+  assert.match(section, /退出 WorkBox[^。]*停止/);
+  assert.doesNotMatch(section, /<(?:button|input|video)\b/);
+});
 
 test('步骤视频使用可访问的原生控件、字幕和备用链接，不自动播放', () => {
   const video = tags.find(tag => tag.name === 'video');
@@ -21,9 +39,9 @@ test('步骤视频使用可访问的原生控件、字幕和备用链接，不�
   assert.equal(video.attrs.preload, 'none');
   assert.equal(video.attrs.width, '1920');
   assert.equal(video.attrs.height, '1080');
-  assert.equal(video.attrs.poster, '/media/workbox-quickstart-20261028.poster.png');
+  assert.equal(video.attrs.poster, '/media/workbox-floating-intake-20261028.poster.png');
   assert.ok(video.attrs['aria-label']);
-  const base = '/media/workbox-quickstart-20261028';
+  const base = '/media/workbox-floating-intake-20261028';
   assert.ok(tags.some(tag => tag.name === 'source' && tag.attrs.src === `${base}.mp4`));
   assert.ok(tags.some(tag => tag.name === 'track' && tag.attrs.src === `${base}.vtt` && tag.attrs.kind === 'captions' && tag.attrs.srclang === 'zh'));
   assert.ok(tags.some(tag => tag.name === 'a' && tag.attrs.href === `${base}.mp4`));
@@ -166,4 +184,112 @@ test('面板缺失时保留静态内容，不显示失效 tabs 或隐藏任何�
   assert.equal(fixture.list.hidden, true);
   assert.ok(fixture.panels.every(panel => !panel.hidden));
   assert.ok(fixture.tabs.every(tab => tab.getAttribute('role') !== 'tab'));
+});
+
+function setupTheme({ stored = null, dark = false, unavailable = false } = {}) {
+  const writes = [];
+  const root = { dataset: {}, style: {} };
+  const select = new Element(); select.value = 'system';
+  const control = new Element(); control.hidden = true;
+  const media = { matches: dark, addEventListener(type, listener) { this.listener = listener; } };
+  const document = { documentElement: root, readyState: 'complete',
+    querySelector(selector) { return selector === '[data-theme-select]' ? select : selector === '[data-theme-control]' ? control : null; } };
+  const localStorage = { getItem(key) { assert.equal(key, 'workbox-site-theme'); if (unavailable) throw new Error('blocked'); return stored; },
+    setItem(key, value) { if (unavailable) throw new Error('blocked'); writes.push([key, value]); } };
+  vm.runInNewContext(themeSource, { document, localStorage, window: { matchMedia: () => media, localStorage }, console }, { timeout: 1000 });
+  return { root, select, control, media, writes };
+}
+
+test('网站主题原生选择有标签，提前初始化且不修改统计页共享样式', () => {
+  assert.ok(themeSource.trim(), 'theme.js 必须存在');
+  const script = tags.find(tag => tag.name === 'script' && tag.attrs.src?.startsWith('/theme.js'));
+  assert.ok(script && !has(script, 'defer') && !has(script, 'async'), '在首个样式表前同步读取偏好');
+  assert.ok(html.indexOf(script.attrs.src) < html.indexOf('rel="stylesheet"'));
+  const select = tags.find(tag => tag.name === 'select' && has(tag, 'data-theme-select'));
+  assert.equal(select?.attrs.id, 'site-theme');
+  assert.ok(tags.some(tag => tag.name === 'label' && tag.attrs.for === 'site-theme'));
+  for (const value of ['system', 'light', 'dark']) assert.ok(tags.some(tag => tag.name === 'option' && tag.attrs.value === value));
+  assert.match(html, /网站外观[^<]*|仅影响本站/);
+});
+
+test('主题默认跟随系统，无有效偏好时不写入存储', () => {
+  for (const stored of [null, '', 'invalid', 'DARK']) {
+    const fixture = setupTheme({ stored, dark: true });
+    assert.equal(fixture.root.dataset.theme, 'dark');
+    assert.equal(fixture.select.value, 'system');
+    assert.equal(fixture.control.hidden, false);
+    assert.deepEqual(fixture.writes, []);
+  }
+});
+
+test('明确选择即时生效并只保存网站主题，重载恢复', () => {
+  const fixture = setupTheme({ stored: 'light', dark: true });
+  assert.equal(fixture.root.dataset.theme, 'light');
+  fixture.select.value = 'dark'; fixture.select.dispatch('change');
+  assert.equal(fixture.root.dataset.theme, 'dark');
+  assert.deepEqual(fixture.writes, [['workbox-site-theme', 'dark']]);
+  assert.equal(setupTheme({ stored: 'dark' }).root.dataset.theme, 'dark');
+});
+
+test('系统变化仅影响跟随系统，存储不可用时仍可切换', () => {
+  const fixture = setupTheme({ unavailable: true });
+  fixture.media.matches = true; fixture.media.listener();
+  assert.equal(fixture.root.dataset.theme, 'dark');
+  fixture.select.value = 'light'; fixture.select.dispatch('change');
+  assert.equal(fixture.root.dataset.theme, 'light');
+  fixture.media.matches = false; fixture.media.listener();
+  fixture.media.matches = true; fixture.media.listener();
+  assert.equal(fixture.root.dataset.theme, 'light');
+  assert.deepEqual(fixture.writes, []);
+});
+
+test('所有者统计接入同一外观选择，保留私密登录与空数据容器', async () => {
+  const stats = await readFile(new URL('./public/stats.html', import.meta.url), 'utf8');
+  assert.match(stats, /src="\/theme\.js[^\"]*"/);
+  assert.match(stats, /href="\/theme\.css[^\"]*"/);
+  assert.ok(stats.indexOf('/theme.js') < stats.indexOf('rel="stylesheet"'));
+  assert.match(stats, /class="stats-page"/);
+  assert.match(stats, /<label for="site-theme">网站外观<\/label>/);
+  assert.match(stats, /<select id="site-theme"[^>]*data-theme-select/);
+  for (const id of ['login-form','owner-key','login-submit','toggle-password','dashboard','day-range','refresh','export-csv','data-error','retry','trend-chart','daily-rows','logout']) assert.ok(stats.includes(`id="${id}"`),id);
+  assert.match(stats, /type="password" autocomplete="current-password"/);
+  assert.match(stats, /name="robots" content="noindex, nofollow, noarchive"/);
+  assert.match(stats, /id="today-views"><\/dd>/);
+  assert.match(stats, /id="total-downloads"><\/dd>/);
+  assert.match(html,/href="https:\/\/github\.com\/232577\/workbox\/blob\/main\/THIRD_PARTY_NOTICES\.md"[^>]*>第三方许可<\/a>/);
+});
+
+test('Hero使用实际浅深界面原图链接并保留有尺寸的文件夹流程图后备', () => {
+  for (const theme of ['light','dark']) {
+    const path=`/media/workbox-desktop-${theme}-20261028.png`;
+    assert.ok(tags.some(tag=>tag.name==='img'&&tag.attrs.src===path&&tag.attrs['data-desktop-image']===theme&&tag.attrs.width==='1120'&&tag.attrs.height==='760'));
+    assert.ok(tags.some(tag=>tag.name==='a'&&tag.attrs.href===path));
+  }
+  assert.ok(tags.some(tag=>has(tag,'data-desktop-stage')));
+  assert.match(html,/实际界面 · 示例资料/);
+  assert.match(html,/点击图片查看原图/);
+  assert.match(html,/wb-preview-fallback/);
+  assert.match(html,/wb-folder-front/);
+  assert.match(html,/功能流程示意/);
+});
+
+function setupPreview({cached=false}={}) {
+  const stage=new Element();
+  const images=['light','dark'].map(theme=>{const image=new Element();image.dataset.desktopImage=theme;image.complete=cached;image.naturalWidth=cached?1120:0;return image;});
+  stage.querySelectorAll=()=>images;
+  const document={querySelector:selector=>selector==='[data-desktop-stage]'?stage:null};
+  vm.runInNewContext(source,{document,console},{timeout:1000});
+  return {stage,images};
+}
+
+test('实际截图加载完成才替换流程图，失败和缓存命中各自正确回退', () => {
+  const {stage,images}=setupPreview();
+  assert.equal(stage.dataset.lightReady,'false');
+  assert.equal(stage.dataset.darkReady,'false');
+  images[0].naturalWidth=1120;images[0].dispatch('load');
+  assert.equal(stage.dataset.lightReady,'true');
+  assert.equal(stage.dataset.darkReady,'false');
+  images[0].naturalWidth=0;images[0].dispatch('error');
+  assert.equal(stage.dataset.lightReady,'false');
+  assert.equal(setupPreview({cached:true}).stage.dataset.darkReady,'true');
 });

@@ -10,6 +10,7 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPen, QRadialGradient
 from PySide6.QtWidgets import QApplication, QMenu, QWidget
 
 from branding import draw_mark
+from theme import tokens, theme_signal
 
 
 class _TextHTML(HTMLParser):
@@ -116,6 +117,7 @@ class FloatingBall(DropSurface, QWidget):
         self.count = 0
         self.busy = False
         self.percent = 0
+        theme_signal().connect(self._appearance_changed)
         self.setToolTip('文字拖入即收录项目并建工作目录\n文件收进项目，ZIP 稳定后复制归档，原件保留\n单击管理 · 按住拖动 · 右键更多')
 
     def set_drop_hint(self, kind):
@@ -131,30 +133,36 @@ class FloatingBall(DropSurface, QWidget):
         self.busy, self.percent = busy, percent
         self.update()
 
+    def _appearance_changed(self, _mode):
+        self.update()
+
     def paintEvent(self, event):
+        colors = tokens()
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         p.setPen(Qt.NoPen)
-        p.setBrush(QColor(27, 50, 64, 28))
+        shadow = QColor(colors['orb_shadow'])
+        shadow.setAlpha(35)
+        p.setBrush(shadow)
         p.drawEllipse(QRectF(4, 6, 68, 68))
         g = QRadialGradient(27, 20, 66)
-        g.setColorAt(0, QColor('#5188A0'))
-        g.setColorAt(1, QColor('#203E55'))
+        g.setColorAt(0, QColor(colors['orb_glow']))
+        g.setColorAt(1, QColor(colors['orb_bg']))
         p.setBrush(g)
-        p.setPen(QPen(QColor('#A6C8D8'), 1.2))
+        p.setPen(QPen(QColor(colors['orb_border']), 1.2))
         p.drawEllipse(QRectF(5, 4, 66, 66))
-        p.setBrush(Qt.NoBrush)
-        p.setPen(QPen(QColor('#FFFFFF' if self.drop_kind else '#6F9DB2'), 2 if self.drop_kind else 1))
-        p.drawEllipse(QRectF(10, 9, 56, 56))
+        p.setBrush(QColor('#102D40'))
+        p.setPen(QPen(QColor(colors['orb_accent'] if self.drop_kind else colors['orb_border']), 2 if self.drop_kind else 1))
+        p.drawEllipse(QRectF(11, 10, 54, 54))
         draw_mark(p, QRectF(10, 9, 56, 56))
         if self.busy:
-            p.setPen(QPen(QColor('#A9DBED'), 3, Qt.SolidLine, Qt.RoundCap))
+            p.setPen(QPen(QColor(colors['orb_accent']), 3, Qt.SolidLine, Qt.RoundCap))
             p.drawArc(QRectF(3, 2, 70, 70), 90 * 16, -int(max(12, self.percent * 3.6) * 16))
         if self.count and not self.busy:
             p.setPen(Qt.NoPen)
-            p.setBrush(QColor('#EAF3F7'))
+            p.setBrush(QColor(colors['accent']))
             p.drawEllipse(QRectF(51, 1, 22, 22))
-            p.setPen(QColor('#203E55'))
+            p.setPen(QColor(colors['accent_text']))
             p.setFont(QFont('Segoe UI', 9, QFont.Bold))
             p.drawText(QRectF(51, 1, 22, 22), Qt.AlignCenter, str(self.count) if self.count < 100 else '99+')
         p.end()

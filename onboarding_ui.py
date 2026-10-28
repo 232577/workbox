@@ -8,7 +8,8 @@ from PySide6.QtWidgets import (
     QSizePolicy, QSpinBox, QStackedWidget, QVBoxLayout, QWidget,
 )
 
-from compact_ui import STYLE, button, label
+from compact_ui import button, label
+from theme import apply_to
 from ui import app_icon
 
 
@@ -22,7 +23,7 @@ def _identify(widget, name):
 def _dialog_layout(dialog, title):
     dialog.setWindowTitle(title)
     dialog.setWindowIcon(app_icon())
-    dialog.setStyleSheet(STYLE)
+    apply_to(dialog)
     layout = QVBoxLayout(dialog)
     layout.setContentsMargins(16, 12, 16, 12)
     layout.setSpacing(8)
