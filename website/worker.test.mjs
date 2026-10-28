@@ -22,10 +22,10 @@ test('公开下载固定版本并流式保留文件字节，不转发访问者�
   });
   assert.equal(response.status, 200);
   assert.deepEqual([...new Uint8Array(await response.arrayBuffer())], [77, 90, 1, 2]);
-  assert.equal(requested.target, 'https://github.com/232577/workbox/releases/download/v1.0.0-enhanced.20261027/WorkBox-1.0.0-Enhanced-20261027-Setup-x64.exe');
+  assert.equal(requested.target, 'https://github.com/232577/workbox/releases/download/v1.0.0-enhanced.20261028/WorkBox-1.0.0-Enhanced-20261028-Setup-x64.exe');
   assert.equal(requested.options.headers.has('Cookie'), false);
   assert.equal(requested.options.headers.has('Authorization'), false);
-  assert.match(response.headers.get('Content-Disposition'), /attachment; filename="WorkBox-1.0.0-Enhanced-20261027-Setup-x64.exe"/);
+  assert.match(response.headers.get('Content-Disposition'), /attachment; filename="WorkBox-1.0.0-Enhanced-20261028-Setup-x64.exe"/);
 });
 
 test('断点续传保留206和Content-Range', async () => {
@@ -72,9 +72,10 @@ test('版本信息公开且页面回退到静态资源', async () => {
 });
 
 test('增强版独立标签与旧版安装入口同时保留', async () => {
-  assert.equal(release.tag,'v1.0.0-enhanced.20261027');
-  assert.equal(release.filename,'WorkBox-1.0.0-Enhanced-20261027-Setup-x64.exe');
-  assert.equal(releases.length,2);
+  assert.equal(release.tag,'v1.0.0-enhanced.20261028');
+  assert.equal(release.filename,'WorkBox-1.0.0-Enhanced-20261028-Setup-x64.exe');
+  assert.equal(releases.length,3);
+  assert.equal(releases[1].sha256,'a01018e5d0b9c866ce77c33b26a142cec524f9dd2b9a42c125a50a82a29645c8');
   const oldUrl='https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64.exe';
   let requested;
   const old=await handleRequest(new Request(oldUrl,{method:'HEAD'}),{},async (target)=>{

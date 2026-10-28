@@ -16,6 +16,7 @@ from zipfile import BadZipFile, ZipFile
 
 from native_files import ZipLease, cancelled, identity, plain_path
 from intake_log import FileIntakeLog
+from first_run import initialize as initialize_first_run, setup_required as read_setup_required, complete as complete_first_run
 from workflow_policy import DEFAULTS as POLICY_DEFAULTS, read_policy, validate as validate_policy
 
 
@@ -191,6 +192,8 @@ class WorkspaceManager:
     def __init__(self, service):
         self.service, self.db = service, service.db
         with self.db.connect() as connection:
+            initialize_first_run(connection)
+        with self.db.connect() as connection:
             connection.executescript(SCHEMA)
         self.intake_log = FileIntakeLog(self.db)
         # 默认归档可能已在首次配置前使用；升级时也保留已保存的当前目录。
@@ -198,6 +201,10 @@ class WorkspaceManager:
         with self.db.connect() as connection:
             connection.executemany('INSERT OR IGNORE INTO workflow_archive_roots(path) VALUES (?)',
                                    [(str(Path(os.path.abspath(root))),) for root in sorted(roots)])
+
+    def setup_required(self):
+        with self.db.connect() as connection:
+            return read_setup_required(connection)
 
     def settings(self):
         defaults = dict(work_root=str(self.db.path.parent / '工作项目'),
@@ -219,7 +226,9 @@ class WorkspaceManager:
         return left == right or left.is_relative_to(right) or right.is_relative_to(left)
 
     def configure(self, work_root, archive_root, stable_seconds=10, *, auto_create_projects=None,
-                  auto_deliver_zip=None, zip_delivery_min_files=None):
+                  auto_deliver_zip=None, zip_delivery_min_files=None, complete_setup=False):
+        if type(complete_setup) is not bool:
+            raise ValueError('首次设置完成标记必须是布尔值。')
         policy_changes = dict(auto_create_projects=auto_create_projects, auto_deliver_zip=auto_deliver_zip,
                               zip_delivery_min_files=zip_delivery_min_files)
         validate_policy({key: POLICY_DEFAULTS[key] if value is None else value
@@ -232,6 +241,7 @@ class WorkspaceManager:
         settings = dict(work_root=str(work), archive_root=str(archive), stable_seconds=stable_seconds)
         with self.db.connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
+            read_setup_required(connection)
             policy = read_policy(connection)
             policy.update({key: value for key, value in policy_changes.items() if value is not None})
             settings.update(policy)
@@ -249,6 +259,8 @@ class WorkspaceManager:
             connection.execute('INSERT OR IGNORE INTO workflow_archive_roots(path) VALUES (?)', (str(archive),))
             connection.executemany('INSERT INTO workflow_settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
                                    [(key, json.dumps(value, ensure_ascii=False)) for key, value in settings.items()])
+            if complete_setup:
+                complete_first_run(connection)
         return settings
 
     def get_workspace(self, project_id):

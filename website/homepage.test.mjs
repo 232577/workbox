@@ -13,6 +13,34 @@ const tags = [...html.matchAll(/<([a-z][\w-]*)\b([^>]*)>/gi)].map(([, name, raw]
 });
 const has = (tag, name) => Object.hasOwn(tag.attrs, name);
 
+test('步骤视频使用可访问的原生控件、字幕和备用链接，不自动播放', () => {
+  const video = tags.find(tag => tag.name === 'video');
+  assert.ok(video);
+  for (const attribute of ['controls', 'playsinline']) assert.ok(has(video, attribute));
+  assert.ok(!has(video, 'autoplay'));
+  assert.equal(video.attrs.preload, 'none');
+  assert.equal(video.attrs.width, '1920');
+  assert.equal(video.attrs.height, '1080');
+  assert.equal(video.attrs.poster, '/media/workbox-quickstart-20261028.poster.png');
+  assert.ok(video.attrs['aria-label']);
+  const base = '/media/workbox-quickstart-20261028';
+  assert.ok(tags.some(tag => tag.name === 'source' && tag.attrs.src === `${base}.mp4`));
+  assert.ok(tags.some(tag => tag.name === 'track' && tag.attrs.src === `${base}.vtt` && tag.attrs.kind === 'captions' && tag.attrs.srclang === 'zh'));
+  assert.ok(tags.some(tag => tag.name === 'a' && tag.attrs.href === `${base}.mp4`));
+  assert.match(html, /截图步骤演示/);
+  assert.match(html, /无声/);
+  assert.match(html, /不是连续录屏/);
+  assert.ok(html.indexOf('id="quickstart-video"') < html.indexOf('id="workflow"'));
+});
+
+test('首次使用推荐通用模式，自动交付门槛只适用于自动模式', () => {
+  assert.match(html, /推荐通用模式/);
+  assert.match(html, /人工确认交付/);
+  assert.match(html, /自动模式[^<。]*4/);
+  assert.match(html, /升级[^<。]*原有配置/);
+  assert.doesNotMatch(html, /ZIP 默认按/);
+});
+
 test('首页使用中文、唯一主标题且每个内部锚点都指向唯一元素', () => {
   assert.equal(tags.find(tag => tag.name === 'html').attrs.lang, 'zh-CN');
   assert.equal(tags.filter(tag => tag.name === 'h1').length, 1);

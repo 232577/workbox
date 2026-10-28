@@ -109,7 +109,7 @@ class FloatingController(QObject):
         if self.panel.busy != busy:
             self.panel.set_busy(busy)
 
-    def start(self):
+    def start(self, *, setup_callback=None):
         if not self.lock.tryLock(0):
             socket = QLocalSocket()
             socket.connectToServer(self.server_name)
@@ -126,6 +126,13 @@ class FloatingController(QObject):
             self.owns_lock = False
             raise OSError('无法建立本地单实例通信。')
         self.server.newConnection.connect(self._activate)
+        # 持有单实例锁后才打开首次向导；此时没有收件入口或监视任务。
+        if setup_callback is not None and self.service.workspaces.setup_required():
+            if not setup_callback():
+                self.shutdown()
+                return False
+            if self.service.workspaces.setup_required():
+                raise ValueError('首次设置尚未保存，未启动收件与归档。')
         self.orb = FloatingBall()
         self.panel = CompactPanel(self.service)
         self.bubble = FeedbackBubble()
@@ -206,7 +213,13 @@ class FloatingController(QObject):
             socket = self.server.nextPendingConnection()
             socket.readyRead.connect(lambda s=socket: s.readAll())
             socket.disconnected.connect(socket.deleteLater)
-            self.show_panel()
+            modal = QApplication.activeModalWidget()
+            if self.panel is None and modal is not None:
+                modal.showNormal()
+                modal.raise_()
+                modal.activateWindow()
+            else:
+                self.show_panel()
 
     def refresh(self):
         if self.panel is None or self.closed:

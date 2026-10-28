@@ -35,11 +35,12 @@ def controller(qapp, tmp_path):
 
 
 def wait(controller):
-    deadline = time.monotonic() + 10
+    # 此处检验真实文件收件与反馈，而非十秒性能门槛；本机路径检查可接近十秒。
+    deadline = time.monotonic() + 30
     while controller.busy and time.monotonic() < deadline:
         QApplication.processEvents()
         QTest.qWait(10)
-    assert not controller.busy
+    assert not controller.busy, f'30 秒内收件未完成：worker={controller.worker!r}, queue={len(controller.queue)}'
     QApplication.processEvents()
 
 

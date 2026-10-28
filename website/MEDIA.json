@@ -1,0 +1,21 @@
+{
+  "kind": "verified-screenshot-walkthrough",
+  "source_exe_sha256": "2fe529ad872e20c611671e3956b3ca07171e726065eb29589a98cc033f2f8dbc",
+  "privacy_reviewed": true,
+  "description": "最终冻结程序的隔离示例项目截图步骤演示，无客户资料，非连续录屏。",
+  "duration_seconds": 54,
+  "files": {
+    "public/media/workbox-quickstart-20261028.mp4": {
+      "sha256": "3790ad7382e4a309b9a5464edc65fd5b3ef0dd984530aa065baed40b7f1addf9",
+      "size": 1835029
+    },
+    "public/media/workbox-quickstart-20261028.poster.png": {
+      "sha256": "76924b34478da7c886a471655162aa39535d738ad5c3d0dac2eb543504114b1a",
+      "size": 229216
+    },
+    "public/media/workbox-quickstart-20261028.vtt": {
+      "sha256": "8b5f257eeceb3ab1848f424c214a510b8ca9b82ed782a867a814fce4f407f12f",
+      "size": 996
+    }
+  }
+}

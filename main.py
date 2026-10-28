@@ -33,9 +33,10 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, sqlite3.Error, ValueError) as exc:
             print(str(exc), file=sys.stderr)
             return 1
-    from PySide6.QtWidgets import QApplication, QMessageBox
+    from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
     from desktop_service import DesktopService
     from desktop_controller import FloatingController
+    from onboarding_ui import FirstRunDialog
 
     application = QApplication(sys.argv[:1])
     application.setApplicationName("WorkBox")
@@ -48,12 +49,12 @@ def main(argv: list[str] | None = None) -> int:
         service = DesktopService(data_dir / "workbox.db")
         controller = FloatingController(service, tray_enabled=not args.no_tray)
         controller.exit_requested.connect(application.quit)
-        if not controller.start():
+        if not controller.start(setup_callback=lambda: FirstRunDialog(service).exec() == QDialog.Accepted):
             return 0
         if args.panel:
             controller.show_panel()
         return application.exec()
-    except (OSError, sqlite3.Error, ValueError) as exc:
+    except (OSError, sqlite3.Error, ValueError, RuntimeError) as exc:
         QMessageBox.critical(None, "WorkBox 无法启动", f"无法打开本地数据。请确认程序所在目录可以写入。\n\n{exc}\n\n未重置或覆盖原有数据。")
         return 1
     finally:

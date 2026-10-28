@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, Signal, QSize, QDate, QLocale, QPoint, QSignalBlo
 from PySide6.QtGui import QColor, QPalette, QContextMenuEvent, QActionGroup
 from PySide6.QtWidgets import (
     QAbstractItemView, QButtonGroup, QCheckBox, QComboBox, QDateEdit, QDialog, QFrame,
-    QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem, QFileDialog, QSpinBox,
+    QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem, QFileDialog, QSpinBox, QScrollArea,
     QMessageBox, QPlainTextEdit, QPushButton, QTabWidget, QTableWidget, QMenu,
     QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QSizePolicy, QScrollBar, QStyleFactory, QProxyStyle, QStyle, QSplitter,
 )
@@ -418,8 +418,17 @@ class CompactPanel(DropSurface, QWidget):
         rl.addLayout(review_row)
         self.tabs.addTab(pending, '待核对')
         footer = QHBoxLayout()
-        footer.addWidget(label('后台运行保留托盘；退出将停止自动归档。', 'subtle'))
+        footer_hint = label('后台运行保留托盘；退出将停止自动归档。', 'subtle')
+        footer_hint.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        footer_hint.setToolTip(footer_hint.text())
+        footer.addWidget(footer_hint, 1)
         footer.addStretch()
+        self.help_button = button('使用指南')
+        self.help_button.setAccessibleName('使用指南')
+        self.help_button.setObjectName('使用指南')
+        self.help_button.setToolTip('查看当前模式、保存位置和操作方法，不改变设置。')
+        self.help_button.clicked.connect(self.show_quick_start)
+        footer.addWidget(self.help_button)
         self.cancel_button = button('取消处理')
         self.cancel_button.hide()
         self.exit_button = button('退出')
@@ -972,6 +981,10 @@ class CompactPanel(DropSurface, QWidget):
             self.refresh()
             self.show_notice('工作设置已保存。已有文件、历史判定和交付记录保留。')
 
+    def show_quick_start(self):
+        from onboarding_ui import QuickStartDialog
+        QuickStartDialog(self.service, self).exec()
+
     def show_intake_log(self):
         FileIntakeLogDialog(self.service, self).exec()
 
@@ -1217,9 +1230,20 @@ class DirectorySettingsDialog(QDialog):
         self.service = service
         self.setWindowTitle('工作目录与收录规则设置')
         self.setStyleSheet(STYLE)
-        self.resize(620, 540)
+        available = self.screen().availableGeometry()
+        self.resize(min(620, available.width() - 32), min(620, available.height() - 32))
         settings = service.workspaces.settings()
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        scroll.setWidget(content)
+        content.setAutoFillBackground(False)
+        scroll.viewport().setAutoFillBackground(False)
+        outer.addWidget(scroll, 1)
         self.work_root = QLineEdit(settings['work_root'])
         self.archive_root = QLineEdit(settings['archive_root'])
         for title, edit in (('项目工作根目录', self.work_root), ('ZIP 归档根目录', self.archive_root)):
@@ -1237,9 +1261,23 @@ class DirectorySettingsDialog(QDialog):
         self.auto_create_projects.setChecked(settings.get('auto_create_projects', True))
         self.auto_create_projects.setToolTip('仅在名称和目录归属明确时自动创建；有歧义时始终需要选择。关闭后仍可粘贴消息创建项目。')
         layout.addWidget(self.auto_create_projects)
+        modes = QHBoxLayout()
+        self.manual_mode_button = button('使用通用模式')
+        self.manual_mode_button.setAccessibleName('使用通用模式')
+        self.manual_mode_button.setObjectName('使用通用模式')
+        self.automatic_mode_button = button('使用自动交付模式')
+        self.automatic_mode_button.setAccessibleName('使用自动交付模式')
+        self.automatic_mode_button.setObjectName('使用自动交付模式')
+        modes.addWidget(self.manual_mode_button)
+        modes.addWidget(self.automatic_mode_button)
+        modes.addStretch()
+        layout.addLayout(modes)
         self.auto_deliver_zip = QCheckBox('根据 ZIP 文件数自动确认交付')
         self.auto_deliver_zip.setChecked(settings.get('auto_deliver_zip', True))
+        self.manual_mode_button.clicked.connect(lambda: self.auto_deliver_zip.setChecked(False))
+        self.automatic_mode_button.clicked.connect(lambda: self.auto_deliver_zip.setChecked(True))
         layout.addWidget(self.auto_deliver_zip)
+        layout.addWidget(label('通用模式仍自动归档 ZIP，由你右键确认交付；普通文件人工确认交付时另存归档。自动交付模式按文件数更新状态，数量不代表质量验收。切换仅改变下方自动交付选项，保存后生效。', 'subtle', True))
         threshold_row = QHBoxLayout()
         threshold_row.addWidget(label('每个项目的最少文件数'))
         self.zip_delivery_min_files = QSpinBox()
@@ -1264,7 +1302,7 @@ class DirectorySettingsDialog(QDialog):
         layout.addLayout(row)
         layout.addWidget(label('按单个项目统计实际文件，包含子目录，不计文件夹本身。\n规则用于新收录、新版本；已有归档保留原判定和历史记录。\n新目录用于以后创建和归档，已有文件不搬迁。原件保留，退出后暂停监视。', 'subtle', True))
         self.error = label('', 'subtle', True)
-        layout.addWidget(self.error)
+        outer.addWidget(self.error)
         actions = QHBoxLayout()
         self.reset_rules_button = button('恢复默认规则')
         self.reset_rules_button.setToolTip('填回默认规则，点击保存后生效；不改变目录。')
@@ -1278,7 +1316,7 @@ class DirectorySettingsDialog(QDialog):
         save.clicked.connect(self.save)
         actions.addWidget(cancel)
         actions.addWidget(save)
-        layout.addLayout(actions)
+        outer.addLayout(actions)
 
     def browse(self, edit):
         path = QFileDialog.getExistingDirectory(self, '选择本地目录', edit.text())
@@ -1297,7 +1335,7 @@ class DirectorySettingsDialog(QDialog):
                 auto_create_projects=self.auto_create_projects.isChecked(),
                 auto_deliver_zip=self.auto_deliver_zip.isChecked(),
                 zip_delivery_min_files=self.zip_delivery_min_files.value())
-        except (OSError, ValueError, sqlite3.Error) as error:
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as error:
             self.error.setText('设置未保存，请检查后重试：' + str(error))
             return
         self.accept()

@@ -39,3 +39,12 @@ html:has(.home-page){scrollbar-width:auto}
   .wb-settings-sheet dt small{max-width:200px}
 }
 @media(forced-colors:active){html:has(.home-page){scrollbar-color:auto}.wb-scene-grid{display:none}.wb-button,.wb-nav-download,.wb-input,.wb-folder-front,.wb-archive-slip,.wb-workflow,.wb-workflow-tabs button,.wb-settings-sheet{border:1px solid ButtonText}.wb-workflow-tabs button[aria-selected="true"]{color:HighlightText;background:Highlight;forced-color-adjust:none}.wb-folder-back,.wb-folder-front{border:1px solid CanvasText}.wb-workflow-tabs button:focus-visible{outline-color:Highlight}}
+
+/* 真实截图步骤演示：以播放器为主，说明在所有屏幕上保持可见。 */
+.wb-video-section{display:grid;grid-template-columns:minmax(230px,.8fr) minmax(0,1.6fr);gap:44px;align-items:center;padding-block:55px;border-bottom:1px solid var(--wb-line)}
+.wb-video-intro h2{margin-bottom:18px}.wb-video-intro>p:not(.wb-kicker){color:var(--wb-muted);font-size:15px;line-height:1.7}
+.wb-video-intro .wb-video-note{color:var(--wb-navy)!important;font-weight:700;font-size:13px!important;margin-top:20px}
+.wb-video-mobile{margin:8px 0 16px}.wb-video-frame{background:#102d40;border:8px solid #102d40;border-radius:14px;overflow:hidden;box-shadow:0 16px 38px #102d401c}
+.wb-video-frame video{display:block;width:100%;height:auto;aspect-ratio:16/9;background:#172d40}
+@media(max-width:850px){.wb-video-section{grid-template-columns:1fr;gap:24px;padding-block:48px}.wb-video-frame{max-width:760px}}
+@media(max-width:560px){.wb-video-section{padding-block:40px;gap:20px}.wb-video-intro>p:not(.wb-kicker){font-size:14px}.wb-video-frame{border-width:5px;border-radius:10px}}
