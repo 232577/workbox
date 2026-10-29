@@ -52,6 +52,8 @@ def test_deleted_filters_and_counts_keep_batch_zip_and_delivery_history(db, tmp_
     original = db.get_project(1)
     history = db.delivery_history()
     summary = db.today_delivery_summary()
+    with db.connect() as connection:
+        original_events = [dict(row) for row in connection.execute('SELECT * FROM delivery_events ORDER BY id')]
     batches = db.list_batches()
     disk = path.read_bytes()
     sentinel = tmp_path / 'workspace-state.json'
@@ -69,14 +71,23 @@ def test_deleted_filters_and_counts_keep_batch_zip_and_delivery_history(db, tmp_
     assert db.list_projects(deleted=True, query='不存在') == []
     assert db.counts() == dict(projects=2, batches=1, zips=1)
     assert db.list_batches() == batches
-    assert db.delivery_history() == history
-    assert db.today_delivery_summary() == summary
+    # 归档/删除是新增的当前项目展示元数据；原始交付事实和所有计数必须不变。
+    expected_history = history | {'events': [dict(row, project_archived=True, project_deleted=True)
+        if row['project_id'] == 1 else row for row in history['events']]}
+    expected_summary = summary | {'projects': [dict(row, project_archived=True, project_deleted=True)
+        if row['project_id'] == 1 else row for row in summary['projects']]}
+    assert db.delivery_history() == expected_history
+    assert db.today_delivery_summary() == expected_summary
+    with db.connect() as connection:
+        assert [dict(row) for row in connection.execute('SELECT * FROM delivery_events ORDER BY id')] == original_events
     assert db.get_project(1)['zips'] == original['zips']
     assert path.read_bytes() == disk
     assert sentinel.read_bytes() == b'{"registered":"keep"}'
     db.restore_deleted_project(1)
     assert db.get_project(1) == original
     assert db.counts() == dict(projects=3, batches=1, zips=1)
+    assert db.delivery_history() == history
+    assert db.today_delivery_summary() == summary
 
 
 @pytest.mark.parametrize('value', [True, False, 0, -1, 1.0, '1', None])

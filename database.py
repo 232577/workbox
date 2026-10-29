@@ -17,7 +17,7 @@ STATUSES = ("待开发", "开发中", "待交付", "已交付")
 DELIVERY_TIMEZONE = timezone(timedelta(hours=8))
 
 SCHEMA = """
-BEGIN;
+BEGIN IMMEDIATE;
 CREATE TABLE IF NOT EXISTS batches (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL COLLATE NOCASE UNIQUE CHECK(length(trim(name)) > 0),
@@ -183,6 +183,10 @@ CREATE TABLE IF NOT EXISTS project_type_links (
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX IF NOT EXISTS idx_project_type_links_type ON project_type_links(type_id);
+CREATE TABLE IF NOT EXISTS project_type_migrations (
+    name TEXT PRIMARY KEY,
+    seeded_types TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS delivery_event_migrations (
     name TEXT PRIMARY KEY
 );
@@ -203,6 +207,7 @@ class Database:
             connection.executescript(SCHEMA)
             connection.execute('BEGIN IMMEDIATE')
             self._migrate_delivery_events(connection)
+            self._migrate_project_type_presets(connection)
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -224,6 +229,22 @@ class Database:
             result['projects'] = connection.execute('''SELECT COUNT(*) FROM projects p
                 WHERE NOT EXISTS (SELECT 1 FROM project_deletions x WHERE x.project_id=p.id)''').fetchone()[0]
             return result
+
+    @staticmethod
+    def _migrate_project_type_presets(connection: sqlite3.Connection) -> None:
+        """只补一次普通预设类型；不覆盖已有字典，也不推断历史项目分类。"""
+        marker = 'editable-project-type-presets-v1'
+        if connection.execute('SELECT 1 FROM project_type_migrations WHERE name=?', (marker,)).fetchone():
+            return
+        seeded_types = {}
+        for name in ('材料', '可运行'):
+            if not connection.execute('SELECT 1 FROM project_types WHERE normalized_name=?',
+                                      (name.casefold(),)).fetchone():
+                type_id = connection.execute('INSERT INTO project_types(name,normalized_name) VALUES (?,?)',
+                                             (name, name.casefold())).lastrowid
+                seeded_types[str(type_id)] = name
+        connection.execute('INSERT INTO project_type_migrations(name,seeded_types) VALUES (?,?)',
+                           (marker, json.dumps(seeded_types, ensure_ascii=False, sort_keys=True)))
 
     @staticmethod
     def _migrate_delivery_events(connection: sqlite3.Connection) -> None:
@@ -281,7 +302,10 @@ class Database:
                     prior_delivery=event['prior_delivery'], prior_delivery_reason=event['prior_delivery_reason'],
                     included_in_workload=event['included_in_workload'],
                     count_exclusion_reason=event['count_exclusion_reason'],
-                    count_action_id=event['count_action_id'], count_managed_at=event['count_managed_at'])
+                    count_action_id=event['count_action_id'], count_managed_at=event['count_managed_at'],
+                    project_type_id=event['project_type_id'], project_type_name=event['project_type_name'],
+                    project_type_active=event['project_type_active'],
+                    project_archived=event['project_archived'], project_deleted=event['project_deleted'])
             projects[pid]['delivery_count'] += 1
             projects[pid]['counted'] |= event['counted']
             projects[pid]['repeat_count'] += event['counting_role'] == 'repeat'
@@ -314,6 +338,8 @@ class Database:
             parameters.extend((keyword, keyword))
         where = ' WHERE ' + ' AND '.join(conditions) if conditions else ''
         with self.connect() as connection:
+            # 字典与交付行使用同一读取快照，避免并发改名或停用导致统计口径不一致。
+            connection.execute('BEGIN')
             # 撤销状态来自独立追加日志，不改写真实交付事件或文件关联。
             rows = connection.execute('''WITH effective AS (
                 SELECT d.*,COALESCE(a.voided,0) AS voided,a.id AS last_action_id,
@@ -337,21 +363,45 @@ class Database:
                 p.project_id IS NOT NULL AS prior_delivery,COALESCE(p.reason,'') AS prior_delivery_reason,
                 COALESCE(c.included,1) AS included_in_workload,
                 CASE WHEN c.included=0 THEN c.reason ELSE '' END AS count_exclusion_reason,
-                c.id AS count_action_id,c.created_at AS count_managed_at
+                c.id AS count_action_id,c.created_at AS count_managed_at,
+                tl.type_id AS project_type_id,COALESCE(pt.name,'') AS project_type_name,
+                pt.active AS project_type_active,
+                pd.archived_at IS NOT NULL AS project_archived,
+                px.project_id IS NOT NULL AS project_deleted
             FROM effective e LEFT JOIN firsts f ON f.project_id=e.project_id
                 LEFT JOIN prior_rules p ON p.project_id=e.project_id
+                LEFT JOIN project_type_links tl ON tl.project_id=e.project_id
+                LEFT JOIN project_types pt ON pt.id=tl.type_id
+                LEFT JOIN project_details pd ON pd.project_id=e.project_id
+                LEFT JOIN project_deletions px ON px.project_id=e.project_id
                 LEFT JOIN project_delivery_count_actions c ON c.id=(
                     SELECT MAX(id) FROM project_delivery_count_actions WHERE project_id=e.project_id)''' + where +
                 ' ORDER BY julianday(e.occurred_at) DESC,e.id DESC', parameters).fetchall()
+            active_types = connection.execute('SELECT id,name FROM project_types WHERE active=1 ORDER BY id').fetchall()
+        type_counts = {row['id']: dict(type_id=row['id'], type_name=row['name'], active=True, project_count=0)
+                       for row in active_types}
+        type_counts[None] = dict(type_id=None, type_name='未分类', active=None, project_count=0)
+        counted_projects = set()
         events = []
         for row in rows:
             event = dict(row)
             event['voided'] = bool(event['voided'])
             event['prior_delivery'] = bool(event['prior_delivery'])
             event['included_in_workload'] = bool(event['included_in_workload'])
+            event['project_type_active'] = (None if event['project_type_active'] is None
+                                            else bool(event['project_type_active']))
+            event['project_archived'] = bool(event['project_archived'])
+            event['project_deleted'] = bool(event['project_deleted'])
             event['counted'] = event['counting_role'] == 'first' and event['included_in_workload']
+            if event['counted'] and event['project_id'] not in counted_projects:
+                counted_projects.add(event['project_id'])
+                type_id = event['project_type_id']
+                if type_id not in type_counts:
+                    type_counts[type_id] = dict(type_id=type_id, type_name=event['project_type_name'],
+                                                active=event['project_type_active'], project_count=0)
+                type_counts[type_id]['project_count'] += 1
             events.append(event)
-        return dict(day=current, project_count=sum(event['counted'] for event in events),
+        return dict(day=current, project_count=len(counted_projects), type_counts=list(type_counts.values()),
             event_count=len(events), repeat_count=sum(event['counting_role'] == 'repeat' for event in events),
             voided_count=sum(event['voided'] for event in events),
             valid_event_count=sum(not event['voided'] for event in events), events=events)

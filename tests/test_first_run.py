@@ -154,3 +154,54 @@ def test_mode_rejects_corrupt_zip_delivery_preference(invalid):
     from first_run import mode_key
     with pytest.raises(ValueError):
         mode_key({'auto_deliver_zip': invalid})
+
+
+def test_only_factory_type_presets_keep_first_setup_pending(tmp_path):
+    service = WorkBox(tmp_path / 'fresh-presets.db')
+    assert {row['name'] for row in service.list_project_types()} == {'材料', '可运行'}
+    assert WorkspaceManager(service).setup_required()
+
+
+@pytest.mark.parametrize('name', ['材料', '可运行', '既有业务'])
+def test_existing_same_named_types_are_not_factory_history(tmp_path, name):
+    service = WorkBox(tmp_path / 'legacy-types.db')
+    with service.db.connect() as connection:
+        connection.execute('DELETE FROM project_type_migrations')
+        connection.execute('DELETE FROM project_types')
+        connection.execute('INSERT INTO project_types(id,name,normalized_name) VALUES (41,?,?)',
+                           (name, name.casefold()))
+    reopened = WorkBox(service.db.path)
+    assert WorkspaceManager(reopened).setup_required() is False
+    assert next(t for t in reopened.list_project_types() if t['id'] == 41)['name'] == name
+
+
+@pytest.mark.parametrize('change', ['rename', 'disable', 'new'])
+def test_user_type_customization_before_workspace_is_legacy(tmp_path, change):
+    service = WorkBox(tmp_path / 'changed-presets.db')
+    preset = next(row for row in service.list_project_types() if row['name'] == '材料')
+    if change == 'rename':
+        service.rename_project_type(preset['id'], '内部材料')
+    elif change == 'disable':
+        service.set_project_type_active(preset['id'], False)
+    else:
+        service.create_project_type('自定义业务')
+    assert WorkspaceManager(service).setup_required() is False
+
+
+def test_custom_type_does_not_complete_existing_pending_guide(tmp_path):
+    service = WorkBox(tmp_path / 'pending.db')
+    manager = WorkspaceManager(service)
+    assert manager.setup_required()
+    service.create_project_type('自定义业务')
+    assert WorkspaceManager(WorkBox(service.db.path)).setup_required()
+
+
+@pytest.mark.parametrize('payload', ['invalid json', '[]', '{"invalid":"材料"}', '{"1":1}'])
+def test_corrupt_preset_origin_does_not_silently_decide_first_setup(tmp_path, payload):
+    service = WorkBox(tmp_path / 'corrupt-presets.db')
+    with service.db.connect() as connection:
+        connection.execute('UPDATE project_type_migrations SET seeded_types=?', (payload,))
+    with pytest.raises(RuntimeError, match='首次设置'):
+        WorkspaceManager(service)
+    with service.db.connect() as connection:
+        assert not connection.execute("SELECT 1 FROM sqlite_master WHERE name='workflow_first_run'").fetchone()

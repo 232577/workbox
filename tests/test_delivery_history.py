@@ -185,13 +185,17 @@ def test_delivery_summary_uses_beijing_midnight_and_counts_lifetime_first_projec
          'counted': False, 'first_at': '2026-10-22T15:59:59.999Z', 'repeat_count': 2, 'voided_count': 0,
          'last_action_id': None, 'last_action': None, 'management_reason': '', 'managed_at': None,
           'prior_delivery': False, 'prior_delivery_reason': '',
-          'included_in_workload': True, 'count_exclusion_reason': '', 'count_action_id': None, 'count_managed_at': None},
+          'included_in_workload': True, 'count_exclusion_reason': '', 'count_action_id': None, 'count_managed_at': None,
+          'project_type_id': None, 'project_type_name': '', 'project_type_active': None,
+          'project_archived': False, 'project_deleted': False},
         {'project_id': 2, 'project_name': '乙系统', 'batch_name': '交付批', 'delivery_count': 1,
          'latest_at': '2026-10-23T08:00:00.000Z', 'archive_path': '隔离归档', 'kind': 'manual-files',
          'counted': True, 'first_at': '2026-10-23T08:00:00.000Z', 'repeat_count': 0, 'voided_count': 0,
          'last_action_id': None, 'last_action': None, 'management_reason': '', 'managed_at': None,
           'prior_delivery': False, 'prior_delivery_reason': '',
-          'included_in_workload': True, 'count_exclusion_reason': '', 'count_action_id': None, 'count_managed_at': None},
+          'included_in_workload': True, 'count_exclusion_reason': '', 'count_action_id': None, 'count_managed_at': None,
+          'project_type_id': None, 'project_type_name': '', 'project_type_active': None,
+          'project_archived': False, 'project_deleted': False},
     ]
     details = box.db.delivery_events_for_project(1, date(2026, 10, 23))
     assert [row['project_name'] for row in details] == ['甲交付时新名', '甲交付时旧名']
@@ -220,6 +224,7 @@ def test_later_rename_archive_and_status_reset_never_erase_delivery_facts(box):
         connection.execute("UPDATE batches SET name='后来批次名' WHERE id=1")
     box.set_status(1, '待交付')
     box.bulk_update_projects([1], archived=True)
+    before['projects'][0]['project_archived'] = True
     assert box.db.today_delivery_summary(date(2026, 10, 23)) == before
     assert box.db.delivery_events_for_project(1, date(2026, 10, 23))[0]['project_name'] == '交付时甲系统'
 

@@ -418,6 +418,11 @@ class CompactPanel(DropSurface, QWidget):
         options.setSpacing(8)
         options.addWidget(self.urgent_filter)
         options.addStretch()
+        self.change_type_button = button('修改类型…')
+        self.change_type_button.setAccessibleName('修改所选项目的类型')
+        self.change_type_button.setToolTip('修改当前选中项目的类型；批量选择时应用到所选项目。也可管理自定义类型。')
+        self.change_type_button.clicked.connect(self.change_selected_project_types)
+        options.addWidget(self.change_type_button)
         options.addWidget(self.bulk_mode)
         self.intake_log_button = button('收录记录')
         self.intake_log_button.setToolTip('查看普通文件收录结果、所属项目与判断依据')
@@ -460,7 +465,8 @@ class CompactPanel(DropSurface, QWidget):
         self.project_status_badge.hide()
         document_heading.addWidget(self.project_status_badge, 0, Qt.AlignTop)
         document_layout.addLayout(document_heading)
-        self.project_type_label = label('', 'subtle')
+        self.project_type_label = label('', 'subtle', True)
+        self.project_type_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.project_type_label.hide()
         document_layout.addWidget(self.project_type_label)
         from project_documents_ui import ProjectDocumentsPane
@@ -801,6 +807,14 @@ class CompactPanel(DropSurface, QWidget):
         self.bulk_mode.setEnabled(bulk_allowed)
         self.bulk_apply.setEnabled(bool(count) and count <= 500 and bulk_allowed)
         self.bulk_action.setEnabled(bulk_allowed)
+        type_editable = bulk_allowed and 1 <= count <= 500 and hasattr(self.service, 'set_project_types')
+        if type_editable:
+            try:
+                type_editable = all(not p.get('archived_at') and not p.get('deleted_at') for p in
+                                    (self.service.get_project(item.data(Qt.UserRole)) for item in self.project_list.selectedItems()))
+            except KeyError:
+                type_editable = False
+        self.change_type_button.setEnabled(type_editable)
         self.settings_button.setEnabled(not self.busy)
         self.scan_button.setEnabled(not self.busy)
         zid = selected(self.zip_list)
@@ -1048,6 +1062,27 @@ class CompactPanel(DropSurface, QWidget):
         self.refresh()
         self.data_changed.emit()
         self.show_notice(f'已更新 {len(project_ids)} 个项目的类型。')
+
+    def change_selected_project_types(self):
+        from project_types_ui import choose_project_type
+        if self.busy:
+            return
+        ids = [item.data(Qt.UserRole) for item in self.project_list.selectedItems()]
+        if not 1 <= len(ids) <= 500:
+            return
+        try:
+            projects = [self.service.get_project(pid) for pid in ids]
+        except KeyError:
+            self.show_notice('项目已变化，请重新选择。')
+            return
+        if any(p.get('archived_at') or p.get('deleted_at') for p in projects):
+            self.show_notice('项目类型未保存：请先恢复已归档或已删除的项目。')
+            return
+        accepted, type_id = choose_project_type(self.service, self, projects)
+        # 字典管理即时保存，外层取消也应刷新新名称与筛选选项。
+        self.refresh()
+        if accepted:
+            self.assign_project_types(ids, type_id)
 
     def request_bulk(self, ids, options):
         if self.busy:

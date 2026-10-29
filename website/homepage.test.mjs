@@ -39,9 +39,9 @@ test('步骤视频使用可访问的原生控件、字幕和备用链接，不�
   assert.equal(video.attrs.preload, 'none');
   assert.equal(video.attrs.width, '1920');
   assert.equal(video.attrs.height, '1080');
-  assert.equal(video.attrs.poster, '/media/workbox-sidebar-20261029.poster.png');
+  assert.equal(video.attrs.poster, '/media/workbox-types-20261029.poster.png');
   assert.ok(video.attrs['aria-label']);
-  const base = '/media/workbox-sidebar-20261029';
+  const base = '/media/workbox-types-20261029';
   assert.ok(tags.some(tag => tag.name === 'source' && tag.attrs.src === `${base}.mp4`));
   assert.ok(tags.some(tag => tag.name === 'track' && tag.attrs.src === `${base}.vtt` && tag.attrs.kind === 'captions' && tag.attrs.srclang === 'zh'));
   assert.ok(tags.some(tag => tag.name === 'a' && tag.attrs.href === `${base}.mp4`));
@@ -80,13 +80,16 @@ test('新旧安装包和 GitHub 备用源保持发布目录中的真实地址，
   assert.ok(Number.isSafeInteger(release.size) && release.size > 0);
   assert.ok(html.includes(`${release.size.toLocaleString('en-US')} 字节`));
   assert.match(html, /最终原生验证/);
-  assert.match(html, /侧栏图标对齐版/);
+  assert.match(html, /项目类型统计版/);
   assert.match(html, /双主题界面版（历史）/);
-  assert.match(html, /下载侧栏图标对齐版/);
+  assert.match(html, /下载项目类型统计版/);
   assert.ok(links.includes('https://github.com/232577/workbox/blob/main/LICENSE'));
 });
 
 test('官网准确说明工作量资格、独立项目类型和响应式工作台边界', () => {
+  for (const phrase of ['预设“材料”“可运行”', '项目总览与今日交付', '“修改类型…”',
+    '单选、多选和类型管理', '按当前类型汇总', '各类型数量和合计', '改分类不改变总数',
+    '旧项目保持未分类', '已有同名类型保留原内容和启用状态']) assert.ok(html.includes(phrase), phrase);
   for (const phrase of ['排除在个人工作量计数之外', '保留“已交付”状态', '最早仍有效交付日',
     '不会把旧项目记到今天', '撤销误记仍按原规则将项目退回“待交付”', '类型与个人工作量计数互不影响',
     '自定义项目类型可独立增改、停用启用、筛选及右键或批量分配', '小胶囊放在日历图标下方',
@@ -277,7 +280,7 @@ test('所有者统计接入同一外观选择，保留私密登录与空数据�
 
 test('Hero使用实际浅深界面原图链接并保留有尺寸的文件夹流程图后备', () => {
   for (const theme of ['light','dark']) {
-    const path=`/media/workbox-desktop-${theme}-sidebar-20261029.png`;
+    const path=`/media/workbox-desktop-${theme}-types-20261029.png`;
     assert.ok(tags.some(tag=>tag.name==='img'&&tag.attrs.src===path&&tag.attrs['data-desktop-image']===theme&&tag.attrs.width==='1120'&&tag.attrs.height==='760'));
     assert.ok(tags.some(tag=>tag.name==='a'&&tag.attrs.href===path));
   }
