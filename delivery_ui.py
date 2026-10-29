@@ -46,7 +46,7 @@ class TodayDeliveryDialog(QDialog):
         self.resize(min(980,area.width()-24),min(680,area.height()-48))
         layout = QVBoxLayout(self)
         layout.setSpacing(6)
-        self.scope_note = label('按北京时间统计：每个项目只计首次有效交付；补交不再计数，误记可以撤销和恢复。','subtle',True)
+        self.scope_note = label('按北京时间统计个人工作量。代交项目可设为不计工作量，已交付状态和文件保留；真正误记请用下方“撤销误记”。','subtle',True)
         layout.addWidget(self.scope_note)
         controls = QHBoxLayout()
         self.today_button = button('今天')
@@ -75,7 +75,18 @@ class TodayDeliveryDialog(QDialog):
         layout.addLayout(controls)
         self.summary = label('','subtle',True)
         layout.addWidget(self.summary)
-        self.table = self._table('交付项目列表',['项目','批次','首次有效交付','本次统计'])
+        project_actions = QHBoxLayout()
+        self.project_selection_note = label('选择项目调整工作量，可按 Ctrl 多选','subtle')
+        self.exclude_count_button = button('不计工作量')
+        self.include_count_button = button('恢复计入')
+        self.exclude_count_button.setToolTip('适用于替他人交付：只排除个人工作量，项目状态、文件和交付记录保持不变。')
+        self.include_count_button.setToolTip('恢复该项目的计数资格，仍按原首次有效交付日期计数。')
+        project_actions.addWidget(self.project_selection_note,1)
+        project_actions.addWidget(self.exclude_count_button)
+        project_actions.addWidget(self.include_count_button)
+        layout.addLayout(project_actions)
+        self.table = self._table('交付项目列表',['项目','批次','首次有效交付','我的工作量'])
+        self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         for column in (0,1):
             self.table.horizontalHeader().setSectionResizeMode(column,QHeaderView.Stretch)
         for column in (2,3):
@@ -92,7 +103,7 @@ class TodayDeliveryDialog(QDialog):
         layout.addWidget(self.details,1)
         self.reason = QLineEdit()
         self.reason.setAccessibleName('撤销或恢复备注')
-        self.reason.setPlaceholderText('撤销或恢复备注（可选）')
+        self.reason.setPlaceholderText('调整工作量或撤销、恢复记录的说明（可选）')
         self.reason.setMaxLength(1000)
         layout.addWidget(self.reason)
         actions = QHBoxLayout()
@@ -108,7 +119,7 @@ class TodayDeliveryDialog(QDialog):
         self.status_note = label('','subtle',True)
         self.status_note.hide()
         layout.addWidget(self.status_note)
-        for widget in (self.today_button,self.refresh_button,self.open_folder_button,self.void_button,self.restore_button,self.close_button):
+        for widget in (self.today_button,self.refresh_button,self.open_folder_button,self.void_button,self.restore_button,self.close_button,self.exclude_count_button,self.include_count_button):
             widget.setAutoDefault(False)
         self.timer = QTimer(self)
         self.timer.setInterval(2000)
@@ -124,6 +135,8 @@ class TodayDeliveryDialog(QDialog):
         self.open_folder_button.clicked.connect(self.open_selected_archive)
         self.void_button.clicked.connect(lambda:self.manage_selected(True))
         self.restore_button.clicked.connect(lambda:self.manage_selected(False))
+        self.exclude_count_button.clicked.connect(lambda:self.manage_workload(False))
+        self.include_count_button.clicked.connect(lambda:self.manage_workload(True))
         self.close_button.clicked.connect(self.close)
         self.refresh()
 
@@ -230,31 +243,37 @@ class TodayDeliveryDialog(QDialog):
         text = f"{scope} · 首次交付 {history['project_count']} 个项目 · 补交 {history['repeat_count']} 条 · 已撤销 {history['voided_count']} 条"
         if not history['events']:
             text += '，暂无交付记录。'
-        self.summary.setText(text)
         grouped = {}
         for event in history['events']:
             if event['voided'] and not self.show_voided.isChecked():
                 continue
             row = grouped.setdefault(event['project_id'],dict(project_id=event['project_id'],project_name=event['project_name'],
-                batch_name=event['batch_name'],first_at=event['first_at'],prior_delivery=event.get('prior_delivery',False),counted=False,has_valid=False))
+                batch_name=event['batch_name'],first_at=event['first_at'],prior_delivery=event.get('prior_delivery',False),counted=False,has_valid=False,
+                included_in_workload=event.get('included_in_workload',True),
+                count_exclusion_reason=event.get('count_exclusion_reason','')))
             row['counted'] |= event['counted']
             row['has_valid'] |= not event['voided']
         self.rows = list(grouped.values())
+        excluded=sum(row['has_valid'] and not row['included_in_workload'] for row in self.rows)
+        self.summary.setText(text+f' · 不计工作量 {excluded} 个项目')
         records = []
         for row in self.rows:
-            state = '计数 1 项' if row['counted'] else '补交不计' if row['has_valid'] else '已撤销'
+            state = ('已撤销' if not row['has_valid'] else '代交 / 不计工作量' if not row['included_in_workload']
+                     else '计数 1 项' if row['counted'] else '补交不计')
             records.append((row['project_id'],(row['project_name'],row['batch_name'],
-                beijing_timestamp(row['first_at']) or ('历史已交付，日期未记录' if row['prior_delivery'] else '无有效交付'),state),{}))
+                beijing_timestamp(row['first_at']) or ('历史已交付，日期未记录' if row['prior_delivery'] else '无有效交付'),state),
+                {3:row['count_exclusion_reason'] or state}))
         self._replace_rows(self.table,records)
         self.show_details()
 
     def show_details(self):
-        pid = self._selected_key(self.table)
+        chosen=self._selected_projects()
+        pid = chosen[0]['project_id'] if len(chosen)==1 else None
         if pid is None or self._history is None:
             self.events = []
             self._details_signature = None
             self._replace_rows(self.details,[])
-            self.details_hint.setText('选择项目查看交付记录，可按住 Ctrl 或 Shift 多选明细。')
+            self.details_hint.setText('已选多个项目，可统一调整是否计入工作量。' if len(chosen)>1 else '选择项目查看交付记录，可按住 Ctrl 或 Shift 多选明细。')
             self._update_open_action()
             return
         events = [event for event in self._history['events'] if event['project_id'] == pid
@@ -274,7 +293,13 @@ class TodayDeliveryDialog(QDialog):
                     tip += '\n管理备注：'+event['management_reason']
                 if event['managed_at']:
                     tip += '\n处理时间：'+beijing_timestamp(event['managed_at'])
-                values = (beijing_timestamp(event['occurred_at']),ROLE_TEXT[event['counting_role']],
+                if not event.get('included_in_workload',True):
+                    tip += '\n该项目不计入个人工作量；项目状态和交付记录保持。'
+                    if event.get('count_exclusion_reason'):
+                        tip += '\n工作量说明：'+event['count_exclusion_reason']
+                role = ('已撤销' if event['voided'] else '不计工作量' if not event.get('included_in_workload',True)
+                        else ROLE_TEXT[event['counting_role']])
+                values = (beijing_timestamp(event['occurred_at']),role,
                           KIND_TEXT.get(event['kind'],event['kind']),event['archive_path'] or '未记录归档位置')
                 tips = {1:tip,2:'升级前已保存的交付事实，不补猜历史次数。'} if event['kind'] == 'legacy' else {1:tip}
                 records.append((event['id'],values,tips))
@@ -285,6 +310,10 @@ class TodayDeliveryDialog(QDialog):
     def _selected_events(self):
         ids = {self.details.item(index.row(),0).data(Qt.UserRole) for index in self.details.selectionModel().selectedRows()}
         return [event for event in self.events if event['id'] in ids]
+
+    def _selected_projects(self):
+        ids={self.table.item(index.row(),0).data(Qt.UserRole) for index in self.table.selectionModel().selectedRows()}
+        return [row for row in self.rows if row['project_id'] in ids]
 
     def _selected_archive_folder(self):
         selected = self._selected_key(self.details)
@@ -302,12 +331,43 @@ class TodayDeliveryDialog(QDialog):
         self.open_folder_button.setEnabled(self._selected_archive_folder() is not None)
         self.void_button.setEnabled(idle and any(not event['voided'] for event in events))
         self.restore_button.setEnabled(idle and any(event['voided'] for event in events))
+        projects=self._selected_projects()
+        self.exclude_count_button.setEnabled(idle and any(row['included_in_workload'] for row in projects))
+        self.include_count_button.setEnabled(idle and any(not row['included_in_workload'] for row in projects))
+        self.project_selection_note.setText(f'已选 {len(projects)} 个项目' if projects else '选择项目调整工作量，可按 Ctrl 多选')
         self.reason.setEnabled(idle)
 
     def open_selected_archive(self):
         folder = self._selected_archive_folder()
         if folder:
             self.folder_requested.emit(folder)
+
+    def manage_workload(self,included):
+        if self.worker:
+            return
+        projects=[row for row in self._selected_projects() if row['included_in_workload']!=included]
+        if not projects:
+            return
+        names='\n'.join(row['project_name'] for row in projects[:5])
+        if len(projects)>5:
+            names+=f'\n另有 {len(projects)-5} 个项目'
+        verb='恢复计入工作量' if included else '不计入工作量'
+        text=f'将所选 {len(projects)} 个项目设为“{verb}”？\n\n{names}\n\n'
+        text+=('恢复后按原首次有效交付日期统计，不会把历史任务改算到今天。' if included
+               else '适用于代他人交付。该项目的历史与后续交付均不计入个人工作量，可随时恢复。')
+        text+='\n项目状态保持不变，原文件、交付记录和归档保留。'
+        if QMessageBox.question(self,verb,text,QMessageBox.Yes|QMessageBox.No,QMessageBox.No)!=QMessageBox.Yes:
+            return
+        ids=[row['project_id'] for row in projects]
+        reason=self.reason.text()
+        self.worker=FileJob(lambda **_:self.service.set_project_delivery_counting(ids,included,confirmed=True,reason=reason),self)
+        self.worker.management_kind='workload'
+        self.worker.managed_project_id=None
+        self.worker.finished.connect(self._mutation_finished)
+        self.status_note.setText('正在调整所选项目的工作量…')
+        self.status_note.show()
+        self._update_open_action()
+        self.worker.start()
 
     def manage_selected(self,voided):
         if self.worker:
@@ -346,6 +406,14 @@ class TodayDeliveryDialog(QDialog):
         self.worker = None
         if worker.error:
             self.status_note.setText('操作未完成：'+worker.error+'。可重试。')
+        elif getattr(worker,'management_kind',None)=='workload':
+            count=worker.result['changed_count']
+            self.status_note.setText(f'已恢复 {count} 个项目计入工作量，按原首次有效交付日期统计；项目状态保持不变。'
+                                    if worker.result['included'] else
+                                    f'已将 {count} 个项目设为不计工作量；项目状态、交付记录和归档保持不变。')
+            self.reason.clear()
+            self.operation_completed.emit(self.status_note.text())
+            self.statistics_changed.emit()
         else:
             verb = '撤销' if worker.result['voided'] else '恢复'
             self.status_note.setText(f"已{verb} {worker.result['changed_count']} 条记录，统计已更新。")
@@ -361,6 +429,13 @@ class TodayDeliveryDialog(QDialog):
             self.details.clearSelection()
             self.details.setCurrentCell(-1,-1)
         self._update_open_action()
+
+    def resizeEvent(self,event):
+        if hasattr(self,'details_hint'):
+            compact=self.height()<580
+            self.scope_note.setVisible(not compact)
+            self.details_hint.setVisible(not compact)
+        super().resizeEvent(event)
 
     def shutdown(self):
         self.timer.stop()

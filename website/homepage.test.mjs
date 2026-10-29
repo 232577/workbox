@@ -39,9 +39,9 @@ test('步骤视频使用可访问的原生控件、字幕和备用链接，不�
   assert.equal(video.attrs.preload, 'none');
   assert.equal(video.attrs.width, '1920');
   assert.equal(video.attrs.height, '1080');
-  assert.equal(video.attrs.poster, '/media/workbox-floating-intake-fluent-20261028.poster.png');
+  assert.equal(video.attrs.poster, '/media/workbox-workbench-20261029.poster.png');
   assert.ok(video.attrs['aria-label']);
-  const base = '/media/workbox-floating-intake-fluent-20261028';
+  const base = '/media/workbox-workbench-20261029';
   assert.ok(tags.some(tag => tag.name === 'source' && tag.attrs.src === `${base}.mp4`));
   assert.ok(tags.some(tag => tag.name === 'track' && tag.attrs.src === `${base}.vtt` && tag.attrs.kind === 'captions' && tag.attrs.srclang === 'zh'));
   assert.ok(tags.some(tag => tag.name === 'a' && tag.attrs.href === `${base}.mp4`));
@@ -76,11 +76,21 @@ test('新旧安装包和 GitHub 备用源保持发布目录中的真实地址，
   const checksum = html.match(/<code\b[^>]*\bid=["']checksum["'][^>]*>([\s\S]*?)<\/code>/i)?.[1].trim();
   assert.equal(checksum, release.sha256);
   for (const id of ['copy-checksum', 'copy-status']) assert.ok(tags.some(tag => tag.attrs.id === id), id);
-  assert.match(html, /39,666,409 字节/);
+  assert.match(html, /39,680,913 字节（约 39\.7 MB）/);
+  assert.match(html, /最终原生验证/);
+  assert.match(html, /工作台增强版现已发布/);
   assert.match(html, /双主题界面版（历史）/);
-  assert.match(html, /长中文项目名与文件名换行看全/);
-  assert.match(html, /调整分栏后保持阅读位置/);
+  assert.match(html, /4e6dbe36faf3920ef637e0deca797950b596b72cc6f893bc9e78e302d0c5b548/);
+  assert.match(html, /下载工作台增强版/);
   assert.ok(links.includes('https://github.com/232577/workbox/blob/main/LICENSE'));
+});
+
+test('官网准确说明工作量资格、独立项目类型和响应式工作台边界', () => {
+  for (const phrase of ['排除在个人工作量计数之外', '保留“已交付”状态', '最早仍有效交付日',
+    '不会把旧项目记到今天', '撤销误记仍按原规则将项目退回“待交付”', '类型与个人工作量计数互不影响',
+    '自定义项目类型可独立增改、停用启用、筛选及右键或批量分配', '窄窗可折叠且保留数字徽章',
+    '左侧项目、右侧文档分栏与项目右键菜单']) assert.ok(html.includes(phrase), phrase);
+  assert.doesNotMatch(html, /原生 WinUI|已全部替换 UI 控件库/);
 });
 
 test('下载统计和赞助沿用实际脚本及关闭的付款配置', async () => {
@@ -266,7 +276,7 @@ test('所有者统计接入同一外观选择，保留私密登录与空数据�
 
 test('Hero使用实际浅深界面原图链接并保留有尺寸的文件夹流程图后备', () => {
   for (const theme of ['light','dark']) {
-    const path=`/media/workbox-desktop-${theme}-fluent-20261028.png`;
+    const path=`/media/workbox-desktop-${theme}-workbench-20261029.png`;
     assert.ok(tags.some(tag=>tag.name==='img'&&tag.attrs.src===path&&tag.attrs['data-desktop-image']===theme&&tag.attrs.width==='1120'&&tag.attrs.height==='760'));
     assert.ok(tags.some(tag=>tag.name==='a'&&tag.attrs.href===path));
   }

@@ -181,12 +181,12 @@ def test_management_updates_status_list_and_orb_without_waiting_for_timer(dialog
         controller.panel.show_notice('项目已设为已交付并计入今日统计。')
         controller.panel.show_today_deliveries()
         manager=controller.panel.today_dialog
-        assert controller.panel.today_button.text()=='今日交付 1'
+        assert controller.panel._today_caption=='今日工作量 1'
         select_project(manager,2)
         monkeypatch.setattr(QMessageBox,'question',lambda *args:QMessageBox.Yes)
         manager.void_button.click()
         wait(manager)
-        assert controller.panel.today_button.text()=='今日交付 0'
+        assert controller.panel._today_caption=='今日工作量 0'
         assert dialog.service.db.get_project(2)['status']=='待交付'
         assert controller.orb.count==2
         if delivered_filter:
@@ -200,7 +200,7 @@ def test_management_updates_status_list_and_orb_without_waiting_for_timer(dialog
         manager.restore_button.click()
         wait(manager)
         assert dialog.service.db.get_project(2)['status']=='待交付'
-        assert controller.panel.today_button.text()=='今日交付 1'
+        assert controller.panel._today_caption=='今日工作量 1'
         assert controller.orb.count==2
     finally:
         controller.shutdown()

@@ -465,7 +465,8 @@ class FloatingController(QObject):
         elif isinstance(worker.result, dict) and 'archive' in worker.result and 'project' in worker.result:
             event = next((row for row in self.service.db.delivery_events_for_project(worker.result['project']['id'])
                 if row['id'] == worker.result.get('event_id')), None)
-            counting = ('本次首次交付已计入今日统计。' if event and event['counted'] else
+            counting = ('该项目不计入个人工作量，交付记录已保留。' if event and not event.get('included_in_workload',True) else
+                        '本次首次交付已计入今日统计。' if event and event['counted'] else
                         '本次为补交，不增加今日首次交付数。' if event and event['counting_role'] == 'repeat' else
                         '交付记录已保存。')
             message = '项目工作文件已按原名归档，已设为已交付。' + counting + '\n' + worker.result['archive']['path']

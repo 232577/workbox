@@ -120,7 +120,7 @@ def test_silent_archive_progress_does_not_flash_ball_but_updates_delivery(contro
     assert len(refresh_calls) == 1, '实际新增归档后必须立即更新项目和交付统计'
     assert controller.service.get_project(1)['status'] == '已交付'
     assert controller.panel.current_project['status'] == '已交付'
-    assert controller.panel.today_button.text() == '今日交付 1'
+    assert controller.panel._today_caption == '今日工作量 1'
     assert package.exists()
     assert controller.monitor_timer.isActive()
 

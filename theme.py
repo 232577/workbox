@@ -108,11 +108,13 @@ QWidget#toolbar, QToolBar { background: %(surface)s; border: none; border-bottom
 QStatusBar, QWidget#statusbar { background: %(surface)s; color: %(muted)s; border-top: 1px solid %(border)s; }
 QStatusBar::item { border: none; }
 QFrame#sidebar { background: %(raised)s; border: none; border-right: 1px solid %(border)s; }
+QTabWidget#workbenchPages::pane { background: transparent; border: none; }
 QLabel, QCheckBox, QRadioButton { background: transparent; }
 QLabel#heading, QLabel#pageTitle { font-size: 26px; font-weight: 700; }
 QLabel#title, QLabel#sectionTitle { font-size: 18px; font-weight: 600; }
 QLabel#subtle, QLabel#muted { font-size: 12px; color: %(muted)s; }
 QLabel#brand { font-size: 24px; font-weight: 700; }
+QLabel#brandName { font-size: 18px; font-weight: 700; }
 QLabel#brandMark { background: %(accent)s; color: %(accent_text)s; font-size: 27px; font-weight: 700; border-radius: 8px; }
 QLabel#count, QLabel#emptyTitle { font-size: 22px; font-weight: 600; }
 QLabel#notice { color: %(ink)s; background: %(notice_bg)s; border: 1px solid %(border)s; border-radius: 8px; padding: 8px 10px; }

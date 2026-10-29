@@ -49,6 +49,19 @@ class LineEdit(_FluentLineEdit):
 class SpinBox(_FluentSpinBox):
     """保留 QSpinBox 范围、校验、步长和信号，编辑菜单沿用 Qt。"""
 
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        # 应用的通用输入框和工具按钮内边距会破坏 Fluent 的固定尺寸。
+        spin_rule = ('SpinBox, SpinBox:focus { min-height: 31px; '
+                     'padding: 0px 80px 0px 10px; } '
+                     'SpinBox:read-only, SpinBox[symbolVisible=false] '
+                     '{ padding: 0px 10px; }')
+        button_rule = ('SpinButton, SpinButton:focus { padding: 0px; '
+                       'min-height: 21px; min-width: 29px; }')
+        setCustomStyleSheet(self, spin_rule, spin_rule)
+        for control in (self.upButton, self.downButton):
+            setCustomStyleSheet(control, button_rule, button_rule)
+
     def _showContextMenu(self, position):
         _exec_native_edit_menu(self.lineEdit(), self.mapToGlobal(position))
 
@@ -87,7 +100,13 @@ def button(text: str, primary: bool | str = False) -> PushButton:
         widget.setObjectName(role)
     def native_menu_arrow(theme):
         arrow = FluentIcon.ARROW_DOWN.path(theme)
-        return ("PushButton::menu-indicator { subcontrol-origin: padding; "
+        navigation = ''
+        if role == 'nav':
+            # ToggleButton 的上游图标绘制依赖一致的文字留白；原生皮肤不能覆盖它。
+            navigation = ("PushButton#nav, ToggleButton#nav { min-width: 0px; text-align: center; }"
+                          "PushButton#nav[hasIcon=true], ToggleButton#nav[hasIcon=true] { padding: 5px 12px 6px 36px; }"
+                          "PushButton#nav[compactNav=true], ToggleButton#nav[compactNav=true] { padding: 5px 12px 6px 12px; }")
+        return navigation + ("PushButton::menu-indicator { subcontrol-origin: padding; "
                 "subcontrol-position: right center; width: 10px; height: 10px; "
                 f"image: url({arrow}); }}")
     setCustomStyleSheet(widget, native_menu_arrow(Theme.LIGHT), native_menu_arrow(Theme.DARK))

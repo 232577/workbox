@@ -1,8 +1,8 @@
 {
   "kind": "verified-screenshot-walkthrough",
-  "source_exe_sha256": "c1eac5a870941f4a81146c66104e1c6e5f38ba88afc8d8a4ad4b02ac0af2e489",
+  "source_exe_sha256": "d74777c1b3e512c4b02b2932924bc8b92c61cd7e762220522c86ebf4d917c521",
   "privacy_reviewed": true,
-  "description": "当前Fluent控件与完整中文名称截图步骤演示；隔离中性项目，首次目录画面为未提交的填写示例；旧媒体保留独立构建来源。",
+  "description": "当前工作台、项目类型和个人工作量截图步骤教程；真实中性隔离界面，计数表为原生元素局部截图，旧媒体保留各自构建来源。",
   "duration_seconds": 55,
   "files": {
     "public/media/workbox-quickstart-20261028.mp4": {
@@ -69,7 +69,32 @@
       "size": 995,
       "sha256": "22dd36a1bdae7038199d60e43e4299eb31f919d38daa63c89a677f3b1f48348e",
       "source_exe_sha256": "c1eac5a870941f4a81146c66104e1c6e5f38ba88afc8d8a4ad4b02ac0af2e489"
+    },
+    "public/media/workbox-desktop-light-workbench-20261029.png": {
+      "size": 101504,
+      "sha256": "4d12296d9dced75bd4baa8269e860e13c1daaac2d9f6c7cb3fd13262b4c059ef",
+      "source_exe_sha256": "d74777c1b3e512c4b02b2932924bc8b92c61cd7e762220522c86ebf4d917c521"
+    },
+    "public/media/workbox-desktop-dark-workbench-20261029.png": {
+      "size": 100202,
+      "sha256": "a790082ebcc5a9bd51097ac91989e3d22498329722fb603de186e950cbb8c327",
+      "source_exe_sha256": "d74777c1b3e512c4b02b2932924bc8b92c61cd7e762220522c86ebf4d917c521"
+    },
+    "public/media/workbox-workbench-20261029.mp4": {
+      "size": 1568279,
+      "sha256": "5322d20602e3a5219ae3ad5d9b21a07c2c00b0bae2ba45090d93bbd206a6de55",
+      "source_exe_sha256": "d74777c1b3e512c4b02b2932924bc8b92c61cd7e762220522c86ebf4d917c521"
+    },
+    "public/media/workbox-workbench-20261029.poster.png": {
+      "size": 333405,
+      "sha256": "71b2727a58aefada66e3b0546ab1598223ce5b5a4ce9ea7bdc5530843fdd6f2c",
+      "source_exe_sha256": "d74777c1b3e512c4b02b2932924bc8b92c61cd7e762220522c86ebf4d917c521"
+    },
+    "public/media/workbox-workbench-20261029.vtt": {
+      "size": 1056,
+      "sha256": "7c12c907d60ccc2e53f9bcf27eefc108e3ea97a6197057069e4343d5f5f0748a",
+      "source_exe_sha256": "d74777c1b3e512c4b02b2932924bc8b92c61cd7e762220522c86ebf4d917c521"
     }
   },
-  "active_video": "public/media/workbox-floating-intake-fluent-20261028.mp4"
+  "active_video": "public/media/workbox-workbench-20261029.mp4"
 }

@@ -75,7 +75,7 @@ def test_word_only_confirmation_archives_then_records_one_project_twice(controll
     assert service.get_project(1)['status'] == '已交付'
     summary=service.db.today_delivery_summary()
     assert (summary['project_count'],summary['event_count']) == (1,1)
-    assert panel.today_button.text() == '今日交付 1'
+    assert panel._today_caption == '今日工作量 1'
     assert '首次交付已计入今日统计' in panel.notice.text()
     events=service.db.delivery_events_for_project(1)
     archive=Path(events[0]['archive_path'])
@@ -88,8 +88,20 @@ def test_word_only_confirmation_archives_then_records_one_project_twice(controll
     wait(controller)
     summary=service.db.today_delivery_summary()
     assert (summary['project_count'],summary['event_count']) == (1,2)
-    assert panel.today_button.text() == '今日交付 1'
+    assert panel._today_caption == '今日工作量 1'
     assert '本次为补交，不增加今日首次交付数' in panel.notice.text()
+
+
+def test_excluded_project_confirmation_does_not_claim_personal_workload(controller):
+    panel, service = controller.panel, controller.service
+    service.set_project_delivery_counting([1],False,confirmed=True,reason='替他人交付')
+    deliver_work_files(panel)
+    wait(controller)
+    assert service.get_project(1)['status']=='已交付'
+    assert service.db.today_delivery_summary()['project_count']==0
+    assert '不计入个人工作量' in panel.notice.text()
+    assert '首次交付已计入' not in panel.notice.text()
+    assert panel._today_caption=='今日工作量 0'
 
 
 def test_prior_delivery_confirmation_feedback_does_not_claim_a_new_count(controller):
@@ -99,7 +111,7 @@ def test_prior_delivery_confirmation_feedback_does_not_claim_a_new_count(control
     deliver_work_files(controller.panel)
     wait(controller)
     assert service.get_project(1)['status']=='已交付'
-    assert controller.panel.today_button.text()=='今日交付 0'
+    assert controller.panel._today_caption=='今日工作量 0'
     assert '本次为补交，不增加今日首次交付数' in controller.panel.notice.text()
 
 
@@ -113,14 +125,14 @@ def test_cancel_word_delivery_does_not_archive_or_count(controller):
 
 def test_today_count_refresh_is_lightweight_and_dialog_is_modeless(controller, tmp_path, qapp):
     panel=controller.panel
-    assert panel.today_button.text()=='今日交付 0'
+    assert panel._today_caption=='今日工作量 0'
     resets=QSignalSpy(panel.project_list.model().modelReset)
     package=tmp_path/'甲平台.zip'
     with ZipFile(package,'w') as zip_file:
         for i in range(4): zip_file.writestr(f'{i}.txt','隔离资料')
     controller.service.import_zip(package)
     panel.refresh_archive_status()
-    assert panel.today_button.text()=='今日交付 1'
+    assert panel._today_caption=='今日工作量 1'
     assert resets.count()==0
     panel.today_button.click()
     qapp.processEvents()

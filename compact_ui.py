@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 from theme import apply_to, apply_scrollbar, stylesheet, install_theme, set_theme, current_mode, theme_signal
 from dialog_lifecycle import transient_dialog
 from ui_components import button as fluent_button, LineEdit as QLineEdit, CheckBox as QCheckBox, SpinBox as QSpinBox, ComboBox as QComboBox
-from qfluentwidgets import FluentIcon, InfoBadge, InfoLevel
+from qfluentwidgets import FluentIcon, InfoBadge, InfoLevel, InfoBadgePosition
 from database import STATUSES
 from floating import DropSurface
 from parser import ParsedProject
@@ -245,41 +245,82 @@ class CompactPanel(DropSurface, QWidget):
         self.setWindowIcon(app_icon())
         apply_to(self)
         self.setAcceptDrops(True)
-        self.resize(1120, 760)
+        self.resize(1200, 780)
         self.setMinimumSize(660, 480)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(22, 18, 22, 14)
+        shell = QHBoxLayout(self)
+        shell.setContentsMargins(0, 0, 0, 0)
+        shell.setSpacing(0)
+        self.navigation = QFrame()
+        self.navigation.setObjectName('sidebar')
+        self.navigation.setFixedWidth(164)
+        nav = QVBoxLayout(self.navigation)
+        nav.setContentsMargins(12, 20, 12, 14)
+        nav.setSpacing(8)
+        self.brand_row = QHBoxLayout()
+        self.brand_row.setContentsMargins(0, 0, 0, 0)
+        self.brand_row.setSpacing(6)
+        self.brand_icon = QLabel()
+        self.brand_icon.setPixmap(app_icon().pixmap(32, 32))
+        self.brand_icon.setFixedSize(32, 32)
+        self.brand_icon.setAccessibleName('WorkBox 品牌图标')
+        self.brand_icon.setToolTip('WorkBox 工作箱')
+        self.brand_row.addWidget(self.brand_icon, 0, Qt.AlignHCenter)
+        self.brand_label = label('WorkBox', 'brandName')
+        self.brand_row.addWidget(self.brand_label)
+        nav.addLayout(self.brand_row)
+        self.nav_caption = label('工作箱', 'subtle')
+        nav.addWidget(self.nav_caption)
+        nav.addSpacing(18)
+        self.nav_projects = button('项目', 'nav')
+        self.nav_projects.setIcon(FluentIcon.FOLDER)
+        self.nav_zip = button('ZIP 归档', 'nav')
+        self.nav_zip.setIcon(FluentIcon.ZIP_FOLDER)
+        self.nav_review = button('待核对', 'nav')
+        self.nav_review.setIcon(FluentIcon.EDIT)
+        self.today_button = button('今日工作量 0', 'nav')
+        self.today_button.setIcon(FluentIcon.CALENDAR)
+        self.today_button.setCheckable(False)
+        self.today_button.setAccessibleName('今日工作量')
+        self.today_button.clicked.connect(self.show_today_deliveries)
+        self.nav_controls = [(self.nav_projects, '项目'), (self.today_button, '今日工作量'),
+                             (self.nav_zip, 'ZIP 归档'), (self.nav_review, '待核对')]
+        for control, caption in self.nav_controls:
+            control.setMinimumWidth(0)
+            control.setToolTip(caption)
+            control.setAccessibleName(caption)
+            nav.addWidget(control)
+        nav.addStretch()
+        shell.addWidget(self.navigation)
+        self.today_count_badge = InfoBadge.info('0', self, self.today_button, InfoBadgePosition.TOP_RIGHT)
+        self.today_count_badge.setAccessibleName('今日工作量数值')
+        self.workbench = QWidget()
+        shell.addWidget(self.workbench, 1)
+        layout = self.workbench_layout = QVBoxLayout(self.workbench)
+        layout.setContentsMargins(24, 22, 24, 14)
         layout.setSpacing(14)
         top = QHBoxLayout()
         heading = QVBoxLayout()
         heading.setSpacing(4)
         brand_row = QHBoxLayout()
-        mark = QLabel()
-        mark.setPixmap(app_icon().pixmap(36, 36))
-        mark.setFixedSize(38, 38)
-        brand_row.addWidget(mark)
-        brand_row.addWidget(label('WorkBox 工作箱', 'heading'))
+        self.page_title = label('项目', 'pageTitle')
+        brand_row.addWidget(self.page_title)
         brand_row.addStretch()
         heading.addLayout(brand_row)
         self.summary = label('收项目建目录，ZIP 稳定后复制归档。', 'subtle')
         self.summary.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         heading.addWidget(self.summary)
         top.addLayout(heading, 1)
-        self.today_button = button('今日交付 0')
-        self.today_button.setMinimumWidth(112)
-        self.today_button.setIcon(FluentIcon.CALENDAR)
-        self.today_button.setAccessibleName('今日首次交付项目数')
-        self.today_button.setToolTip('按北京时间统计今日首次交付；同一项目终身只计首次有效交付，补交只保留记录。点击查看并管理今日交付项目。')
-        self.today_button.clicked.connect(self.show_today_deliveries)
-        top.addWidget(self.today_button)
         self.paste_button = button('粘贴消息')
         self.paste_button.setIcon(FluentIcon.PASTE)
         self.files_button = button('收进文件', True)
         self.files_button.setIcon(FluentIcon.ADD)
         self.root_button = button('归档目录')
-        self.settings_button = button('工作设置')
+        self.settings_button = button('设置', 'nav')
+        self.settings_button.setAccessibleName('设置')
+        self.settings_button.setCheckable(False)
         self.settings_button.setIcon(FluentIcon.SETTING)
-        self.appearance_button = button('外观')
+        self.appearance_button = button('外观', 'nav')
+        self.appearance_button.setCheckable(False)
         self.appearance_button.setAccessibleName('外观主题')
         self.appearance_button.setToolTip('切换浅色、深色或跟随系统，只改变界面外观。')
         theme_menu = QMenu(self.appearance_button)
@@ -297,8 +338,14 @@ class CompactPanel(DropSurface, QWidget):
         theme_menu.aboutToShow.connect(self.sync_theme_menu)
         theme_signal().connect(self.sync_theme_menu)
         self.sync_theme_menu()
-        top.addWidget(self.appearance_button)
-        top.addWidget(self.settings_button)
+        top.addWidget(self.paste_button)
+        top.addWidget(self.files_button)
+        self.nav_controls.extend([(self.settings_button, '设置'), (self.appearance_button, '外观')])
+        self.appearance_button.setIcon(FluentIcon.PALETTE)
+        for control, caption in self.nav_controls[-2:]:
+            control.setToolTip(caption)
+            control.setMinimumWidth(0)
+            nav.addWidget(control)
         layout.addLayout(top)
         self.search = QLineEdit()
         self.search.setPlaceholderText('搜索项目、备注、批次或 ZIP 名称')
@@ -307,9 +354,6 @@ class CompactPanel(DropSurface, QWidget):
         intake_bar = QHBoxLayout()
         intake_bar.setSpacing(10)
         intake_bar.addWidget(self.search, 1)
-        intake_bar.addWidget(self.paste_button)
-        intake_bar.addWidget(self.files_button)
-        intake_bar.addWidget(self.root_button)
         layout.addLayout(intake_bar)
         self.notice = label('', 'notice')
         self.notice.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
@@ -317,6 +361,14 @@ class CompactPanel(DropSurface, QWidget):
         self.notice.hide()
         layout.addWidget(self.notice)
         self.tabs = QTabWidget()
+        self.tabs.setObjectName('workbenchPages')
+        self.tabs.tabBar().hide()
+        self.nav_projects.clicked.connect(lambda: self.tabs.setCurrentIndex(0))
+        self.nav_zip.clicked.connect(lambda: self.tabs.setCurrentIndex(1))
+        self.nav_review.clicked.connect(lambda: self.tabs.setCurrentIndex(2))
+        for control in (self.nav_projects, self.nav_zip, self.nav_review):
+            control.clicked.connect(self.sync_navigation)
+        self.tabs.currentChanged.connect(self.sync_navigation)
         layout.addWidget(self.tabs, 1)
         projects = QWidget()
         pl = self.project_page_layout = QVBoxLayout(projects)
@@ -340,9 +392,10 @@ class CompactPanel(DropSurface, QWidget):
         self.batch_filter = QComboBox()
         self.batch_filter.setMaximumWidth(190)
         self.batch_filter.setAccessibleName('批次筛选')
-        filters.addWidget(self.batch_filter)
+        self.batch_filter.setMinimumWidth(0)
         pl.addLayout(filters)
-        views = QHBoxLayout()
+        views = self.project_filter_layout = QHBoxLayout()
+        views.setSpacing(8)
         self.archive_filter = QComboBox()
         self.archive_filter.setAccessibleName('项目归档筛选')
         for caption, value in (('日常项目', False), ('已归档', True), ('全部项目', None), ('已删除', 'deleted')):
@@ -353,16 +406,26 @@ class CompactPanel(DropSurface, QWidget):
             self.due_filter.addItem(caption, value)
         self.urgent_filter = QCheckBox('只看加急')
         self.bulk_mode = QCheckBox('批量选择')
+        self.type_filter = QComboBox()
+        self.type_filter.setAccessibleName('项目类型筛选')
+        self.type_filter.setMinimumWidth(0)
+        self.type_filter.setMaximumWidth(170)
+        self.type_filter.currentIndexChanged.connect(self.refresh)
         views.addWidget(self.archive_filter)
         views.addWidget(self.due_filter)
-        views.addWidget(self.urgent_filter)
-        views.addStretch()
-        views.addWidget(self.bulk_mode)
+        views.addWidget(self.type_filter)
+        views.addWidget(self.batch_filter)
+        pl.addLayout(views)
+        options = QHBoxLayout()
+        options.setSpacing(8)
+        options.addWidget(self.urgent_filter)
+        options.addStretch()
+        options.addWidget(self.bulk_mode)
         self.intake_log_button = button('收录记录')
         self.intake_log_button.setToolTip('查看普通文件收录结果、所属项目与判断依据')
         self.intake_log_button.clicked.connect(self.show_intake_log)
-        views.addWidget(self.intake_log_button)
-        pl.addLayout(views)
+        options.addWidget(self.intake_log_button)
+        pl.addLayout(options)
         self.project_list = ProjectList()
         self.project_list.setObjectName('projectList')
         self.project_list.setMinimumHeight(72)
@@ -399,6 +462,9 @@ class CompactPanel(DropSurface, QWidget):
         self.project_status_badge.hide()
         document_heading.addWidget(self.project_status_badge, 0, Qt.AlignTop)
         document_layout.addLayout(document_heading)
+        self.project_type_label = label('', 'subtle')
+        self.project_type_label.hide()
+        document_layout.addWidget(self.project_type_label)
         from project_documents_ui import ProjectDocumentsPane
         self.document_pane = ProjectDocumentsPane(service)
         self.document_pane.folder_requested.connect(self.folder_requested)
@@ -448,6 +514,7 @@ class CompactPanel(DropSurface, QWidget):
         self.sources_button = button('监视详情')
         zip_head.addWidget(self.sources_button)
         zip_head.addWidget(self.scan_button)
+        zip_head.addWidget(self.root_button)
         zl.addLayout(zip_head)
         self.archive_status = label('', 'subtle')
         self.archive_status.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
@@ -485,7 +552,7 @@ class CompactPanel(DropSurface, QWidget):
         rl.addLayout(review_row)
         self.tabs.addTab(pending, '待核对')
         footer = QHBoxLayout()
-        footer_hint = label('后台运行保留托盘；退出将停止自动归档。', 'subtle')
+        footer_hint = self.footer_hint = label('后台运行保留托盘；退出将停止自动归档。', 'subtle')
         footer_hint.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         footer_hint.setToolTip(footer_hint.text())
         footer.addWidget(footer_hint, 1)
@@ -542,6 +609,36 @@ class CompactPanel(DropSurface, QWidget):
         for view in (self.project_list, self.zip_list, self.receipt_list):
             view.verticalScrollBar().sliderReleased.connect(self._finish_scroll)
         self.refresh()
+        self.sync_navigation()
+
+    def sync_navigation(self, *_):
+        index = self.tabs.currentIndex()
+        self.page_title.setText(('项目', 'ZIP 归档', '待核对')[max(0, index)])
+        for position, control in enumerate((self.nav_projects, self.nav_zip, self.nav_review)):
+            control.setChecked(position == index)
+
+    def refresh_type_controls(self):
+        selected_type = self.type_filter.currentData()
+        types = self.service.list_project_types(include_inactive=True) if hasattr(self.service, 'list_project_types') else []
+        with QSignalBlocker(self.type_filter):
+            self.type_filter.clear()
+            self.type_filter.addItem('所有类型', None)
+            self.type_filter.addItem('未分类', 0)
+            for item in types:
+                inactive = ' · 已停用' if not item['active'] else ''
+                self.type_filter.addItem(f"{item['name']} ({item.get('project_count', 0)}){inactive}", item['id'])
+                self.type_filter.setItemData(self.type_filter.count() - 1, item['name'] + inactive, Qt.ToolTipRole)
+            self.type_filter.setCurrentIndex(max(0, self.type_filter.findData(selected_type)))
+        action = self.bulk_action.currentData()
+        with QSignalBlocker(self.bulk_action):
+            for index in reversed(range(self.bulk_action.count())):
+                if str(self.bulk_action.itemData(index)).startswith('type:'):
+                    self.bulk_action.removeItem(index)
+            self.bulk_action.addItem('项目类型：未分类', 'type:0')
+            for item in types:
+                if item['active']:
+                    self.bulk_action.addItem('项目类型：' + item['name'], f"type:{item['id']}")
+            self.bulk_action.setCurrentIndex(max(0, self.bulk_action.findData(action)))
 
     def refresh(self, *_):
         if any(view.verticalScrollBar().isSliderDown() for view in (self.project_list, self.zip_list, self.receipt_list)):
@@ -550,6 +647,7 @@ class CompactPanel(DropSurface, QWidget):
         self._refresh_after_drag = False
         self.refreshing = True
         try:
+            self.refresh_type_controls()
             batch = self.batch_filter.currentData()
             self.batch_filter.blockSignals(True)
             self.batch_filter.clear()
@@ -559,12 +657,13 @@ class CompactPanel(DropSurface, QWidget):
             self.batch_filter.setCurrentIndex(max(0, self.batch_filter.findData(batch)))
             self.batch_filter.blockSignals(False)
             status = next((s for s, b in self.status_buttons.items() if b.isChecked()), None)
-            scope = (self.search.text(), status, self.batch_filter.currentData(), self.archive_filter.currentData(), self.due_filter.currentData(), self.urgent_filter.isChecked())
+            scope = (self.search.text(), status, self.batch_filter.currentData(), self.archive_filter.currentData(), self.due_filter.currentData(), self.urgent_filter.isChecked(), self.type_filter.currentData())
             deleted_view = scope[3] == 'deleted'
             if deleted_view and self.bulk_mode.isChecked():
                 self.bulk_mode.setChecked(False)
+            type_options = {'type_id': scope[6]} if scope[6] is not None else {}
             rows = self.service.list_projects(scope[0], scope[1], scope[2], scope[5],
-                archived=None if deleted_view else scope[3], due_filter=scope[4], deleted=deleted_view)
+                archived=None if deleted_view else scope[3], due_filter=scope[4], deleted=deleted_view, **type_options)
             populate(self.project_list, rows, self.project_caption, clear_selection=scope != self.project_scope)
             self.project_scope = scope
             self.empty.setVisible(not rows)
@@ -587,6 +686,7 @@ class CompactPanel(DropSurface, QWidget):
             receipts = self.service.pending_receipts()
             populate(self.receipt_list, receipts, lambda r: r['raw_text'][:70].replace('\n', ' ') + '\n' + r['reason'])
             self.tabs.setTabText(2, f'待核对 {len(receipts)}' if receipts else '待核对')
+            self.nav_review.setToolTip(f'待核对 {len(receipts)}' if receipts else '待核对')
             counts = self.service.db.counts()
             self.summary.setText(f"共 {counts['projects']} 个项目 · 当前 {len(rows)} 项 · {counts['zips']} 个交付包")
             if deleted_view:
@@ -610,8 +710,12 @@ class CompactPanel(DropSurface, QWidget):
 
     def refresh_today_count(self):
         summary = self.service.db.today_delivery_summary()
-        self.today_button.setText(f"今日交付 {summary['project_count']}")
-        self.today_button.setToolTip(f"{summary['day']}（北京时间）：{summary['project_count']} 个项目首次交付，{summary['event_count']} 次交付记录。每个项目终身只计首次有效交付；补交只保留记录。点击查看并管理今日项目。")
+        self._today_caption = f"今日工作量 {summary['project_count']}"
+        self.today_count_badge.setText(str(summary['project_count']) if summary['project_count']<100 else '99+')
+        self.today_count_badge.setToolTip(self._today_caption)
+        self.today_button.setText('' if self.width() < 900 else self._today_caption)
+        self.resize_navigation()
+        self.today_button.setToolTip(f"{summary['day']}（北京时间）：{summary['project_count']} 个首次交付项目计入个人工作量，{summary['event_count']} 次交付记录。每个项目只计首次有效交付；补交只保留记录。代交项目可排除个人工作量并随时恢复，项目的已交付状态不变。点击查看并管理。")
 
     def show_today_deliveries(self):
         from delivery_ui import TodayDeliveryDialog
@@ -637,12 +741,13 @@ class CompactPanel(DropSurface, QWidget):
         if not ids:
             self.show_notice('这次收录的项目已不存在，未跳转到其他项目。')
             return False
-        controls = (self.search, self.batch_filter, self.archive_filter, self.due_filter,
+        controls = (self.search, self.batch_filter, self.archive_filter, self.due_filter, self.type_filter,
                     self.urgent_filter, self.bulk_mode, *self.status_buttons.values())
         blockers = [QSignalBlocker(control) for control in controls]
         self.search.clear()
         self.status_buttons[None].setChecked(True)
         self.due_filter.setCurrentIndex(0)
+        self.type_filter.setCurrentIndex(0)
         self.urgent_filter.setChecked(False)
         self.archive_filter.setCurrentIndex(2 if any(all_projects[pid].get('archived_at') for pid in ids) else 0)
         batches = {all_projects[pid]['batch_id'] for pid in ids}
@@ -676,6 +781,8 @@ class CompactPanel(DropSurface, QWidget):
             self.current_project = self.service.get_project(pid) if pid is not None else None
             p = self.current_project
             self.project_title.setText(p['name'] if p else '选择一个项目，查看对应文档')
+            self.project_type_label.setText('类型 · ' + (p.get('project_type_name') or '未分类') if p else '')
+            self.project_type_label.setVisible(p is not None)
             self.project_status_badge.setVisible(p is not None)
             if p is not None:
                 self.project_status_badge.setText(p['status'])
@@ -751,6 +858,25 @@ class CompactPanel(DropSurface, QWidget):
         urgent = add(menu, '加急', lambda checked: self.change_urgent(project_id, checked), editable)
         urgent.setCheckable(True)
         urgent.setChecked(bool(project['urgent']))
+        if hasattr(self.service, 'list_project_types'):
+            type_menu = menu._type_menu = QMenu('项目类型', menu)
+            menu.addMenu(type_menu)
+            type_menu.setEnabled(editable and not project.get('deleted_at'))
+            type_group = type_menu._type_group = QActionGroup(type_menu)
+            type_group.setExclusive(True)
+            available_types = self.service.list_project_types()
+            choices = [{'id': None, 'name': '未分类'}, *available_types]
+            current_type = project.get('project_type_id')
+            if current_type and not any(item['id'] == current_type for item in available_types):
+                choices.append({'id': current_type, 'name': (project.get('project_type_name') or '原类型') + '（已停用）', 'inactive': True})
+            for kind in choices:
+                item = add(type_menu, kind['name'].replace('&','&&'),
+                           lambda _checked=False, type_id=kind['id']: self.assign_project_types([project_id], type_id),
+                           editable and not kind.get('inactive'))
+                item.setData(kind['id'])
+                item.setCheckable(True)
+                item.setChecked(kind['id'] == current_type)
+                type_group.addAction(item)
         menu.addSeparator()
         add(menu, '查看备注与日期…' if project.get('archived_at') else '备注与日期…',
             lambda: self.edit_details(project_id), active)
@@ -835,6 +961,8 @@ class CompactPanel(DropSurface, QWidget):
     @staticmethod
     def project_caption(project):
         parts = [project['status'], project['batch_name']]
+        if project.get('project_type_name'):
+            parts.append('类型：' + project['project_type_name'])
         if project.get('due_date'):
             due = date.fromisoformat(project['due_date'])
             days = (date.today() - due).days
@@ -895,6 +1023,10 @@ class CompactPanel(DropSurface, QWidget):
         if not ids or self.busy or self.archive_filter.currentData() == 'deleted':
             return
         action = self.bulk_action.currentData()
+        if action.startswith('type:'):
+            type_id = int(action.split(':', 1)[1])
+            self.assign_project_types(ids, type_id or None)
+            return
         if action.startswith('status:'):
             options = {'status': action.split(':', 1)[1]}
         elif action in ('urgent', 'normal'):
@@ -902,6 +1034,23 @@ class CompactPanel(DropSurface, QWidget):
         else:
             options = {'archived': action == 'archive'}
         self.request_bulk(ids, options)
+
+    def assign_project_types(self, project_ids, type_id):
+        if self.busy or not project_ids:
+            return
+        # 服务层原子校验仍是最终边界，触发时重新检查操作对象。
+        if any(not self._action_project(pid, editable=True) or self.service.get_project(pid).get('deleted_at')
+               for pid in project_ids):
+            self.show_notice('项目类型未保存：请先恢复已归档或已删除的项目。')
+            return
+        try:
+            self.service.set_project_types(project_ids, type_id)
+        except (OSError, ValueError, RuntimeError, sqlite3.Error, KeyError) as error:
+            self.show_notice('项目类型未保存：' + str(error))
+            return
+        self.refresh()
+        self.data_changed.emit()
+        self.show_notice(f'已更新 {len(project_ids)} 个项目的类型。')
 
     def request_bulk(self, ids, options):
         if self.busy:
@@ -1057,6 +1206,10 @@ class CompactPanel(DropSurface, QWidget):
             if dialog.exec() == QDialog.Accepted:
                 self.refresh()
                 self.show_notice('工作设置已保存。已有文件、历史判定和交付记录保留。')
+            elif getattr(dialog, 'types_changed', False):
+                self.refresh()
+            if getattr(dialog, 'types_changed', False):
+                self.data_changed.emit()
 
     def show_quick_start(self):
         from onboarding_ui import QuickStartDialog
@@ -1119,9 +1272,28 @@ class CompactPanel(DropSurface, QWidget):
             self.show_notice('外观未保存，原主题保留：' + str(error))
         self.sync_theme_menu()
 
+    def resize_navigation(self):
+        narrow = self.width() < 900
+        self.today_count_badge.setVisible(narrow)
+        caption = getattr(self, '_today_caption', '今日工作量 0')
+        control_width = max(140, self.today_button.fontMetrics().horizontalAdvance(caption) + 52)
+        self.navigation.setFixedWidth(56 if narrow else control_width + 24)
+        self.navigation.layout().setContentsMargins(6 if narrow else 12, 14, 6 if narrow else 12, 14)
+        self.brand_label.setVisible(not narrow)
+        self.nav_caption.setVisible(not narrow)
+        for control, caption in self.nav_controls:
+            control.setProperty('compactNav', narrow)
+            control.setText('' if narrow else (getattr(self, '_today_caption', caption) if control is self.today_button else caption))
+            control.setFixedWidth(42 if narrow else control_width)
+            control.style().unpolish(control)
+            control.style().polish(control)
+
     def resizeEvent(self, event):
         # 小窗口优先保留操作控件和可滚动项目列表。
         compact = self.height() < 560
+        narrow = self.width() < 900
+        self.resize_navigation()
+        self.footer_hint.setVisible(not narrow)
         density_changed = self.property('dense') != compact
         self.setProperty('dense', compact)
         self.document_pane.set_compact(compact)
@@ -1135,9 +1307,9 @@ class CompactPanel(DropSurface, QWidget):
         self.document_card_layout.setContentsMargins(8 if compact else 14, 6 if compact else 12,
                                                     8 if compact else 14, 6 if compact else 10)
         self.document_card_layout.setSpacing(4 if compact else 10)
-        self.layout().setSpacing(4 if compact else 14)
-        self.layout().setContentsMargins(12 if compact else 22, 8 if compact else 18,
-                                       12 if compact else 22, 8 if compact else 14)
+        self.workbench_layout.setSpacing(4 if compact else 14)
+        self.workbench_layout.setContentsMargins(10 if narrow else 24, 8 if compact else 22,
+                                               10 if narrow else 24, 8 if compact else 14)
         if density_changed:
             apply_to(self)
         super().resizeEvent(event)
@@ -1337,6 +1509,7 @@ class DirectorySettingsDialog(QDialog):
     def __init__(self, service, parent=None):
         super().__init__(parent)
         self.service = service
+        self.types_changed = False
         self.setWindowTitle('工作目录与收录规则设置')
         apply_to(self)
         available = self.screen().availableGeometry()
@@ -1410,6 +1583,11 @@ class DirectorySettingsDialog(QDialog):
         row.addStretch()
         layout.addLayout(row)
         layout.addWidget(label('按单个项目统计实际文件，包含子目录，不计文件夹本身。\n规则用于新收录、新版本；已有归档保留原判定和历史记录。\n新目录用于以后创建和归档，已有文件不搬迁。原件保留，退出后暂停监视。', 'subtle', True))
+        self.project_types_button = button('管理项目类型…')
+        self.project_types_button.setEnabled(hasattr(service, 'list_project_types'))
+        self.project_types_button.clicked.connect(self.manage_project_types)
+        layout.addWidget(self.project_types_button)
+        layout.addWidget(label('项目类型单独保存。新增、改名或停用立即生效，不受本设置窗口的取消影响。', 'subtle', True))
         layout.addStretch()
         self.error = label('', 'subtle', True)
         outer.addWidget(self.error)
@@ -1427,6 +1605,15 @@ class DirectorySettingsDialog(QDialog):
         actions.addWidget(cancel)
         actions.addWidget(save)
         outer.addLayout(actions)
+
+    def manage_project_types(self):
+        from project_types_ui import ProjectTypesDialog
+        with transient_dialog(ProjectTypesDialog(self.service, self)) as dialog:
+            dialog.types_changed.connect(self.mark_types_changed)
+            dialog.exec()
+
+    def mark_types_changed(self):
+        self.types_changed = True
 
     def browse(self, edit):
         path = QFileDialog.getExistingDirectory(self, '选择本地目录', edit.text())

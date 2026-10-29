@@ -154,6 +154,35 @@ BEGIN SELECT RAISE(ABORT,'历史交付统计规则仅允许追加，不能修改
 CREATE TRIGGER IF NOT EXISTS project_delivery_history_markers_no_delete
     BEFORE DELETE ON project_delivery_history_markers
 BEGIN SELECT RAISE(ABORT,'历史交付统计规则仅允许追加，不能删除。'); END;
+CREATE TABLE IF NOT EXISTS project_delivery_count_actions (
+    id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    included INTEGER NOT NULL CHECK(included IN (0,1)),
+    reason TEXT NOT NULL DEFAULT '' CHECK(length(reason)<=1000),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_project_delivery_count_actions_project
+    ON project_delivery_count_actions(project_id,id DESC);
+CREATE TRIGGER IF NOT EXISTS project_delivery_count_actions_no_update
+    BEFORE UPDATE ON project_delivery_count_actions
+BEGIN SELECT RAISE(ABORT,'任务量资格记录仅允许追加，不能修改。'); END;
+CREATE TRIGGER IF NOT EXISTS project_delivery_count_actions_no_delete
+    BEFORE DELETE ON project_delivery_count_actions
+BEGIN SELECT RAISE(ABORT,'任务量资格记录仅允许追加，不能删除。'); END;
+CREATE TABLE IF NOT EXISTS project_types (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL CHECK(length(trim(name)) BETWEEN 1 AND 40),
+    normalized_name TEXT NOT NULL UNIQUE,
+    active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE TABLE IF NOT EXISTS project_type_links (
+    project_id INTEGER PRIMARY KEY REFERENCES projects(id),
+    type_id INTEGER NOT NULL REFERENCES project_types(id),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_project_type_links_type ON project_type_links(type_id);
 CREATE TABLE IF NOT EXISTS delivery_event_migrations (
     name TEXT PRIMARY KEY
 );
@@ -249,7 +278,10 @@ class Database:
                     first_at=event['first_at'], repeat_count=0, voided_count=0,
                     last_action_id=event['last_action_id'], last_action=event['last_action'],
                     management_reason=event['management_reason'], managed_at=event['managed_at'],
-                    prior_delivery=event['prior_delivery'], prior_delivery_reason=event['prior_delivery_reason'])
+                    prior_delivery=event['prior_delivery'], prior_delivery_reason=event['prior_delivery_reason'],
+                    included_in_workload=event['included_in_workload'],
+                    count_exclusion_reason=event['count_exclusion_reason'],
+                    count_action_id=event['count_action_id'], count_managed_at=event['count_managed_at'])
             projects[pid]['delivery_count'] += 1
             projects[pid]['counted'] |= event['counted']
             projects[pid]['repeat_count'] += event['counting_role'] == 'repeat'
@@ -302,21 +334,67 @@ class Database:
             SELECT e.*,CASE WHEN p.project_id IS NOT NULL THEN NULL ELSE f.occurred_at END AS first_at,
                 CASE WHEN e.voided=1 THEN 'voided' WHEN p.project_id IS NOT NULL THEN 'repeat'
                     WHEN e.id=f.id THEN 'first' ELSE 'repeat' END AS counting_role,
-                p.project_id IS NOT NULL AS prior_delivery,COALESCE(p.reason,'') AS prior_delivery_reason
+                p.project_id IS NOT NULL AS prior_delivery,COALESCE(p.reason,'') AS prior_delivery_reason,
+                COALESCE(c.included,1) AS included_in_workload,
+                CASE WHEN c.included=0 THEN c.reason ELSE '' END AS count_exclusion_reason,
+                c.id AS count_action_id,c.created_at AS count_managed_at
             FROM effective e LEFT JOIN firsts f ON f.project_id=e.project_id
-                LEFT JOIN prior_rules p ON p.project_id=e.project_id''' + where +
+                LEFT JOIN prior_rules p ON p.project_id=e.project_id
+                LEFT JOIN project_delivery_count_actions c ON c.id=(
+                    SELECT MAX(id) FROM project_delivery_count_actions WHERE project_id=e.project_id)''' + where +
                 ' ORDER BY julianday(e.occurred_at) DESC,e.id DESC', parameters).fetchall()
         events = []
         for row in rows:
             event = dict(row)
             event['voided'] = bool(event['voided'])
             event['prior_delivery'] = bool(event['prior_delivery'])
-            event['counted'] = event['counting_role'] == 'first'
+            event['included_in_workload'] = bool(event['included_in_workload'])
+            event['counted'] = event['counting_role'] == 'first' and event['included_in_workload']
             events.append(event)
         return dict(day=current, project_count=sum(event['counted'] for event in events),
             event_count=len(events), repeat_count=sum(event['counting_role'] == 'repeat' for event in events),
             voided_count=sum(event['voided'] for event in events),
             valid_event_count=sum(not event['voided'] for event in events), events=events)
+
+    @staticmethod
+    def _validated_project_ids(project_ids):
+        if (not isinstance(project_ids, (list, tuple, set)) or not 1 <= len(project_ids) <= 500
+                or any(type(pid) is not int or pid <= 0 for pid in project_ids)
+                or len(set(project_ids)) != len(project_ids)):
+            raise ValueError('请选择 1 至 500 个不同的有效项目。')
+        return sorted(project_ids)
+
+    def set_project_delivery_counting(self, project_ids, included: bool, *, confirmed: bool = False,
+                                      reason: str = '') -> dict:
+        """只追加项目的个人任务量资格；交付事实、项目状态与文件保持不变。"""
+        selected = self._validated_project_ids(project_ids)
+        if type(included) is not bool or type(confirmed) is not bool:
+            raise ValueError('任务量资格和确认标记必须是是/否。')
+        if not isinstance(reason, str) or len(reason) > 1000:
+            raise ValueError('任务量调整说明不能超过 1000 个字符。')
+        result = dict(changed_count=0, project_ids=selected, changed_project_ids=[],
+                      included=included, confirmed=confirmed)
+        if not confirmed:
+            return result
+        with self.connect() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            marks = ','.join('?' for _ in selected)
+            existing = connection.execute(f'SELECT id FROM projects WHERE id IN ({marks})', selected).fetchall()
+            if len(existing) != len(selected):
+                raise ValueError('所选项目不存在，未修改任何任务量资格。')
+            current = {row['project_id']: bool(row['included']) for row in connection.execute(f'''
+                SELECT c.project_id,c.included FROM project_delivery_count_actions c
+                WHERE c.project_id IN ({marks}) AND c.id=(
+                    SELECT MAX(id) FROM project_delivery_count_actions WHERE project_id=c.project_id)
+                ''', selected)}
+            for pid in selected:
+                if current.get(pid, True) == included:
+                    continue
+                connection.execute('INSERT INTO project_delivery_count_actions(project_id,included,reason) VALUES (?,?,?)',
+                                   (pid, int(included), reason.strip()))
+                result['changed_project_ids'].append(pid)
+        result['changed_count'] = len(result['changed_project_ids'])
+        return result
 
     def set_prior_delivery_projects(self, project_ids, *, effective_day: date, active: bool = True,
                                     confirmed: bool = False, reason: str = '') -> dict:
@@ -824,11 +902,107 @@ class Database:
             """, (zip_id, project_id))
             self._append_delivery_event(connection, project_id, 'manual-zip', record['path'], zip_id=zip_id)
 
+    @staticmethod
+    def _project_type_id(type_id):
+        if type(type_id) is not int or type_id <= 0:
+            raise ValueError('项目类型编号必须是正整数。')
+        return type_id
+
+    @staticmethod
+    def _project_type_name(name):
+        if not isinstance(name, str) or not 1 <= len(name.strip()) <= 40 or name.strip() == '未分类':
+            raise ValueError('项目类型名称需要 1 至 40 个字符，且不能使用“未分类”。')
+        return name.strip()
+
+    @staticmethod
+    def _project_type_row(connection, type_id):
+        row = connection.execute('''SELECT t.id,t.name,t.active,
+            (SELECT COUNT(*) FROM project_type_links l WHERE l.type_id=t.id AND NOT EXISTS
+                (SELECT 1 FROM project_deletions x WHERE x.project_id=l.project_id)) AS project_count
+            FROM project_types t WHERE t.id=?''', (type_id,)).fetchone()
+        if row is None:
+            raise KeyError('项目类型不存在，请刷新列表。')
+        return dict(row) | {'active': bool(row['active'])}
+
+    def list_project_types(self, *, include_inactive: bool = False) -> list[dict]:
+        if type(include_inactive) is not bool:
+            raise ValueError('停用类型筛选必须为是或否。')
+        with self.connect() as connection:
+            rows = connection.execute('SELECT id FROM project_types' +
+                ('' if include_inactive else ' WHERE active=1') + ' ORDER BY id').fetchall()
+            return [self._project_type_row(connection, row['id']) for row in rows]
+
+    def create_project_type(self, name: str) -> dict:
+        name = self._project_type_name(name)
+        with self.connect() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            try:
+                type_id = connection.execute('INSERT INTO project_types(name,normalized_name) VALUES (?,?)',
+                                             (name, name.casefold())).lastrowid
+            except sqlite3.IntegrityError as error:
+                raise ValueError('同名项目类型已存在，请使用其他名称或恢复原类型。') from error
+            return self._project_type_row(connection, type_id)
+
+    def rename_project_type(self, type_id: int, name: str) -> dict:
+        self._project_type_id(type_id)
+        name = self._project_type_name(name)
+        with self.connect() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            current = self._project_type_row(connection, type_id)
+            if current['name'] != name:
+                try:
+                    connection.execute('''UPDATE project_types SET name=?,normalized_name=?,
+                        updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?''',
+                        (name, name.casefold(), type_id))
+                except sqlite3.IntegrityError as error:
+                    raise ValueError('同名项目类型已存在，请使用其他名称。') from error
+            return self._project_type_row(connection, type_id)
+
+    def set_project_type_active(self, type_id: int, active: bool) -> dict:
+        self._project_type_id(type_id)
+        if type(active) is not bool:
+            raise ValueError('项目类型启用标记必须为是或否。')
+        with self.connect() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            current = self._project_type_row(connection, type_id)
+            if current['active'] != active:
+                connection.execute('''UPDATE project_types SET active=?,
+                    updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?''', (int(active), type_id))
+            return self._project_type_row(connection, type_id)
+
+    def set_project_types(self, project_ids, type_id: int | None) -> dict:
+        selected = self._validated_project_ids(project_ids)
+        if type_id is not None:
+            self._project_type_id(type_id)
+        result = dict(project_ids=selected, type_id=type_id, changed_count=0, changed_project_ids=[])
+        with getattr(self, '_operation_lock', nullcontext()), self.connect() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            self._assert_projects_editable(connection, *selected)
+            if type_id is not None:
+                kind = self._project_type_row(connection, type_id)
+                if not kind['active']:
+                    raise ValueError('该项目类型已停用，请先恢复类型或选择其他类型。')
+            marks = ','.join('?' for _ in selected)
+            current = {row['project_id']: row['type_id'] for row in connection.execute(
+                f'SELECT project_id,type_id FROM project_type_links WHERE project_id IN ({marks})', selected)}
+            for pid in selected:
+                if current.get(pid) == type_id:
+                    continue
+                if type_id is None:
+                    connection.execute('DELETE FROM project_type_links WHERE project_id=?', (pid,))
+                else:
+                    connection.execute('''INSERT INTO project_type_links(project_id,type_id) VALUES (?,?)
+                        ON CONFLICT(project_id) DO UPDATE SET type_id=excluded.type_id,
+                        updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')''', (pid, type_id))
+                result['changed_project_ids'].append(pid)
+        result['changed_count'] = len(result['changed_project_ids'])
+        return result
+
     def list_projects(
         self, query: str = "", status: str | None = None,
         batch_id: int | None = None, urgent_only: bool = False,
         *, archived: bool | None = False, due_filter: str | None = None,
-        today: date | None = None, deleted: bool | None = False,
+        today: date | None = None, deleted: bool | None = False, type_id: int | None = None,
     ) -> list[dict]:
         clauses = ["1=1"]
         parameters: list = []
@@ -843,6 +1017,14 @@ class Database:
             raise ValueError('归档筛选必须为是、否或全部。')
         if deleted is not None and type(deleted) is not bool:
             raise ValueError('删除筛选必须为是、否或全部。')
+        if type_id is not None:
+            if type(type_id) is not int or type_id < 0:
+                raise ValueError('项目类型筛选必须为全部、未分类或有效类型编号。')
+            if type_id == 0:
+                clauses.append('tl.type_id IS NULL')
+            else:
+                clauses.append('tl.type_id=?')
+                parameters.append(type_id)
         if deleted is not None:
             clauses.append('x.deleted_at IS NOT NULL' if deleted else 'x.deleted_at IS NULL')
         if archived is not None and deleted is not True:
@@ -876,12 +1058,15 @@ class Database:
         if urgent_only:
             clauses.append("p.urgent=1")
         sql = """SELECT p.*, b.name AS batch_name, COALESCE(d.notes,'') AS notes,
-            d.due_date, d.archived_at, x.deleted_at,
+            d.due_date, d.archived_at, x.deleted_at,tl.type_id AS project_type_id,
+            COALESCE(pt.name,'') AS project_type_name,
             (SELECT COUNT(*) FROM zip_project_links l WHERE l.project_id=p.id) AS zip_count,
             (SELECT filename FROM zips z JOIN zip_project_links l ON l.zip_id=z.id WHERE l.project_id=p.id ORDER BY z.id DESC LIMIT 1) AS zip_name
             FROM projects p JOIN batches b ON b.id=p.batch_id
             LEFT JOIN project_details d ON d.project_id=p.id
-            LEFT JOIN project_deletions x ON x.project_id=p.id WHERE """
+            LEFT JOIN project_deletions x ON x.project_id=p.id
+            LEFT JOIN project_type_links tl ON tl.project_id=p.id
+            LEFT JOIN project_types pt ON pt.id=tl.type_id WHERE """
         sql += " AND ".join(clauses) + " ORDER BY p.urgent DESC, d.due_date IS NULL, d.due_date ASC, p.id DESC"
         with self.connect() as connection:
             return [dict(row) for row in connection.execute(sql, parameters)]
@@ -899,10 +1084,13 @@ class Database:
         with self.connect() as connection:
             row = connection.execute("""
                 SELECT p.*, b.name AS batch_name, m.raw_text,
-                    COALESCE(d.notes,'') AS notes, d.due_date, d.archived_at, x.deleted_at FROM projects p
+                    COALESCE(d.notes,'') AS notes, d.due_date, d.archived_at, x.deleted_at,
+                    tl.type_id AS project_type_id,COALESCE(pt.name,'') AS project_type_name FROM projects p
                 JOIN batches b ON b.id=p.batch_id JOIN messages m ON m.id=p.message_id
                 LEFT JOIN project_details d ON d.project_id=p.id
                 LEFT JOIN project_deletions x ON x.project_id=p.id
+                LEFT JOIN project_type_links tl ON tl.project_id=p.id
+                LEFT JOIN project_types pt ON pt.id=tl.type_id
                 WHERE p.id=?
             """, (project_id,)).fetchone()
             if row is None:

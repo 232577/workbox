@@ -29,11 +29,30 @@ class WorkBox:
         self, query: str = "", status: str | None = None,
         batch_id: int | None = None, urgent_only: bool = False,
         *, archived: bool | None = False, due_filter: str | None = None, today=None,
-        deleted: bool | None = False,
+        deleted: bool | None = False, type_id: int | None = None,
     ) -> list[dict]:
         return self.db.list_projects(query, status, batch_id, urgent_only,
                                      archived=archived, due_filter=due_filter, today=today,
-                                     deleted=deleted)
+                                     deleted=deleted, type_id=type_id)
+
+    def set_project_delivery_counting(self, project_ids, included: bool, *, confirmed: bool = False,
+                                      reason: str = '') -> dict:
+        return self.db.set_project_delivery_counting(project_ids, included, confirmed=confirmed, reason=reason)
+
+    def list_project_types(self, *, include_inactive: bool = False) -> list[dict]:
+        return self.db.list_project_types(include_inactive=include_inactive)
+
+    def create_project_type(self, name: str) -> dict:
+        return self.db.create_project_type(name)
+
+    def rename_project_type(self, type_id: int, name: str) -> dict:
+        return self.db.rename_project_type(type_id, name)
+
+    def set_project_type_active(self, type_id: int, active: bool) -> dict:
+        return self.db.set_project_type_active(type_id, active)
+
+    def set_project_types(self, project_ids, type_id: int | None) -> dict:
+        return self.db.set_project_types(project_ids, type_id)
 
     def delete_project(self, project_id: int, *, confirmed: bool = False) -> dict:
         return self.db.delete_project(project_id, confirmed=confirmed)

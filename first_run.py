@@ -13,6 +13,7 @@ _WORKSPACE_TABLES = frozenset({
 _HISTORY_TABLES = (
     'projects', 'batches', 'messages', 'zips', 'file_intake_events',
     'delivery_events', 'delivery_event_actions', 'project_delivery_history_markers',
+    'project_delivery_count_actions', 'project_types', 'project_type_links',
 )
 _STATE_ERROR = '首次设置记录缺失或损坏，未自动重置；请保留数据库并检查。'
 
