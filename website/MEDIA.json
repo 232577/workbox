@@ -1,8 +1,8 @@
 {
   "kind": "verified-screenshot-walkthrough",
-  "source_exe_sha256": "299e207983d562517d87c4f65f40086738350ca4cbd0ac165228daab3c3c22c5",
+  "source_exe_sha256": "b6b212008b085af272091bd05748533d70050e32070584808d972b80f8ee73a8",
   "privacy_reviewed": true,
-  "description": "当前布局修正版、项目类型和个人工作量截图步骤教程；真实中性隔离界面，计数表为原生元素局部截图，旧媒体保留各自构建来源。",
+  "description": "当前侧栏优化版、项目类型和个人工作量截图步骤教程；真实中性隔离界面，计数表为原生元素局部截图，旧媒体保留各自构建来源。",
   "duration_seconds": 55,
   "files": {
     "public/media/workbox-quickstart-20261028.mp4": {
@@ -119,7 +119,32 @@
       "size": 1059,
       "sha256": "6453ccb784c033b6f573ac91d542f49beca4c75d21df2d8516d0e7ed861a7d51",
       "source_exe_sha256": "299e207983d562517d87c4f65f40086738350ca4cbd0ac165228daab3c3c22c5"
+    },
+    "public/media/workbox-desktop-light-sidebar-20261029.png": {
+      "size": 100266,
+      "sha256": "4f66abe2e0b6d6e56c87e8de2deca6d798c68fce60036c30d2fb948a337d7a5a",
+      "source_exe_sha256": "b6b212008b085af272091bd05748533d70050e32070584808d972b80f8ee73a8"
+    },
+    "public/media/workbox-desktop-dark-sidebar-20261029.png": {
+      "size": 99452,
+      "sha256": "faf13486cc9f2e0bb93ef65e78d6131f4b977d1b938345b8bf3286a22650a9f4",
+      "source_exe_sha256": "b6b212008b085af272091bd05748533d70050e32070584808d972b80f8ee73a8"
+    },
+    "public/media/workbox-sidebar-20261029.mp4": {
+      "size": 1551857,
+      "sha256": "13ea6d31fd58ec15e307c756c286b7de5dc4f5a913527354c9bd5119f56c4fa8",
+      "source_exe_sha256": "b6b212008b085af272091bd05748533d70050e32070584808d972b80f8ee73a8"
+    },
+    "public/media/workbox-sidebar-20261029.poster.png": {
+      "size": 331483,
+      "sha256": "fb9e3ccc31bde730fc0c7557fc8cb877c55dc5f228b54ed99e8c85a8aa697e12",
+      "source_exe_sha256": "b6b212008b085af272091bd05748533d70050e32070584808d972b80f8ee73a8"
+    },
+    "public/media/workbox-sidebar-20261029.vtt": {
+      "size": 1077,
+      "sha256": "e4c0f55ab406c9bd74aa814a75bb2bb26a80d394a58b66c64489166fd008de1b",
+      "source_exe_sha256": "b6b212008b085af272091bd05748533d70050e32070584808d972b80f8ee73a8"
     }
   },
-  "active_video": "public/media/workbox-layout-20261029.mp4"
+  "active_video": "public/media/workbox-sidebar-20261029.mp4"
 }

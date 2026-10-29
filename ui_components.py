@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QIcon
-from PySide6.QtWidgets import QComboBox, QLineEdit, QPushButton, QWidget
+from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QPushButton, QToolButton, QVBoxLayout, QWidget
 from qfluentwidgets.common.icon import FluentIconBase, toQIcon
 from qfluentwidgets import (
     CheckBox as _FluentCheckBox,
@@ -100,9 +100,37 @@ class NavigationButton(QPushButton):
         super().__init__(text)
         FluentStyleSheet.BUTTON.apply(self)
         self._source_icon = None
+        self._compact_count_height = None
+        self._count_label = QLabel(self)
+        self._count_label.setObjectName('navigationCountBadge')
+        self._count_label.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self._count_label.setFocusPolicy(Qt.NoFocus)
+        self._count_label.setAlignment(Qt.AlignCenter)
+        self._count_label.hide()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 3)
+        layout.setSpacing(0)
+        layout.addStretch()
+        layout.addWidget(self._count_label, 0, Qt.AlignHCenter)
         self.setCheckable(True)
         self.toggled.connect(self._refresh_icon)
         qconfig.themeChanged.connect(self._refresh_icon)
+
+    def setCompactCount(self, text: str | None):
+        enabled = text is not None
+        if enabled and self._compact_count_height is None:
+            self._compact_count_height = self.minimumHeight()
+            self.setMinimumHeight(max(54, self._compact_count_height))
+        elif not enabled and self._compact_count_height is not None:
+            self.setMinimumHeight(self._compact_count_height)
+            self._compact_count_height = None
+        self.setProperty('compactCount', enabled)
+        self._count_label.setText(text or '')
+        self._count_label.setVisible(enabled)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.updateGeometry()
+        self.update()
 
     def setIcon(self, icon):
         self._source_icon = icon
@@ -116,14 +144,42 @@ class NavigationButton(QPushButton):
             super().setIcon(toQIcon(self._source_icon) if self._source_icon is not None else QIcon())
 
 
+class NavigationMenuButton(QToolButton):
+    """菜单导航使用 Qt 工具按钮，避免 QPushButton 的菜单内容二次缩进。"""
+
+    def __init__(self, text: str):
+        super().__init__()
+        self.setText(text)
+        self.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        # Qt 的 InstantPopup 虽声明 ShowMenu 无障碍动作，却不执行它。
+        # 保留标准 DelayedPopup 的可访问接口，普通激活也立即展开菜单。
+        self.setPopupMode(QToolButton.DelayedPopup)
+        self.clicked.connect(self.showMenu)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self._source_icon = None
+        qconfig.themeChanged.connect(self._refresh_icon)
+
+    def setText(self, text):
+        super().setText(text)
+        self.setToolButtonStyle(Qt.ToolButtonTextBesideIcon if text else Qt.ToolButtonIconOnly)
+
+    def setIcon(self, icon):
+        self._source_icon = icon
+        self._refresh_icon()
+
+    def _refresh_icon(self, *_):
+        super().setIcon(toQIcon(self._source_icon) if self._source_icon is not None else QIcon())
+
+
 def button(text: str, primary: bool | str = False):
     """兼容紧凑窗口布尔主按钮及旧界面的 primary/filter/nav 角色。"""
     role = primary if isinstance(primary, str) else ('primary' if primary else '')
-    kind = PrimaryPushButton if role == 'primary' else ToggleButton if role == 'filter' else NavigationButton if role == 'nav' else PushButton
+    kind = {'primary': PrimaryPushButton, 'filter': ToggleButton,
+            'nav': NavigationButton, 'nav-menu': NavigationMenuButton}.get(role, PushButton)
     widget = kind(text)
     widget.setCursor(Qt.PointingHandCursor)
     if role:
-        widget.setObjectName(role)
+        widget.setObjectName('nav' if role == 'nav-menu' else role)
     def native_menu_arrow(theme):
         arrow = FluentIcon.ARROW_DOWN.path(theme)
         return ("PushButton::menu-indicator { subcontrol-origin: padding; "
@@ -132,7 +188,8 @@ def button(text: str, primary: bool | str = False):
                 "QPushButton#nav::menu-indicator { subcontrol-origin: padding; "
                 "subcontrol-position: center right; width: 10px; height: 10px; top: 1px; "
                 f"image: url({arrow}); }}")
-    setCustomStyleSheet(widget, native_menu_arrow(Theme.LIGHT), native_menu_arrow(Theme.DARK))
+    if role != 'nav-menu':
+        setCustomStyleSheet(widget, native_menu_arrow(Theme.LIGHT), native_menu_arrow(Theme.DARK))
     return widget
 
 

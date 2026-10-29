@@ -317,7 +317,7 @@ class CompactPanel(DropSurface, QWidget):
         self.settings_button.setAccessibleName('设置')
         self.settings_button.setCheckable(False)
         self.settings_button.setIcon(FluentIcon.SETTING)
-        self.appearance_button = button('外观', 'nav')
+        self.appearance_button = button('外观', 'nav-menu')
         self.appearance_button.setCheckable(False)
         self.appearance_button.setAccessibleName('外观主题')
         self.appearance_button.setToolTip('切换浅色、深色或跟随系统，只改变界面外观。')
@@ -1281,7 +1281,9 @@ class CompactPanel(DropSurface, QWidget):
             control.setProperty('compactNav', narrow)
             text = getattr(self, '_today_caption', caption) if control is self.today_button else caption
             if narrow:
-                text = getattr(self, '_today_compact_caption', '0') if control is self.today_button else ''
+                text = ''
+            if control is self.today_button:
+                control.setCompactCount(getattr(self, '_today_compact_caption', '0') if narrow else None)
             control.setText(text)
             control.setFixedWidth(56 if narrow else control_width)
             control.style().unpolish(control)

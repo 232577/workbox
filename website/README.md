@@ -4,11 +4,11 @@
 Cloudflare Worker 使用固定 GitHub Release 地址流式提供同域名下载，并支持单段断点续传。
 下载不需要登录，不传递访问者 Cookie 或 Authorization；网站不接收项目文件。
 
-导航布局修正版：独立标签 `v1.0.0-enhanced-layout.20261029`，安装包名
-`WorkBox-1.0.0-Enhanced-Layout-20261029-Setup-x64.exe`；目录保留六个历史版本。
-当前安装包大小为39,687,979字节，SHA-256为 `45fc221a8f6e70c7269ed0e2bfceb5080f9e27641197c927c8db0617f82e2f17`。
+侧栏图标对齐版：独立标签 `v1.0.0-enhanced-sidebar.20261029`，安装包名
+`WorkBox-1.0.0-Enhanced-Sidebar-20261029-Setup-x64.exe`；目录保留七个历史版本。
+安装包大小为39,685,611字节（约39.7MB），SHA-256为 `7f04ad22dbb30dc61eaa1f2149ad6c65dcca7044e18b9b4fbb3ed21d11d01a5a`。
 网站部署后仍需核对完整下载、媒体来源、播放与拖动进度，不以本地检查代替线上验收。
-公开说明见 `../publishing/layout-20261029/`；旧 `publishing/` 根文件保留历史内容。
+公开说明见 `../publishing/sidebar-20261029/`；旧 `publishing/` 根文件保留历史内容。
 
 `/stats/` 提供仅所有者可看的浏览量、下载开始次数和每日趋势。
 统计口径、密钥设置和验收方法见 [ANALYTICS.md](ANALYTICS.md)。

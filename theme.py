@@ -137,10 +137,26 @@ QPushButton#primary:hover, QPushButton#primary:pressed { background: %(accent_ho
 QPushButton#primary:disabled { background: %(disabled_bg)s; color: %(disabled)s; border-color: %(border)s; }
 QPushButton#filter, QPushButton#nav { background: transparent; border: 1px solid transparent; }
 QPushButton#nav { text-align: left; }
+QToolButton#nav { background: transparent; border: 1px solid transparent; text-align: left; padding: 7px 10px 7px 8px; }
+QToolButton#nav:hover { background: %(hover)s; }
+QToolButton#nav:focus { border: 2px solid %(accent)s; padding: 6px 9px 6px 7px; }
+QToolButton#nav[compactNav="true"] { padding: 5px 4px; }
+QToolButton#nav[compactNav="true"]:focus { padding: 4px 3px; }
+QToolButton#nav::menu-indicator { subcontrol-origin: padding; subcontrol-position: center right;
+    width: 10px; height: 10px; }
+QToolButton#nav[compactNav="true"]::menu-indicator { width: 0px; height: 0px; image: none; }
 QPushButton#nav[compactNav="true"], QPushButton#nav[compactNav="true"]:checked,
 QPushButton#nav[compactNav="true"]:disabled { text-align: center; padding: 5px 4px; }
 QPushButton#nav[compactNav="true"]:focus,
 QPushButton#nav[compactNav="true"]:checked:focus { padding: 4px 3px; }
+QPushButton#nav[compactCount="true"], QPushButton#nav[compactCount="true"]:disabled,
+QPushButton#nav[compactCount="true"]:checked { padding: 4px 4px 22px; min-height: 26px; text-align: center; }
+QPushButton#nav[compactCount="true"]:focus,
+QPushButton#nav[compactCount="true"]:checked:focus { padding: 3px 3px 21px; }
+QLabel#navigationCountBadge { background: %(hover)s; color: %(accent)s;
+    border: none; border-radius: 8px; padding: 0px 5px; min-width: 18px; min-height: 16px;
+    font-size: 11px; font-weight: 600; }
+QLabel#navigationCountBadge:disabled { background: %(disabled_bg)s; color: %(disabled)s; }
 QPushButton#filter:hover, QPushButton#nav:hover { background: %(hover)s; }
 QPushButton#filter:checked, QPushButton#nav:checked { background: %(selection)s; color: %(selection_text)s; font-weight: 600; }
 QPushButton#filter:focus, QPushButton#nav:focus { border: 2px solid %(accent)s; }
@@ -269,6 +285,17 @@ QWidget#manager[dense="true"] QPushButton, QWidget#manager[dense="true"] QToolBu
 }
 QWidget#manager[dense="true"] QPushButton:focus, QWidget#manager[dense="true"] QToolButton:focus {
     padding: 3px 7px;
+}
+QWidget#manager[dense="true"] QToolButton#nav { padding: 4px 8px 4px 6px; }
+QWidget#manager[dense="true"] QToolButton#nav:focus { padding: 3px 7px 3px 5px; }
+QWidget#manager[dense="true"] QPushButton#nav[compactCount="true"],
+QWidget#manager[dense="true"] QPushButton#nav[compactCount="true"]:disabled,
+QWidget#manager[dense="true"] QPushButton#nav[compactCount="true"]:checked {
+    min-height: 26px; padding: 4px 4px 22px; text-align: center;
+}
+QWidget#manager[dense="true"] QPushButton#nav[compactCount="true"]:focus,
+QWidget#manager[dense="true"] QPushButton#nav[compactCount="true"]:checked:focus {
+    padding: 3px 3px 21px;
 }
 QWidget#manager[dense="true"] QLineEdit, QWidget#manager[dense="true"] QComboBox,
 QWidget#manager[dense="true"] QDateEdit, QWidget#manager[dense="true"] QDateTimeEdit,
