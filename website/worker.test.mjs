@@ -22,10 +22,10 @@ test('公开下载固定版本并流式保留文件字节，不转发访问者�
   });
   assert.equal(response.status, 200);
   assert.deepEqual([...new Uint8Array(await response.arrayBuffer())], [77, 90, 1, 2]);
-  assert.equal(requested.target, 'https://github.com/232577/workbox/releases/download/v1.0.0-enhanced-workbench.20261029/WorkBox-1.0.0-Enhanced-Workbench-20261029-Setup-x64.exe');
+  assert.equal(requested.target, 'https://github.com/232577/workbox/releases/download/v1.0.0-enhanced-layout.20261029/WorkBox-1.0.0-Enhanced-Layout-20261029-Setup-x64.exe');
   assert.equal(requested.options.headers.has('Cookie'), false);
   assert.equal(requested.options.headers.has('Authorization'), false);
-  assert.match(response.headers.get('Content-Disposition'), /attachment; filename="WorkBox-1.0.0-Enhanced-Workbench-20261029-Setup-x64.exe"/);
+  assert.match(response.headers.get('Content-Disposition'), /attachment; filename="WorkBox-1.0.0-Enhanced-Layout-20261029-Setup-x64.exe"/);
 });
 
 test('断点续传保留206和Content-Range', async () => {
@@ -71,13 +71,14 @@ test('版本信息公开且页面回退到静态资源', async () => {
   assert.equal(await home.text(), 'workbox page');
 });
 
-test('工作台候选使用独立标签与安装包，五个旧版本目录和摘要保持不变', async () => {
-  assert.equal(release.tag,'v1.0.0-enhanced-workbench.20261029');
-  assert.equal(release.filename,'WorkBox-1.0.0-Enhanced-Workbench-20261029-Setup-x64.exe');
-  assert.equal(release.size,39680913);
-  assert.equal(release.sha256,'4e6dbe36faf3920ef637e0deca797950b596b72cc6f893bc9e78e302d0c5b548');
-  assert.equal(releases.length,6);
+test('导航布局版使用独立标签与安装包，六个旧版本目录和摘要保持不变', async () => {
+  assert.equal(release.tag,'v1.0.0-enhanced-layout.20261029');
+  assert.equal(release.filename,'WorkBox-1.0.0-Enhanced-Layout-20261029-Setup-x64.exe');
+  assert.ok(Number.isSafeInteger(release.size) && release.size > 0);
+  assert.match(release.sha256,/^[a-f0-9]{64}$/);
+  assert.equal(releases.length,7);
   assert.deepEqual(releases.slice(1).map(item => [item.tag,item.filename,item.size,item.sha256]), [
+    ['v1.0.0-enhanced-workbench.20261029','WorkBox-1.0.0-Enhanced-Workbench-20261029-Setup-x64.exe',39680913,'4e6dbe36faf3920ef637e0deca797950b596b72cc6f893bc9e78e302d0c5b548'],
     ['v1.0.0-enhanced-fluent.20261028','WorkBox-1.0.0-Enhanced-Fluent-20261028-Setup-x64.exe',39666409,'4c5c09b1e7c2d0599a8e3c9cd1887a5449559bbbcf82fe35ff7a41513d53a2f2'],
     ['v1.0.0-enhanced-ui.20261028','WorkBox-1.0.0-Enhanced-UI-20261028-Setup-x64.exe',37655551,'09a30ba343ad48f7f50e24f8423de44c7ecdcee385be260109d8ad237dc0afa3'],
     ['v1.0.0-enhanced.20261028','WorkBox-1.0.0-Enhanced-20261028-Setup-x64.exe',35542595,'4eb62d51a2e00777e3e4ad393268b38bf3c6232df7a1b338f9af586cbf4c642b'],

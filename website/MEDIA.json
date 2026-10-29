@@ -1,8 +1,8 @@
 {
   "kind": "verified-screenshot-walkthrough",
-  "source_exe_sha256": "d74777c1b3e512c4b02b2932924bc8b92c61cd7e762220522c86ebf4d917c521",
+  "source_exe_sha256": "299e207983d562517d87c4f65f40086738350ca4cbd0ac165228daab3c3c22c5",
   "privacy_reviewed": true,
-  "description": "当前工作台、项目类型和个人工作量截图步骤教程；真实中性隔离界面，计数表为原生元素局部截图，旧媒体保留各自构建来源。",
+  "description": "当前布局修正版、项目类型和个人工作量截图步骤教程；真实中性隔离界面，计数表为原生元素局部截图，旧媒体保留各自构建来源。",
   "duration_seconds": 55,
   "files": {
     "public/media/workbox-quickstart-20261028.mp4": {
@@ -94,7 +94,32 @@
       "size": 1056,
       "sha256": "7c12c907d60ccc2e53f9bcf27eefc108e3ea97a6197057069e4343d5f5f0748a",
       "source_exe_sha256": "d74777c1b3e512c4b02b2932924bc8b92c61cd7e762220522c86ebf4d917c521"
+    },
+    "public/media/workbox-desktop-light-layout-20261029.png": {
+      "size": 100028,
+      "sha256": "ec87eb04e00436f96f62decea81cacf4e24500388bd85286812fba2a5fb82781",
+      "source_exe_sha256": "299e207983d562517d87c4f65f40086738350ca4cbd0ac165228daab3c3c22c5"
+    },
+    "public/media/workbox-desktop-dark-layout-20261029.png": {
+      "size": 99278,
+      "sha256": "e87621c04e5e79fdbe3e9f25d3d152b8611bb2326913638d25626a665708df19",
+      "source_exe_sha256": "299e207983d562517d87c4f65f40086738350ca4cbd0ac165228daab3c3c22c5"
+    },
+    "public/media/workbox-layout-20261029.mp4": {
+      "size": 1535060,
+      "sha256": "1990180f118edfa3a7b815de5258cb7ae8b9cd1fbc49ca3d4b72968b57c6d66f",
+      "source_exe_sha256": "299e207983d562517d87c4f65f40086738350ca4cbd0ac165228daab3c3c22c5"
+    },
+    "public/media/workbox-layout-20261029.poster.png": {
+      "size": 331571,
+      "sha256": "2bd5090ddd1bb00893518b428fab762328b9d40e55bb65c05f95574e075e9c2b",
+      "source_exe_sha256": "299e207983d562517d87c4f65f40086738350ca4cbd0ac165228daab3c3c22c5"
+    },
+    "public/media/workbox-layout-20261029.vtt": {
+      "size": 1059,
+      "sha256": "6453ccb784c033b6f573ac91d542f49beca4c75d21df2d8516d0e7ed861a7d51",
+      "source_exe_sha256": "299e207983d562517d87c4f65f40086738350ca4cbd0ac165228daab3c3c22c5"
     }
   },
-  "active_video": "public/media/workbox-workbench-20261029.mp4"
+  "active_video": "public/media/workbox-layout-20261029.mp4"
 }

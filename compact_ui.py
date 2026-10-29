@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 from theme import apply_to, apply_scrollbar, stylesheet, install_theme, set_theme, current_mode, theme_signal
 from dialog_lifecycle import transient_dialog
 from ui_components import button as fluent_button, LineEdit as QLineEdit, CheckBox as QCheckBox, SpinBox as QSpinBox, ComboBox as QComboBox
-from qfluentwidgets import FluentIcon, InfoBadge, InfoLevel, InfoBadgePosition
+from qfluentwidgets import FluentIcon, InfoBadge, InfoLevel
 from database import STATUSES
 from floating import DropSurface
 from parser import ParsedProject
@@ -291,8 +291,6 @@ class CompactPanel(DropSurface, QWidget):
             nav.addWidget(control)
         nav.addStretch()
         shell.addWidget(self.navigation)
-        self.today_count_badge = InfoBadge.info('0', self, self.today_button, InfoBadgePosition.TOP_RIGHT)
-        self.today_count_badge.setAccessibleName('今日工作量数值')
         self.workbench = QWidget()
         shell.addWidget(self.workbench, 1)
         layout = self.workbench_layout = QVBoxLayout(self.workbench)
@@ -711,9 +709,8 @@ class CompactPanel(DropSurface, QWidget):
     def refresh_today_count(self):
         summary = self.service.db.today_delivery_summary()
         self._today_caption = f"今日工作量 {summary['project_count']}"
-        self.today_count_badge.setText(str(summary['project_count']) if summary['project_count']<100 else '99+')
-        self.today_count_badge.setToolTip(self._today_caption)
-        self.today_button.setText('' if self.width() < 900 else self._today_caption)
+        self._today_compact_caption = str(summary['project_count']) if summary['project_count']<100 else '99+'
+        self.today_button.setAccessibleDescription(self._today_caption)
         self.resize_navigation()
         self.today_button.setToolTip(f"{summary['day']}（北京时间）：{summary['project_count']} 个首次交付项目计入个人工作量，{summary['event_count']} 次交付记录。每个项目只计首次有效交付；补交只保留记录。代交项目可排除个人工作量并随时恢复，项目的已交付状态不变。点击查看并管理。")
 
@@ -1274,17 +1271,19 @@ class CompactPanel(DropSurface, QWidget):
 
     def resize_navigation(self):
         narrow = self.width() < 900
-        self.today_count_badge.setVisible(narrow)
         caption = getattr(self, '_today_caption', '今日工作量 0')
         control_width = max(140, self.today_button.fontMetrics().horizontalAdvance(caption) + 52)
-        self.navigation.setFixedWidth(56 if narrow else control_width + 24)
-        self.navigation.layout().setContentsMargins(6 if narrow else 12, 14, 6 if narrow else 12, 14)
+        self.navigation.setFixedWidth(72 if narrow else control_width + 24)
+        self.navigation.layout().setContentsMargins(8 if narrow else 12, 14, 8 if narrow else 12, 14)
         self.brand_label.setVisible(not narrow)
         self.nav_caption.setVisible(not narrow)
         for control, caption in self.nav_controls:
             control.setProperty('compactNav', narrow)
-            control.setText('' if narrow else (getattr(self, '_today_caption', caption) if control is self.today_button else caption))
-            control.setFixedWidth(42 if narrow else control_width)
+            text = getattr(self, '_today_caption', caption) if control is self.today_button else caption
+            if narrow:
+                text = getattr(self, '_today_compact_caption', '0') if control is self.today_button else ''
+            control.setText(text)
+            control.setFixedWidth(56 if narrow else control_width)
             control.style().unpolish(control)
             control.style().polish(control)
 

@@ -37,6 +37,7 @@ def settle(qapp):
     QTest.qWait(120)
     for _ in range(5):
         qapp.processEvents()
+        QTest.qWait(20)
 
 
 def assert_complete_item_text_fits(view, item):
@@ -113,9 +114,13 @@ def test_selected_project_title_wraps_in_its_available_width(panel, qapp):
 
 @pytest.mark.parametrize('document_name', [LONG_DOCUMENT,
     'OperationManual_Revision20261028_CompleteReferenceDocument.pdf'])
-@pytest.mark.parametrize('window_size', [(1120, 760), (660, 492)])
-def test_document_names_wrap_and_reflow_without_replacing_items(panel, qapp, document_name, window_size):
-    panel.resize(*window_size)
+@pytest.mark.parametrize('narrow_size, wide_size', [
+    ((1120, 760), (1120, 760)),
+    ((660, 492), (1120, 492)),
+])
+def test_document_names_wrap_and_reflow_without_replacing_items(
+        panel, qapp, document_name, narrow_size, wide_size, record_property):
+    panel.resize(*narrow_size)
     pane = panel.document_pane
     pane.project_id = 1
     record = dict(id='work:manual', name=document_name, relative_path=document_name,
@@ -127,6 +132,8 @@ def test_document_names_wrap_and_reflow_without_replacing_items(panel, qapp, doc
     settle(qapp)
     table = pane.table
     narrow_height = table.rowHeight(0)
+    narrow_width = table.columnWidth(0)
+    narrow_sizes = panel.project_splitter.sizes()
     assert table.wordWrap() and table.textElideMode() == Qt.ElideNone
     assert_complete_item_text_fits(table, table.item(0, 0))
     item = table.item(0, 0)
@@ -135,7 +142,25 @@ def test_document_names_wrap_and_reflow_without_replacing_items(panel, qapp, doc
     table.selectRow(0)
     panel.project_splitter.setSizes([220, 780])
     settle(qapp)
-    assert table.rowHeight(0) < narrow_height
+    assert table.columnWidth(0) > narrow_width
+    assert_complete_item_text_fits(table, item)
+    # 最小窗口的分栏只有约 8 px 可拖动空间，不保证跨越文字换行边界。
+    # 扩大真实窗口后仍严格验证列宽增加、行高缩减，且两种宽度都显示完整文字。
+    panel.resize(*wide_size)
+    panel.project_splitter.setSizes([220, 780])
+    settle(qapp)
+    assert table.columnWidth(0) > narrow_width, (
+        panel.size(), narrow_sizes, panel.project_splitter.sizes(),
+        narrow_width, table.columnWidth(0),
+        [panel.project_splitter.widget(i).minimumSizeHint() for i in range(2)])
+    assert table.rowHeight(0) < narrow_height, (
+        panel.size(), narrow_sizes, panel.project_splitter.sizes(),
+        narrow_width, table.columnWidth(0), narrow_height, table.rowHeight(0))
+    assert_complete_item_text_fits(table, item)
+    assert item.text() == document_name
+    assert table.model().data(table.model().index(0, 0), Qt.DisplayRole) == document_name
+    record_property('column_widths', f'{narrow_width}->{table.columnWidth(0)}')
+    record_property('row_heights', f'{narrow_height}->{table.rowHeight(0)}')
     pane.apply_result(result)
     assert table.item(0, 0) is item and pane.current_document()['id'] == record['id']
 

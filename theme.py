@@ -137,6 +137,10 @@ QPushButton#primary:hover, QPushButton#primary:pressed { background: %(accent_ho
 QPushButton#primary:disabled { background: %(disabled_bg)s; color: %(disabled)s; border-color: %(border)s; }
 QPushButton#filter, QPushButton#nav { background: transparent; border: 1px solid transparent; }
 QPushButton#nav { text-align: left; }
+QPushButton#nav[compactNav="true"], QPushButton#nav[compactNav="true"]:checked,
+QPushButton#nav[compactNav="true"]:disabled { text-align: center; padding: 5px 4px; }
+QPushButton#nav[compactNav="true"]:focus,
+QPushButton#nav[compactNav="true"]:checked:focus { padding: 4px 3px; }
 QPushButton#filter:hover, QPushButton#nav:hover { background: %(hover)s; }
 QPushButton#filter:checked, QPushButton#nav:checked { background: %(selection)s; color: %(selection_text)s; font-weight: 600; }
 QPushButton#filter:focus, QPushButton#nav:focus { border: 2px solid %(accent)s; }

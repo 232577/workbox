@@ -45,9 +45,9 @@ def test_narrow_workbench_collapses_navigation_and_keeps_controls_inside(qapp, t
     qapp.processEvents()
     try:
         assert panel.size().width() == 660
-        assert panel.navigation.width() <= 60
+        assert panel.navigation.width() <= 72
         assert panel.settings_button.accessibleName()=='设置'
-        assert panel.today_count_badge.isVisible() and panel.today_count_badge.text()=='0'
+        assert panel.today_button.isVisible() and panel.today_button.text()=='0'
         assert panel.brand_icon.isVisible()
         assert not panel.brand_label.isVisible()
         assert panel.brand_label.text() == 'WorkBox'

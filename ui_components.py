@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QComboBox, QLineEdit, QWidget
+from PySide6.QtGui import QColor, QIcon
+from PySide6.QtWidgets import QComboBox, QLineEdit, QPushButton, QWidget
+from qfluentwidgets.common.icon import FluentIconBase, toQIcon
 from qfluentwidgets import (
     CheckBox as _FluentCheckBox,
     FluentIcon,
@@ -17,6 +19,7 @@ from qfluentwidgets import (
     setCustomStyleSheet,
     setTheme,
     setThemeColor,
+    qconfig,
 )
 
 __all__ = ['button', 'LineEdit', 'CheckBox', 'SpinBox', 'ComboBox', 'init_fluent_theme']
@@ -90,24 +93,44 @@ class ComboBox(QComboBox):
         setCustomStyleSheet(self, native_chrome(Theme.LIGHT), native_chrome(Theme.DARK))
 
 
-def button(text: str, primary: bool | str = False) -> PushButton:
+class NavigationButton(QPushButton):
+    """交由 Qt 统一布局图标、文字和原生菜单指示器。"""
+
+    def __init__(self, text: str):
+        super().__init__(text)
+        FluentStyleSheet.BUTTON.apply(self)
+        self._source_icon = None
+        self.setCheckable(True)
+        self.toggled.connect(self._refresh_icon)
+        qconfig.themeChanged.connect(self._refresh_icon)
+
+    def setIcon(self, icon):
+        self._source_icon = icon
+        self._refresh_icon()
+
+    def _refresh_icon(self, *_):
+        if isinstance(self._source_icon, FluentIconBase):
+            icon = self._source_icon.icon(color=QColor('white')) if self.isChecked() else toQIcon(self._source_icon)
+            super().setIcon(icon)
+        else:
+            super().setIcon(toQIcon(self._source_icon) if self._source_icon is not None else QIcon())
+
+
+def button(text: str, primary: bool | str = False):
     """兼容紧凑窗口布尔主按钮及旧界面的 primary/filter/nav 角色。"""
     role = primary if isinstance(primary, str) else ('primary' if primary else '')
-    kind = PrimaryPushButton if role == 'primary' else ToggleButton if role in ('filter', 'nav') else PushButton
+    kind = PrimaryPushButton if role == 'primary' else ToggleButton if role == 'filter' else NavigationButton if role == 'nav' else PushButton
     widget = kind(text)
     widget.setCursor(Qt.PointingHandCursor)
     if role:
         widget.setObjectName(role)
     def native_menu_arrow(theme):
         arrow = FluentIcon.ARROW_DOWN.path(theme)
-        navigation = ''
-        if role == 'nav':
-            # ToggleButton 的上游图标绘制依赖一致的文字留白；原生皮肤不能覆盖它。
-            navigation = ("PushButton#nav, ToggleButton#nav { min-width: 0px; text-align: center; }"
-                          "PushButton#nav[hasIcon=true], ToggleButton#nav[hasIcon=true] { padding: 5px 12px 6px 36px; }"
-                          "PushButton#nav[compactNav=true], ToggleButton#nav[compactNav=true] { padding: 5px 12px 6px 12px; }")
-        return navigation + ("PushButton::menu-indicator { subcontrol-origin: padding; "
+        return ("PushButton::menu-indicator { subcontrol-origin: padding; "
                 "subcontrol-position: right center; width: 10px; height: 10px; "
+                f"image: url({arrow}); }}"
+                "QPushButton#nav::menu-indicator { subcontrol-origin: padding; "
+                "subcontrol-position: center right; width: 10px; height: 10px; top: 1px; "
                 f"image: url({arrow}); }}")
     setCustomStyleSheet(widget, native_menu_arrow(Theme.LIGHT), native_menu_arrow(Theme.DARK))
     return widget
