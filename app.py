@@ -42,6 +42,12 @@ class WorkBox:
     def list_project_types(self, *, include_inactive: bool = False) -> list[dict]:
         return self.db.list_project_types(include_inactive=include_inactive)
 
+    def get_default_project_type(self) -> int | None:
+        return self.db.get_default_project_type()
+
+    def set_default_project_type(self, type_id: int | None) -> int | None:
+        return self.db.set_default_project_type(type_id)
+
     def create_project_type(self, name: str) -> dict:
         return self.db.create_project_type(name)
 

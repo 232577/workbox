@@ -69,7 +69,7 @@ def panel(qapp, tmp_path):
 def test_lists_use_standard_scrollbars_and_pixel_scrolling(panel, qapp):
     for widget in (panel.project_list, panel.zip_list, panel.receipt_list):
         assert widget.verticalScrollMode() == QAbstractItemView.ScrollPerPixel
-        assert widget.uniformItemSizes() == (widget is not panel.project_list)
+        assert not widget.uniformItemSizes(), '真实Fluent业务列表保留变高行，避免长名称裁切'
     bar = panel.project_list.verticalScrollBar()
     assert bar.width() >= 16 and bar.hasTracking()
     bar.setValue(120)

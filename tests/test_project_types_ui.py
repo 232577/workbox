@@ -13,6 +13,7 @@ def qapp():
 
 def test_project_type_filter_context_and_bulk_use_real_ids(qapp, tmp_path):
     service = DesktopService(tmp_path / 'workbox.db')
+    service.set_default_project_type(None)
     service.db.create_capture('隔离验证', '资料', [('资料工具', False), ('归档工具', False)])
     first, second = service.list_projects()
     kind = service.create_project_type('工具')
@@ -147,6 +148,7 @@ def test_visible_type_entry_uses_selected_ids_and_preserves_project_state(qapp, 
 def test_type_entry_cancel_filter_removal_and_archived_boundary(qapp, tmp_path, monkeypatch):
     import project_types_ui
     service = DesktopService(tmp_path / 'entry-boundary.db')
+    service.set_default_project_type(None)
     service.db.create_capture('隔离验证', '分类入口', [('边界项目', False)])
     project = service.list_projects()[0]
     kind = service.create_project_type('移出筛选')

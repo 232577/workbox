@@ -11,6 +11,8 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QDateEdit, QDialog,
 from compact_ui import button, label, WrappedNameDelegate
 from theme import apply_to
 from ui_components import LineEdit as QLineEdit, CheckBox as QCheckBox
+from fluent_views import WorkbenchTableWidget
+from qfluentwidgets import CardWidget
 from database import DELIVERY_TIMEZONE
 from ui import FileJob
 from project_types_ui import choose_project_type
@@ -28,7 +30,7 @@ def beijing_timestamp(value):
         return str(value or '')
 
 
-class DeliveryProjectTable(QTableWidget):
+class DeliveryProjectTable(WorkbenchTableWidget):
     width_about_to_change = Signal()
 
     def resizeEvent(self,event):
@@ -88,25 +90,33 @@ class TodayDeliveryDialog(QDialog):
         layout.addLayout(controls)
         self.summary = label('','subtle',True)
         layout.addWidget(self.summary)
+        self.type_summary_card = CardWidget(self)
+        self.type_summary_card.setBorderRadius(8)
+        self.type_summary_card.setAccessibleName('交付类型统计')
+        self.type_summary_layout = QVBoxLayout(self.type_summary_card)
+        self.type_summary_layout.setContentsMargins(12, 10, 12, 10)
+        self.type_summary_layout.setSpacing(4)
         self.type_total = label('',wrap=True)
         font = self.type_total.font()
         font.setBold(True)
         self.type_total.setFont(font)
         # 原生 QLabel 用实际文字作为辅助名称，让合计及错误状态同步可读。
         self.type_total.setObjectName('deliveryTypeTotal')
-        layout.addWidget(self.type_total)
+        self.type_summary_layout.addWidget(self.type_total)
         self.type_counts = QTextBrowser()
         self.type_counts.setAccessibleName('按当前类型计入工作量的项目数量')
         self.type_counts.setReadOnly(True)
+        self.type_counts.setStyleSheet('QTextBrowser { background: transparent; border: none; padding: 0px; }')
         self.type_counts.document().setDocumentMargin(2)
         self.type_counts.setOpenLinks(False)
         self.type_counts.setAcceptDrops(False)
         self.type_counts.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.type_counts.setWordWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
         self.type_counts.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Preferred)
-        self.type_counts.setMinimumHeight(40)
-        self.type_counts.setMaximumHeight(72)
-        layout.addWidget(self.type_counts)
+        self.type_counts.setMinimumHeight(28)
+        self.type_counts.setMaximumHeight(64)
+        self.type_summary_layout.addWidget(self.type_counts)
+        layout.addWidget(self.type_summary_card)
         project_actions = QHBoxLayout()
         self.project_selection_note = label('选择项目，可按 Ctrl 多选','subtle',True)
         self.change_type_button = button('修改类型…')
@@ -123,8 +133,7 @@ class TodayDeliveryDialog(QDialog):
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table.setWordWrap(True)
         self.table.setTextElideMode(Qt.ElideNone)
-        for column in (0,4):
-            self.table.setItemDelegateForColumn(column,WrappedNameDelegate(self.table))
+        self.table.setWrapColumns({0, 4})
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._project_context_menu)
         for column in (0,1):
@@ -191,7 +200,7 @@ class TodayDeliveryDialog(QDialog):
 
     @staticmethod
     def _table(name,headings,*,wrapped=False):
-        table = (DeliveryProjectTable if wrapped else QTableWidget)(0,len(headings))
+        table = (DeliveryProjectTable if wrapped else WorkbenchTableWidget)(0,len(headings))
         table.setAccessibleName(name)
         table.setHorizontalHeaderLabels(headings)
         table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -594,7 +603,9 @@ class TodayDeliveryDialog(QDialog):
             compact=self.height()<580
             self.scope_note.setVisible(not compact)
             self.details_hint.setVisible(not compact)
-            self.type_counts.setMaximumHeight(40 if compact else 72)
+            self.type_counts.setMaximumHeight(30 if compact else 64)
+            self.type_summary_layout.setContentsMargins(8 if compact else 12, 6 if compact else 10,
+                                                       8 if compact else 12, 6 if compact else 10)
         super().resizeEvent(event)
 
     def shutdown(self):

@@ -43,6 +43,7 @@ def test_type_catalog_and_delivery_rows_share_one_read_snapshot(db, monkeypatch)
 @pytest.fixture
 def db(tmp_path):
     result = Database(tmp_path / 'delivery-types.db')
+    result.set_default_project_type(None)
     result.create_capture('隔离类型统计', '隔离批', [(name, False) for name in ('甲系统', '乙系统', '丙系统', '丁系统')])
     return result
 
@@ -64,12 +65,13 @@ def counts(result):
 def test_empty_counts_include_all_active_types_and_unassigned_but_no_empty_inactive(db):
     unused = db.create_project_type('未使用')
     db.set_project_type_active(unused['id'], False)
-    assert counts(db.delivery_history(DAY)) == {'材料': 0, '可运行': 0, '未分类': 0}
-    assert counts(db.today_delivery_summary(DAY)) == {'材料': 0, '可运行': 0, '未分类': 0}
+    assert counts(db.delivery_history(DAY)) == {'生成材料': 0, '可运行': 0, '未分类': 0}
+    assert counts(db.today_delivery_summary(DAY)) == {'生成材料': 0, '可运行': 0, '未分类': 0}
 
 
 def test_counts_unique_first_projects_include_inactive_assigned_and_unassigned(db):
-    material, runnable = db.list_project_types()
+    material = db.create_project_type('材料')
+    runnable = next(kind for kind in db.list_project_types() if kind['name'] == '可运行')
     custom = db.create_project_type('其他')
     db.set_project_types([1], material['id'])
     db.set_project_types([2], runnable['id'])
@@ -79,14 +81,15 @@ def test_counts_unique_first_projects_include_inactive_assigned_and_unassigned(d
         event(db, pid)
         event(db, pid)
     result = db.delivery_history(DAY)
-    assert counts(result) == {'材料': 1, '可运行': 1, '其他': 1, '未分类': 1}
+    assert counts(result) == {'生成材料': 0, '材料': 1, '可运行': 1, '其他': 1, '未分类': 1}
     assert result['project_count'] == 4 and result['event_count'] == 8
     assert next(row for row in result['type_counts'] if row['type_id'] == custom['id'])['active'] is False
     assert counts(db.today_delivery_summary(DAY)) == counts(result)
 
 
 def test_reclassification_renaming_and_disable_regroup_without_rewriting_facts(db):
-    material, runnable = db.list_project_types()
+    material = db.create_project_type('材料')
+    runnable = next(kind for kind in db.list_project_types() if kind['name'] == '可运行')
     first = event(db, 1)
     with db.connect() as con:
         before = [tuple(row) for row in con.execute('SELECT * FROM delivery_events')]
@@ -97,7 +100,7 @@ def test_reclassification_renaming_and_disable_regroup_without_rewriting_facts(d
     db.rename_project_type(runnable['id'], '运行软件')
     db.set_project_type_active(runnable['id'], False)
     result = db.delivery_history(DAY)
-    assert counts(result) == {'材料': 0, '运行软件': 1, '未分类': 0}
+    assert counts(result) == {'生成材料': 0, '材料': 0, '运行软件': 1, '未分类': 0}
     row = result['events'][0]
     assert (row['id'], row['project_type_id'], row['project_type_name'], row['project_type_active']) == (first, runnable['id'], '运行软件', False)
     assert row['first_at'] == '2026-10-23T08:00:00.000Z'
@@ -107,12 +110,12 @@ def test_reclassification_renaming_and_disable_regroup_without_rewriting_facts(d
 
 
 def test_counts_keep_lifetime_first_before_day_keyword_and_project_filters(db):
-    material = db.list_project_types()[0]
+    material = db.create_project_type('材料')
     db.set_project_types([1], material['id'])
     first = event(db, 1, '2026-10-22T15:59:59.999Z', '旧名称')
     event(db, 1, '2026-10-22T16:00:00.000Z', '新名称')
     event(db, 2, name='新名称')
-    assert counts(db.delivery_history(DAY, keyword='新名称')) == {'材料': 0, '可运行': 0, '未分类': 1}
+    assert counts(db.delivery_history(DAY, keyword='新名称')) == {'生成材料': 0, '材料': 0, '可运行': 0, '未分类': 1}
     assert counts(db.delivery_history(DAY, keyword='新名称', project_id=1))['材料'] == 0
     assert counts(db.delivery_history(date(2026, 10, 22)))['材料'] == 1
     assert counts(db.delivery_history(keyword='旧名称'))['材料'] == 1
@@ -123,7 +126,7 @@ def test_counts_keep_lifetime_first_before_day_keyword_and_project_filters(db):
 
 
 def test_eligibility_revocation_and_prior_markers_preserve_existing_count_rules(db):
-    material = db.list_project_types()[0]
+    material = db.create_project_type('材料')
     db.set_project_types([1, 2], material['id'])
     first = event(db, 1)
     event(db, 2)
@@ -142,7 +145,7 @@ def test_eligibility_revocation_and_prior_markers_preserve_existing_count_rules(
 
 
 def test_current_archive_delete_metadata_and_summary_do_not_change_counts_or_edit_boundaries(db):
-    material = db.list_project_types()[0]
+    material = db.create_project_type('材料')
     db.set_project_types([1, 2], material['id'])
     event(db, 1)
     event(db, 2)
@@ -150,7 +153,7 @@ def test_current_archive_delete_metadata_and_summary_do_not_change_counts_or_edi
     db.bulk_update_projects([1], archived=True)
     db.delete_project(2, confirmed=True)
     result = db.delivery_history(DAY)
-    assert counts(result) == {'材料': 2, '可运行': 0, '未分类': 1}
+    assert counts(result) == {'生成材料': 0, '材料': 2, '可运行': 0, '未分类': 1}
     summary = db.today_delivery_summary(DAY)
     for collection in (result['events'], summary['projects']):
         by_id = {row['project_id']: row for row in collection}

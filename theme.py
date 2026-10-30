@@ -265,15 +265,16 @@ QCalendarWidget QToolButton { color: %(ink)s; background: %(surface)s; border: n
 QCalendarWidget QToolButton:hover { background: %(hover)s; }
 QCalendarWidget QAbstractItemView { color: %(ink)s; background: %(surface)s; selection-background-color: %(selection)s; selection-color: %(selection_text)s; }
 QScrollArea { background: transparent; border: none; }
-QScrollBar:vertical { width: 14px; background: %(bg)s; margin: 14px 0; border: none; }
-QScrollBar:horizontal { height: 14px; background: %(bg)s; margin: 0 14px; border: none; }
-QScrollBar::handle:vertical { background: %(scroll_handle)s; border-radius: 5px; min-height: 32px; margin: 2px; }
-QScrollBar::handle:horizontal { background: %(scroll_handle)s; border-radius: 5px; min-width: 32px; margin: 2px; }
+QScrollBar:vertical { width: 16px; background: transparent; margin: 4px 0; border: none; }
+QScrollBar:horizontal { height: 16px; background: transparent; margin: 0 4px; border: none; }
+QScrollBar::handle:vertical { background: %(scroll_handle)s; border-radius: 4px; min-height: 32px; margin: 0 4px; }
+QScrollBar::handle:horizontal { background: %(scroll_handle)s; border-radius: 4px; min-width: 32px; margin: 4px 0; }
 QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover { background: %(scroll_hover)s; }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 14px; background: %(bg)s; border: none; }
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 14px; background: %(bg)s; border: none; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; background: transparent; border: none; image: none; }
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0px; background: transparent; border: none; image: none; }
 QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
-QSplitter::handle { background: %(border)s; }
+QSplitter::handle { background: transparent; }
+QSplitter::handle:hover { background: %(hover)s; }
 QProgressBar { background: %(raised)s; color: %(ink)s; border: 1px solid %(border)s; border-radius: 4px; text-align: center; }
 QProgressBar::chunk { background: %(accent)s; border-radius: 3px; }
 QSlider::groove:horizontal { background: %(border)s; height: 4px; border-radius: 2px; }
@@ -481,11 +482,9 @@ def apply_to(widget, role='window'):
         if role in ('feedback', 'bubble'):
             widget.setObjectName('feedbackBubble')
         widget.ensurePolished()
-        # dense等祖先动态属性改变后，让现有控件重算外观，不重建内容。
-        for child in [widget, *widget.findChildren(QWidget)]:
-            if shiboken6.isValid(child):
-                child.style().unpolish(child)
-                child.style().polish(child)
+        # Fluent组件拥有自己的样式与委托，遍历子控件强制unpolish会重入布局。
+        # 应用级主题变化由Qt与Fluent样式管理器共同传播。
+        widget.updateGeometry()
         widget.update()
     return widget
 

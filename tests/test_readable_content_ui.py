@@ -51,10 +51,18 @@ def assert_complete_item_text_fits(view, item):
     option.state = (option.state | QStyle.State_HasFocus if view.hasFocus() and view.currentItem() is item
                     else option.state & ~QStyle.State_HasFocus)
     option.rect = view.visualItemRect(item)
-    content = view.style().subElementRect(QStyle.SE_ItemViewItemText, option, view)
-    # QCommonStyle::viewItemDrawText 使用这个标准 metric 留出文字左右间距。
-    margin = view.style().pixelMetric(QStyle.PM_FocusFrameHMargin, None, view) + 1
-    content.adjust(margin, 0, -margin, 0)
+    from qfluentwidgets import ListWidget, TableWidget
+    if isinstance(view, (ListWidget, TableWidget)):
+        # 以库1.11.3的实际绘制契约独立测量：item水平11/16px + Qt文本边距3px。
+        # 不在Fluent样式代理上重入subElementRect，另有真实像素测试覆盖尾字和对比度。
+        content = option.rect.adjusted(14 if isinstance(view, ListWidget) else 19,
+                                       view.itemDelegate().margin,
+                                       -14 if isinstance(view, ListWidget) else -19,
+                                       -view.itemDelegate().margin)
+    else:
+        content = view.style().subElementRect(QStyle.SE_ItemViewItemText, option, view)
+        margin = view.style().pixelMetric(QStyle.PM_FocusFrameHMargin, None, view) + 1
+        content.adjust(margin, 0, -margin, 0)
     text_option = QTextOption()
     text_option.setWrapMode(QTextOption.WordWrap)
     text_option.setTextDirection(option.direction)
@@ -289,7 +297,7 @@ def test_document_text_refresh_preserves_anchor_after_all_rows_grow(panel, qapp)
 @pytest.mark.parametrize('selection_state', ['unselected', 'selected', 'focused'])
 def test_mouse_selected_project_paints_metadata_on_last_line(panel, qapp, mode, selection_state):
     name = '跨部门项目文档收录整理与版本交付协同管理系统'
-    panel.service.db.create_capture('隔离实际绘制验证', '资料', [(name, False)])
+    panel.service.db.create_capture('隔离实际绘制验证', '资料完整批次元数据', [(name, False)])
     panel.refresh()
     install_theme(panel.service)
     set_theme(mode, persist=False)
@@ -310,7 +318,13 @@ def test_mouse_selected_project_paints_metadata_on_last_line(panel, qapp, mode, 
     assert item.text().startswith(name + '\n') and '资料' in item.text()
     assert_complete_item_text_fits(view, item)
     # 检查真实标准委托paint的像素：末行元数据应有字形，而不是只有居中的首行省略号。
-    rendered = view.viewport().grab(view.visualItemRect(item)).toImage()
+    # Fluent行背景是透明的；在真实父窗口上合成后检查字形，不能把透明像素当黑底。
+    frame = panel.grab().toImage()
+    rect = view.visualItemRect(item)
+    origin = view.viewport().mapTo(panel, rect.topLeft())
+    scale = frame.devicePixelRatio()
+    rendered = frame.copy(round(origin.x()*scale), round(origin.y()*scale),
+                          round(rect.width()*scale), round(rect.height()*scale))
     background = rendered.pixelColor(rendered.width() // 2, 3)
     pixels = 0
     for y in range(round(rendered.height() * .68), round(rendered.height() * .90)):

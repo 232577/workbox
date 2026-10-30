@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QDialog, QHBoxLayout, QInputDialog, QListWidget, Q
 from theme import apply_to
 from ui_components import button, ComboBox
 from dialog_lifecycle import transient_dialog
+from fluent_views import WorkbenchListWidget
 
 
 class ProjectTypePickerDialog(QDialog):
@@ -158,21 +159,36 @@ class ProjectTypesDialog(QDialog):
     def __init__(self, service, parent=None):
         super().__init__(parent)
         from compact_ui import label, standard_list_scrolling, WrappedNameDelegate
+        from qfluentwidgets import CardWidget
         self.service = service
         self.setWindowTitle('项目类型')
         apply_to(self)
-        self.resize(540, 440)
+        self.resize(540, 540)
         layout = QVBoxLayout(self)
         layout.addWidget(label('项目类型', 'pageTitle'))
-        layout.addWidget(label('每次操作立即保存，取消外层窗口不会撤销。停用后保留项目归属和历史，不能再分配该类型。', 'subtle', True))
-        self.type_list = QListWidget()
+        layout.addWidget(label('每次操作立即保存，取消外层窗口不会撤销。停用后保留项目归属和历史，不能再分配该类型；停用默认类型后，新项目改为未分类。', 'subtle', True))
+        default_card = CardWidget(self)
+        default_layout = QVBoxLayout(default_card)
+        default_layout.setContentsMargins(16, 12, 16, 12)
+        default_layout.addWidget(label('新项目默认类型', 'title'))
+        self.default_type_combo = ComboBox()
+        self.default_type_combo.setAccessibleName('新项目默认类型')
+        self.default_type_combo.setMinimumWidth(0)
+        self.default_type_combo.setMinimumContentsLength(12)
+        self.default_type_combo.setSizeAdjustPolicy(ComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.default_type_combo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        default_layout.addWidget(self.default_type_combo)
+        default_layout.addWidget(label('选择后立即保存到本机，仅用于以后创建的项目。已有项目的类型不变；选择“未分类”可取消默认类型。', 'subtle', True))
+        layout.addWidget(default_card)
+        self._saved_default_type = None
+        self.default_type_combo.currentIndexChanged.connect(self.save_default_type)
+        self.type_list = WorkbenchListWidget()
         self.type_list.setWordWrap(True)
         self.type_list.setAccessibleName('项目类型列表')
         standard_list_scrolling(self.type_list)
         self.type_list.setUniformItemSizes(False)
         self.type_list.setTextElideMode(Qt.ElideNone)
         self.type_list.setResizeMode(QListView.Adjust)
-        self.type_list.setItemDelegate(WrappedNameDelegate(self.type_list))
         self.empty = label('还没有自定义类型，点击“新增类型”。已有项目继续保持未分类。', 'subtle', True)
         layout.addWidget(self.empty)
         layout.addWidget(self.type_list, 1)
@@ -198,8 +214,21 @@ class ProjectTypesDialog(QDialog):
     def refresh(self, selected_id=None):
         current = self.type_list.currentItem()
         selected_id = selected_id if selected_id is not None else current.data(Qt.UserRole)['id'] if current else None
+        # 保留外层管理入口的读取失败契约：构造失败由调用方显示错误并允许重试。
+        kinds = self.service.list_project_types(include_inactive=True)
+        default_id = self.service.get_default_project_type()
+        self._saved_default_type = default_id
+        with QSignalBlocker(self.default_type_combo):
+            self.default_type_combo.clear()
+            self.default_type_combo.addItem('未分类', None)
+            for kind in kinds:
+                if kind['active']:
+                    self.default_type_combo.addItem(kind['name'], kind['id'])
+                    self.default_type_combo.setItemData(self.default_type_combo.count() - 1, kind['name'], Qt.ToolTipRole)
+            self.default_type_combo.setCurrentIndex(max(0, self.default_type_combo.findData(default_id)))
+        self.default_type_combo.setToolTip(self.default_type_combo.currentText())
         self.type_list.clear()
-        for kind in self.service.list_project_types(include_inactive=True):
+        for kind in kinds:
             item = QListWidgetItem(f"{kind['name']} · {kind.get('project_count', 0)} 个项目" + (' · 已停用' if not kind['active'] else ''))
             item.setData(Qt.UserRole, kind)
             item.setToolTip(kind['name'])
@@ -207,6 +236,21 @@ class ProjectTypesDialog(QDialog):
             if kind['id'] == selected_id:
                 self.type_list.setCurrentItem(item)
         self.update_actions()
+
+    def save_default_type(self, *_):
+        value = self.default_type_combo.currentData()
+        try:
+            saved = self.service.set_default_project_type(value)
+        except (OSError, ValueError, RuntimeError, sqlite3.Error, KeyError) as error:
+            with QSignalBlocker(self.default_type_combo):
+                self.default_type_combo.setCurrentIndex(max(0, self.default_type_combo.findData(self._saved_default_type)))
+            self.default_type_combo.setToolTip(self.default_type_combo.currentText())
+            self.error.setText('新项目默认类型未保存：' + str(error))
+            return
+        self._saved_default_type = saved
+        self.default_type_combo.setToolTip(self.default_type_combo.currentText())
+        self.error.clear()
+        self.types_changed.emit()
 
     def update_actions(self, *_):
         self.empty.setVisible(self.type_list.count()==0)

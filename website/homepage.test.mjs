@@ -39,9 +39,9 @@ test('步骤视频使用可访问的原生控件、字幕和备用链接，不�
   assert.equal(video.attrs.preload, 'none');
   assert.equal(video.attrs.width, '1920');
   assert.equal(video.attrs.height, '1080');
-  assert.equal(video.attrs.poster, '/media/workbox-types-20261029.poster.png');
+  assert.equal(video.attrs.poster, '/media/workbox-official-20261030.poster.png');
   assert.ok(video.attrs['aria-label']);
-  const base = '/media/workbox-types-20261029';
+  const base = '/media/workbox-official-20261030';
   assert.ok(tags.some(tag => tag.name === 'source' && tag.attrs.src === `${base}.mp4`));
   assert.ok(tags.some(tag => tag.name === 'track' && tag.attrs.src === `${base}.vtt` && tag.attrs.kind === 'captions' && tag.attrs.srclang === 'zh'));
   assert.ok(tags.some(tag => tag.name === 'a' && tag.attrs.href === `${base}.mp4`));
@@ -79,15 +79,20 @@ test('新旧安装包和 GitHub 备用源保持发布目录中的真实地址，
   for (const id of ['copy-checksum', 'copy-status']) assert.ok(tags.some(tag => tag.attrs.id === id), id);
   assert.ok(Number.isSafeInteger(release.size) && release.size > 0);
   assert.ok(html.includes(`${release.size.toLocaleString('en-US')} 字节`));
-  assert.match(html, /最终原生验证/);
-  assert.match(html, /项目类型统计版/);
-  assert.match(html, /双主题界面版（历史）/);
-  assert.match(html, /下载项目类型统计版/);
+  assert.match(html, /WorkBox 工作箱 1\.0\.0 正式安装版/);
+  assert.match(html, /历史正式安装版 · 10月29日（类型统计）/);
+  assert.match(html, /历史正式安装版 · 10月28日（双主题）/);
+  assert.match(html, /下载正式安装版/);
+  assert.doesNotMatch(html.match(/class="wb-release-pill"[^>]*>([\s\S]*?)<\/a>/)?.[1] ?? '', /增强版|修正版/);
+  for (const [, text] of html.matchAll(/<a\b[^>]*href="(?:\/download\/|https:\/\/github\.com\/232577\/workbox\/releases\/download\/)[^"]*"[^>]*>([\s\S]*?)<\/a>/g)) {
+    assert.doesNotMatch(text, /增强版|修正版/);
+    assert.match(text, /正式安装版/);
+  }
   assert.ok(links.includes('https://github.com/232577/workbox/blob/main/LICENSE'));
 });
 
 test('官网准确说明工作量资格、独立项目类型和响应式工作台边界', () => {
-  for (const phrase of ['预设“材料”“可运行”', '项目总览与今日交付', '“修改类型…”',
+  for (const phrase of ['预设“生成材料”“可运行”', '项目总览与今日交付', '“修改类型…”',
     '单选、多选和类型管理', '按当前类型汇总', '各类型数量和合计', '改分类不改变总数',
     '旧项目保持未分类', '已有同名类型保留原内容和启用状态']) assert.ok(html.includes(phrase), phrase);
   for (const phrase of ['排除在个人工作量计数之外', '保留“已交付”状态', '最早仍有效交付日',
@@ -95,6 +100,11 @@ test('官网准确说明工作量资格、独立项目类型和响应式工作�
     '自定义项目类型可独立增改、停用启用、筛选及右键或批量分配', '小胶囊放在日历图标下方',
     '左侧项目、右侧文档分栏与项目右键菜单']) assert.ok(html.includes(phrase), phrase);
   assert.doesNotMatch(html, /原生 WinUI|已全部替换 UI 控件库/);
+});
+
+test('正式安装版说明实际 Fluent 列表、文档表格和新项目默认类型，保留升级边界', () => {
+  for (const phrase of ['Fluent 项目列表', '文档表格', '状态筛选', '设置卡片',
+    '新项目默认归为“生成材料”', '设置 → 管理项目类型 → 新项目默认类型', '旧项目类型、交付记录和原有配置保持']) assert.ok(html.includes(phrase), phrase);
 });
 
 test('下载统计和赞助沿用实际脚本及关闭的付款配置', async () => {
@@ -278,10 +288,12 @@ test('所有者统计接入同一外观选择，保留私密登录与空数据�
   assert.match(html,/href="https:\/\/github\.com\/232577\/workbox\/blob\/main\/THIRD_PARTY_NOTICES\.md"[^>]*>第三方许可<\/a>/);
 });
 
-test('Hero使用实际浅深界面原图链接并保留有尺寸的文件夹流程图后备', () => {
+test('Hero使用实际浅深界面原图链接，尺寸与 PNG 一致并保留文件夹流程图后备', async () => {
   for (const theme of ['light','dark']) {
-    const path=`/media/workbox-desktop-${theme}-types-20261029.png`;
-    assert.ok(tags.some(tag=>tag.name==='img'&&tag.attrs.src===path&&tag.attrs['data-desktop-image']===theme&&tag.attrs.width==='1120'&&tag.attrs.height==='760'));
+    const path=`/media/workbox-desktop-${theme}-official-20261030.png`;
+    const png=await readFile(new URL(`./public${path}`,import.meta.url));
+    assert.equal(png.toString('ascii',1,4),'PNG');
+    assert.ok(tags.some(tag=>tag.name==='img'&&tag.attrs.src===path&&tag.attrs['data-desktop-image']===theme&&Number(tag.attrs.width)===png.readUInt32BE(16)&&Number(tag.attrs.height)===png.readUInt32BE(20)));
     assert.ok(tags.some(tag=>tag.name==='a'&&tag.attrs.href===path));
   }
   assert.ok(tags.some(tag=>has(tag,'data-desktop-stage')));

@@ -12,12 +12,13 @@ from database import Database
 @pytest.fixture
 def db(tmp_path):
     result = Database(tmp_path / 'types.db')
+    result.set_default_project_type(None)
     result.create_capture('隔离', '隔离批', [('甲系统', False), ('乙系统', False)])
     return result
 
 
 def test_create_assign_filter_rename_disable_restore_and_clear(db):
-    assert [row['name'] for row in db.list_project_types()] == ['材料', '可运行']
+    assert [row['name'] for row in db.list_project_types()] == ['生成材料', '可运行']
     assert db.get_project(1)['project_type_id'] is None
     assert db.get_project(1)['project_type_name'] == ''
     before = db.get_project(1)['name'], db.get_project(1)['status']
@@ -31,7 +32,7 @@ def test_create_assign_filter_rename_disable_restore_and_clear(db):
     db.rename_project_type(kind['id'], '系统业务')
     assert db.get_project(1)['project_type_name'] == '系统业务'
     db.set_project_type_active(kind['id'], False)
-    assert [row['name'] for row in db.list_project_types()] == ['材料', '可运行']
+    assert [row['name'] for row in db.list_project_types()] == ['生成材料', '可运行']
     assert db.list_project_types(include_inactive=True)[-1]['active'] is False
     assert db.get_project(1)['project_type_name'] == '系统业务'
     assert len(db.list_projects(type_id=kind['id'])) == 1
@@ -47,7 +48,7 @@ def test_create_assign_filter_rename_disable_restore_and_clear(db):
 def test_invalid_type_names_are_rejected(db, name):
     with pytest.raises(ValueError):
         db.create_project_type(name)
-    assert [row['name'] for row in db.list_project_types(include_inactive=True)] == ['材料', '可运行']
+    assert [row['name'] for row in db.list_project_types(include_inactive=True)] == ['生成材料', '可运行']
 
 
 def test_unicode_casefold_duplicate_and_inactive_names_remain_reserved(db):
@@ -168,13 +169,14 @@ def test_five_hundred_project_assignment_changes_and_clearing(db):
 def upgrade_fixture(db):
     """只在隔离数据库还原尚未运行预设迁移的类型字典。"""
     with db.connect() as con:
+        con.execute('DELETE FROM project_type_defaults')
         con.execute('DELETE FROM project_types')
         con.execute('DROP TABLE IF EXISTS project_type_migrations')
 
 
 def test_presets_migrate_once_and_remain_ordinary_editable_types(db):
     presets = db.list_project_types()
-    assert [row['name'] for row in presets] == ['材料', '可运行']
+    assert [row['name'] for row in presets] == ['生成材料', '可运行']
     db.rename_project_type(presets[0]['id'], '个人材料')
     db.set_project_type_active(presets[1]['id'], False)
     before = db.list_project_types(include_inactive=True)
@@ -182,8 +184,9 @@ def test_presets_migrate_once_and_remain_ordinary_editable_types(db):
     assert len(before) == 2 and before[1]['active'] is False
     assert all(row['project_type_id'] is None for row in db.list_projects())
     with db.connect() as con:
-        assert json.loads(con.execute('SELECT seeded_types FROM project_type_migrations').fetchone()[0]) == {
-            str(presets[0]['id']): '材料', str(presets[1]['id']): '可运行'}
+        assert json.loads(con.execute('SELECT seeded_types FROM project_type_migrations WHERE name=?',
+                          ('editable-project-type-presets-v1',)).fetchone()[0]) == {
+            str(presets[0]['id']): '生成材料', str(presets[1]['id']): '可运行'}
 
 
 def test_upgrade_reuses_normalized_name_without_changing_existing_types_or_facts(db):
@@ -199,19 +202,21 @@ def test_upgrade_reuses_normalized_name_without_changing_existing_types_or_facts
     with reopened.connect() as con:
         assert [tuple(row) for row in con.execute('SELECT * FROM project_types WHERE id IN (41,42) ORDER BY id')] == existing
         assert {table: [tuple(row) for row in con.execute('SELECT * FROM '+table)] for table in tables} == before
-        assert con.execute('SELECT COUNT(*) FROM project_type_migrations').fetchone()[0] == 1
-        assert json.loads(con.execute('SELECT seeded_types FROM project_type_migrations').fetchone()[0]) == {'43': '可运行'}
-    assert [row['name'] for row in reopened.list_project_types(include_inactive=True)] == ['旧材料名', '自定义', '可运行']
+        assert con.execute('SELECT COUNT(*) FROM project_type_migrations').fetchone()[0] == 2
+        assert json.loads(con.execute('SELECT seeded_types FROM project_type_migrations WHERE name=?',
+                          ('editable-project-type-presets-v1',)).fetchone()[0]) == {'43': '生成材料', '44': '可运行'}
+    assert [row['name'] for row in reopened.list_project_types(include_inactive=True)] == ['旧材料名', '自定义', '生成材料', '可运行']
 
 
 def test_concurrent_upgrade_creates_each_preset_and_marker_only_once(db):
     upgrade_fixture(db)
     with ThreadPoolExecutor(max_workers=4) as pool:
         results = list(pool.map(lambda _: Database(db.path).list_project_types(), range(8)))
-    assert all([row['name'] for row in rows] == ['材料', '可运行'] for rows in results)
+    assert all([row['name'] for row in rows] == ['生成材料', '可运行'] for rows in results)
     with db.connect() as con:
-        assert con.execute('SELECT COUNT(*) FROM project_type_migrations').fetchone()[0] == 1
-        assert json.loads(con.execute('SELECT seeded_types FROM project_type_migrations').fetchone()[0]) == {'1': '材料', '2': '可运行'}
+        assert con.execute('SELECT COUNT(*) FROM project_type_migrations').fetchone()[0] == 2
+        assert json.loads(con.execute('SELECT seeded_types FROM project_type_migrations WHERE name=?',
+                          ('editable-project-type-presets-v1',)).fetchone()[0]) == {'1': '生成材料', '2': '可运行'}
 
 
 @pytest.mark.parametrize('failure', ['second-type', 'marker'])
@@ -229,4 +234,4 @@ def test_preset_migration_failure_rolls_back_all_type_rows_and_marker(db, failur
         assert con.execute('SELECT COUNT(*) FROM project_types').fetchone()[0] == 0
         assert con.execute('SELECT COUNT(*) FROM project_type_migrations').fetchone()[0] == 0
         con.execute('DROP TRIGGER fail_preset')
-    assert [row['name'] for row in Database(db.path).list_project_types()] == ['材料', '可运行']
+    assert [row['name'] for row in Database(db.path).list_project_types()] == ['生成材料', '可运行']

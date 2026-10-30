@@ -186,7 +186,7 @@ def test_delivery_summary_uses_beijing_midnight_and_counts_lifetime_first_projec
          'last_action_id': None, 'last_action': None, 'management_reason': '', 'managed_at': None,
           'prior_delivery': False, 'prior_delivery_reason': '',
           'included_in_workload': True, 'count_exclusion_reason': '', 'count_action_id': None, 'count_managed_at': None,
-          'project_type_id': None, 'project_type_name': '', 'project_type_active': None,
+          'project_type_id': box.get_default_project_type(), 'project_type_name': '生成材料', 'project_type_active': True,
           'project_archived': False, 'project_deleted': False},
         {'project_id': 2, 'project_name': '乙系统', 'batch_name': '交付批', 'delivery_count': 1,
          'latest_at': '2026-10-23T08:00:00.000Z', 'archive_path': '隔离归档', 'kind': 'manual-files',
@@ -194,7 +194,7 @@ def test_delivery_summary_uses_beijing_midnight_and_counts_lifetime_first_projec
          'last_action_id': None, 'last_action': None, 'management_reason': '', 'managed_at': None,
           'prior_delivery': False, 'prior_delivery_reason': '',
           'included_in_workload': True, 'count_exclusion_reason': '', 'count_action_id': None, 'count_managed_at': None,
-          'project_type_id': None, 'project_type_name': '', 'project_type_active': None,
+          'project_type_id': box.get_default_project_type(), 'project_type_name': '生成材料', 'project_type_active': True,
           'project_archived': False, 'project_deleted': False},
     ]
     details = box.db.delivery_events_for_project(1, date(2026, 10, 23))

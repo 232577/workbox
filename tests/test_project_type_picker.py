@@ -15,6 +15,7 @@ def qapp():
 
 def fixture_projects(tmp_path):
     service = DesktopService(tmp_path / 'picker.db')
+    service.set_default_project_type(None)
     service.db.create_capture('隔离验证', '类型选择', [('项目甲', False), ('项目乙', False)])
     return service, service.list_projects()
 

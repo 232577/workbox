@@ -47,19 +47,37 @@ def _has_user_type_history(connection, tables):
     if 'project_type_migrations' not in tables:
         return bool(rows)
     try:
-        origin = connection.execute('SELECT seeded_types FROM project_type_migrations WHERE name=?',
-                                    ('editable-project-type-presets-v1',)).fetchone()
-        if origin is None:
+        origins = connection.execute('SELECT name,seeded_types FROM project_type_migrations WHERE name IN (?,?)',
+                                    ('editable-project-type-presets-v1', 'default-generated-project-type-v1')).fetchall()
+        if not origins:
             return bool(rows)
-        seeded = json.loads(origin['seeded_types'])
-        if (not isinstance(seeded, dict) or len(seeded) > 2
-                or any(not key.isdecimal() or str(int(key)) != key or int(key) <= 0
-                       or name not in ('材料', '可运行') for key, name in seeded.items())):
-            raise ValueError('预设来源格式无效')
+        seeded = {}
+        for origin in origins:
+            values = json.loads(origin['seeded_types'])
+            allowed = ('材料', '生成材料', '可运行') if origin['name'] == 'editable-project-type-presets-v1' else ('生成材料',)
+            if (not isinstance(values, dict) or len(values) > (2 if len(allowed) == 3 else 1)
+                    or any(not key.isdecimal() or str(int(key)) != key or int(key) <= 0
+                           or name not in allowed for key, name in values.items())
+                    or seeded.keys() & values.keys()):
+                raise ValueError('预设来源格式无效')
+            seeded.update(values)
     except (sqlite3.DatabaseError, ValueError, TypeError, AttributeError) as error:
         raise RuntimeError('首次设置的预设类型来源缺失或损坏，未自动重置；请保留数据库并检查。') from error
     return any(seeded.get(str(row['id'])) != row['name'] or row['active'] != 1
                or row['normalized_name'] != row['name'].casefold() for row in rows)
+
+
+def _has_default_type_history(connection, tables):
+    """工厂默认字段不跳过新安装引导，用户明确保存过的偏好是历史。"""
+    if 'project_type_defaults' not in tables:
+        return False
+    try:
+        rows = connection.execute('SELECT id,type_id,is_factory FROM project_type_defaults').fetchall()
+        if len(rows) != 1 or rows[0]['id'] != 1 or rows[0]['is_factory'] not in (0, 1):
+            raise ValueError('默认类型来源格式无效')
+    except (sqlite3.DatabaseError, ValueError) as error:
+        raise RuntimeError('首次设置的默认项目类型来源缺失或损坏，未自动重置。') from error
+    return rows[0]['is_factory'] == 0
 
 
 def initialize(connection):
@@ -77,6 +95,8 @@ def initialize(connection):
         )
     if not legacy:
         legacy = _has_user_type_history(connection, tables)
+    if not legacy:
+        legacy = _has_default_type_history(connection, tables)
     connection.execute('''CREATE TABLE workflow_first_run (
         id INTEGER PRIMARY KEY CHECK(id=1),
         completed INTEGER NOT NULL CHECK(typeof(completed)='integer' AND completed IN (0,1))

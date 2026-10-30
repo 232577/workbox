@@ -5,7 +5,8 @@ from PySide6.QtCore import Qt, QTimer, QSignalBlocker, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QHeaderView, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QSizePolicy, QMessageBox
 
-from compact_ui import button, label, local_timestamp, standard_list_scrolling, WrappedNameDelegate
+from compact_ui import button, label, local_timestamp
+from fluent_views import WorkbenchTableWidget
 from native_files import plain_path
 from project_documents import list_project_documents
 from ui import FileJob, human_size
@@ -16,7 +17,7 @@ DOCUMENT_EXTENSIONS = {'.txt', '.md', '.pdf', '.doc', '.docx', '.rtf', '.odt',
     '.bmp', '.webp', '.zip', '.7z', '.rar', '.json', '.xml', '.yaml', '.yml', '.log'}
 
 
-class DocumentTable(QTableWidget):
+class DocumentTable(WorkbenchTableWidget):
     width_about_to_change = Signal()
 
     def resizeEvent(self, event):
@@ -61,8 +62,7 @@ class ProjectDocumentsPane(QWidget):
         self.table.setTextElideMode(Qt.ElideNone)
         self.table.setWordWrap(True)
         self.table.setShowGrid(False)
-        self.table.setItemDelegateForColumn(0, WrappedNameDelegate(self.table))
-        standard_list_scrolling(self.table)
+        self.table.setWrapColumns({0})
         self.table.setMinimumHeight(90)
         self.table.verticalHeader().hide()
         self.table.verticalHeader().setDefaultSectionSize(40)
@@ -249,6 +249,10 @@ class ProjectDocumentsPane(QWidget):
         if self.hint.isHidden()==show:
             self.hint.setVisible(show)
         minimum=64 if self._compact and show else 90
+        # Fluent 表头叠加产品字体后可能高于原 Qt 表头；至少保留一行文档的视口。
+        header = self.table.horizontalHeader()
+        minimum = max(minimum, max(header.height(), header.sizeHint().height()) + 40
+                      + 2 * self.table.frameWidth())
         if self.table.minimumHeight()!=minimum:
             self.table.setMinimumHeight(minimum)
 

@@ -1,10 +1,35 @@
 {
   "kind": "verified-screenshot-walkthrough",
-  "source_exe_sha256": "87022af8176c8a0ae591b8d4183d50e766ce077d39d1bd25563bfcd1f7579baf",
+  "source_exe_sha256": "ce9e986d53fd0129c905e4058f7a8bfe3b67df4b0e1d6a8310d42dcd8a114890",
   "privacy_reviewed": true,
-  "description": "项目总览、类型选择与每日分类统计的真实中性窗口截图步骤教程；旧媒体保留各自构建来源。",
-  "duration_seconds": 55,
+  "description": "已验证冻结程序的中性隔离夹具截图步骤演示，展示项目、类型与交付统计；旧媒体保留各自构建来源。",
+  "duration_seconds": 44,
   "files": {
+    "public/media/workbox-desktop-light-official-20261030.png": {
+      "size": 104471,
+      "sha256": "f7601a29508cfe03e8e44217fb07a197df02ba2bfe8baf374c5f5fa5804b35d6",
+      "source_exe_sha256": "ce9e986d53fd0129c905e4058f7a8bfe3b67df4b0e1d6a8310d42dcd8a114890"
+    },
+    "public/media/workbox-desktop-dark-official-20261030.png": {
+      "size": 110850,
+      "sha256": "ae3b44230a5d9dd03c9d3fc54c29f6ca1e9ee8577d5f7ce896845bdebbee9f50",
+      "source_exe_sha256": "ce9e986d53fd0129c905e4058f7a8bfe3b67df4b0e1d6a8310d42dcd8a114890"
+    },
+    "public/media/workbox-official-20261030.mp4": {
+      "size": 1231955,
+      "sha256": "35e4bce067fb2ee16e39abc71aa7ced62150910c87f5c3e2ea98669ed5943ed9",
+      "source_exe_sha256": "ce9e986d53fd0129c905e4058f7a8bfe3b67df4b0e1d6a8310d42dcd8a114890"
+    },
+    "public/media/workbox-official-20261030.poster.png": {
+      "size": 325840,
+      "sha256": "75774d0fce379f8e0548742e81ee89d5a24af09cac1dc3a8d2f22ebb4f6c3dab",
+      "source_exe_sha256": "ce9e986d53fd0129c905e4058f7a8bfe3b67df4b0e1d6a8310d42dcd8a114890"
+    },
+    "public/media/workbox-official-20261030.vtt": {
+      "size": 541,
+      "sha256": "ea830f4a8069052082706b537fb4988e40f3a6594867a7516f9c31f41b2a1bdc",
+      "source_exe_sha256": "ce9e986d53fd0129c905e4058f7a8bfe3b67df4b0e1d6a8310d42dcd8a114890"
+    },
     "public/media/workbox-quickstart-20261028.mp4": {
       "size": 1835029,
       "sha256": "3790ad7382e4a309b9a5464edc65fd5b3ef0dd984530aa065baed40b7f1addf9",
@@ -171,5 +196,5 @@
       "source_exe_sha256": "87022af8176c8a0ae591b8d4183d50e766ce077d39d1bd25563bfcd1f7579baf"
     }
   },
-  "active_video": "public/media/workbox-types-20261029.mp4"
+  "active_video": "public/media/workbox-official-20261030.mp4"
 }

@@ -158,15 +158,16 @@ def test_mode_rejects_corrupt_zip_delivery_preference(invalid):
 
 def test_only_factory_type_presets_keep_first_setup_pending(tmp_path):
     service = WorkBox(tmp_path / 'fresh-presets.db')
-    assert {row['name'] for row in service.list_project_types()} == {'材料', '可运行'}
+    assert {row['name'] for row in service.list_project_types()} == {'生成材料', '可运行'}
     assert WorkspaceManager(service).setup_required()
 
 
-@pytest.mark.parametrize('name', ['材料', '可运行', '既有业务'])
+@pytest.mark.parametrize('name', ['材料', '生成材料', '可运行', '既有业务'])
 def test_existing_same_named_types_are_not_factory_history(tmp_path, name):
     service = WorkBox(tmp_path / 'legacy-types.db')
     with service.db.connect() as connection:
         connection.execute('DELETE FROM project_type_migrations')
+        connection.execute('DELETE FROM project_type_defaults')
         connection.execute('DELETE FROM project_types')
         connection.execute('INSERT INTO project_types(id,name,normalized_name) VALUES (41,?,?)',
                            (name, name.casefold()))
@@ -178,7 +179,7 @@ def test_existing_same_named_types_are_not_factory_history(tmp_path, name):
 @pytest.mark.parametrize('change', ['rename', 'disable', 'new'])
 def test_user_type_customization_before_workspace_is_legacy(tmp_path, change):
     service = WorkBox(tmp_path / 'changed-presets.db')
-    preset = next(row for row in service.list_project_types() if row['name'] == '材料')
+    preset = next(row for row in service.list_project_types() if row['name'] == '生成材料')
     if change == 'rename':
         service.rename_project_type(preset['id'], '内部材料')
     elif change == 'disable':

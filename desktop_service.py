@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 from app import WorkBox
+from database import Database
 from managed_archive import ManagedArchive
 from parser import MAX_MESSAGE_LENGTH, NUMBERED, PROJECT_LABEL, TITLE, TITLE_END, ParsedProject, parse_message
 from workspace_manager import WorkspaceManager, _path, _zip_structure
@@ -106,6 +107,7 @@ class DesktopService(WorkBox):
         message_id = connection.execute('INSERT INTO messages(batch_id,raw_text) VALUES (?,?)', (batch_id, receipt['raw_text'])).lastrowid
         ids = [connection.execute('INSERT INTO projects(message_id,batch_id,name,urgent) VALUES (?,?,?,?)',
                (message_id, batch_id, project.name.strip(), int(project.urgent))).lastrowid for project in projects]
+        Database._assign_default_project_type(connection, ids)
         connection.execute("UPDATE intake_receipts SET state='committed',batch_id=?,project_ids=?,reason='' WHERE id=?", (batch_id, json.dumps(ids), receipt['id']))
 
     def receive_text(self, text):

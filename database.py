@@ -187,6 +187,11 @@ CREATE TABLE IF NOT EXISTS project_type_migrations (
     name TEXT PRIMARY KEY,
     seeded_types TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS project_type_defaults (
+    id INTEGER PRIMARY KEY CHECK(id=1),
+    type_id INTEGER REFERENCES project_types(id),
+    is_factory INTEGER NOT NULL CHECK(is_factory IN (0,1))
+);
 CREATE TABLE IF NOT EXISTS delivery_event_migrations (
     name TEXT PRIMARY KEY
 );
@@ -208,6 +213,7 @@ class Database:
             connection.execute('BEGIN IMMEDIATE')
             self._migrate_delivery_events(connection)
             self._migrate_project_type_presets(connection)
+            self._migrate_default_project_type(connection)
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -237,12 +243,33 @@ class Database:
         if connection.execute('SELECT 1 FROM project_type_migrations WHERE name=?', (marker,)).fetchone():
             return
         seeded_types = {}
-        for name in ('材料', '可运行'):
+        for name in ('生成材料', '可运行'):
             if not connection.execute('SELECT 1 FROM project_types WHERE normalized_name=?',
                                       (name.casefold(),)).fetchone():
                 type_id = connection.execute('INSERT INTO project_types(name,normalized_name) VALUES (?,?)',
                                              (name, name.casefold())).lastrowid
                 seeded_types[str(type_id)] = name
+        connection.execute('INSERT INTO project_type_migrations(name,seeded_types) VALUES (?,?)',
+                           (marker, json.dumps(seeded_types, ensure_ascii=False, sort_keys=True)))
+
+    @staticmethod
+    def _migrate_default_project_type(connection: sqlite3.Connection) -> None:
+        """只初始化一次新建项目偏好，保留旧类型及全部既有项目关系。"""
+        marker = 'default-generated-project-type-v1'
+        if connection.execute('SELECT 1 FROM project_type_migrations WHERE name=?', (marker,)).fetchone():
+            return
+        row = connection.execute('SELECT id,active FROM project_types WHERE normalized_name=?',
+                                 ('生成材料',)).fetchone()
+        seeded_types = {}
+        if row is None:
+            type_id = connection.execute('INSERT INTO project_types(name,normalized_name) VALUES (?,?)',
+                                         ('生成材料', '生成材料')).lastrowid
+            seeded_types[str(type_id)] = '生成材料'
+        else:
+            # 同名停用记录是用户选择，不能偷偷启用或借用另一个类型。
+            type_id = row['id'] if row['active'] else None
+        connection.execute('INSERT OR IGNORE INTO project_type_defaults(id,type_id,is_factory) VALUES (1,?,1)',
+                           (type_id,))
         connection.execute('INSERT INTO project_type_migrations(name,seeded_types) VALUES (?,?)',
                            (marker, json.dumps(seeded_types, ensure_ascii=False, sort_keys=True)))
 
@@ -649,6 +676,7 @@ class Database:
                     "INSERT INTO projects(message_id,batch_id,name,urgent) VALUES (?,?,?,?)",
                     (message_id, batch_id, name, int(urgent)),
                 ).lastrowid)
+            self._assign_default_project_type(connection, project_ids)
             return {"message_id": message_id, "batch_id": batch_id, "project_ids": project_ids}
 
     def register_zip(self, metadata: dict, project_id: int | None) -> tuple[dict, bool]:
@@ -982,6 +1010,41 @@ class Database:
                 ('' if include_inactive else ' WHERE active=1') + ' ORDER BY id').fetchall()
             return [self._project_type_row(connection, row['id']) for row in rows]
 
+    @staticmethod
+    def _default_project_type(connection) -> int | None:
+        rows = connection.execute('SELECT id,type_id,is_factory FROM project_type_defaults').fetchall()
+        if (len(rows) != 1 or rows[0]['id'] != 1 or rows[0]['is_factory'] not in (0, 1)):
+            raise RuntimeError('默认项目类型设置缺失或损坏，未自动重置。')
+        type_id = rows[0]['type_id']
+        if type_id is not None:
+            row = connection.execute('SELECT active FROM project_types WHERE id=?', (type_id,)).fetchone()
+            if row is None or not row['active']:
+                raise RuntimeError('默认项目类型不存在或已停用，请重新设置。')
+        return type_id
+
+    def get_default_project_type(self) -> int | None:
+        with self.connect() as connection:
+            return self._default_project_type(connection)
+
+    def set_default_project_type(self, type_id: int | None) -> int | None:
+        if type_id is not None:
+            self._project_type_id(type_id)
+        with self.connect() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            self._default_project_type(connection)
+            if type_id is not None and not self._project_type_row(connection, type_id)['active']:
+                raise ValueError('该项目类型已停用，请先恢复类型或选择其他类型。')
+            connection.execute('UPDATE project_type_defaults SET type_id=?,is_factory=0 WHERE id=1', (type_id,))
+        return type_id
+
+    @staticmethod
+    def _assign_default_project_type(connection, project_ids) -> None:
+        """调用方已开启建项事务；类型关系写入失败时整个建项回滚。"""
+        type_id = Database._default_project_type(connection)
+        if type_id is not None:
+            connection.executemany('INSERT INTO project_type_links(project_id,type_id) VALUES (?,?)',
+                                   [(project_id, type_id) for project_id in project_ids])
+
     def create_project_type(self, name: str) -> dict:
         name = self._project_type_name(name)
         with self.connect() as connection:
@@ -1018,6 +1081,9 @@ class Database:
             if current['active'] != active:
                 connection.execute('''UPDATE project_types SET active=?,
                     updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?''', (int(active), type_id))
+            if not active:
+                connection.execute('UPDATE project_type_defaults SET type_id=NULL,is_factory=0 WHERE type_id=?',
+                                   (type_id,))
             return self._project_type_row(connection, type_id)
 
     def set_project_types(self, project_ids, type_id: int | None) -> dict:

@@ -30,6 +30,7 @@ def dialog(qapp, tmp_path, monkeypatch):
             return moment.astimezone(tz) if tz else moment.replace(tzinfo=None)
     monkeypatch.setattr(database, 'datetime', Frozen)
     service = DesktopService(tmp_path / 'data/workbox.db')
+    service.set_default_project_type(None)
     service.receive_text('1. 类型甲平台\n2. 类型乙平台\n3. 历史丙平台')
     archive = tmp_path / 'archive'
     archive.mkdir()
@@ -217,7 +218,7 @@ def test_empty_and_many_long_types_wrap_scroll_at_minimum_size(dialog, qapp):
     dialog.resize(680, 460)
     qapp.processEvents()
     assert dialog.width() == 680 and dialog.height() == 460
-    assert '材料：0' in dialog.type_counts.toPlainText()
+    assert '生成材料：0' in dialog.type_counts.toPlainText()
     assert '可运行：0' in dialog.type_counts.toPlainText()
     assert '未分类：0' in dialog.type_counts.toPlainText()
     assert long_name + '：0' in dialog.type_counts.toPlainText()
@@ -299,9 +300,8 @@ def assert_complete_cell_text_fits(table, item):
     table.itemDelegateForIndex(index).initStyleOption(option, index)
     option.state = option.state | QStyle.State_Selected if item.isSelected() else option.state & ~QStyle.State_Selected
     option.rect = table.visualItemRect(item)
-    content = table.style().subElementRect(QStyle.SE_ItemViewItemText, option, table)
-    margin = table.style().pixelMetric(QStyle.PM_FocusFrameHMargin, None, table) + 1
-    content.adjust(margin, 0, -margin, 0)
+    # Fluent 1.11.3 item横向16px加Qt标准文本边距3px，垂直由库delegate.margin控制。
+    content = option.rect.adjusted(19, table.itemDelegate().margin, -19, -table.itemDelegate().margin)
     text_option = QTextOption()
     text_option.setWrapMode(QTextOption.WordWrap)
     layout = QTextLayout(option.text, option.font)
@@ -392,6 +392,6 @@ def test_project_row_reflow_preserves_reading_anchor_selection_and_coalesces(dia
 def test_default_type_counts_fit_one_line_at_minimum_width(dialog, qapp):
     dialog.resize(680, 460)
     settle(qapp)
-    assert dialog.type_counts.toPlainText().startswith('材料：0  ·  可运行：0  ·  未分类：2')
+    assert dialog.type_counts.toPlainText().startswith('生成材料：0  ·  可运行：0  ·  未分类：2')
     assert dialog.type_counts.document().firstBlock().layout().lineCount() == 1
     assert dialog.type_counts.verticalScrollBar().maximum() == 0

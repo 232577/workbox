@@ -1,7 +1,7 @@
 """正式业务入口使用统一 Fluent 基础控件，同时保留原生模型和保存规则。"""
 import pytest
 from PySide6.QtWidgets import QApplication, QComboBox, QTableWidget, QScrollBar
-from qfluentwidgets import PushButton, PrimaryPushButton, CheckBox, isDarkTheme
+from qfluentwidgets import PushButton, PrimaryPushButton, CheckBox, ListWidget, TableWidget, isDarkTheme
 from compact_ui import CompactPanel, DirectorySettingsDialog
 from desktop_service import DesktopService
 from theme import install_theme, set_theme
@@ -29,6 +29,8 @@ def test_business_controls_are_fluent_with_native_data_and_scroll(qapp, tmp_path
     assert isinstance(panel.archive_filter, QComboBox)
     assert panel.archive_filter.itemData(0) is False
     assert isinstance(panel.document_pane.table, QTableWidget)
+    assert isinstance(panel.document_pane.table, TableWidget)
+    assert isinstance(panel.project_list, ListWidget)
     assert type(panel.project_list.verticalScrollBar()) is QScrollBar
     panel.document_pane.shutdown()
 
