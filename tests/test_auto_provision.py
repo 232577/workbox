@@ -71,7 +71,7 @@ def test_unknown_zip_creates_full_stem_then_watches_and_archives(service, tmp_pa
 
 
 @pytest.mark.parametrize('kind', ['missing', 'directory', 'invalid-zip', 'long-name'])
-def test_invalid_source_does_not_create_project(service, tmp_path, kind):
+def test_invalid_source_does_not_create_project(service, tmp_path, tmp_path_factory, kind):
     source = tmp_path / '不存在.txt'
     if kind == 'directory':
         source.mkdir()
@@ -79,7 +79,7 @@ def test_invalid_source_does_not_create_project(service, tmp_path, kind):
         source = tmp_path / '无效.zip'
         source.write_bytes(b'PK\x03\x04' + b'not a zip' * 10)
     elif kind == 'long-name':
-        source = ordinary(tmp_path, '长' * 201 + '.txt')
+        source = ordinary(tmp_path_factory.mktemp('long'), '长' * 201 + '.txt')
     with pytest.raises((ValueError, OSError)):
         service.receive_file(source)
     assert service.db.counts()['projects'] == 0
