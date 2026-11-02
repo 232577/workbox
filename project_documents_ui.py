@@ -174,6 +174,10 @@ class ProjectDocumentsPane(QWidget):
         anchor_id = self.documents[anchor_row]['id'] if 0 <= anchor_row < len(self.documents) else None
         anchor_top = self.table.rowViewportPosition(anchor_row) if anchor_id else 0
         vertical, horizontal = self.table.verticalScrollBar().value(), self.table.horizontalScrollBar().value()
+        # 本次刷新会同步测量全部行，取代更早排队的列宽布局。
+        # 表头在重建时也可能发出尺寸信号，不能让它保存临时/过期锚点。
+        self._row_layout_timer.stop()
+        self._row_layout_anchor = (anchor_id, anchor_top)
         self.documents = result['documents']
         new_ids = [row['id'] for row in self.documents]
         versions=sorted(row['zip_id'] for row in self.documents if row.get('zip_id') is not None)
@@ -220,6 +224,8 @@ class ProjectDocumentsPane(QWidget):
             else:
                 self.table.verticalScrollBar().setValue(vertical)
             self.table.horizontalScrollBar().setValue(horizontal)
+        self._row_layout_timer.stop()
+        self._row_layout_anchor = None
         self._show_hint(result)
         self._signature = signature
         self._deferred = None
