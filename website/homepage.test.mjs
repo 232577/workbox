@@ -59,6 +59,18 @@ test('首次使用推荐通用模式，自动交付门槛只适用于自动模�
   assert.doesNotMatch(html, /ZIP 默认按/);
 });
 
+test('十一月发布展示当前构建截图，明确旧教程日期和显式合并边界', async () => {
+  const registry = JSON.parse(await readFile(new URL('./MEDIA.json', import.meta.url), 'utf8'));
+  for (const theme of ['light', 'dark']) {
+    const path = `/media/workbox-desktop-${theme}-official-20261102.png`;
+    assert.ok(tags.some(tag => tag.name === 'img' && tag.attrs.src === path));
+    const record = registry.files[`public${path}`];
+    assert.equal(record?.source_exe_sha256, '8311e213b3e2eaefa512d1e7164ad046542a5b66bdd79276c0dcec6d6b241c40');
+  }
+  for (const phrase of ['2026-10-30 构建的历史步骤演示', '交付记录管理并入主窗口',
+    '同名项目先预览再确认合并', '原材料和历史交付记录保留', '不会在启动时自动合并']) assert.ok(html.includes(phrase), phrase);
+});
+
 test('首页使用中文、唯一主标题且每个内部锚点都指向唯一元素', () => {
   assert.equal(tags.find(tag => tag.name === 'html').attrs.lang, 'zh-CN');
   assert.equal(tags.filter(tag => tag.name === 'h1').length, 1);
@@ -290,7 +302,7 @@ test('所有者统计接入同一外观选择，保留私密登录与空数据�
 
 test('Hero使用实际浅深界面原图链接，尺寸与 PNG 一致并保留文件夹流程图后备', async () => {
   for (const theme of ['light','dark']) {
-    const path=`/media/workbox-desktop-${theme}-official-20261030.png`;
+    const path=`/media/workbox-desktop-${theme}-official-20261102.png`;
     const png=await readFile(new URL(`./public${path}`,import.meta.url));
     assert.equal(png.toString('ascii',1,4),'PNG');
     assert.ok(tags.some(tag=>tag.name==='img'&&tag.attrs.src===path&&tag.attrs['data-desktop-image']===theme&&Number(tag.attrs.width)===png.readUInt32BE(16)&&Number(tag.attrs.height)===png.readUInt32BE(20)));

@@ -19,7 +19,8 @@ from theme import apply_to, apply_scrollbar, stylesheet, install_theme, set_them
 from dialog_lifecycle import transient_dialog
 from ui_components import button as fluent_button, LineEdit as QLineEdit, CheckBox as QCheckBox, SpinBox as QSpinBox, ComboBox as QComboBox
 from qfluentwidgets import FluentIcon, InfoBadge, InfoLevel, CardWidget, SegmentedWidget
-from fluent_views import WorkbenchListWidget, WorkbenchTableWidget, configure_native_scroll
+from fluent_views import (WorkbenchListWidget, WorkbenchTableWidget, configure_native_scroll,
+                          ProjectListDelegate, PROJECT_NAME_ROLE, PROJECT_DETAIL_ROLE)
 from database import STATUSES
 from floating import DropSurface
 from parser import ParsedProject
@@ -101,6 +102,7 @@ class ProjectList(WorkbenchListWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setItemDelegate(ProjectListDelegate(self))
         self.setWordWrap(True)
         self.setTextElideMode(Qt.ElideNone)
         self.setResizeMode(QListView.Adjust)
@@ -183,6 +185,12 @@ def populate(widget, rows, caption, *, clear_selection=False):
                     item.setText(text)
                     item.setToolTip(text)
                     changed = True
+                if isinstance(widget, ProjectList):
+                    name, _, details = text.partition('\n')
+                    for role,value in ((PROJECT_NAME_ROLE,name),(PROJECT_DETAIL_ROLE,details)):
+                        if item.data(role) != value:
+                            item.setData(role,value)
+                            changed = True
             if changed and isinstance(widget, ProjectList):
                 widget.doItemsLayout()
                 anchor = next((widget.item(i) for i in range(widget.count())
@@ -199,6 +207,10 @@ def populate(widget, rows, caption, *, clear_selection=False):
         for pid, text in values:
             item = QListWidgetItem(text)
             item.setData(Qt.UserRole, pid)
+            if isinstance(widget, ProjectList):
+                name, _, details = text.partition('\n')
+                item.setData(PROJECT_NAME_ROLE,name)
+                item.setData(PROJECT_DETAIL_ROLE,details)
             if not isinstance(widget, ProjectList):
                 item.setSizeHint(QSize(0, 68))
             item.setToolTip(text)
@@ -229,6 +241,8 @@ class CompactPanel(DropSurface, QWidget):
     urgent_requested = Signal(int, bool)
     delivery_requested = Signal(int, object)
     rename_requested = Signal(int, str)
+    project_change_preview_requested = Signal(object, object)
+    project_change_requested = Signal(object)
     bulk_requested = Signal(object, object)
     delete_requested = Signal(int)
     restore_deleted_requested = Signal(int)
@@ -294,7 +308,7 @@ class CompactPanel(DropSurface, QWidget):
         self.nav_review.setIcon(FluentIcon.EDIT)
         self.today_button = button('今日工作量 0', 'nav')
         self.today_button.setIcon(FluentIcon.CALENDAR)
-        self.today_button.setCheckable(False)
+        self.today_button.setCheckable(True)
         self.today_button.setAccessibleName('今日工作量')
         self.today_button.clicked.connect(self.show_today_deliveries)
         self.nav_controls = [(self.nav_projects, '项目'), (self.today_button, '今日工作量'),
@@ -309,19 +323,19 @@ class CompactPanel(DropSurface, QWidget):
         self.workbench = QWidget()
         shell.addWidget(self.workbench, 1)
         layout = self.workbench_layout = QVBoxLayout(self.workbench)
-        layout.setContentsMargins(24, 22, 24, 14)
-        layout.setSpacing(14)
+        layout.setContentsMargins(14, 12, 14, 8)
+        layout.setSpacing(8)
         top = QHBoxLayout()
         heading = QVBoxLayout()
         heading.setSpacing(4)
         brand_row = QHBoxLayout()
         self.page_title = label('项目', 'pageTitle')
         brand_row.addWidget(self.page_title)
-        brand_row.addStretch()
         heading.addLayout(brand_row)
         self.summary = label('收项目建目录，ZIP 稳定后复制归档。', 'subtle')
         self.summary.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
-        heading.addWidget(self.summary)
+        brand_row.addSpacing(10)
+        brand_row.addWidget(self.summary,1)
         top.addLayout(heading, 1)
         self.paste_button = button('粘贴消息')
         self.paste_button.setIcon(FluentIcon.PASTE)
@@ -640,9 +654,11 @@ class CompactPanel(DropSurface, QWidget):
 
     def sync_navigation(self, *_):
         index = self.tabs.currentIndex()
-        self.page_title.setText(('项目', 'ZIP 归档', '待核对')[max(0, index)])
-        for position, control in enumerate((self.nav_projects, self.nav_zip, self.nav_review)):
+        self.page_title.setText(('项目', 'ZIP 归档', '待核对', '交付记录管理')[max(0, index)])
+        for position, control in enumerate((self.nav_projects, self.nav_zip, self.nav_review, self.today_button)):
             control.setChecked(position == index)
+        self.search.setVisible(index != 3)
+        self.summary.setVisible(index != 3 and self.height() >= 560 and self.width() >= 820)
 
     def refresh_type_controls(self):
         selected_type = self.type_filter.currentData()
@@ -746,15 +762,22 @@ class CompactPanel(DropSurface, QWidget):
     def show_today_deliveries(self):
         from delivery_ui import TodayDeliveryDialog
         if self.today_dialog is None:
-            self.today_dialog = TodayDeliveryDialog(self.service, self)
+            self.today_dialog = TodayDeliveryDialog(self.service, self, embedded=True)
             self.today_dialog.folder_requested.connect(self.folder_requested)
             self.today_dialog.statistics_changed.connect(self.refresh_today_count)
             self.today_dialog.statistics_changed.connect(self.data_changed.emit)
             self.today_dialog.operation_completed.connect(self.show_notice)
+            self.today_dialog.return_requested.connect(lambda: self.tabs.setCurrentIndex(0))
+            self.delivery_page_container = QScrollArea()
+            self.delivery_page_container.setAccessibleName('交付记录管理页面')
+            self.delivery_page_container.setWidgetResizable(True)
+            self.delivery_page_container.setFrameShape(QFrame.NoFrame)
+            self.delivery_page_container.setWidget(self.today_dialog)
+            self.tabs.addTab(self.delivery_page_container, '交付记录')
         self.today_dialog.refresh()
-        self.today_dialog.show()
-        self.today_dialog.raise_()
-        self.today_dialog.activateWindow()
+        self.tabs.setCurrentWidget(self.delivery_page_container)
+        self.sync_navigation()
+        self.today_dialog._sync_embedded_layout()
 
     def _finish_scroll(self):
         if self._refresh_after_drag:
@@ -858,19 +881,27 @@ class CompactPanel(DropSurface, QWidget):
             project = self.service.get_project(project_id)
         except KeyError:
             return None
-        return None if editable and project.get('archived_at') else project
+        if project.get('merged_into_id') is not None:
+            self.show_notice('项目已合并，请刷新并选择保留项目。')
+            return None
+        if editable and project.get('block_reason'):
+            self.show_notice('项目工作目录需要恢复，暂不能修改。')
+            return None
+        return None if editable and (project.get('archived_at') or project.get('deleted_at')) else project
 
     def project_context_menu(self, project_id):
         try:
             project = self.service.get_project(project_id)
         except KeyError:
             return None
+        if project.get('merged_into_id') is not None:
+            return None
         menu = QMenu(self)
         menu.setAccessibleName(project['name'] + ' · 项目操作')
         heading = menu.addSection(menu.fontMetrics().elidedText(project['name'],Qt.ElideRight,320).replace('&','&&'))
         heading.setToolTip(project['name'])
         active = not self.busy
-        editable = active and not project.get('archived_at')
+        editable = active and not project.get('archived_at') and not project.get('block_reason')
 
         def add(parent, text, callback, enabled=True):
             item = parent.addAction(text)
@@ -1151,9 +1182,11 @@ class CompactPanel(DropSurface, QWidget):
     def rename_project(self, project_id):
         project = self._action_project(project_id, editable=True)
         if project:
-            name, accepted = QInputDialog.getText(self, '修正项目名称', '项目名称', text=project['name'])
-            if accepted and self._action_project(project_id, editable=True):
-                self.rename_requested.emit(project_id, name)
+            from project_change_ui import ProjectChangeDialog
+            with transient_dialog(ProjectChangeDialog(project, self)) as dialog:
+                dialog.preview_requested.connect(lambda request: self.project_change_preview_requested.emit(dialog, request))
+                if dialog.exec() == QDialog.Accepted and dialog.request:
+                    self.project_change_requested.emit(dialog.request)
 
     def show_source(self, project_id):
         project = self._action_project(project_id)
@@ -1357,7 +1390,7 @@ class CompactPanel(DropSurface, QWidget):
         density_changed = self.property('dense') != compact
         self.setProperty('dense', compact)
         self.document_pane.set_compact(compact)
-        self.summary.setVisible(not compact)
+        self.summary.setVisible(not compact and self.width() >= 820 and self.tabs.currentIndex() != 3)
         self.project_list_heading.setVisible(not compact)
         self.project_page_layout.setContentsMargins(8 if compact else 14, 8 if compact else 14,
                                                    8 if compact else 14, 8 if compact else 12)
@@ -1367,13 +1400,15 @@ class CompactPanel(DropSurface, QWidget):
         self.document_card_layout.setContentsMargins(8 if compact else 14, 6 if compact else 12,
                                                     8 if compact else 14, 6 if compact else 10)
         self.document_card_layout.setSpacing(4 if compact else 10)
-        self.workbench_layout.setSpacing(4 if compact else 14)
-        self.workbench_layout.setContentsMargins(10 if narrow else 24, 8 if compact else 22,
-                                               10 if narrow else 24, 8 if compact else 14)
+        self.workbench_layout.setSpacing(4 if compact else 8)
+        self.workbench_layout.setContentsMargins(10 if narrow else 14, 8 if compact else 12,
+                                               10 if narrow else 14, 8)
         if density_changed:
             # 样式重算可能触发布局，不能在Qt仍处理resize时重入polish。
             QTimer.singleShot(0, lambda: apply_to(self))
         super().resizeEvent(event)
+        if self.today_dialog is not None:
+            self.today_dialog._sync_embedded_layout()
         QTimer.singleShot(0, self._reveal_current_after_resize)
 
     def _reveal_current_after_resize(self):

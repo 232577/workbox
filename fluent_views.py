@@ -5,14 +5,19 @@
 """
 from __future__ import annotations
 
+import math
 import re
 
-from PySide6.QtCore import QRect, Qt
-from PySide6.QtGui import QFontMetrics
-from PySide6.QtWidgets import QAbstractItemView, QListView, QStyleOptionViewItem, QWidget
+from PySide6.QtCore import QPointF, QRect, QSize, Qt
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QTextLayout, QTextOption
+from PySide6.QtWidgets import QAbstractItemView, QListView, QStyle, QStyleOptionViewItem, QWidget
 from qfluentwidgets import ListWidget, SmoothMode, TableWidget, setCustomStyleSheet
 from qfluentwidgets.components.widgets.list_view import ListItemDelegate
 from qfluentwidgets.components.widgets.table_view import TableItemDelegate
+
+
+PROJECT_NAME_ROLE = int(Qt.UserRole) + 10
+PROJECT_DETAIL_ROLE = int(Qt.UserRole) + 11
 
 
 def _fluent_item_styles(selector: str, horizontal_padding: int, color: str) -> str:
@@ -110,6 +115,94 @@ class _WrappedFluentText:
 
 class WrappedFluentListDelegate(_WrappedFluentText, ListItemDelegate):
     """列表保留真正的 Fluent 选中、悬停、按下绘制。"""
+
+
+class ProjectListDelegate(WrappedFluentListDelegate):
+    """项目名和详情独立换行；背景、指示条和交互状态仍由 Fluent 负责。"""
+
+    horizontalInset = 14
+    blockSpacing = 4
+    verticalPadding = 4
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self._painting_background = False
+
+    def initStyleOption(self, option, index):
+        super().initStyleOption(option, index)
+        if self._painting_background:
+            # QStyledItemDelegate.paint 会重新初始化选项，必须在此处隐藏原合并文本。
+            option.text = ''
+
+    def _text_layout(self, text, font, width):
+        # QTextLayout 用行分隔符表达显式换行；模型里的原文字不变。
+        layout = QTextLayout(text.replace('\n', '\u2028'), font)
+        text_option = QTextOption()
+        text_option.setWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+        layout.setTextOption(text_option)
+        layout.beginLayout()
+        height = 0.0
+        while True:
+            line = layout.createLine()
+            if not line.isValid():
+                break
+            line.setLineWidth(max(1, width))
+            line.setPosition(QPointF(0, height))
+            height += line.height()
+        layout.endLayout()
+        return layout, height
+
+    def _text_blocks(self, index, width):
+        font = QFont(self.parent().font())
+        font.setPixelSize(13)
+        font.setWeight(QFont.DemiBold)
+        name = self._text_layout(str(index.data(PROJECT_NAME_ROLE)), font, width)
+        font.setPixelSize(11)
+        font.setWeight(QFont.Normal)
+        detail = index.data(PROJECT_DETAIL_ROLE) or ''
+        return name, self._text_layout(str(detail), font, width)
+
+    def sizeHint(self, option, index):
+        if index.data(PROJECT_NAME_ROLE) is None:
+            return super().sizeHint(option, index)
+        width = option.rect.width()
+        if width <= 0:
+            width = self.parent().viewport().width()
+        name, detail = self._text_blocks(index, width - 2 * self.horizontalInset)
+        spacing = self.blockSpacing if detail[1] else 0
+        height = math.ceil(name[1] + spacing + detail[1])
+        return QSize(width, height + 2 * (self.margin + self.verticalPadding))
+
+    def paint(self, painter, option, index):
+        if index.data(PROJECT_NAME_ROLE) is None:
+            return super().paint(painter, option, index)
+        # 库会调整传入的 rect；独立副本保护后续文字测绘与调用方。
+        background_option = QStyleOptionViewItem(option)
+        self._painting_background = True
+        try:
+            super().paint(painter, background_option, index)
+        finally:
+            self._painting_background = False
+
+        from theme import tokens
+        colors = tokens()
+        enabled = bool(option.state & QStyle.State_Enabled and index.flags() & Qt.ItemIsEnabled)
+        name_color = colors['ink'] if enabled else colors['disabled']
+        detail_color = colors['muted'] if enabled else colors['disabled']
+        name, detail = self._text_blocks(index, option.rect.width() - 2 * self.horizontalInset)
+        position = QPointF(option.rect.left() + self.horizontalInset,
+                          option.rect.top() + self.margin + self.verticalPadding)
+        painter.save()
+        try:
+            painter.setClipRect(option.rect, Qt.IntersectClip)
+            painter.setPen(QColor(name_color))
+            name[0].draw(painter, position)
+            if detail[1]:
+                position.setY(position.y() + name[1] + self.blockSpacing)
+                painter.setPen(QColor(detail_color))
+                detail[0].draw(painter, position)
+        finally:
+            painter.restore()
 
 
 class WrappedFluentTableDelegate(_WrappedFluentText, TableItemDelegate):

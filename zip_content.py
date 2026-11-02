@@ -7,7 +7,7 @@ project_ids 必须由调用方先通过名称、目录或人工选择确定，�
 
 from __future__ import annotations
 
-from bundle_analyzer import _count_files, _name, _read_tree
+from bundle_analyzer import _count_files, _name, _read_tree, _project_name_index
 
 
 def count_project_files(path, projects, project_ids, *, bundle_plan=None) -> dict[int, int]:
@@ -23,9 +23,8 @@ matched 合包计划使用含共同外层的 folder_path，但每次重新读取
     by_id = {row['id']: row for row in rows}
     if not ids or len(set(ids)) != len(ids) or any(pid not in by_id for pid in ids):
         raise ValueError('ZIP 必须关联不重复且已存在的项目。')
-    by_name = {}
-    for row in rows:
-        by_name.setdefault(_name(row['name']), []).append(row['id'])
+    by_name = {name: [row['id'] for row in choices] for name, choices in _project_name_index(rows).items()}
+    current_names = {_name(row['name']) for row in rows}
     root = _read_tree(path)
     nodes = {}
     named_paths = {}
@@ -40,6 +39,8 @@ matched 合包计划使用含共同外层的 folder_path，但每次重新读取
             pending.append((child_path, child))
 
     selected_paths = {}
+    if any(name not in current_names and len(by_name[name]) > 1 for name in named_paths):
+        raise ValueError('ZIP 目录的登记旧项目名对应多个项目，无法确定文件归属。')
     if bundle_plan is not None:
         matches = bundle_plan.get('matches', [])
         if (bundle_plan.get('state') != 'matched'
@@ -51,7 +52,8 @@ matched 合包计划使用含共同外层的 folder_path，但每次重新读取
             folder = match.get('folder_path', '')
             parts = tuple(folder.split('/'))
             if (pid not in ids or pid in selected_paths or parts not in nodes or not folder
-                    or _name(parts[-1]) != _name(by_id[pid]['name'])):
+                    or pid not in by_name.get(_name(parts[-1]), [])
+                    or match.get('project_name') != by_id[pid]['name']):
                 raise ValueError('ZIP 合包项目目录不存在或与关联项目不符。')
             selected_paths[pid] = parts
         paths = list(selected_paths.values())
@@ -61,11 +63,11 @@ matched 合包计划使用含共同外层的 folder_path，但每次重新读取
         if len(ids) == 1 and not named_paths:
             return {ids[0]: _count_files(root)}
         for pid in ids:
-            key = _name(by_id[pid]['name'])
-            candidates = named_paths.get(key, [])
-            selected_name_count = sum(_name(by_id[target]['name']) == key for target in ids)
-            if selected_name_count != 1 or len(candidates) != 1:
+            keys = [name for name, owners in by_name.items() if pid in owners]
+            candidates = [path for key in keys for path in named_paths.get(key, [])]
+            if (any(len(set(by_name[key]) & set(ids)) != 1 for key in keys if key in named_paths)
+                    or len(candidates) != 1):
                 raise ValueError('ZIP 项目目录缺失或存在同名歧义，无法确定各项目文件数。')
             selected_paths[pid] = candidates[0]
-    return {pid: _count_files(nodes[folder], set(by_name) - {_name(by_id[pid]['name'])})
+    return {pid: _count_files(nodes[folder], {name for name, owners in by_name.items() if pid not in owners})
             for pid, folder in selected_paths.items()}

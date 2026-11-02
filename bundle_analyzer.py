@@ -23,6 +23,23 @@ def _filename(value):
     return unicodedata.normalize('NFKC', str(value)).strip()
 
 
+def _project_names(row):
+    """只返回当前名及明确登记的旧名，不构造近似名称。"""
+    return [row['name'], *(alias for alias in row.get('name_aliases', []) if isinstance(alias, str))]
+
+
+def _project_name_index(rows):
+    """当前名在每个完整名称边界上优先；别名保留全部候选供调用方核对。"""
+    current, aliases = {}, {}
+    for row in rows:
+        current.setdefault(_name(row['name']), []).append(row)
+        for alias in _project_names(row)[1:]:
+            choices = aliases.setdefault(_name(alias), [])
+            if not any(choice['id'] == row['id'] for choice in choices):
+                choices.append(row)
+    return {**aliases, **current}
+
+
 def bundle_hint(filename) -> dict | None:
     """只接受完整的 ``首项目名-N[-G].zip``；N 是总项目数。"""
     value = _filename(filename)
@@ -130,11 +147,15 @@ def _has_files(node):
 
 
 def _match_projects(names, rows):
-    by_name = {}
-    for row in rows:
-        if row.get('archived_at') is None:
-            by_name.setdefault(_name(row['name']), []).append(row)
-    candidates = [by_name.get(_name(name), []) for name in names]
+    by_name = _project_name_index(rows)
+    current_names = {_name(row['name']) for row in rows}
+    if any(_name(name) not in current_names and any(row.get('archived_at') or row.get('deleted_at')
+            for row in by_name.get(_name(name), [])) for name in names):
+        return None, '登记旧项目名涉及已归档或已删除项目，请恢复项目或人工核对。'
+    candidates = [[row for row in by_name.get(_name(name), [])
+                   if row.get('archived_at') is None and row.get('deleted_at') is None] for name in names]
+    if any(_name(name) not in current_names and len(choices) > 1 for name, choices in zip(names, candidates)):
+        return None, '登记旧项目名对应多个项目，请人工核对，不能自动选择。'
     if not all(candidates):
         return None, '包内有目录不能精确匹配已有的未归档项目。'
     # 整包必须来自一个可唯一确定的批次，不拼接各批次的独立匹配。
@@ -165,7 +186,7 @@ def analyze_bundle(path, projects, *, filename=None) -> dict:
     rows = [dict(row) for row in projects]
     stem = _filename(filename)
     stem = stem[:-4] if stem.casefold().endswith('.zip') else stem
-    if not hint or any(_name(row['name']) == _name(stem) for row in rows):
+    if not hint or _name(stem) in _project_name_index(rows):
         return _result(state='not-bundle', reason='文件名未声明合包，或完整文件名已精确对应一个项目。')
     try:
         root = _read_tree(path)
@@ -191,7 +212,8 @@ def analyze_bundle(path, projects, *, filename=None) -> dict:
     # 自动建项只接受每个目录都有实际文件、名称合法且尚未出现的完整一组。
     # 这个字段只描述结构可用于建项，不改变已有匹配和计数结果。
     provision_names = []
-    known_names = {_name(row['name']) for row in rows}
+    name_index = _project_name_index(rows)
+    known_names = set(name_index)
     if (all(0 < len(name.strip()) <= 200 and _has_files(members[name]) for name in names)
             and not any(_name(name) in known_names for name in names)):
         head = next(name for name in names if _name(name) == _name(hint['head_name']))
@@ -201,8 +223,10 @@ def analyze_bundle(path, projects, *, filename=None) -> dict:
         return _result(hint, names=names, reason=reason, provision_names=provision_names)
     for match in matches:
         match['folder_path'] = '/'.join([*wrapper, match['folder_name']])
+        own_names = {name for name, choices in name_index.items()
+                     if any(row['id'] == match['project_id'] for row in choices)}
         match['file_count'] = _count_files(
-            members[match['folder_name']], known_names - {_name(match['project_name'])},
+            members[match['folder_name']], known_names - own_names,
         )
     return _result(hint, state='matched', names=names, matches=matches,
                    reason='声明总数、实际目录及同批次项目完整匹配。')

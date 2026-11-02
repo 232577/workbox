@@ -49,6 +49,8 @@ def test_filename_directory_conflict_requires_choice(service):
 def test_automatic_choice_is_rechecked_before_queued_copy(service, tmp_path):
     source = source_file(tmp_path)
     service.rename_project(1, '已改名系统')
+    # 改名保留旧名别名；另一个项目取得当前完整名称后，旧排队选择必须失效。
+    service.rename_project(2, '甲系统')
     with pytest.raises(ValueError, match='重新选择'):
         service.receive_file(source, 1, manual=False)
     with service.db.connect() as connection:

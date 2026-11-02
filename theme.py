@@ -98,7 +98,7 @@ def stylesheet(mode=None, role='window'):
     actual = _resolve(mode)
     c = tokens(actual)
     rules = """
-QWidget { font-family: 'Microsoft YaHei UI', 'Segoe UI'; font-size: 14px; color: %(ink)s; background: transparent; }
+QWidget { font-family: 'Microsoft YaHei UI', 'Segoe UI'; font-size: 13px; color: %(ink)s; background: transparent; }
 FloatingBall { background: transparent; border: none; }
 QMainWindow, QDialog, QWidget#manager { background: %(bg)s; }
 QWidget#surface, QFrame#card, QWidget#documentSurface, QWidget#projectSurface {
@@ -110,8 +110,8 @@ QStatusBar::item { border: none; }
 QFrame#sidebar { background: %(raised)s; border: none; border-right: 1px solid %(border)s; }
 QTabWidget#workbenchPages::pane { background: transparent; border: none; }
 QLabel, QCheckBox, QRadioButton { background: transparent; }
-QLabel#heading, QLabel#pageTitle { font-size: 26px; font-weight: 700; }
-QLabel#title, QLabel#sectionTitle { font-size: 18px; font-weight: 600; }
+QLabel#heading, QLabel#pageTitle { font-size: 20px; font-weight: 700; }
+QLabel#title, QLabel#sectionTitle { font-size: 15px; font-weight: 600; }
 QLabel#subtle, QLabel#muted { font-size: 12px; color: %(muted)s; }
 QLabel#brand { font-size: 24px; font-weight: 700; }
 QLabel#brandName { font-size: 18px; font-weight: 700; }
@@ -282,7 +282,7 @@ QSlider::handle:horizontal { background: %(accent)s; border: 1px solid %(accent)
 FeedbackBubble { background: %(surface)s; color: %(ink)s; border: 1px solid %(border)s; border-radius: 8px; }
 FeedbackBubble QLabel { background: transparent; color: %(ink)s; }
 QWidget#manager[dense="true"] QPushButton, QWidget#manager[dense="true"] QToolButton {
-    padding: 4px 8px; min-height: 18px; font-size: 12px;
+    padding: 4px 8px; min-height: 18px; font-size: 13px;
 }
 QWidget#manager[dense="true"] QPushButton:focus, QWidget#manager[dense="true"] QToolButton:focus {
     padding: 3px 7px;
@@ -301,7 +301,7 @@ QWidget#manager[dense="true"] QPushButton#nav[compactCount="true"]:checked:focus
 QWidget#manager[dense="true"] QLineEdit, QWidget#manager[dense="true"] QComboBox,
 QWidget#manager[dense="true"] QDateEdit, QWidget#manager[dense="true"] QDateTimeEdit,
 QWidget#manager[dense="true"] QTimeEdit, QWidget#manager[dense="true"] QSpinBox,
-QWidget#manager[dense="true"] QDoubleSpinBox { padding: 4px; min-height: 18px; font-size: 12px; }
+QWidget#manager[dense="true"] QDoubleSpinBox { padding: 4px; min-height: 18px; font-size: 13px; }
 QWidget#manager[dense="true"] QLineEdit:focus, QWidget#manager[dense="true"] QComboBox:focus,
 QWidget#manager[dense="true"] QDateEdit:focus, QWidget#manager[dense="true"] QDateTimeEdit:focus,
 QWidget#manager[dense="true"] QTimeEdit:focus, QWidget#manager[dense="true"] QSpinBox:focus,
@@ -312,7 +312,7 @@ QWidget#manager[dense="true"] QSpinBox, QWidget#manager[dense="true"] QDoubleSpi
 QWidget#manager[dense="true"] QComboBox:focus, QWidget#manager[dense="true"] QDateEdit:focus,
 QWidget#manager[dense="true"] QDateTimeEdit:focus, QWidget#manager[dense="true"] QTimeEdit:focus,
 QWidget#manager[dense="true"] QSpinBox:focus, QWidget#manager[dense="true"] QDoubleSpinBox:focus { padding-right: 25px; }
-QWidget#manager[dense="true"] QTabBar::tab:top { padding: 6px 10px; font-size: 12px; }
+QWidget#manager[dense="true"] QTabBar::tab:top { padding: 6px 10px; font-size: 13px; }
 QWidget#manager[dense="true"] QLabel#title, QWidget#manager[dense="true"] QLabel#sectionTitle { font-size: 15px; }
 QWidget#manager[dense="true"] QLabel#notice { padding: 5px 8px; font-size: 12px; }
 """ % c

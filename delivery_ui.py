@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, QDate, QLocale, QSignalBlocker, QTimer, Signal, Q
 from PySide6.QtGui import QTextOption
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QDateEdit, QDialog,
     QHBoxLayout, QHeaderView, QLineEdit, QMenu, QMessageBox, QSizePolicy, QTextBrowser,
-    QTableWidget, QTableWidgetItem, QVBoxLayout)
+    QTableWidget, QTableWidgetItem, QVBoxLayout, QTabBar, QWidget)
 
 from compact_ui import button, label, WrappedNameDelegate
 from theme import apply_to
@@ -43,9 +43,16 @@ class TodayDeliveryDialog(QDialog):
     folder_requested = Signal(str)
     statistics_changed = Signal()
     operation_completed = Signal(str)
+    return_requested = Signal()
 
-    def __init__(self,service,parent=None):
+    def __init__(self,service,parent=None,*,embedded=False):
         super().__init__(parent)
+        self.embedded = embedded
+        self._compact_embedded = False
+        self._embedded_layout_initialized = False
+        if embedded:
+            # 复用管理内容和任务生命周期，由主窗口承担导航和窗口行为。
+            self.setWindowFlags(Qt.Widget)
         self.service = service
         self.rows,self.events = [],[]
         self._summary_signature = self._details_signature = None
@@ -56,9 +63,10 @@ class TodayDeliveryDialog(QDialog):
         self.setWindowTitle('交付记录管理')
         self.setModal(False)
         apply_to(self)
-        self.setMinimumSize(680,460)
-        area = self.screen().availableGeometry()
-        self.resize(min(980,area.width()-24),min(680,area.height()-48))
+        if not embedded:
+            self.setMinimumSize(680,460)
+            area = self.screen().availableGeometry()
+            self.resize(min(980,area.width()-24),min(680,area.height()-48))
         layout = QVBoxLayout(self)
         layout.setSpacing(6)
         self.scope_note = label('按北京时间统计个人工作量。代交项目可设为不计工作量，已交付状态和文件保留；真正误记请用下方“撤销误记”。','subtle',True)
@@ -85,8 +93,21 @@ class TodayDeliveryDialog(QDialog):
         self.refresh_button = button('刷新')
         for widget in (self.today_button,self.date_edit,self.all_dates,self.show_voided):
             controls.addWidget(widget)
+        if embedded:
+            controls.addStretch()
+            layout.addLayout(controls)
+            self.date_controls = controls
+            controls = QHBoxLayout()
+        self.search_controls = controls
         controls.addWidget(self.search,1)
         controls.addWidget(self.refresh_button)
+        self.compact_filter_button = button('筛选')
+        self.compact_filter_button.setAccessibleName('交付筛选与统计')
+        self.compact_filter_menu = QMenu(self.compact_filter_button)
+        self.compact_filter_button.setMenu(self.compact_filter_menu)
+        self.compact_filter_menu.aboutToShow.connect(self._populate_compact_filters)
+        self.compact_filter_button.hide()
+        controls.addWidget(self.compact_filter_button)
         layout.addLayout(controls)
         self.summary = label('','subtle',True)
         layout.addWidget(self.summary)
@@ -117,8 +138,25 @@ class TodayDeliveryDialog(QDialog):
         self.type_counts.setMaximumHeight(64)
         self.type_summary_layout.addWidget(self.type_counts)
         layout.addWidget(self.type_summary_card)
+        self.compact_view_bar = QWidget(self)
+        compact_view_layout = QHBoxLayout(self.compact_view_bar)
+        compact_view_layout.setContentsMargins(0,0,0,0)
+        self.compact_tabs = QTabBar(self.compact_view_bar)
+        self.compact_tabs.setAccessibleName('交付记录视图')
+        self.compact_tabs.addTab('项目记录')
+        self.compact_tabs.addTab('交付明细')
+        self.compact_tabs.setExpanding(False)
+        self.compact_tabs.setDocumentMode(True)
+        self.compact_tabs.currentChanged.connect(self._sync_embedded_layout)
+        compact_view_layout.addWidget(self.compact_tabs)
+        self.compact_total = label('', 'subtle')
+        compact_view_layout.addStretch()
+        compact_view_layout.addWidget(self.compact_total)
+        self.compact_view_bar.hide()
+        layout.addWidget(self.compact_view_bar)
         project_actions = QHBoxLayout()
         self.project_selection_note = label('选择项目，可按 Ctrl 多选','subtle',True)
+        self.project_selection_note.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Preferred)
         self.change_type_button = button('修改类型…')
         self.exclude_count_button = button('不计工作量')
         self.include_count_button = button('恢复计入')
@@ -167,7 +205,14 @@ class TodayDeliveryDialog(QDialog):
         self.open_folder_button = button('打开归档目录')
         self.void_button = button('撤销误记')
         self.restore_button = button('恢复记录')
-        self.close_button = button('关闭')
+        self.close_button = button('返回项目' if embedded else '关闭')
+        self.compact_actions_button = button('项目操作')
+        self.compact_actions_button.setAccessibleName('所选交付记录操作')
+        self.compact_action_menu = QMenu(self.compact_actions_button)
+        self.compact_actions_button.setMenu(self.compact_action_menu)
+        self.compact_action_menu.aboutToShow.connect(self._populate_compact_actions)
+        self.compact_actions_button.hide()
+        actions.addWidget(self.compact_actions_button)
         for widget in (self.open_folder_button,self.void_button,self.restore_button):
             actions.addWidget(widget)
         actions.addStretch()
@@ -195,7 +240,7 @@ class TodayDeliveryDialog(QDialog):
         self.exclude_count_button.clicked.connect(lambda:self.manage_workload(False))
         self.include_count_button.clicked.connect(lambda:self.manage_workload(True))
         self.change_type_button.clicked.connect(self.manage_project_types)
-        self.close_button.clicked.connect(self.close)
+        self.close_button.clicked.connect(self.return_requested.emit if embedded else self.close)
         self.refresh()
 
     @staticmethod
@@ -442,6 +487,12 @@ class TodayDeliveryDialog(QDialog):
                                          else '修改所选项目的当前类型，交付日期、状态和工作量资格保持不变。')
         self.project_selection_note.setText(f'已选 {len(projects)} 个项目' if projects else '选择项目，可按 Ctrl 多选')
         self.reason.setEnabled(idle)
+        if hasattr(self,'compact_total'):
+            self.compact_tabs.setTabText(0,f'项目记录（{len(self.rows)}）')
+            self.compact_tabs.setTabText(1,f'交付明细（{len(self.events)}）')
+            count = self._history['project_count'] if self._history is not None else None
+            self.compact_total.setText(f'合计 {count} 个' if count is not None else '统计暂不可读')
+            self.compact_total.setToolTip(self.summary.text()+'\n'+self.type_counts.toPlainText())
 
     def open_selected_archive(self):
         if self.worker or self._choosing_type:
@@ -606,7 +657,95 @@ class TodayDeliveryDialog(QDialog):
             self.type_counts.setMaximumHeight(30 if compact else 64)
             self.type_summary_layout.setContentsMargins(8 if compact else 12, 6 if compact else 10,
                                                        8 if compact else 12, 6 if compact else 10)
+            if self.embedded:
+                self._sync_embedded_layout()
         super().resizeEvent(event)
+
+    def _populate_compact_filters(self):
+        menu = self.compact_filter_menu
+        menu.clear()
+        menu.addAction('今天',self.go_today)
+        for caption,control in (('全部日期',self.all_dates),('显示已撤销',self.show_voided)):
+            action = menu.addAction(caption)
+            action.setCheckable(True)
+            action.setChecked(control.isChecked())
+            action.toggled.connect(control.setChecked)
+        menu.addAction('刷新',self.refresh)
+        stats = menu.addMenu('类型统计')
+        if self._history is None:
+            stats.addAction('暂不可读，请刷新重试').setEnabled(False)
+        else:
+            stats.addAction(f"合计 {self._history['project_count']} 个项目").setEnabled(False)
+            for row in self._history.get('type_counts',[]):
+                stats.addAction(f"{row['type_name'] or '未分类'}：{row['project_count']}").setEnabled(False)
+
+    def _populate_compact_actions(self):
+        self._update_open_action()
+        menu = self.compact_action_menu
+        menu.clear()
+        controls = ((self.change_type_button,self.exclude_count_button,self.include_count_button)
+                    if self.compact_tabs.currentIndex()==0 else
+                    (self.open_folder_button,self.void_button,self.restore_button))
+        for control in controls:
+            action = menu.addAction(control.text())
+            action.setEnabled(control.isEnabled())
+            action.setToolTip(control.toolTip())
+            action.triggered.connect(control.click)
+
+    def _sync_embedded_layout(self,*_):
+        if not self.embedded or not hasattr(self,'status_note'):
+            return
+        host = self.window()
+        compact = host.height()<620 or host.width()<820
+        if compact != self._compact_embedded or not self._embedded_layout_initialized:
+            self._compact_embedded = compact
+            self._embedded_layout_initialized = True
+            for control in (self.date_edit,self.search,self.refresh_button):
+                self.date_controls.removeWidget(control)
+                self.search_controls.removeWidget(control)
+            if compact:
+                self.search_controls.insertWidget(0,self.date_edit)
+                self.search_controls.insertWidget(1,self.search,1)
+                self.search_controls.insertWidget(2,self.refresh_button)
+            else:
+                self.date_controls.insertWidget(1,self.date_edit)
+                self.date_controls.insertWidget(4,self.search,1)
+                self.date_controls.insertWidget(5,self.refresh_button)
+        details = self.compact_tabs.currentIndex()==1
+        for control in (self.today_button,self.all_dates,self.show_voided,self.refresh_button,
+                        self.scope_note,self.summary,self.type_summary_card,self.project_selection_note,
+                        self.change_type_button,self.exclude_count_button,self.include_count_button,
+                        self.details_hint,self.open_folder_button,self.void_button,self.restore_button):
+            control.setVisible(not compact)
+        self.compact_filter_button.setVisible(compact)
+        self.compact_view_bar.setVisible(compact)
+        self.compact_actions_button.setVisible(compact)
+        self.compact_actions_button.setText('记录操作' if details else '项目操作')
+        self.table.setVisible(not compact or not details)
+        self.details.setVisible(not compact or details)
+        self.table.setMinimumHeight(92 if compact else 128)
+        self.details.setMinimumHeight(92)
+        self.scope_note.hide()
+        self.compact_filter_button.setToolTip(self.scope_note.text())
+        self.type_counts.setMaximumHeight(32)
+        self.type_summary_layout.setContentsMargins(8,6,8,6)
+        self.reason.setVisible(not compact or details)
+        self.table.setColumnHidden(2,compact)
+        self.table.setColumnWidth(4,110 if compact else 240)
+        self.status_note.setMaximumHeight(32 if compact else 16777215)
+        self.status_note.setToolTip(self.status_note.text())
+        self.layout().setContentsMargins(6 if compact else 9,6 if compact else 9,
+                                        6 if compact else 9,6 if compact else 9)
+        self.layout().setSpacing(4 if compact else 6)
+
+    def heightForWidth(self,width):
+        # 外层滚动只用于小窗口；不能用两张表的首选高度把正常窗口撑长。
+        layout = self.layout()
+        if getattr(self,'embedded',False) and layout is not None:
+            minimum = layout.minimumHeightForWidth(width)
+            if minimum >= 0:
+                return minimum
+        return super().heightForWidth(width)
 
     def shutdown(self):
         self.timer.stop()
@@ -619,7 +758,7 @@ class TodayDeliveryDialog(QDialog):
         self.close()
 
     def _fit_visible_screen(self):
-        if not self.isVisible():
+        if self.embedded or not self.isVisible():
             return
         area = self.screen().availableGeometry().adjusted(6,6,-6,-6)
         frame = self.frameGeometry()
@@ -630,9 +769,11 @@ class TodayDeliveryDialog(QDialog):
 
     def showEvent(self,event):
         super().showEvent(event)
+        self._sync_embedded_layout()
         self._fit_visible_screen()
         # Windows 首次映射可能在 showEvent 返回后重设居中位置，再核对一次可用工作区。
-        QTimer.singleShot(0,self._fit_visible_screen)
+        if not self.embedded:
+            QTimer.singleShot(0,self._fit_visible_screen)
         self.refresh()
         self._queue_project_layout()
         self.timer.start()
@@ -646,3 +787,8 @@ class TodayDeliveryDialog(QDialog):
         self.timer.stop()
         self._project_layout_timer.stop()
         super().closeEvent(event)
+
+    def reject(self):
+        # Escape 仍可关闭子确认框，但不能把主窗口当前内容页关成空白。
+        if not self.embedded:
+            super().reject()

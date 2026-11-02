@@ -21,6 +21,7 @@ from file_matcher import match_work_file_projects, new_file_project_name
 from bundle_analyzer import analyze_bundle, bundle_hint
 from workflow_policy import read_policy, creation_disabled_message
 import unicodedata
+from functools import wraps
 
 EXTENSIONS = '''
 CREATE TABLE IF NOT EXISTS intake_receipts (
@@ -71,6 +72,19 @@ def classify_text(raw: str) -> tuple[list[ParsedProject], str]:
     return parsed, ''
 
 
+def _serialized_storage(method):
+    """收件与目录变更共用锁，避免重新创建刚改名的旧路径。"""
+    @wraps(method)
+    def guarded(self, *args, **kwargs):
+        with self.archive._lock:
+            if not self._project_changes_ready:
+                self.recover_project_changes()
+            if any(error.get('global_block') for error in self.project_change_errors):
+                raise RuntimeError('项目目录变更日志需要恢复，暂不能收录或修改文件。请保留现场并检查恢复记录。')
+            return method(self, *args, **kwargs)
+    return guarded
+
+
 class DesktopService(WorkBox):
     def __init__(self, database_path):
         super().__init__(database_path)
@@ -80,6 +94,35 @@ class DesktopService(WorkBox):
         self.workspaces = WorkspaceManager(self)
         self.intake_log = self.workspaces.intake_log
         self.snapshots = SnapshotManager(self, self.workspaces)
+        from project_directory_changes import ProjectDirectoryChanges
+        from project_changes import ProjectChanges
+        self.directory_changes = ProjectDirectoryChanges(self.db, self.workspaces, self.archive._lock)
+        self.project_changes = ProjectChanges(self, self.directory_changes)
+        # 应用还未取得单实例锁；此处不能恢复另一个运行实例的目录变更。
+        self.project_change_errors = []
+        self._project_changes_ready = False
+
+    def recover_project_changes(self):
+        with self.archive._lock:
+            self.project_change_errors = self.directory_changes.recover()
+            self._project_changes_ready = True
+            return self.project_change_errors
+
+    def list_projects(self, *args, **kwargs):
+        projects = super().list_projects(*args, **kwargs)
+        aliases = {}
+        for row in self.db.list_project_aliases():
+            aliases.setdefault(row['project_id'], []).append(row['alias_name'])
+        merged_ids = {}
+        with self.db.connect() as connection:
+            for row in connection.execute('SELECT project_id,canonical_id FROM project_canonical WHERE project_id!=canonical_id ORDER BY project_id'):
+                merged_ids.setdefault(row['canonical_id'], []).append(row['project_id'])
+        for project in projects:
+            if project['id'] in aliases:
+                project['name_aliases'] = aliases[project['id']]
+            if project['id'] in merged_ids:
+                project['merged_project_ids'] = merged_ids[project['id']]
+        return projects
 
     @staticmethod
     def _receipt(row, *, duplicate=False):
@@ -110,6 +153,7 @@ class DesktopService(WorkBox):
         Database._assign_default_project_type(connection, ids)
         connection.execute("UPDATE intake_receipts SET state='committed',batch_id=?,project_ids=?,reason='' WHERE id=?", (batch_id, json.dumps(ids), receipt['id']))
 
+    @_serialized_storage
     def receive_text(self, text):
         projects, reason = classify_text(text)
         fingerprint = hashlib.sha256(text.strip().encode('utf-8')).hexdigest()
@@ -133,19 +177,29 @@ class DesktopService(WorkBox):
         # 消息先提交；目录失败不能回滚或丢失已收录的需求。
         if result.get('project_ids'):
             try:
+                original = list(result['project_ids'])
+                result['project_ids'] = list(dict.fromkeys(self.db.canonical_project_id(pid) for pid in original))
+                if result['project_ids'] != original:
+                    result['original_project_ids'] = original
                 result['workspaces'] = self.workspaces.ensure_projects(result['project_ids'])
             except (OSError, ValueError, RuntimeError) as error:
                 result['workspace_error'] = str(error)
         return result
 
+    @_serialized_storage
     def capture_message(self, raw_text, batch_name, projects=None):
         return self._attach_workspaces(super().capture_message(raw_text, batch_name, projects))
 
+    @_serialized_storage
     def ensure_workspaces(self, project_id):
         project = self.get_project(project_id)
         with self.db.connect() as connection:
             self.db._assert_projects_editable(connection, project_id)
-            ids = [row[0] for row in connection.execute('SELECT id FROM projects WHERE batch_id=? ORDER BY id', (project['batch_id'],))]
+            ids = [row[0] for row in connection.execute('''SELECT p.id FROM projects p
+                LEFT JOIN project_details d ON d.project_id=p.id
+                LEFT JOIN project_deletions x ON x.project_id=p.id
+                WHERE p.batch_id=? AND d.archived_at IS NULL AND x.deleted_at IS NULL
+                AND NOT EXISTS(SELECT 1 FROM project_merges m WHERE m.source_id=p.id) ORDER BY p.id''', (project['batch_id'],))]
         return self.workspaces.ensure_projects(ids)
 
     def get_project(self, project_id):
@@ -167,6 +221,7 @@ class DesktopService(WorkBox):
         with self.db.connect() as connection:
             return [self._receipt(row) for row in connection.execute("SELECT * FROM intake_receipts WHERE state='needs-review' ORDER BY id DESC")]
 
+    @_serialized_storage
     def resolve_text(self, receipt_id, projects):
         with self.db.connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
@@ -195,6 +250,7 @@ class DesktopService(WorkBox):
         with self.db.connect() as connection:
             connection.execute('INSERT INTO desktop_settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', (key, json.dumps(value)))
 
+    @_serialized_storage
     def import_zip(self, path, *, cancel_event=None, progress=None):
         routing = self.file_routing(path)
         if routing.get('requires_choice'):
@@ -209,6 +265,15 @@ class DesktopService(WorkBox):
     def file_routing(self, path):
         source = plain_path(path, allow_network=True)
         all_projects = {row['id']: row for row in self.list_projects(archived=None, deleted=None)}
+        with self.db.connect() as connection:
+            retired = [dict(row) for row in connection.execute('''SELECT w.path,c.canonical_id
+                FROM project_workspaces w JOIN project_merges m ON m.source_id=w.project_id
+                JOIN project_canonical c ON c.project_id=w.project_id''')]
+        retained_ids = {row['canonical_id'] for row in retired if path_is_within(source, row['path'])}
+        if retained_ids:
+            return dict(candidates=[row for pid, row in all_projects.items() if pid in retained_ids
+                                    and not row.get('archived_at') and not row.get('deleted_at')],
+                        basis='来源位于已合并项目的保留备份目录，请明确选择保留项目后再收录。', requires_choice=True)
         registered = self.workspaces.list_workspaces(include_archived=True)
         protected = [all_projects.get(row['project_id'], {}) for row in registered
                      if path_is_within(source, row['path'])]
@@ -262,7 +327,8 @@ class DesktopService(WorkBox):
             return False
         normalized = lambda name: ' '.join(unicodedata.normalize('NFKC', name).split()).casefold()
         stem = normalized(Path(filename).stem)
-        return not any(normalized(p['name']) == stem for p in self.list_projects(archived=None, deleted=None))
+        return not any(normalized(name) == stem for p in self.list_projects(archived=None, deleted=None)
+                       for name in [p['name'], *p.get('name_aliases', [])])
 
     def _capture_file_projects(self, source, names):
         """名称检查与收件提交共用事务，重复拖入不能产生第二组项目。"""
@@ -274,11 +340,13 @@ class DesktopService(WorkBox):
             connection.execute('BEGIN IMMEDIATE')
             if not read_policy(connection)['auto_create_projects']:
                 raise ValueError(creation_disabled_message(bool(connection.execute('SELECT 1 FROM projects LIMIT 1').fetchone())))
-            existing = [dict(row) for row in connection.execute('''SELECT p.id,p.name,d.archived_at
-                FROM projects p LEFT JOIN project_details d ON d.project_id=p.id''')
+            existing = [dict(row) for row in connection.execute('''SELECT p.id,p.name,d.archived_at,x.deleted_at
+                FROM projects p LEFT JOIN project_details d ON d.project_id=p.id
+                LEFT JOIN project_deletions x ON x.project_id=p.id
+                WHERE NOT EXISTS(SELECT 1 FROM project_merges m WHERE m.source_id=p.id)''')
                 if normalized(row['name']) in wanted]
             if existing:
-                if len(names) == 1 and len(existing) == 1 and not existing[0]['archived_at']:
+                if len(names) == 1 and len(existing) == 1 and not existing[0]['archived_at'] and not existing[0]['deleted_at']:
                     return dict(project_ids=[existing[0]['id']], created_project_ids=[])
                 # 合包中已经存在的项目不能另建、拼接或迁移到新批次。
                 return dict(project_ids=[], created_project_ids=[])
@@ -304,9 +372,9 @@ class DesktopService(WorkBox):
         """复制明确归属的 ZIP；同内容复用，同名新内容另放收件版本目录。"""
         from workspace_manager import _hash_stream, copy_verified
         directory = _path(directory)
-        if not directory.is_dir():
-            raise ValueError('项目工作目录不存在，ZIP 尚未收录。')
         with self.archive._lock, ZipLease(source, movable=False) as lease:
+            if not directory.is_dir():
+                raise ValueError('项目工作目录不存在，ZIP 尚未收录。')
             _zip_structure(lease.stream, cancel_event)
             digest, size = _hash_stream(lease.stream, cancel_event=cancel_event)
 
@@ -338,6 +406,7 @@ class DesktopService(WorkBox):
                 raise RuntimeError('ZIP 来源在收录期间变化，工作副本未通过核对。')
             return metadata
 
+    @_serialized_storage
     def receive_path(self, path, project_id=None, *, cancel_event=None, progress=None, manual=None, folder_items=None):
         """在后台判断文件/目录与归属；需要人工选择时返回事实，界面线程再提问。"""
         routing = {}
@@ -374,6 +443,7 @@ class DesktopService(WorkBox):
             raise
         return self.receive_file(source, project_id, cancel_event=cancel_event, progress=progress, manual=manual)
 
+    @_serialized_storage
     def receive_file(self, path, project_id=None, *, cancel_event=None, progress=None, manual=None):
         ordinary = Path(path).suffix.casefold() != '.zip'
         routing, failure_status, created = {}, 'failed', {}
@@ -473,6 +543,7 @@ class DesktopService(WorkBox):
             return self.snapshots.link_zip(zip_id, project_id)
         return self.archive.link_zip(zip_id, project_id)
 
+    @_serialized_storage
     def confirm_delivery(self, project_id, zip_id=None, *, confirmed=False, cancel_event=None, progress=None):
         if zip_id is not None:
             return super().confirm_delivery(project_id, zip_id, confirmed=confirmed,
@@ -481,12 +552,15 @@ class DesktopService(WorkBox):
         return ProjectDeliveryArchive(self, self.workspaces).confirm(project_id, confirmed=confirmed,
             cancel_event=cancel_event, progress=progress)
 
-    def rename_project(self, project_id, name):
-        if not isinstance(name, str) or not name.strip() or len(name.strip()) > 200:
-            raise ValueError('项目名称需要 1 至 200 个字符。')
-        with self.db.connect() as connection:
-            connection.execute('BEGIN IMMEDIATE')
-            self.db._assert_projects_editable(connection, project_id)
-            changed = connection.execute("UPDATE projects SET name=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?", (name.strip(), project_id))
-            if changed.rowcount != 1:
-                raise KeyError('项目不存在。')
+    def preview_project_rename(self, project_id, name, merge_target_id=None, *, cancel_event=None, progress=None):
+        return self.project_changes.preview(project_id, name, merge_target_id,
+                                            cancel_event=cancel_event, progress=progress)
+
+    def _commit_project_change(self, plan, operation_id, mapping, result, *, cancel_event=None):
+        return self.project_changes.commit(plan, operation_id, mapping, result, cancel_event=cancel_event)
+
+    def rename_project(self, project_id, name, *, expected_token=None, merge_target_id=None,
+                       confirmed_merge=False, cancel_event=None, progress=None):
+        return self.project_changes.execute(project_id, name, expected_token=expected_token,
+            merge_target_id=merge_target_id, confirmed_merge=confirmed_merge,
+            cancel_event=cancel_event, progress=progress)

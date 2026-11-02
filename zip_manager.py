@@ -88,7 +88,8 @@ def match_projects(filename: str, projects: list[dict]) -> list[dict]:
     stem = Path(filename).stem
     codes = {int(value) for value in CODE.findall(stem)}
     if codes:
-        return [project for project in projects if project["id"] in codes]
+        return [project for project in projects if project["id"] in codes or
+                any(type(value) is int and value in codes for value in project.get('merged_project_ids', []))]
     direct = [project for project in projects if _key(project["name"]) == _key(stem)]
     if direct:
         return direct
@@ -108,4 +109,15 @@ def match_projects(filename: str, projects: list[dict]) -> list[dict]:
     ]
     if with_batch:
         return with_batch
-    return [project for project in projects if _key(project["name"]) in variants]
+    current = [project for project in projects if _key(project["name"]) in variants]
+    if current:
+        return current
+    # 沿用 ZIP 的完整正规化规则，旧名仅在所有当前名称规则无结果时兜底。
+    aliases_with_batch = [project for project in projects if project.get('batch_name') and any(
+        isinstance(alias, str) and (_key(project['batch_name'] + alias) in variants
+            or _key(alias + project['batch_name']) in variants)
+        for alias in project.get('name_aliases', []))]
+    if aliases_with_batch:
+        return aliases_with_batch
+    return [project for project in projects if any(isinstance(alias, str) and _key(alias) in variants
+            for alias in project.get('name_aliases', []))]

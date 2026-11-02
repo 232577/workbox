@@ -164,9 +164,13 @@ class SnapshotManager:
     def list_versions(self, project_id=None):
         sql = '''SELECT z.*,s.source_path,s.source_id,
             CASE WHEN b.match_state='needs-review' THEN 0 ELSE EXISTS(
-                SELECT 1 FROM zip_project_approvals a WHERE a.zip_id=z.id
+                SELECT 1 FROM zip_project_approvals a JOIN zip_project_links al
+                    ON al.zip_id=a.zip_id AND al.project_id=a.project_id
+                WHERE a.zip_id=z.id AND NOT EXISTS (SELECT 1 FROM project_merges m WHERE m.source_id=a.project_id)
                 AND (:pid IS NULL OR a.project_id=:pid)) END AS approved,
-            (SELECT COUNT(*) FROM zip_project_approvals a WHERE a.zip_id=z.id) AS approved_count,
+            (SELECT COUNT(*) FROM zip_project_approvals a JOIN zip_project_links al
+                ON al.zip_id=a.zip_id AND al.project_id=a.project_id WHERE a.zip_id=z.id
+                AND NOT EXISTS (SELECT 1 FROM project_merges m WHERE m.source_id=a.project_id)) AS approved_count,
             (SELECT COUNT(*) FROM zip_project_links l WHERE l.zip_id=z.id) AS project_count,
             b.declared_count AS bundle_count,b.match_state AS bundle_state,b.reason AS bundle_reason,
             s.created_at AS snapshot_created_at,p.name AS project_name,

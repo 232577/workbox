@@ -62,7 +62,11 @@ class FolderIntake:
         return sorted(files, key=lambda value: str(value).casefold())
 
     def _named(self, name, projects):
-        return [row for row in projects if _normalized(row['name']) == _normalized(name)]
+        current = [row for row in projects if _normalized(row['name']) == _normalized(name)]
+        if current:
+            return current
+        return [row for row in projects if any(isinstance(alias, str)
+                and _normalized(alias) == _normalized(name) for alias in row.get('name_aliases', []))]
 
     def _directory_route(self, names, projects):
         matches = [self._named(name, projects) for name in names]

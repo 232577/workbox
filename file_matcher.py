@@ -56,7 +56,9 @@ def match_work_file_projects(filename: str, projects: list[dict]) -> dict:
 
     stem = _normalized(source.stem)
     basis = []
+    variants = []
     while stem:
+        variants.append((stem, list(basis)))
         candidates = [project for project in projects
                       if _normalized(project['name']).casefold() == stem.casefold()]
         if candidates:
@@ -77,4 +79,12 @@ def match_work_file_projects(filename: str, projects: list[dict]) -> dict:
                 break
         else:
             break
+    # 当前完整名称及逐层尾缀规则均无结果后，才使用明确登记的历史名称。
+    for stem, reasons in variants:
+        candidates = [project for project in projects
+                      if any(isinstance(alias, str) and _normalized(alias).casefold() == stem.casefold()
+                             for alias in project.get('name_aliases', []))]
+        if candidates:
+            reason = '、'.join([*reasons, '已登记旧项目名']) + '匹配'
+            return {'candidates': candidates, 'basis': reason, 'recognized_name': stem}
     return {'candidates': [], 'basis': '未识别文件名', 'recognized_name': None}

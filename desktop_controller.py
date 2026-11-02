@@ -3,6 +3,7 @@
 from collections import deque
 import hashlib
 from pathlib import Path
+import weakref
 
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, QLockFile, QPoint, QRect, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
@@ -90,6 +91,7 @@ class FloatingController(QObject):
         self.silent_current = False
         self.background_mode = False
         self.choosing_intake = False
+        self.storage_blocked = False
         self.monitor_timer = QTimer(self)
         self.monitor_timer.setInterval(2000)
         self.monitor_timer.timeout.connect(lambda: self.check_archives(silent=True))
@@ -104,7 +106,7 @@ class FloatingController(QObject):
     @property
     def foreground_busy(self):
         # 监视仍占用同一个串行任务槽，但不能每两秒禁用界面。
-        return (self.choosing_intake or (self.worker is not None and not self.silent_current)
+        return (self.storage_blocked or self.choosing_intake or (self.worker is not None and not self.silent_current)
                 or any(not item[2] for item in self.queue))
 
     def _sync_panel_busy(self):
@@ -129,6 +131,9 @@ class FloatingController(QObject):
             self.owns_lock = False
             raise OSError('无法建立本地单实例通信。')
         self.server.newConnection.connect(self._activate)
+        # 目录恢复必须在单实例锁之后，避免第二次启动回滚正在执行的变更。
+        recovery_errors = self.service.recover_project_changes()
+        self.storage_blocked = any(error.get('global_block') for error in recovery_errors)
         # 持有单实例锁后才打开首次向导；此时没有收件入口或监视任务。
         if setup_callback is not None and self.service.workspaces.setup_required():
             if not setup_callback():
@@ -139,6 +144,8 @@ class FloatingController(QObject):
         self.orb = FloatingBall()
         self.panel = CompactPanel(self.service)
         self.bubble = FeedbackBubble()
+        if recovery_errors:
+            self.panel.show_notice('项目目录需要恢复，相关写操作已暂停。请保留文件并检查恢复记录。')
         self.orb.intake.connect(self.receive)
         self.panel.intake.connect(self.receive)
         self.orb.open_requested.connect(self.show_panel)
@@ -161,6 +168,8 @@ class FloatingController(QObject):
         self.panel.state_requested.connect(lambda pid, state: self.enqueue('状态已更新', lambda **_: self.service.set_status(pid, state)))
         self.panel.urgent_requested.connect(lambda pid, urgent: self.enqueue('加急标记已更新', lambda **_: self.service.set_urgent(pid, urgent)))
         self.panel.rename_requested.connect(lambda pid, name: self.enqueue('项目名称已更新', lambda **_: self.service.rename_project(pid, name)))
+        self.panel.project_change_preview_requested.connect(self.preview_project_change)
+        self.panel.project_change_requested.connect(self.apply_project_change)
         self.panel.bulk_requested.connect(self.update_projects)
         self.panel.delete_requested.connect(lambda pid: self.set_project_deleted(pid, True))
         self.panel.restore_deleted_requested.connect(lambda pid: self.set_project_deleted(pid, False))
@@ -189,11 +198,13 @@ class FloatingController(QObject):
             pending = connection.execute("SELECT COUNT(*) FROM managed_transfers WHERE state!='complete'").fetchone()[0]
         if pending:
             self.enqueue('检查上次归档结果', lambda **_: self.service.archive.recover())
-        self.monitor_timer.start()
+        self._sync_panel_busy()
+        if not self.storage_blocked:
+            self.monitor_timer.start()
         return True
 
     def check_archives(self, *, silent=True):
-        if self.busy or self.closed or self.quitting or QApplication.activeModalWidget() is not None:
+        if self.storage_blocked or self.busy or self.closed or self.quitting or QApplication.activeModalWidget() is not None:
             return
         self.enqueue('检查 ZIP 归档', lambda **kw: self.service.scan_archives(**kw), silent=silent)
 
@@ -377,6 +388,32 @@ class FloatingController(QObject):
         else:
             self.notify(payload.get('message', '没有收到项目文字或本地文件。'))
 
+    def preview_project_change(self, dialog, request):
+        reference = weakref.ref(dialog)
+        local_cancel = request['cancel_event']
+        def preview(**kwargs):
+            try:
+                outer_cancel = kwargs['cancel_event']
+                class CombinedCancel:
+                    def is_set(self):
+                        return local_cancel.is_set() or outer_cancel.is_set()
+                kwargs['cancel_event'] = CombinedCancel()
+                plan = self.service.preview_project_rename(request['project_id'], request['name'],
+                    merge_target_id=request['target_id'], **kwargs)
+                return {'project_change_preview': (reference, request['serial'], plan, None)}
+            except Exception as error:
+                return {'project_change_preview': (reference, request['serial'], None, str(error))}
+        def cancelled():
+            current = reference()
+            if current is not None and shiboken6.isValid(current) and current.isVisible():
+                current.show_preview(request['serial'], error='检查已取消，请重新检查。')
+        self.enqueue('检查项目变更', preview, silent=True, on_cancel=cancelled)
+
+    def apply_project_change(self, request):
+        self.enqueue('项目变更已完成', lambda **kw: self.service.rename_project(
+            request['project_id'], request['name'], expected_token=request['expected_token'],
+            merge_target_id=request['merge_target_id'], confirmed_merge=request['confirmed_merge'], **kw))
+
     def enqueue(self, caption, operation, *, silent=False, on_cancel=None):
         if self.quitting or self.closed:
             return
@@ -417,6 +454,14 @@ class FloatingController(QObject):
             return
         worker = self.worker
         self.worker = None
+        if isinstance(worker.result, dict) and 'project_change_preview' in worker.result:
+            reference, serial, plan, error = worker.result['project_change_preview']
+            dialog = reference()
+            if dialog is not None and shiboken6.isValid(dialog) and dialog.isVisible():
+                dialog.show_preview(serial, plan, error)
+            worker.deleteLater()
+            self._next()
+            return
         target = None if worker.cancelled or worker.error else self._result_target(worker.result)
         if worker.cancelled:
             message = '已取消未完成的处理；已成功入库的文件保留。'
@@ -470,6 +515,8 @@ class FloatingController(QObject):
                         '本次为补交，不增加今日首次交付数。' if event and event['counting_role'] == 'repeat' else
                         '交付记录已保存。')
             message = '项目工作文件已按原名归档，已设为已交付。' + counting + '\n' + worker.result['archive']['path']
+        elif isinstance(worker.result, dict) and worker.result.get('operation') in ('rename', 'merge'):
+            message = worker.result.get('message') or '项目变更已完成。'
         elif isinstance(worker.result, dict) and 'project_lifecycle' in worker.result:
             result = worker.result['project_lifecycle']
             message = ('项目已移入已删除，原文件、归档和历史交付记录保留。' if result['deleted'] else
@@ -520,6 +567,9 @@ class FloatingController(QObject):
             self.panel.refresh_archive_status()
         else:
             self.refresh()
+        if (not worker.error and not worker.cancelled and isinstance(worker.result, dict)
+                and worker.result.get('operation') in ('rename', 'merge') and worker.result.get('project_id')):
+            self.panel.focus_projects([worker.result['project_id']])
         if not self.queue and self.errors:
             message = f'本次有 {len(self.errors)} 项失败，其余文件独立处理。\n' + '\n'.join(self.errors)
             target = None

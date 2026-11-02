@@ -9,8 +9,10 @@ import os
 import re
 import stat
 import struct
+import threading
 import uuid
 from collections import OrderedDict
+from functools import wraps
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
@@ -18,6 +20,14 @@ from native_files import ZipLease, cancelled, identity, plain_path
 from intake_log import FileIntakeLog
 from first_run import initialize as initialize_first_run, setup_required as read_setup_required, complete as complete_first_run
 from workflow_policy import DEFAULTS as POLICY_DEFAULTS, read_policy, validate as validate_policy
+
+
+def _workspace_operation(method):
+    @wraps(method)
+    def guarded(self, *args, **kwargs):
+        with self.db._operation_lock:
+            return method(self, *args, **kwargs)
+    return guarded
 
 
 SCHEMA = '''
@@ -191,6 +201,8 @@ def _folder_name(name):
 class WorkspaceManager:
     def __init__(self, service):
         self.service, self.db = service, service.db
+        if not hasattr(self.db, '_operation_lock'):
+            self.db._operation_lock = threading.RLock()
         with self.db.connect() as connection:
             initialize_first_run(connection)
         with self.db.connect() as connection:
@@ -271,8 +283,9 @@ class WorkspaceManager:
     def list_workspaces(self, include_archived=False):
         with self.db.connect() as connection:
             sql = 'SELECT w.*,p.name FROM project_workspaces w JOIN projects p ON p.id=w.project_id LEFT JOIN project_details d ON d.project_id=p.id'
+            sql += ' WHERE NOT EXISTS (SELECT 1 FROM project_merges m WHERE m.source_id=p.id)'
             if not include_archived:
-                sql += ' WHERE d.archived_at IS NULL'
+                sql += ' AND d.archived_at IS NULL'
             return [dict(row) for row in connection.execute(sql + ' ORDER BY p.id')]
 
     @staticmethod
@@ -291,6 +304,7 @@ class WorkspaceManager:
             except FileExistsError:
                 suffix += 1
 
+    @_workspace_operation
     def ensure_projects(self, project_ids):
         if not project_ids or len(project_ids) > 500 or any(type(pid) is not int or pid < 1 for pid in project_ids):
             raise ValueError('请选择 1 至 500 个有效项目。')
@@ -300,6 +314,7 @@ class WorkspaceManager:
             with self.db.connect() as connection:
                 connection.execute('BEGIN IMMEDIATE')
                 for pid in ids:
+                    self.db._assert_projects_editable(connection, pid)
                     row = connection.execute('SELECT id,name,batch_id FROM projects WHERE id=?', (pid,)).fetchone()
                     if row is None:
                         raise KeyError('项目不存在。')
@@ -332,6 +347,7 @@ class WorkspaceManager:
                     pass
             raise
 
+    @_workspace_operation
     def import_file(self, source, project_id, *, cancel_event=None, progress=None, routing=None, relative_path=None):
         if type(project_id) is not int or project_id < 1:
             raise ValueError('请先明确选择文件所属项目。')

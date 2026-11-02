@@ -180,7 +180,9 @@ def test_real_workbench_styles_keep_selected_text_and_metadata_readable(qapp, tm
 
     service = DesktopService(tmp_path / 'data/workbox.db')
     name = '跨部门项目文档收录整理与版本交付协同管理系统'
-    service.db.create_capture('独立界面验证', '资料', [(name, False), ('短名称工具', False)])
+    # 11px 辅助字的两个汉字在浅色抗锯齿下只有15个近似实色像素；
+    # 使用完整中性批次名称测试末行，保留原有像素阈值与实际整窗合成检查。
+    service.db.create_capture('独立界面验证', '隔离验收批次', [(name, False), ('短名称工具', False)])
     install_theme(service)
     panel = CompactPanel(service)
     panel.resize(1200, 780)
@@ -227,9 +229,14 @@ def test_real_workbench_styles_keep_selected_text_and_metadata_readable(qapp, tm
               for y in range(rendered.height()) for x in range(20, rendered.width() - 20))
     assert ink > 100, (mode, ink, item.text())
     # 用真实像素验证末行元数据，不能只测委托返回的尺寸。
+    if kind == 'list':
+        # 项目名仍用主文字色，独立的较小详情使用统一辅助文字色。
+        from theme import tokens
+        expected = QColor(tokens(mode)['muted'])
     last_ink = sum(same_ink(rendered.pixelColor(x, y))
                   for y in range(round(rendered.height() * .68), round(rendered.height() * .92))
-                  for x in range(20, rendered.width() - 20))
+                  for x in range(round((14 if kind == 'list' else 20) * scale),
+                                 rendered.width() - round((14 if kind == 'list' else 20) * scale)))
     assert last_ink > 20, (mode, last_ink, item.text())
     background = rendered.pixelColor(rendered.width() // 2, round(3 * rendered.devicePixelRatio()))
     def luminance(color):

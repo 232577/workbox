@@ -7,6 +7,7 @@ import re
 import json
 import hashlib
 import os
+import unicodedata
 from datetime import date, datetime, time, timedelta, timezone
 from contextlib import ExitStack, contextmanager, nullcontext
 from pathlib import Path, PurePosixPath
@@ -68,6 +69,48 @@ CREATE TABLE IF NOT EXISTS project_deletions (
     deleted_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     previous_archived_at TEXT
 );
+CREATE TABLE IF NOT EXISTS project_merges (
+    source_id INTEGER PRIMARY KEY REFERENCES projects(id),
+    target_id INTEGER NOT NULL REFERENCES projects(id) CHECK(source_id!=target_id),
+    operation_id TEXT NOT NULL UNIQUE,
+    snapshot_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE TRIGGER IF NOT EXISTS project_merges_no_update BEFORE UPDATE ON project_merges
+BEGIN SELECT RAISE(ABORT,'项目合并记录仅允许追加，不能修改。'); END;
+CREATE TRIGGER IF NOT EXISTS project_merges_no_delete BEFORE DELETE ON project_merges
+BEGIN SELECT RAISE(ABORT,'项目合并记录仅允许追加，不能删除。'); END;
+CREATE TABLE IF NOT EXISTS project_change_commits (
+    operation_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    source_id INTEGER NOT NULL REFERENCES projects(id),
+    target_id INTEGER REFERENCES projects(id),
+    new_name TEXT NOT NULL,
+    committed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE TABLE IF NOT EXISTS project_change_blocks (
+    project_id INTEGER PRIMARY KEY REFERENCES projects(id),
+    operation_id TEXT NOT NULL,
+    reason TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS project_name_aliases (
+    id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    name TEXT NOT NULL,
+    normalized_name TEXT NOT NULL,
+    operation_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    UNIQUE(project_id,normalized_name,operation_id)
+);
+CREATE INDEX IF NOT EXISTS idx_project_alias_normalized ON project_name_aliases(normalized_name);
+CREATE VIEW IF NOT EXISTS project_canonical AS
+    WITH RECURSIVE chain(project_id,canonical_id) AS (
+        SELECT id,id FROM projects
+        UNION ALL
+        SELECT c.project_id,m.target_id FROM chain c JOIN project_merges m ON m.source_id=c.canonical_id
+    )
+    SELECT project_id,canonical_id FROM chain c
+    WHERE NOT EXISTS (SELECT 1 FROM project_merges m WHERE m.source_id=c.canonical_id);
 CREATE TABLE IF NOT EXISTS zip_bundles (
     zip_id INTEGER PRIMARY KEY REFERENCES zips(id),
     declared_count INTEGER,
@@ -233,8 +276,153 @@ class Database:
                 for table in ("projects", "batches", "zips")
             }
             result['projects'] = connection.execute('''SELECT COUNT(*) FROM projects p
-                WHERE NOT EXISTS (SELECT 1 FROM project_deletions x WHERE x.project_id=p.id)''').fetchone()[0]
+                WHERE NOT EXISTS (SELECT 1 FROM project_deletions x WHERE x.project_id=p.id)
+                AND NOT EXISTS (SELECT 1 FROM project_merges m WHERE m.source_id=p.id)''').fetchone()[0]
             return result
+
+    @staticmethod
+    def _canonical_project_id(connection, project_id):
+        if type(project_id) is not int or project_id <= 0:
+            raise ValueError('项目编号必须是正整数。')
+        row = connection.execute('SELECT canonical_id FROM project_canonical WHERE project_id=?', (project_id,)).fetchone()
+        if row is None:
+            raise KeyError('项目不存在，请刷新列表。')
+        return row['canonical_id']
+
+    def canonical_project_id(self, project_id: int) -> int:
+        with self.connect() as connection:
+            return self._canonical_project_id(connection, project_id)
+
+    def project_family_ids(self, project_id: int) -> list[int]:
+        with self.connect() as connection:
+            target = self._canonical_project_id(connection, project_id)
+            return [row[0] for row in connection.execute(
+                'SELECT project_id FROM project_canonical WHERE canonical_id=? ORDER BY project_id', (target,))]
+
+    def list_project_aliases(self) -> list[dict]:
+        with self.connect() as connection:
+            return [dict(row) for row in connection.execute('''SELECT DISTINCT c.canonical_id AS project_id,a.name AS alias_name
+                FROM project_name_aliases a JOIN project_canonical c ON c.project_id=a.project_id
+                ORDER BY project_id,alias_name''')]
+
+    @staticmethod
+    def _assert_project_change_allowed(connection, *project_ids):
+        """旧任务不能写入已合并项目或目录恢复尚未完成的项目。"""
+        for project_id in set(project_ids) - {None}:
+            merged = connection.execute('SELECT target_id FROM project_merges WHERE source_id=?', (project_id,)).fetchone()
+            if merged:
+                raise ValueError('项目已合并，请刷新列表并重新选择目标项目。')
+            blocked = connection.execute('SELECT reason FROM project_change_blocks WHERE project_id=?', (project_id,)).fetchone()
+            if blocked:
+                raise ValueError('项目工作目录需要恢复，暂不能修改：' + blocked['reason'])
+
+    def _assert_project_merge_ready(self, connection, source_id, target_id):
+        """预览与事务提交共用只读检查，不迁移或修写未完成的归档操作。"""
+        if (type(source_id) is not int or type(target_id) is not int or source_id <= 0
+                or target_id <= 0 or source_id == target_id):
+            raise ValueError('请选择两个不同的有效项目。')
+        self._assert_projects_editable(connection, source_id, target_id)
+        if connection.execute('''SELECT 1 FROM zip_project_links s JOIN zip_project_links t ON t.zip_id=s.zip_id
+                WHERE s.project_id=? AND t.project_id=? LIMIT 1''', (source_id, target_id)).fetchone():
+            raise ValueError('两个项目共同关联同一 ZIP，请先核对组合包归属，不能直接合并。')
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        for table, terminal in (('zip_snapshot_attempts', 'registered'), ('managed_transfers', 'complete'),
+                                ('project_delivery_archive_attempts', 'registered')):
+            if table not in tables:
+                continue
+            conditions = ['a.project_id IN (?,?)']
+            parameters = [terminal, source_id, target_id]
+            if table == 'zip_snapshot_attempts' and 'zip_sources' in tables:
+                conditions.append('EXISTS (SELECT 1 FROM zip_sources s WHERE s.id=a.source_id AND s.project_id IN (?,?))')
+                parameters.extend((source_id, target_id))
+            if table in ('zip_snapshot_attempts', 'managed_transfers'):
+                conditions.append('EXISTS (SELECT 1 FROM zip_project_links l WHERE l.zip_id=a.zip_id AND l.project_id IN (?,?))')
+                parameters.extend((source_id, target_id))
+            if connection.execute(f'SELECT 1 FROM {table} a WHERE a.state!=? AND ('
+                    + ' OR '.join(conditions) + ') LIMIT 1', parameters).fetchone():
+                raise ValueError('项目存在未完成的归档操作，请先完成恢复或核对，再合并项目。')
+            if table == 'zip_snapshot_attempts':
+                # 合包尚未登记 ZIP links 时，次成员的归属仅保存在复制计划中。
+                for attempt in connection.execute('SELECT metadata FROM zip_snapshot_attempts WHERE state!=?', (terminal,)):
+                    try:
+                        metadata = json.loads(attempt['metadata'])
+                    except (TypeError, ValueError):
+                        continue
+                    bundle = metadata.get('bundle', {}) if isinstance(metadata, dict) else {}
+                    members = bundle.get('project_ids', []) if isinstance(bundle, dict) else []
+                    if isinstance(members, list) and any(pid in (source_id, target_id) for pid in members):
+                        raise ValueError('项目参与的组合包存在未完成的归档操作，请先完成恢复或核对，再合并项目。')
+        batches = {row['id']: row['batch_id'] for row in connection.execute(
+            'SELECT id,batch_id FROM projects WHERE id IN (?,?)', (source_id, target_id))}
+        if batches[source_id] != batches[target_id] and connection.execute('''
+            SELECT 1 FROM zip_project_links l JOIN zip_bundles b ON b.zip_id=l.zip_id
+            WHERE l.project_id=? AND (b.declared_count>1 OR
+                (SELECT COUNT(*) FROM zip_project_links p WHERE p.zip_id=l.zip_id)>1) LIMIT 1''', (source_id,)).fetchone():
+            raise ValueError('跨批次多项目合包暂不能直接合并，请先核对归属。')
+
+    def _merge_project_records(self, connection, source_id, target_id, *, operation_id, result_status, snapshot):
+        """仅加入调用方事务；文件复制、路径更新及提交标记由调用方协调。"""
+        if not connection.in_transaction:
+            raise ValueError('项目合并必须在调用方事务中执行。')
+        if (type(source_id) is not int or type(target_id) is not int or source_id <= 0
+                or target_id <= 0 or source_id == target_id):
+            raise ValueError('请选择两个不同的有效项目。')
+        if (not isinstance(operation_id, str) or not operation_id.strip()
+                or result_status not in STATUSES or not isinstance(snapshot, dict)):
+            raise ValueError('项目合并计划无效。')
+        self._assert_project_merge_ready(connection, source_id, target_id)
+        if connection.execute('SELECT 1 FROM project_merges WHERE operation_id=?', (operation_id,)).fetchone():
+            raise ValueError('项目合并操作已提交，请刷新列表。')
+        rows = {row['id']: row for row in connection.execute('''SELECT p.*,COALESCE(d.notes,'') AS notes,d.due_date
+            FROM projects p LEFT JOIN project_details d ON d.project_id=p.id WHERE p.id IN (?,?)''', (source_id, target_id))}
+        source, target = rows[source_id], rows[target_id]
+        notes = target['notes']
+        if source['notes']:
+            notes += ('\n\n' if notes else '') + f'【合并自 {source["name"]}（项目 #{source_id}）】\n' + source['notes']
+        if len(notes) > 10000:
+            raise ValueError('合并后备注超过 10000 个字符，请先整理备注。')
+        due = min((value for value in (source['due_date'], target['due_date']) if value), default=None)
+        # 所有可能拒绝的语义检查先完成，再转移可变归属。源目录登记作为恢复边界保留。
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        for table in ('work_files', 'zips', 'zip_bundle_members', 'zip_project_file_counts',
+                      'zip_file_count_policies', 'zip_sources', 'project_delivery_archives'):
+            if table in tables:
+                connection.execute(f'UPDATE {table} SET project_id=? WHERE project_id=?', (target_id, source_id))
+        connection.execute('''INSERT OR IGNORE INTO zip_project_approvals(project_id,zip_id)
+            SELECT ?,zip_id FROM zip_project_approvals WHERE project_id=?''', (target_id, source_id))
+        connection.execute('''INSERT INTO project_details(project_id,notes,due_date) VALUES (?,?,?)
+            ON CONFLICT(project_id) DO UPDATE SET notes=excluded.notes,due_date=excluded.due_date''', (target_id, notes, due))
+        delivered_at, delivered_zip_id = target['delivered_at'], target['delivered_zip_id']
+        if result_status != '已交付':
+            delivered_at = delivered_zip_id = None
+        elif not delivered_at and source['status'] == '已交付':
+            delivered_at, delivered_zip_id = source['delivered_at'], source['delivered_zip_id']
+        connection.execute('''UPDATE projects SET status=?,urgent=?,delivered_at=?,delivered_zip_id=?,
+            updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?''',
+            (result_status, int(bool(source['urgent'] or target['urgent'])), delivered_at, delivered_zip_id, target_id))
+        qualifications = {row['project_id']: bool(row['included']) for row in connection.execute('''
+            SELECT a.project_id,a.included FROM project_delivery_count_actions a
+            WHERE a.project_id IN (?,?) AND a.id=(SELECT MAX(id) FROM project_delivery_count_actions WHERE project_id=a.project_id)''',
+            (source_id, target_id))}
+        if not qualifications.get(source_id, True) and qualifications.get(target_id, True):
+            connection.execute('''INSERT INTO project_delivery_count_actions(project_id,included,reason)
+                VALUES (?,0,?)''', (target_id, f'合并继承：原项目 #{source_id} 不计入个人任务量。'))
+        markers = [dict(row) for row in connection.execute('''SELECT m.* FROM project_delivery_history_markers m
+            WHERE m.project_id IN (?,?) AND m.id=(SELECT MAX(id) FROM project_delivery_history_markers WHERE project_id=m.project_id)''',
+            (source_id, target_id))]
+        active_markers = [row for row in markers if row['active']]
+        if active_markers:
+            earliest = min(row['effective_day'] for row in active_markers)
+            current = next((row for row in markers if row['project_id'] == target_id), None)
+            if not current or not current['active'] or current['effective_day'] != earliest:
+                connection.execute('''INSERT INTO project_delivery_history_markers(project_id,effective_day,active,reason)
+                    VALUES (?,?,1,?)''', (target_id, earliest, f'合并继承原有历史交付规则（项目 #{source_id}、#{target_id}）。'))
+        connection.execute('''INSERT INTO project_merges(source_id,target_id,operation_id,snapshot_json)
+            VALUES (?,?,?,?)''', (source_id, target_id, operation_id, json.dumps(snapshot, ensure_ascii=False)))
+        normalized = ' '.join(unicodedata.normalize('NFKC', source['name']).split()).casefold()
+        connection.execute('''INSERT INTO project_name_aliases(project_id,name,normalized_name,operation_id)
+            VALUES (?,?,?,?)''', (source_id, source['name'], normalized, operation_id))
+        return dict(source_id=source_id, target_id=target_id, operation_id=operation_id, status=result_status)
 
     @staticmethod
     def _migrate_project_type_presets(connection: sqlite3.Connection) -> None:
@@ -367,12 +555,23 @@ class Database:
         with self.connect() as connection:
             # 字典与交付行使用同一读取快照，避免并发改名或停用导致统计口径不一致。
             connection.execute('BEGIN')
+            if project_id is not None:
+                # 旧交付入口仍可查看合并后的完整历史；只读归一不授权旧 ID 写入。
+                canonical = self._canonical_project_id(connection, project_id)
+                parameters[2 if day is not None else 0] = canonical
             # 撤销状态来自独立追加日志，不改写真实交付事件或文件关联。
             rows = connection.execute('''WITH effective AS (
-                SELECT d.*,COALESCE(a.voided,0) AS voided,a.id AS last_action_id,
+                SELECT d.id,c.canonical_id AS project_id,d.project_id AS original_project_id,
+                    CASE WHEN c.canonical_id=d.project_id AND NOT EXISTS (
+                        SELECT 1 FROM project_merges pm WHERE pm.target_id=c.canonical_id)
+                        THEN d.project_name ELSE cp.name END AS project_name,
+                    d.project_name AS original_project_name,d.batch_name,d.batch_name AS original_batch_name,
+                    d.kind,d.zip_id,d.archive_path,d.archive_signature,d.occurred_at,d.legacy_source_key,
+                    COALESCE(a.voided,0) AS voided,a.id AS last_action_id,
                     CASE WHEN a.id IS NULL THEN NULL WHEN a.voided=1 THEN 'void' ELSE 'restore' END AS last_action,
                     COALESCE(a.reason,'') AS management_reason,a.created_at AS managed_at
-                FROM delivery_events d LEFT JOIN delivery_event_actions a ON a.id=(
+                FROM delivery_events d JOIN project_canonical c ON c.project_id=d.project_id
+                JOIN projects cp ON cp.id=c.canonical_id LEFT JOIN delivery_event_actions a ON a.id=(
                     SELECT MAX(id) FROM delivery_event_actions WHERE event_id=d.id)
             ), ranked AS (
                 SELECT id,project_id,occurred_at,
@@ -459,6 +658,7 @@ class Database:
             existing = connection.execute(f'SELECT id FROM projects WHERE id IN ({marks})', selected).fetchall()
             if len(existing) != len(selected):
                 raise ValueError('所选项目不存在，未修改任何任务量资格。')
+            self._assert_project_change_allowed(connection, *selected)
             current = {row['project_id']: bool(row['included']) for row in connection.execute(f'''
                 SELECT c.project_id,c.included FROM project_delivery_count_actions c
                 WHERE c.project_id IN ({marks}) AND c.id=(
@@ -498,6 +698,7 @@ class Database:
             existing = connection.execute(f'SELECT id FROM projects WHERE id IN ({placeholders})', selected).fetchall()
             if len(existing) != len(selected):
                 raise ValueError('所选项目不存在，未修改任何统计规则。')
+            self._assert_project_change_allowed(connection, *selected)
             markers = {row['project_id']: row for row in connection.execute(f'''
                 SELECT m.* FROM project_delivery_history_markers m
                 WHERE m.project_id IN ({placeholders}) AND m.id=(
@@ -540,6 +741,8 @@ class Database:
                 FROM delivery_events e WHERE e.id IN ({placeholders})''', selected)}
             if len(existing) != len(selected):
                 raise ValueError('所选交付记录不存在，未修改任何记录。')
+            affected_projects = {self._canonical_project_id(connection, row['project_id']) for row in existing.values()}
+            self._assert_project_change_allowed(connection, *affected_projects)
             for event_id in selected:
                 if bool(existing[event_id]['voided']) == voided:
                     continue
@@ -548,7 +751,8 @@ class Database:
                 result['changed_event_ids'].append(event_id)
             if voided:
                 # 只处理本次真正撤销的事件，重复撤销不能覆盖其后发生的新交付。
-                project_ids = sorted({existing[eid]['project_id'] for eid in result['changed_event_ids']})
+                project_ids = sorted({self._canonical_project_id(connection, existing[eid]['project_id'])
+                                      for eid in result['changed_event_ids']})
                 for project_id in project_ids:
                     changed = connection.execute('''
                         UPDATE projects SET status='待交付',delivered_at=NULL,delivered_zip_id=NULL,
@@ -996,7 +1200,8 @@ class Database:
     def _project_type_row(connection, type_id):
         row = connection.execute('''SELECT t.id,t.name,t.active,
             (SELECT COUNT(*) FROM project_type_links l WHERE l.type_id=t.id AND NOT EXISTS
-                (SELECT 1 FROM project_deletions x WHERE x.project_id=l.project_id)) AS project_count
+                (SELECT 1 FROM project_deletions x WHERE x.project_id=l.project_id) AND NOT EXISTS
+                (SELECT 1 FROM project_merges m WHERE m.source_id=l.project_id)) AS project_count
             FROM project_types t WHERE t.id=?''', (type_id,)).fetchone()
         if row is None:
             raise KeyError('项目类型不存在，请刷新列表。')
@@ -1120,7 +1325,7 @@ class Database:
         *, archived: bool | None = False, due_filter: str | None = None,
         today: date | None = None, deleted: bool | None = False, type_id: int | None = None,
     ) -> list[dict]:
-        clauses = ["1=1"]
+        clauses = ["NOT EXISTS (SELECT 1 FROM project_merges pm WHERE pm.source_id=p.id)"]
         parameters: list = []
         if query.strip():
             clauses.append("""(instr(lower(p.name),lower(?)) > 0
@@ -1193,6 +1398,7 @@ class Database:
                 SELECT b.*, COUNT(p.id) AS project_count,
                     COALESCE(SUM(p.status='已交付'),0) AS delivered_count
                 FROM batches b LEFT JOIN projects p ON p.batch_id=b.id
+                    AND NOT EXISTS (SELECT 1 FROM project_merges pm WHERE pm.source_id=p.id)
                 GROUP BY b.id ORDER BY b.id DESC
             """)]
 
@@ -1201,12 +1407,15 @@ class Database:
             row = connection.execute("""
                 SELECT p.*, b.name AS batch_name, m.raw_text,
                     COALESCE(d.notes,'') AS notes, d.due_date, d.archived_at, x.deleted_at,
-                    tl.type_id AS project_type_id,COALESCE(pt.name,'') AS project_type_name FROM projects p
+                    tl.type_id AS project_type_id,COALESCE(pt.name,'') AS project_type_name,
+                    pm.target_id AS merged_into_id,COALESCE(pb.reason,'') AS block_reason FROM projects p
                 JOIN batches b ON b.id=p.batch_id JOIN messages m ON m.id=p.message_id
                 LEFT JOIN project_details d ON d.project_id=p.id
                 LEFT JOIN project_deletions x ON x.project_id=p.id
                 LEFT JOIN project_type_links tl ON tl.project_id=p.id
                 LEFT JOIN project_types pt ON pt.id=tl.type_id
+                LEFT JOIN project_merges pm ON pm.source_id=p.id
+                LEFT JOIN project_change_blocks pb ON pb.project_id=p.id
                 WHERE p.id=?
             """, (project_id,)).fetchone()
             if row is None:
@@ -1225,6 +1434,7 @@ class Database:
         # 与文件归档共用操作锁；只记录删除边界，不接触磁盘和原始项目事实。
         with getattr(self, '_operation_lock', nullcontext()), self.connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
+            self._assert_project_change_allowed(connection, project_id)
             row = connection.execute('''SELECT p.id,d.archived_at,x.deleted_at FROM projects p
                 LEFT JOIN project_details d ON d.project_id=p.id
                 LEFT JOIN project_deletions x ON x.project_id=p.id WHERE p.id=?''', (project_id,)).fetchone()
@@ -1243,6 +1453,7 @@ class Database:
             raise ValueError('项目编号必须是正整数。')
         with getattr(self, '_operation_lock', nullcontext()), self.connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
+            self._assert_project_change_allowed(connection, project_id)
             row = connection.execute('''SELECT p.id,d.archived_at,x.deleted_at,x.previous_archived_at FROM projects p
                 LEFT JOIN project_details d ON d.project_id=p.id
                 LEFT JOIN project_deletions x ON x.project_id=p.id WHERE p.id=?''', (project_id,)).fetchone()
@@ -1301,6 +1512,7 @@ class Database:
                 LEFT JOIN project_deletions x ON x.project_id=p.id WHERE p.id IN ({marks})''', project_ids).fetchall()
             if len(rows) != len(project_ids):
                 raise KeyError('部分项目不存在，请刷新列表。')
+            self._assert_project_change_allowed(connection, *project_ids)
             if any(row['deleted_at'] is not None for row in rows):
                 raise ValueError('请先从已删除中恢复项目，再编辑或归档。')
             if archived is None and any(row['archived_at'] is not None for row in rows):
@@ -1323,6 +1535,7 @@ class Database:
 
     @staticmethod
     def _assert_projects_editable(connection, *project_ids):
+        Database._assert_project_change_allowed(connection, *project_ids)
         for project_id in set(project_ids) - {None}:
             row = connection.execute('''SELECT p.id,d.archived_at,x.deleted_at FROM projects p
                 LEFT JOIN project_details d ON d.project_id=p.id

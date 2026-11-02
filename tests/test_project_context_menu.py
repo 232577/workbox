@@ -182,20 +182,24 @@ def test_real_menu_route_keeps_actual_clicked_id(panel, monkeypatch):
 
 def test_rename_and_source_use_menu_id_when_selection_changes(panel, monkeypatch):
     received, source_text = [], []
-    panel.rename_requested.connect(lambda *args: received.append(args))
+    panel.project_change_requested.connect(received.append)
     menu = panel.project_context_menu(2)
     panel.project_list.setCurrentRow(0)
-    def name(*args, **kwargs):
-        assert kwargs['text'] == '乙系统'
-        return '乙系统二期', True
-    monkeypatch.setattr(QInputDialog, 'getText', name)
+    from project_change_ui import ProjectChangeDialog
+    def change(dialog):
+        assert dialog.name_edit.text() == '乙系统'
+        dialog.request = {'project_id': dialog.project_id, 'name': '乙系统二期',
+                          'expected_token': '预览', 'merge_target_id': None, 'confirmed_merge': False}
+        return QDialog.Accepted
+    monkeypatch.setattr(ProjectChangeDialog, 'exec', change)
     action(menu, '改项目名…').trigger()
     def source(dialog):
         source_text.append(dialog.findChild(QPlainTextEdit).toPlainText())
         return QDialog.Rejected
     monkeypatch.setattr(QDialog, 'exec', source)
     action(menu, '看原文').trigger()
-    assert received == [(2, '乙系统二期')]
+    assert received == [{'project_id': 2, 'name': '乙系统二期', 'expected_token': '预览',
+                         'merge_target_id': None, 'confirmed_merge': False}]
     assert source_text == ['甲系统\n乙系统']
 
 

@@ -79,3 +79,47 @@ def test_uncommitted_setup_cannot_report_success(qapp, tmp_path):
         assert not controller.monitor_timer.isActive()
     finally:
         controller.shutdown()
+
+
+def test_directory_recovery_runs_only_after_owning_session_lock(qapp,tmp_path,monkeypatch):
+    from project_directory_changes import ProjectDirectoryChanges
+    calls=[]
+    monkeypatch.setattr(ProjectDirectoryChanges,'recover',lambda self:calls.append('recover') or [])
+    service=DesktopService(tmp_path/'data/workbox.db')
+    assert calls==[]
+    owner=FloatingController(service,tray_enabled=False)
+    def recover():
+        assert owner.owns_lock and owner.panel is None and not owner.monitor_timer.isActive()
+        calls.append('owned-recovery')
+        return []
+    monkeypatch.setattr(service,'recover_project_changes',recover)
+    try:
+        assert owner.start()
+        assert calls==['owned-recovery']
+        other=FloatingController(service,tray_enabled=False)
+        assert not other.start()
+        assert calls==['owned-recovery']
+        other.shutdown()
+    finally:
+        owner.shutdown()
+
+
+def test_unknown_directory_recovery_error_shows_notice_and_keeps_exit_available(qapp,tmp_path,monkeypatch):
+    service=DesktopService(tmp_path/'data/workbox.db')
+    error={'error':'隔离损坏日志','global_block':True,'project_ids':[]}
+    def recover():
+        service.project_change_errors=[error]
+        service._project_changes_ready=True
+        return [error]
+    monkeypatch.setattr(service,'recover_project_changes',recover)
+    owner=FloatingController(service,tray_enabled=False)
+    try:
+        assert owner.start()
+        assert '恢复' in owner.panel.notice.text()
+        assert owner.panel.busy
+        assert not owner.monitor_timer.isActive()
+        with pytest.raises(RuntimeError,match='恢复'):
+            service.receive_text('1. 不应新建项目')
+        assert service.db.counts()['projects']==0
+    finally:
+        owner.shutdown()
