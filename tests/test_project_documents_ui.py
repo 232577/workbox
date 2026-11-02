@@ -170,6 +170,41 @@ def test_reverted_update_during_drag_does_not_apply_obsolete_files(panel,qapp):
     assert pane.table.rowCount()==1 and pane.table.item(0,0).text()=='甲说明.txt'
 
 
+def test_document_refresh_consumes_stale_queued_layout_anchor(panel, qapp):
+    """An earlier width-layout callback cannot undo a later explicit scroll/refresh."""
+    from project_documents import list_project_documents
+    root = Path(panel.service.workspaces.get_workspace(1)['path'])
+    for index in range(60):
+        (root / f'文件{index:03d}.txt').write_text('隔离资料', encoding='utf-8')
+    choose(panel, 1)
+    pane = panel.document_pane
+    wait(lambda: pane.worker is None and pane.table.rowCount() == 61)
+    pane.timer.stop()
+    pane._row_layout_timer.stop()
+    pane._row_layout_anchor = None
+    pane._resize_rows_preserving_anchor()
+    bar = pane.table.verticalScrollBar()
+    bar.setValue(0)
+    pane._queue_row_layout()
+    # Deliver the pending timer explicitly after the refresh, without timing luck.
+    pane._row_layout_timer.stop()
+    stale_anchor = pane._row_layout_anchor
+    bar.setValue(450)
+    expected = pane._document_anchor()
+    assert expected[0] != stale_anchor[0]
+    bar.setSliderDown(True)
+    (root / '000新增.txt').write_text('新增', encoding='utf-8')
+    pane.apply_result(list_project_documents(panel.service, 1))
+    assert pane.table.rowCount() == 61 and pane._deferred is not None
+    bar.setSliderDown(False)
+    assert pane.table.rowCount() == 62
+    pane._row_layout_timer.stop()
+    pane._resize_rows_preserving_anchor()
+    assert pane._document_anchor() == expected
+    qapp.processEvents()
+    assert pane._document_anchor() == expected
+
+
 def test_successful_same_content_refresh_clears_old_read_error(panel,monkeypatch):
     import project_documents_ui
     choose(panel,1)
