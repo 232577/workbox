@@ -4,4 +4,13 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 3
+      day: monday
+      time: '09:00'
+      timezone: Asia/Shanghai
+    # One reviewed routine-maintenance PR, not one PR per action.
+    # This applies only to version updates; security alerts are not disabled.
+    groups:
+      github-actions:
+        applies-to: version-updates
+        patterns: ['*']
+    open-pull-requests-limit: 1
