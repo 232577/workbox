@@ -165,7 +165,8 @@ class DesktopService(WorkBox):
             else:
                 candidates = json.dumps([{'name': p.name, 'urgent': p.urgent} for p in projects], ensure_ascii=False)
                 receipt_id = connection.execute("INSERT INTO intake_receipts(fingerprint,raw_text,candidates,state,reason,batch_name) VALUES (?,?,?,'needs-review',?,'')", (fingerprint, text, candidates, reason)).lastrowid
-                batch_name = datetime.now().strftime('%m月%d日 %H:%M 收件') + f' #{receipt_id}'
+                moment = datetime.now()
+                batch_name = f'{moment:%m}月{moment:%d}日 {moment:%H:%M} 收件 #{receipt_id}'
                 connection.execute('UPDATE intake_receipts SET batch_name=? WHERE id=?', (batch_name, receipt_id))
                 receipt = connection.execute('SELECT * FROM intake_receipts WHERE id=?', (receipt_id,)).fetchone()
                 if not reason:
@@ -357,7 +358,8 @@ class DesktopService(WorkBox):
             receipt_id = connection.execute('''INSERT INTO intake_receipts
                 (fingerprint,raw_text,candidates,state,reason,batch_name) VALUES (?,?,?,'needs-review','','')''',
                 (fingerprint, raw, candidates)).lastrowid
-            batch = datetime.now().strftime('%m月%d日 %H:%M 文件收件') + f' #{receipt_id}'
+            moment = datetime.now()
+            batch = f'{moment:%m}月{moment:%d}日 {moment:%H:%M} 文件收件 #{receipt_id}'
             connection.execute('UPDATE intake_receipts SET batch_name=? WHERE id=?', (batch, receipt_id))
             receipt = connection.execute('SELECT * FROM intake_receipts WHERE id=?', (receipt_id,)).fetchone()
             self._commit_text(connection, receipt, [ParsedProject(name) for name in names])

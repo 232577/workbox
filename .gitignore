@@ -1,4 +1,13 @@
 .venv/
+.tmp/
+backups/
+releases/
+verification/
+artifacts/
+*.pfx
+*.p12
+*.key
+*.pem
 .local/
 .wrangler/
 build/
