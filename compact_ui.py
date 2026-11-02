@@ -256,6 +256,7 @@ class CompactPanel(DropSurface, QWidget):
     folder_requested = Signal(str)
     cancel_requested = Signal()
     quit_requested = Signal()
+    update_requested = Signal()
     background_requested = Signal()
 
     def __init__(self, service):
@@ -598,6 +599,11 @@ class CompactPanel(DropSurface, QWidget):
         footer_hint.setToolTip(footer_hint.text())
         footer.addWidget(footer_hint, 1)
         footer.addStretch()
+        self.update_button = button('检查更新')
+        self.update_button.setAccessibleName('检查更新')
+        self.update_button.setToolTip('手动检查官方新构建；下载校验后经确认安装，保留现有数据。')
+        self.update_button.clicked.connect(self.update_requested)
+        footer.addWidget(self.update_button)
         self.help_button = button('使用指南')
         self.help_button.setAccessibleName('使用指南')
         self.help_button.setObjectName('使用指南')

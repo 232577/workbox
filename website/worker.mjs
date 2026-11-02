@@ -136,6 +136,19 @@ export async function handleRequest(request, env, fetcher = fetch, context = nul
   if (!['GET', 'HEAD'].includes(request.method)) {
     return new Response('仅支持 GET 和 HEAD。', { status: 405, headers: { ...safeHeaders, Allow: 'GET, HEAD' } });
   }
+  if (pathname === '/updates/stable.json') {
+    const metadata = {
+      tag_name: release.tag, draft: false, prerelease: false,
+      html_url: `https://github.com/232577/workbox/releases/tag/${release.tag}`,
+      body: `WorkBox ${release.version} 正式安装版 · ${release.date}。升级前请备份数据；具体变更见官网与发行说明。`,
+      assets: [{name: release.filename, size: release.size, state: 'uploaded',
+        digest: `sha256:${release.sha256}`,
+        browser_download_url: `https://github.com/232577/workbox/releases/download/${release.tag}/${release.filename}`}],
+    };
+    return new Response(request.method === 'HEAD' ? null : JSON.stringify(metadata), {
+      headers: {...safeHeaders, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store'},
+    });
+  }
   if (pathname === '/healthz') {
     return new Response(request.method === 'HEAD' ? null : JSON.stringify(release), {
       headers: { ...safeHeaders, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },

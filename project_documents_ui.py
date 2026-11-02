@@ -363,3 +363,10 @@ class ProjectDocumentsPane(QWidget):
     def shutdown(self):
         self._closed = True
         self._stop_reader()
+
+    def resume_after_failed_update(self):
+        """Restore reads after upgrade preparation failed without releasing the data lock."""
+        self._closed = False
+        if self.isVisible():
+            self.timer.start()
+            self.request_refresh()

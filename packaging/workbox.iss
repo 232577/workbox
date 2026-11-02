@@ -51,7 +51,13 @@ Name: "{group}\卸载 WorkBox 工作箱"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\WorkBox 工作箱"; Filename: "{app}\WorkBox.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\WorkBox.exe"; Parameters: "--panel"; Description: "启动 WorkBox 工作箱"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\WorkBox.exe"; Parameters: "--panel"; Description: "启动 WorkBox 工作箱"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent; Check: not IsOnlineUpdate
 
-; 不登记 data，也不使用 InstallDelete / UninstallDelete / 卸载删除脚本。
-; 程序运行后创建的 data 在卸载或重装时保留。
+[Code]
+function IsOnlineUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:WORKBOXUPDATE|0}') = '1';
+end;
+
+// 不登记 data，也不使用 InstallDelete / UninstallDelete / 卸载删除脚本。
+// 程序运行后创建的 data 在卸载或重装时保留。
