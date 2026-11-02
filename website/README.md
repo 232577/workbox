@@ -42,10 +42,12 @@ Cloudflare 静态资源单文件上限低于本安装包大小，所以安装包
 首页由 `public/index.html`、`homepage.css`、`homepage.js` 组成，继承公共基础样式，
 但不改变统计页布局。四步流程支持键盘切换，无 JavaScript 时仍显示全部内容。
 官网只说明桌面功能，不接收项目文件，也不能在网页上修改桌面工作规则。
+2026-11-02 的首页最终样式为 `public/release-page.css`；`public/demo.mjs` 提供固定匿名示例操作，
+不访问真实文件、存储或网络。协作与部署以仓库 PR/main 为来源，参见根目录 CONTRIBUTING.md 与 docs/RELEASING.md。
 
 首次引导步骤视频来自已验证冻结程序的隔离项目截图，标注“截图步骤演示”，含WebVTT字幕，
 无自动播放。`MEDIA.json`记录已审核媒体的构建来源、大小与SHA256。
-正式安装版使用 `workbox-official-20261030` 视频、海报和字幕，以及 `workbox-desktop-light-official-20261030.png`、
-`workbox-desktop-dark-official-20261030.png` 实际界面图；历史媒体保留。
+正式安装版保留 `workbox-official-20261030` 历史视频、海报和字幕，并明确其原构建日期；实际界面图为
+`workbox-desktop-light-official-20261102.png`、`workbox-desktop-dark-official-20261102.png`，旧媒体继续保留。
 MP4请求先经过Worker，声明字节范围并正确返回206/416，以支持浏览器拖动进度；
 教程读取不进入安装包下载统计。媒体大小限制为25 MiB，其他静态资源仍由Assets处理。

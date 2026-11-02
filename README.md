@@ -16,6 +16,8 @@ python scripts/dev.py start feat/my-task
 
 自动检查覆盖仓库安全边界、网站和完整 Windows 测试清单。Git 只同步源码、测试与公开文档，不同步实际项目、工作文件或数据库。原发布的校验清单保留在对应标签；`docs/releases/463a883-source.sha256` 是文档收尾提交 `463a883` 的历史清单，不代表之后所有开发提交的文件摘要。
 
+当前开发源码另包含英文区域 Windows 的收件日期兼容修复；它尚未重新打包进上方安装包。日期文案与业务规则不变，中文文字不再传给依赖本机区域编码的时间格式化函数。不要把 main 的所有新修改当作已有安装包的功能。
+
 ## Windows 安装包
 
 - [官网下载](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261102.exe)
