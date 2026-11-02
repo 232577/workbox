@@ -14,9 +14,11 @@
   <link rel="stylesheet" href="/homepage.css?v=20261028">
   <link rel="stylesheet" href="/support.css">
   <link rel="stylesheet" href="/theme.css?v=20261028-fluent">
+  <link rel="stylesheet" href="/release-page.css?v=20261102">
   <script src="/script.js" defer></script>
   <script src="/homepage.js?v=20261028" defer></script>
   <script type="module" src="/support.js"></script>
+  <script type="module" src="/demo.mjs?v=20261102"></script>
 </head>
 <body id="top" class="home-page">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -42,13 +44,34 @@
     <section class="wb-hero wb-wrap" aria-labelledby="hero-title">
       <div class="wb-hero-copy">
         <a class="wb-release-pill" href="#download"><span aria-hidden="true"></span> 1.0.0 正式安装版现已发布 <span aria-hidden="true">↗</span></a>
-        <h1 id="hero-title">项目，随手收好。<br><em>交付，清楚留档。</em></h1>
-        <p class="wb-lead">桌面上，一个顺手的悬浮球。<br class="wb-desktop-break">把项目文字、文件或整个文件夹拖进来，接着整理项目、归档版本，记清每次交付。</p>
+        <p class="wb-eyebrow">给 Windows 桌面，一个顺手的工作箱</p>
+        <h1 id="hero-title">收进来，<br>理清楚，<br><em>交付有数。</em></h1>
+        <p class="wb-lead">项目消息、文档、代码、整个文件夹……<br>拖到悬浮球，按项目收好。原件留着，版本存着，每次交付都有记录。</p>
         <div class="wb-hero-actions"><a class="wb-button wb-button-primary download-link" href="/download/WorkBox-1.0.0-Setup-x64-20261102.exe"><svg class="wb-icon" aria-hidden="true"><use href="#i-download"/></svg>下载正式安装版</a><a class="wb-button wb-button-plain" href="#quickstart-video">看步骤视频 <svg class="wb-icon" aria-hidden="true"><use href="#i-arrow"/></svg></a><a class="wb-button wb-button-plain" href="#floating-inbox">看看怎么用 <svg class="wb-icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></div>
         <p class="wb-meta">Windows 10 / 11 · x64 · 39.8 MB</p>
         <ul class="wb-assurances" aria-label="产品特点"><li>源码公开</li><li>无需账号</li><li>数据留在本机</li></ul>
         <p class="wb-first-use"><strong>第一次用？从通用模式开始。</strong><span>首次向导带你选目录、定模式；ZIP 自动归档，交付由你确认。</span></p>
       </div>
+      <aside id="workbox-demo" class="wb-demo" aria-label="WorkBox 示例流程" data-demo-root>
+        <div class="wb-demo-top"><span><img src="/favicon.svg" width="22" height="22" alt="">试着收好一个项目</span><span class="wb-demo-dots" aria-hidden="true">● ● ●</span></div>
+        <div class="wb-demo-body">
+          <div class="wb-demo-project"><div><span class="wb-demo-eyebrow">一个小小的示例项目</span><h2>桌面资料整理工具</h2></div><span class="wb-demo-state" data-demo-state>待开发</span></div>
+          <div class="wb-demo-files" aria-label="示例材料"><div><span class="wb-demo-file doc"><svg class="wb-icon" aria-hidden="true"><use href="#i-file"/></svg><b>DOCX</b></span><span>操作手册</span></div><div><span class="wb-demo-file code"><b>&lt;/&gt;</b></span><span>项目代码</span></div><div><span class="wb-demo-file zip"><svg class="wb-icon" aria-hidden="true"><use href="#i-stack"/></svg><b>ZIP</b></span><span>交付版本</span></div></div>
+          <div class="wb-demo-route" aria-hidden="true"><span></span><svg class="wb-icon"><use href="#i-arrow"/></svg><img src="/favicon.svg" width="48" height="48" alt=""><svg class="wb-icon"><use href="#i-arrow"/></svg><span></span></div>
+          <div class="wb-demo-result"><div><span>工作材料</span><strong data-demo-files>0 <small>份</small></strong></div><div><span>归档版本</span><strong data-demo-versions>0 <small>版</small></strong></div><div><span>示例工作量</span><strong data-demo-count>0 <small>项</small></strong></div></div>
+          <p class="wb-demo-status" data-demo-status aria-live="polite">先有项目，再收材料。一步一步，试着走完一次交付。</p>
+          <div class="wb-demo-controls" data-demo-controls hidden>
+            <div class="wb-demo-steps" aria-label="选择演示步骤"><button type="button" data-demo-step="1" aria-pressed="false">01 收好材料</button><button type="button" data-demo-step="2" aria-pressed="false">02 留下版本</button><button type="button" data-demo-step="3" aria-pressed="false">03 确认交付</button></div>
+            <button type="button" data-demo-next class="wb-demo-next">收进示例材料 <span aria-hidden="true">→</span></button>
+          </div>
+          <noscript>演示交互需要 JavaScript；流程为复制材料、留下版本、人工确认交付。下方图文和下载仍可使用。</noscript>
+        </div>
+        <p class="wb-demo-disclaimer">示例演示，不读取或上传真实文件</p>
+      </aside>
+    </section>
+    <div class="wb-hero-bottom wb-wrap"><span>原件保留 · 版本留档 · 数据在本机</span><a href="#actual-ui">看看实际工作台 <span aria-hidden="true">↓</span></a></div>
+    <section id="actual-ui" class="wb-wrap wb-actual-ui" aria-labelledby="actual-ui-title">
+      <div class="wb-centered-heading"><p class="wb-kicker">不是一堆散落的文件，而是一份清楚的工作</p><h2 id="actual-ui-title">项目和材料，终于对得上。</h2><p>左边找到项目，右边继续工作。交付记录，也在同一个窗口里。</p></div>
       <figure class="wb-desktop-showcase" aria-label="WorkBox 项目与文档管理界面及流程说明">
         <div class="wb-preview-stage" data-desktop-stage>
         <div class="wb-scene wb-preview-fallback" aria-label="工作箱将项目消息、工作文件和 ZIP 整理到项目与归档中的流程图">
@@ -70,7 +93,7 @@
     <div class="wb-quickline wb-wrap" aria-label="支持的工作材料"><span>从手头的材料开始</span><div><span>项目消息</span><span>Word / 代码文件</span><span>整个文件夹</span><span>单项目 / 多项目 ZIP</span><span>可读取的共享盘文件</span></div></div>
 
     <section id="quickstart-video" class="wb-wrap wb-video-section" aria-labelledby="video-title">
-      <div class="wb-video-intro"><p class="wb-kicker">上手前，先看一遍</p><h2 id="video-title">从建项目到记交付。</h2><p>这是 2026-10-30 构建的历史步骤演示，基本收件流程仍适用；最新版本的交付管理已并入主窗口。</p><p class="wb-video-note">截图步骤演示 · 无声字幕 · 不是连续录屏</p><p class="wb-video-mobile">手机上可横屏观看，或直接打开视频放大查看。</p><a class="wb-inline-link" href="/media/workbox-official-20261030.mp4">直接查看或下载视频 ↗</a></div>
+      <div class="wb-video-intro"><p class="wb-kicker">上手前，先看一遍</p><h2 id="video-title">44 秒，了解工作箱。</h2><p>这是 2026-10-30 构建的历史步骤演示，基本收件流程仍适用；最新版本的交付管理已并入主窗口。</p><p class="wb-video-note">截图步骤演示 · 无声字幕 · 不是连续录屏</p><p class="wb-video-mobile">手机上可横屏观看，或直接打开视频放大查看。</p><a class="wb-inline-link" href="/media/workbox-official-20261030.mp4">直接查看或下载视频 ↗</a></div>
       <div class="wb-video-frame"><video controls playsinline preload="none" width="1920" height="1080" poster="/media/workbox-official-20261030.poster.png" aria-label="WorkBox 截图步骤演示"><source src="/media/workbox-official-20261030.mp4" type="video/mp4"><track kind="captions" src="/media/workbox-official-20261030.vtt" srclang="zh" label="中文字幕" default>你的浏览器无法播放视频，请使用旁边的直接查看或下载链接。</video></div>
     </section>
 
@@ -119,6 +142,7 @@
       <article><svg class="wb-feature-icon" aria-hidden="true"><use href="#i-check"/></svg><h3>项目类型，由你定义</h3><p>自定义项目类型可独立增改、停用启用、筛选及右键或批量分配；类型与个人工作量计数互不影响。</p><span class="wb-feature-caption">保留旧项目分类 · 停用后仍可筛选</span></article>
       <article><svg class="wb-feature-icon" aria-hidden="true"><use href="#i-check"/></svg><h3>一批项目，一起整理</h3><p>批量调整未交付状态、设置加急、分配项目类型、归档或恢复选中项目。常用项目操作放在右键菜单里。</p><span class="wb-feature-caption">按当前选中项目操作</span></article>
       <article><svg class="wb-feature-icon" aria-hidden="true"><use href="#i-return"/></svg><h3>收起来，也能找回来</h3><p>做完的项目可归档，误删项目可从“已删除”恢复。目录、文件和历史交付记录仍然保留。</p><span class="wb-feature-caption">项目归档 · 可恢复删除</span></article>
+      <article><svg class="wb-feature-icon" aria-hidden="true"><use href="#i-folder"/></svg><h3>名字改对，材料不丢</h3><p>项目改名同步登记的工作目录。同名项目先预览，再明确确认合并，保留原资料与交付记录。</p><span class="wb-feature-caption">预览再确认 · 不自动合并</span></article>
     </div></div></section>
     <section id="settings" class="wb-section wb-wrap wb-settings" aria-labelledby="settings-title">
       <div class="wb-settings-copy"><p class="wb-kicker">你的习惯，你来设置</p><h2 id="settings-title">让工作规则，<br>跟上你的做事方式。</h2><p>想自动处理，或想每次亲自确认，都可以。在“工作设置”里调整收件、交付和归档规则，每台电脑独立保存。</p><a class="wb-inline-link" href="#download">下载后打开「工作设置」 <svg class="wb-icon" aria-hidden="true"><use href="#i-arrow"/></svg></a><p class="wb-boundary">修改规则不重算历史记录；更改目录只影响新分配的路径，不搬迁旧文件。</p></div>
@@ -134,10 +158,10 @@
         <p>本次同步交付记录管理并入主窗口、小窗口记录优先布局及固定字号。项目改名同步登记目录，同名项目先预览再确认合并；原材料和历史交付记录保留，不会在启动时自动合并。安装包沿用已验证的 2026-10-30 本地构建，软件版本保持 1.0.0。</p>
         <p>Fluent 项目列表、文档表格、状态筛选和设置卡片支持浅色、深色外观。新项目默认归为“生成材料”，可在“设置 → 管理项目类型 → 新项目默认类型”修改；旧项目类型、交付记录和原有配置保持。项目总览与今日交付的“修改类型…”支持单选、多选和类型管理，今日交付按当前类型汇总，显示各类型数量和合计，改分类不改变总数。旧项目保持未分类时不自动补分，首次交付、补交、排除与撤销规则保持。保留左侧项目、右侧文档分栏与项目右键菜单，折叠侧栏的今日工作量小胶囊放在日历图标下方，完整数字可通过提示读取。</p>
         <p class="wb-package-name">WorkBox-1.0.0-Setup-x64-20261102.exe<br>39,784,180 字节（约 39.8 MB）</p>
-        <div class="wb-release-links">
+        <details id="release-history" class="wb-release-history"><summary>查看全部历史正式安装版</summary><div class="wb-release-links">
           <a class="download-link" href="/download/WorkBox-1.0.0-Setup-x64-20261030.exe">历史正式安装版 · 10月30日（Fluent工作台）</a>
           <a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-Types-20261029-Setup-x64.exe">历史正式安装版 · 10月29日（类型统计）</a><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-Sidebar-20261029-Setup-x64.exe">历史正式安装版 · 10月29日（侧栏）</a><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-Layout-20261029-Setup-x64.exe">历史正式安装版 · 10月29日（布局）</a><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-Workbench-20261029-Setup-x64.exe">历史正式安装版 · 10月29日（工作台）</a><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-Fluent-20261028-Setup-x64.exe">历史正式安装版 · 10月28日（Fluent）</a><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-UI-20261028-Setup-x64.exe">历史正式安装版 · 10月28日（双主题）</a><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-20261028-Setup-x64.exe">历史正式安装版 · 10月28日（引导）</a><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-20261027-Setup-x64.exe">历史正式安装版 · 10月27日（收件）</a><a class="download-link" href="/download/WorkBox-1.0.0-Setup-x64.exe">历史正式安装版 · 10月26日（初版）</a><a href="https://github.com/232577/workbox/releases">版本记录 ↗</a><a href="https://github.com/232577/workbox">公开源码 ↗</a>
-        </div></div>
+        </div></details></div>
       <div class="wb-download-details"><h3>安装前，确认这几件事</h3><ul><li>安装包不包含已有项目，首次使用自动建立数据目录。</li><li>升级前备份 data 及另外设置的工作、归档目录，退出工作箱后在原位置安装。</li><li>安装包未做商业代码签名，Windows 可能提示未知发布者。请核对来源与校验值，不确定时先不要运行。</li></ul><details class="wb-checksum-details"><summary>查看 SHA-256 校验值</summary><div class="wb-hash-content"><code id="checksum">7760e997ded567dd5c1aec4435f023b82b64664ae757e249568999aac4f690fc</code><button id="copy-checksum" class="copy-button" type="button">复制校验值</button><p id="copy-status" class="copy-status" role="status" aria-live="polite"></p></div></details></div></div>
     </div></section>
 
