@@ -60,7 +60,8 @@ def configure_native_scroll(widget):
         widget.horizontalScrollBar().setStyleSheet('')
         widget._workbox_native_scroll = True
     widget.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-    widget.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+    widget.setHorizontalScrollBarPolicy(
+        Qt.ScrollBarAsNeeded if isinstance(widget, TableWidget) else Qt.ScrollBarAlwaysOff)
     widget.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
     widget.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
     for bar in (widget.verticalScrollBar(), widget.horizontalScrollBar()):

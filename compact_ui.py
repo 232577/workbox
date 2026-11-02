@@ -1525,10 +1525,9 @@ class FileIntakeLogDialog(QDialog):
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.verticalHeader().hide()
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        for column, width in enumerate((170, 100, 260, 180)):
+            self.table.setColumnWidth(column, width)
         self.table.setMinimumHeight(130)
         layout.addWidget(self.table, 2)
         layout.addWidget(label('收录详情（可选中文字并复制）', 'subtle'))
