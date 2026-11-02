@@ -59,5 +59,5 @@ begin
   Result := ExpandConstant('{param:WORKBOXUPDATE|0}') = '1';
 end;
 
-; 不登记 data，也不使用 InstallDelete / UninstallDelete / 卸载删除脚本。
-; 程序运行后创建的 data 在卸载或重装时保留。
+// 不登记 data，也不使用 InstallDelete / UninstallDelete / 卸载删除脚本。
+// 程序运行后创建的 data 在卸载或重装时保留。
