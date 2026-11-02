@@ -2,10 +2,20 @@
   "kind": "verified-screenshot-walkthrough",
   "source_exe_sha256": "ce9e986d53fd0129c905e4058f7a8bfe3b67df4b0e1d6a8310d42dcd8a114890",
   "privacy_reviewed": true,
-  "latest_screenshot_exe_sha256": "8311e213b3e2eaefa512d1e7164ad046542a5b66bdd79276c0dcec6d6b241c40",
-  "description": "已验证冻结程序的中性隔离夹具截图步骤演示，展示项目、类型与交付统计；旧媒体保留各自构建来源。",
+  "latest_screenshot_exe_sha256": "1b871e714f6dd44d4c120476b2aaa5e04b2463a6500e2e2ba1713f5ac45664b6",
+  "description": "当前截图来自已验证在线升级构建的匿名实例；旧截图和2026-10-30教程保留各自构建来源，不作为新版录屏。",
   "duration_seconds": 44,
   "files": {
+    "public/media/workbox-desktop-light-online-20261102.png": {
+      "size": 76940,
+      "sha256": "8d7f38f63ca122e84a436c9963709e4bca7ff6ccdbeee421a1a61bc3dd3f10ef",
+      "source_exe_sha256": "1b871e714f6dd44d4c120476b2aaa5e04b2463a6500e2e2ba1713f5ac45664b6"
+    },
+    "public/media/workbox-desktop-dark-online-20261102.png": {
+      "size": 76621,
+      "sha256": "696e1fdd658e9737f218247ba3fb8e5351bf5e121fb015f527c3abdb244f9c34",
+      "source_exe_sha256": "1b871e714f6dd44d4c120476b2aaa5e04b2463a6500e2e2ba1713f5ac45664b6"
+    },
     "public/media/workbox-desktop-light-official-20261102.png": {
       "size": 76713,
       "sha256": "d5743c44435c055d225b8993c3689597e9a0dd39ab661ab8a1567a43737c8bb3",
