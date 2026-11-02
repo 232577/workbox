@@ -789,6 +789,9 @@ class FloatingController(QObject):
         self.worker = None
         if self.update_dialog is not None:
             self.update_dialog.shutdown()
+        material_dialog = getattr(self.panel, 'material_dialog', None)
+        if material_dialog is not None:
+            material_dialog.shutdown()
         if self.panel is not None and getattr(self.panel, 'today_dialog', None) is not None:
             self.panel.today_dialog.shutdown()
         if self.panel is not None:
