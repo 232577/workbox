@@ -92,6 +92,9 @@ class FloatingController(QObject):
         self.background_mode = False
         self.choosing_intake = False
         self.storage_blocked = False
+        self.update_dialog = None
+        self.pending_update = None
+        self.update_backup = None
         self.monitor_timer = QTimer(self)
         self.monitor_timer.setInterval(2000)
         self.monitor_timer.timeout.connect(lambda: self.check_archives(silent=True))
@@ -156,6 +159,7 @@ class FloatingController(QObject):
             signal.connect(self.choose_files)
         for signal in (self.orb.quit_requested, self.panel.quit_requested):
             signal.connect(self.request_quit)
+        self.panel.update_requested.connect(self.show_updates)
         for signal in (self.orb.background_requested, self.panel.background_requested):
             signal.connect(self.run_in_background)
         self.orb.folder_requested.connect(lambda: self.open_folder(self.service.workspaces.settings()['archive_root']))
@@ -710,6 +714,61 @@ class FloatingController(QObject):
                 except Exception as error:
                     self.notify('取消收录的记录写入失败：' + str(error))
 
+    def show_updates(self):
+        from PySide6.QtWidgets import QDialog, QMessageBox
+        from dialog_lifecycle import transient_dialog
+        from update_ui import UpdateDialog
+        if self.closed or self.quitting or self.update_dialog is not None:
+            return
+        selected = None
+        try:
+            with transient_dialog(UpdateDialog(self.panel)) as dialog:
+                self.update_dialog = dialog
+                try:
+                    if dialog.exec() == QDialog.Accepted:
+                        selected = (dialog.release, dialog.installer)
+                finally:
+                    dialog.shutdown()
+                    self.update_dialog = None
+            if selected is not None:
+                self.prepare_update_install(*selected)
+        except (OSError, ValueError, RuntimeError) as error:
+            QMessageBox.warning(self.panel, '升级未执行', str(error) + '\n下载文件保留，现有数据未重置。')
+
+    def prepare_update_install(self, release, installer):
+        import sys
+        from update_client import verify_installer
+        if sys.platform != 'win32' or not getattr(sys, 'frozen', False):
+            raise ValueError('只有Windows安装版可以退出并安装；源码运行不会替换开发目录。')
+        if self.closed or self.quitting or self.busy or self.storage_blocked:
+            raise RuntimeError('仍有文件任务或恢复事项未完成，请处理完毕后再升级。')
+        verify_installer(installer, release)
+        delivery = getattr(self.panel, 'today_dialog', None)
+        delivery_visible = delivery is not None and delivery.isVisible()
+        self.pending_update = (release, installer)
+        self.update_backup = None
+        try:
+            self.request_quit()
+        except Exception:
+            self.pending_update = None
+            self.quitting = False
+            if not self.closed:
+                self.monitor_timer.start()
+                self.panel.document_pane.resume_after_failed_update()
+                if delivery_visible:
+                    delivery.show()
+            raise
+
+    def launch_pending_update(self):
+        if self.pending_update is None:
+            return
+        if not self.closed or self.owns_lock or self.update_backup is None:
+            raise RuntimeError('安全停机和数据库恢复点尚未完成，拒绝安装。')
+        from update_install import launch_installer
+        release, installer = self.pending_update
+        launch_installer(installer, release, self.service.db.path.parent)
+        self.pending_update = None
+
     def request_quit(self):
         self.quitting = True
         self.monitor_timer.stop()
@@ -728,6 +787,8 @@ class FloatingController(QObject):
         if self.worker and not self.worker.wait(15000):
             raise RuntimeError('文件操作仍未结束，窗口与文件锁保持，不强制退出。')
         self.worker = None
+        if self.update_dialog is not None:
+            self.update_dialog.shutdown()
         if self.panel is not None and getattr(self.panel, 'today_dialog', None) is not None:
             self.panel.today_dialog.shutdown()
         if self.panel is not None:
@@ -736,6 +797,12 @@ class FloatingController(QObject):
             self.save_position([self.orb.x(), self.orb.y()])
             geometry = self.panel.geometry()
             self.service.set_setting('manager_geometry', [geometry.x(), geometry.y(), geometry.width(), geometry.height()])
+            if self.pending_update is not None and self.update_backup is None:
+                if not self.owns_lock:
+                    raise RuntimeError('升级备份必须持有数据会话锁。')
+                from update_install import backup_database
+                self.update_backup = backup_database(self.service.db.path,
+                    self.service.db.path.parent / '升级恢复点')
             for widget in (self.orb, self.panel, self.bubble):
                 widget.hide()
             self.bubble.timer.stop()

@@ -19,11 +19,16 @@ def default_data_dir() -> Path:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="WorkBox 工作箱 v1.0 · 项目收件与 ZIP 持续归档")
     parser.add_argument("--version", action="version", version=f"WorkBox {VERSION}")
+    parser.add_argument("--build-info", action="store_true", help="输出构建标识，不打开数据或联网")
     parser.add_argument("--data-dir", type=Path, default=None, help="指定本地数据目录；默认是程序目录下的 data")
     parser.add_argument("--check", action="store_true", help="初始化/检查数据库，输出计数后退出，不打开窗口")
     parser.add_argument("--panel", action="store_true", help="启动时展开管理面板；默认仅显示悬浮球")
     parser.add_argument("--no-tray", action="store_true", help="不用系统托盘，仍可从球右键退出")
     args = parser.parse_args(argv)
+    if args.build_info:
+        from update_client import CURRENT_TAG
+        print(json.dumps({'version': VERSION, 'release_tag': CURRENT_TAG}))
+        return 0
     data_dir = args.data_dir if args.data_dir is not None else default_data_dir()
     if args.check:
         try:
@@ -67,6 +72,10 @@ def main(argv: list[str] | None = None) -> int:
         if controller is not None:
             controller.shutdown()
             controller.dispose_ui()
+            try:
+                controller.launch_pending_update()
+            except (OSError, ValueError, RuntimeError) as error:
+                QMessageBox.critical(None, '升级未执行', str(error) + '\n下载和数据库恢复点已保留，请重新启动WorkBox检查。')
 
 
 if __name__ == "__main__":

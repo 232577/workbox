@@ -22,6 +22,8 @@ python scripts/dev.py start feat/my-task
 
 ## Windows 安装包
 
+当前源码新增“检查更新”入口，点击后才连接官网更新清单（GitHub为备用源），支持后台下载、取消、长度与SHA-256校验，以及确认后安全退出再安装。安装前保存数据库恢复点，不删除项目文件；源码模式不允许替换开发目录。该能力在新构建完成发布前不能视为旧下载包已经具备，设计及安全边界见 [在线升级](docs/ONLINE-UPDATES.md)。
+
 - [官网下载](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261102.exe)
 - [GitHub Release](https://github.com/232577/workbox/releases/tag/v1.0.0.20261102)
 - [源码](https://github.com/232577/workbox)
