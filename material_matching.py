@@ -138,9 +138,11 @@ def match_materials(files, requirements, software_name: str, *, selections=None)
         terms[r.id] = tuple(normalized(software_name if t == SOFTWARE_TOKEN else t) for t in values)
     candidates = {}
     for key, f in sorted(unique.items()):
-        name = unicodedata.normalize('NFKC', f.name)
-        suffix = PurePosixPath(name).suffix.casefold()
-        stem = normalized(PurePosixPath(name).stem)
+        # Parse real filename boundaries before search-text normalization.
+        # NFKC must not invent an extension or turn a fullwidth slash into a path.
+        name = PurePosixPath(f.name)
+        suffix = name.suffix.casefold()
+        stem = normalized(name.stem)
         candidates[key] = tuple(r.id for r in rules
                                 if suffix in FAMILIES[r.family][1] and all(t in stem for t in terms[r.id]))
     choices = {} if selections is None else selections
