@@ -79,7 +79,7 @@ def test_invalid_source_does_not_create_project(service, tmp_path, tmp_path_fact
         source = tmp_path / '无效.zip'
         source.write_bytes(b'PK\x03\x04' + b'not a zip' * 10)
     elif kind == 'long-name':
-        source = ordinary(tmp_path_factory.mktemp('long'), '长' * 201 + '.txt')
+        source = ordinary(tmp_path_factory.mktemp('l'), '长' * 201 + '.txt')
     with pytest.raises((ValueError, OSError)):
         service.receive_file(source)
     assert service.db.counts()['projects'] == 0
