@@ -171,3 +171,38 @@ def test_download_retains_windows_internet_origin(client,tmp_path,monkeypatch):
     result=client.download_release(release,tmp_path)
     origin=Path(str(result)+':Zone.Identifier').read_text(encoding='utf-8')
     assert 'ZoneId=3' in origin and 'HostUrl='+release.url in origin
+
+
+def test_windowed_build_probe_writes_identity_without_opening_data(client,tmp_path,monkeypatch):
+    import main
+    data=tmp_path/'untouched custom data';report=tmp_path/'build-info.json'
+    with monkeypatch.context() as patch:
+        patch.setattr(main.sys,'stdout',None)
+        assert main.main(['--build-info','--build-info-output',str(report),'--data-dir',str(data)])==0
+    result=json.loads(report.read_text(encoding='utf-8'))
+    assert result=={'version':'1.0.0','release_tag':client.CURRENT_TAG,'data_dir':str(data.resolve())}
+    assert not data.exists()
+    before=report.read_bytes()
+    assert main.main(['--build-info','--build-info-output',str(report)])==1
+    assert report.read_bytes()==before
+
+
+def test_handoff_checks_installed_build_and_data_before_relaunch(client,tmp_path):
+    import base64
+    from update_install import handoff_command
+    release=client.parse_release(payload());installer=tmp_path/release.filename;installer.write_bytes(b'MZisolated installer')
+    app=tmp_path/'custom app';app.mkdir();(app/'WorkBox.exe').write_bytes(b'fixture')
+    script=base64.b64decode(handoff_command(installer,release,app,1234,tmp_path/'custom data')[-1]).decode('utf-16le')
+    assert '--build-info-output' in script and '$actual.release_tag' in script and '$actual.data_dir' in script
+    assert script.index('$actual.release_tag') < script.index("'--panel --data-dir=")
+    assert '$probe.WaitForExit(30000)' in script
+
+
+def test_online_installer_hides_and_validates_original_target(client):
+    script=(Path(__file__).resolve().parents[1]/'packaging/workbox.iss').read_text(encoding='utf-8')
+    assert 'DisableDirPage=no' in script, 'ordinary manual installation remains configurable'
+    assert 'function ShouldSkipPage(PageID: Integer): Boolean;' in script
+    assert 'Result := IsOnlineUpdate and (PageID = wpSelectDir);' in script
+    assert 'function PrepareToInstall(var NeedsRestart: Boolean): String;' in script
+    assert 'CompareText(ExpandFileName' in script and 'OnlineTargetDir' in script
+    assert 'WizardForm.DirEdit.Enabled := False;' in script

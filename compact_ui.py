@@ -917,6 +917,8 @@ class CompactPanel(DropSurface, QWidget):
 
         add(menu, '工作目录' if project.get('workspace') else '建工作目录',
             lambda: self.open_project_workspace(project_id), active and (editable or project.get('workspace')))
+        add(menu, '材料检查…', lambda: self.open_material_check(project_id),
+            active and not project.get('deleted_at') and not project.get('block_reason'))
         states = menu._states_menu = QMenu('开发状态', menu)
         menu.addMenu(states)
         states.setEnabled(bool(editable))
@@ -980,6 +982,27 @@ class CompactPanel(DropSurface, QWidget):
                 menu.exec(position)
             finally:
                 menu.deleteLater()
+
+    def open_material_check(self, project_id):
+        if self._action_project(project_id) is None:
+            return
+        if getattr(self, 'material_dialog', None) is not None:
+            self.material_dialog.raise_()
+            return
+        from material_check_ui import MaterialCheckDialog
+        try:
+            dialog = MaterialCheckDialog(self.service, project_id, self)
+        except (ValueError, KeyError, sqlite3.Error) as error:
+            self.show_notice('材料检查未打开：' + str(error))
+            return
+        self.material_dialog = dialog
+        try:
+            dialog.exec()
+        finally:
+            # Never delete an object whose reader has not safely stopped.
+            dialog.shutdown()
+            self.material_dialog = None
+            dialog.deleteLater()
 
     @staticmethod
     def project_version_caption(project, version, index):
