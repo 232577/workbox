@@ -54,9 +54,47 @@ Name: "{autodesktop}\WorkBox 工作箱"; Filename: "{app}\WorkBox.exe"; WorkingD
 Filename: "{app}\WorkBox.exe"; Parameters: "--panel"; Description: "启动 WorkBox 工作箱"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent; Check: not IsOnlineUpdate
 
 [Code]
+var
+  OnlineTargetDir: String;
+
 function IsOnlineUpdate: Boolean;
 begin
   Result := ExpandConstant('{param:WORKBOXUPDATE|0}') = '1';
+end;
+
+function InitializeSetup: Boolean;
+begin
+  Result := True;
+  if IsOnlineUpdate then begin
+    OnlineTargetDir := ExpandConstant('{param:DIR|}');
+    Result := (OnlineTargetDir <> '') and
+      (ExtractFileDrive(OnlineTargetDir) <> '') and
+      FileExists(AddBackslash(OnlineTargetDir) + 'WorkBox.exe');
+    if not Result then
+      MsgBox('在线升级必须指定已有的原安装目录，未执行安装。', mbError, MB_OK);
+  end;
+end;
+
+procedure InitializeWizard;
+begin
+  if IsOnlineUpdate then begin
+    WizardForm.DirEdit.Text := OnlineTargetDir;
+    WizardForm.DirEdit.Enabled := False;
+    WizardForm.DirBrowseButton.Enabled := False;
+  end;
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := IsOnlineUpdate and (PageID = wpSelectDir);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  if IsOnlineUpdate and
+    (CompareText(ExpandFileName(ExpandConstant('{app}')), ExpandFileName(OnlineTargetDir)) <> 0) then
+    Result := '在线升级目标与原安装目录不一致，已停止安装。';
 end;
 
 // 不登记 data，也不使用 InstallDelete / UninstallDelete / 卸载删除脚本。

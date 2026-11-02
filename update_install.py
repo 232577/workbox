@@ -48,6 +48,7 @@ def handoff_command(installer: Path, release: Release, app_dir: Path, parent_pid
     data_dir = plain_path(data_dir if data_dir is not None else app_dir / 'data')
     config = base64.b64encode(json.dumps(dict(installer=str(installer), app=str(app_dir),
         data=str(data_dir), pid=parent_pid, size=release.size, sha256=release.sha256,
+        tag=release.tag, probe=str(installer.parent/('installed-build-'+uuid.uuid4().hex+'.json')),
         result=str(installer.parent/'install-result.json')), ensure_ascii=True).encode()).decode()
     # Only base64 JSON values enter this constant program; no paths become code.
     script = r'''
@@ -68,7 +69,16 @@ try {
   $job.WaitForExit()
   @{status='installer-exited';exit_code=$job.ExitCode} | ConvertTo-Json | Set-Content -Encoding UTF8 -LiteralPath $cfg.result
   if ($job.ExitCode -eq 0) {
-    Start-Process -FilePath (Join-Path $cfg.app 'WorkBox.exe') -ArgumentList ('--panel --data-dir="' + $cfg.data + '"') -WorkingDirectory $cfg.app
+    $program = Join-Path $cfg.app 'WorkBox.exe'
+    $probeArgs = '--build-info --build-info-output="' + $cfg.probe + '" --data-dir="' + $cfg.data + '"'
+    $probe = Start-Process -FilePath $program -ArgumentList $probeArgs -WorkingDirectory $cfg.app -PassThru
+    if (-not $probe.WaitForExit(30000) -or $probe.ExitCode -ne 0) { throw 'Installed build probe failed; application was not restarted.' }
+    if (-not [IO.File]::Exists($cfg.probe) -or (Get-Item -LiteralPath $cfg.probe).Length -gt 4096) { throw 'Installed build identity is missing or invalid.' }
+    $actual = [IO.File]::ReadAllText($cfg.probe, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    if ($actual.release_tag -cne $cfg.tag -or $actual.version -cne '1.0.0') { throw 'Installed release tag does not match the requested update.' }
+    if (-not [string]::Equals([IO.Path]::GetFullPath($actual.data_dir), [IO.Path]::GetFullPath($cfg.data), [StringComparison]::OrdinalIgnoreCase)) { throw 'Installed data path does not match the original session.' }
+    $started = Start-Process -FilePath $program -ArgumentList ('--panel --data-dir="' + $cfg.data + '"') -WorkingDirectory $cfg.app -PassThru
+    @{status='verified-relaunch-requested';release_tag=$actual.release_tag;data_dir=$actual.data_dir;pid=$started.Id;exit_code=0} | ConvertTo-Json | Set-Content -Encoding UTF8 -LiteralPath $cfg.result
   }
 } catch {
   @{status='failed';error=$_.Exception.Message} | ConvertTo-Json | Set-Content -Encoding UTF8 -LiteralPath $cfg.result
