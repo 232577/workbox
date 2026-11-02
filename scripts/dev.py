@@ -27,16 +27,43 @@ def require_remote(root: Path) -> None:
         if result.returncode or len(urls)!=1 or urls[0].rstrip('/').removesuffix('.git') not in CANONICAL:
             raise RuntimeError('origin remote 不是唯一协作远端；停止操作，未修改文件。')
 
-def start_branch(root: Path,name: str) -> None:
+def validate_task_branch(root: Path, name: str) -> None:
     if not re.fullmatch(r'(feat|fix|docs|chore|test|release)/[a-z0-9][a-z0-9._/-]*',name):
         raise RuntimeError('使用 feat/、fix/、docs/、chore/、test/ 或 release/ 开头的任务分支。')
     git(root,'check-ref-format','--branch',name)
+
+def start_branch(root: Path,name: str) -> None:
+    validate_task_branch(root, name)
     require_clean(root);require_remote(root)
     git(root,'fetch','--prune','origin')
     for ref in ('refs/heads/'+name,'refs/remotes/origin/'+name):
         if git(root,'show-ref','--verify','--quiet',ref,check=False).returncode==0:
             raise RuntimeError('任务分支已存在；请核实归属后显式检出，不创建覆盖副本。')
     git(root,'switch','-c',name,'origin/main')
+
+def resume_branch(root: Path, name: str) -> None:
+    """Resume only a published task, without reset, stash or implicit conflict resolution."""
+    validate_task_branch(root, name)
+    require_clean(root)
+    require_remote(root)
+    git(root, 'fetch', '--prune', 'origin')
+    remote = 'refs/remotes/origin/' + name
+    local = 'refs/heads/' + name
+    if git(root, 'show-ref', '--verify', '--quiet', remote, check=False).returncode:
+        raise RuntimeError('远端任务分支不存在；请核实是否已推送或合并，未创建或切换分支。')
+    if git(root, 'show-ref', '--verify', '--quiet', local, check=False).returncode:
+        git(root, 'switch', '-c', name, '--track', 'origin/' + name)
+        return
+    upstream = git(root, 'for-each-ref', '--format=%(upstream)', local).stdout.strip()
+    if upstream and upstream != remote:
+        raise RuntimeError('本地任务分支的上游 upstream 不匹配；未修改关联或切换分支。')
+    ancestry = git(root, 'merge-base', '--is-ancestor', local, remote, check=False)
+    if ancestry.returncode:
+        raise RuntimeError('本地任务有未推送提交、分歧或无法确认 fast-forward；请先核对，未切换或覆盖。')
+    git(root, 'switch', name)
+    git(root, 'merge', '--ff-only', remote)
+    if not upstream:
+        git(root, 'branch', '--set-upstream-to=origin/' + name, name)
 
 def sync_main(root: Path) -> None:
     require_clean(root);require_remote(root)
@@ -61,14 +88,14 @@ def doctor(root: Path) -> None:
 
 def main() -> int:
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action',choices=['setup','doctor','start','sync-main','check'])
+    parser.add_argument('action',choices=['setup','doctor','start','resume','sync-main','check'])
     parser.add_argument('branch',nargs='?')
     args=parser.parse_args();root=Path(__file__).resolve().parents[1]
     try:
-        if args.action=='start':
+        if args.action in {'start', 'resume'}:
             if not args.branch:
-                parser.error('start requires a task branch name')
-            start_branch(root,args.branch)
+                parser.error(args.action + ' requires a task branch name')
+            (start_branch if args.action == 'start' else resume_branch)(root,args.branch)
         elif args.action=='setup':setup(root)
         elif args.action=='doctor':doctor(root)
         elif args.action=='sync-main':sync_main(root)

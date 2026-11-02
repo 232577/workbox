@@ -115,3 +115,103 @@ def test_diverged_main_refuses_fast_forward_without_losing_local_work(repository
     assert git(repository,'rev-parse','origin/main')==git(other,'rev-parse','HEAD')
     assert (repository/'local.txt').read_text(encoding='utf-8')=='keep local'
     assert git(repository,'status','--porcelain')==''
+
+
+def shared_task(repository, monkeypatch, dev):
+    other = remote_fixture(repository, monkeypatch, dev)
+    git(other, 'switch', '-c', 'feat/shared-task')
+    (other / 'task.txt').write_text('first location', encoding='utf-8')
+    git(other, 'add', 'task.txt')
+    git(other, 'commit', '-m', 'task at first location')
+    git(other, 'push', '-u', 'origin', 'feat/shared-task')
+    return other
+
+
+def test_resume_creates_tracking_branch_from_remote_task(repository, monkeypatch):
+    dev = load('dev')
+    other = shared_task(repository, monkeypatch, dev)
+    main = git(repository, 'rev-parse', 'main')
+    dev.resume_branch(repository, 'feat/shared-task')
+    assert git(repository, 'branch', '--show-current') == 'feat/shared-task'
+    assert git(repository, 'rev-parse', 'HEAD') == git(other, 'rev-parse', 'HEAD')
+    assert git(repository, 'rev-parse', '--abbrev-ref', '@{upstream}') == 'origin/feat/shared-task'
+    assert git(repository, 'rev-parse', 'main') == main
+
+
+def test_resume_fast_forwards_existing_task_without_reset(repository, monkeypatch):
+    dev = load('dev')
+    other = shared_task(repository, monkeypatch, dev)
+    dev.resume_branch(repository, 'feat/shared-task')
+    git(repository, 'switch', 'main')
+    (other / 'task.txt').write_text('second location update', encoding='utf-8')
+    git(other, 'add', 'task.txt')
+    git(other, 'commit', '-m', 'advance shared task')
+    git(other, 'push')
+    dev.resume_branch(repository, 'feat/shared-task')
+    assert git(repository, 'rev-parse', 'HEAD') == git(other, 'rev-parse', 'HEAD')
+    assert (repository / 'task.txt').read_text(encoding='utf-8') == 'second location update'
+
+
+@pytest.mark.parametrize('remote_advances', [False, True])
+def test_resume_rejects_unpushed_or_diverged_task_without_switching(repository, monkeypatch, remote_advances):
+    dev = load('dev')
+    other = shared_task(repository, monkeypatch, dev)
+    dev.resume_branch(repository, 'feat/shared-task')
+    (repository / 'local.txt').write_text('preserve unpushed work', encoding='utf-8')
+    git(repository, 'add', 'local.txt')
+    git(repository, 'commit', '-m', 'local unpushed work')
+    local_tip = git(repository, 'rev-parse', 'HEAD')
+    git(repository, 'switch', 'main')
+    original = git(repository, 'rev-parse', 'HEAD')
+    if remote_advances:
+        (other / 'remote.txt').write_text('preserve remote work', encoding='utf-8')
+        git(other, 'add', 'remote.txt')
+        git(other, 'commit', '-m', 'other location work')
+        git(other, 'push')
+    with pytest.raises(RuntimeError, match='未推送|分歧|fast-forward'):
+        dev.resume_branch(repository, 'feat/shared-task')
+    assert git(repository, 'branch', '--show-current') == 'main'
+    assert git(repository, 'rev-parse', 'HEAD') == original
+    assert git(repository, 'rev-parse', 'feat/shared-task') == local_tip
+    assert git(repository, 'show', 'feat/shared-task:local.txt') == 'preserve unpushed work'
+
+
+def test_resume_rejects_missing_remote_task_without_creating_branch(repository, monkeypatch):
+    dev = load('dev')
+    remote_fixture(repository, monkeypatch, dev)
+    before = git(repository, 'rev-parse', 'HEAD')
+    with pytest.raises(RuntimeError, match='远端|remote'):
+        dev.resume_branch(repository, 'feat/missing')
+    assert git(repository, 'rev-parse', 'HEAD') == before
+    assert git(repository, 'branch', '--list', 'feat/missing') == ''
+
+
+def test_resume_rejects_dirty_work_before_network(repository):
+    dev = load('dev')
+    git(repository, 'remote', 'add', 'origin', 'https://example.invalid/must-not-contact.git')
+    (repository / 'file.txt').write_text('unsaved work', encoding='utf-8')
+    with pytest.raises(RuntimeError, match='dirty|未提交'):
+        dev.resume_branch(repository, 'feat/shared-task')
+    assert (repository / 'file.txt').read_text(encoding='utf-8') == 'unsaved work'
+
+
+def test_resume_refuses_wrong_upstream_without_switching(repository, monkeypatch):
+    dev = load('dev')
+    shared_task(repository, monkeypatch, dev)
+    dev.resume_branch(repository, 'feat/shared-task')
+    git(repository, 'branch', '--set-upstream-to=origin/main', 'feat/shared-task')
+    git(repository, 'switch', 'main')
+    with pytest.raises(RuntimeError, match='upstream|上游'):
+        dev.resume_branch(repository, 'feat/shared-task')
+    assert git(repository, 'branch', '--show-current') == 'main'
+
+
+def test_resume_rejects_main_and_wrong_remote(repository):
+    dev = load('dev')
+    git(repository, 'remote', 'add', 'origin', 'https://example.invalid/other.git')
+    before = git(repository, 'rev-parse', 'HEAD')
+    with pytest.raises(RuntimeError):
+        dev.resume_branch(repository, 'main')
+    with pytest.raises(RuntimeError, match='remote|远端'):
+        dev.resume_branch(repository, 'feat/task')
+    assert git(repository, 'rev-parse', 'HEAD') == before
