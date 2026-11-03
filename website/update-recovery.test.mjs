@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {handleRequest} from './worker.mjs';
 
-test('稳定清单发布交接修复包的实际摘要与大小', async () => {
+test('稳定清单发布悬浮球修复包的实际摘要与大小', async () => {
   const response=await handleRequest(new Request('https://workbox.ltxiangzi.dpdns.org/updates/stable.json'),{});
   const metadata=await response.json();
-  assert.equal(metadata.tag_name,'v1.0.0.20261103.2');
-  assert.equal(metadata.assets[0].name,'WorkBox-1.0.0-Setup-x64-20261103-r2.exe');
-  assert.equal(metadata.assets[0].size,38413646);
-  assert.equal(metadata.assets[0].digest,'sha256:2a0ecc51895e7986f43a0e257ffeab16fafe747daa3dcbb34fd0ef949e0a0943');
+  assert.equal(metadata.tag_name,'v1.0.0.20261103.3');
+  assert.equal(metadata.assets[0].name,'WorkBox-1.0.0-Setup-x64-20261103-r3.exe');
+  assert.equal(metadata.assets[0].size,38410914);
+  assert.equal(metadata.assets[0].digest,'sha256:590d0337091c1aae91c945d3ec206f2e5fbff4fb102d30b7b42670733380a36f');
 });
 
 test('下载页明确说明只退出未升级的恢复办法和原目录数据保留', async () => {
@@ -19,7 +19,14 @@ test('下载页明确说明只退出未升级的恢复办法和原目录数据�
   assert.match(html,/原安装目录/);
   assert.match(html,/不要卸载/);
   assert.match(html,/不要删除 data/);
-  assert.match(html,/38,413,646/);
+  assert.match(html,/38,410,914/);
+});
+
+test('页面明确只修复悬浮球置顶，展开管理窗口不置顶', async () => {
+  const html=await readFile(new URL('./public/index.html',import.meta.url),'utf8');
+  assert.match(html,/小悬浮球/);
+  assert.match(html,/展开的管理窗口不置顶/);
+  assert.match(html,/不抢输入焦点/);
 });
 
 test('既有UI截图标记原构建，不冒充热修复包的新截图', async () => {
