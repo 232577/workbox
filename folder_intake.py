@@ -70,9 +70,7 @@ class FolderIntake:
                 and _normalized(alias) == _normalized(name) for alias in row.get('name_aliases', []))]
         if aliases:
             return aliases
-        if name.endswith('版'):
-            return match_work_file_projects(name + '.txt', projects)['candidates']
-        return []
+        return match_work_file_projects(name + '.txt', projects)['candidates']
 
     def _directory_route(self, names, projects):
         matches = [self._named(name, projects) for name in names]
