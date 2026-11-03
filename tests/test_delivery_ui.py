@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QAbstractItemView
+from PySide6.QtWidgets import QApplication, QAbstractItemView, QHeaderView
 
 import database
 from desktop_service import DesktopService
@@ -185,6 +185,45 @@ def test_changed_project_table_keeps_selection_and_scroll_position(qapp, service
         dialog.refresh()
         assert selected_pid(dialog) == pid
         assert dialog.table.verticalScrollBar().value() == position
+    finally:
+        dialog.close()
+
+
+def test_delivery_tables_keep_adjusted_column_widths(qapp, service):
+    dialog = make_dialog(service)
+    try:
+        dialog.resize(700, 460)
+        dialog.show()
+        qapp.processEvents()
+        assert not dialog.table.isColumnHidden(1), '窄窗也应能横向查看批次'
+        assert not dialog.table.isColumnHidden(2), '窄窗也应能横向查看交付时间'
+        for table in (dialog.table, dialog.details):
+            header = table.horizontalHeader()
+            assert all(header.sectionResizeMode(column) == QHeaderView.Interactive
+                       for column in range(table.columnCount()))
+            header.resizeSection(0, 350)
+            qapp.processEvents()
+            assert table.columnWidth(0) == 350
+            assert table.horizontalScrollBar().maximum() > 0
+        dialog.resize(900, 600)
+        qapp.processEvents()
+        assert dialog.table.columnWidth(0) == 350
+        assert dialog.details.columnWidth(0) == 350
+    finally:
+        dialog.close()
+
+
+def test_embedded_delivery_keeps_all_columns_available_in_compact_view(qapp, service):
+    from delivery_ui import TodayDeliveryDialog
+    dialog = TodayDeliveryDialog(service, embedded=True)
+    try:
+        dialog.resize(700, 500)
+        dialog.show()
+        qapp.processEvents()
+        assert dialog.compact_view_bar.isVisible()
+        assert all(not dialog.table.isColumnHidden(column)
+                   for column in range(dialog.table.columnCount()))
+        assert dialog.table.horizontalScrollBar().maximum() > 0
     finally:
         dialog.close()
 

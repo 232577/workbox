@@ -52,8 +52,8 @@ def table(headers: list[str]) -> QTableWidget:
     widget.verticalHeader().hide()
     widget.verticalHeader().setDefaultSectionSize(46)
     widget.setShowGrid(False)
-    widget.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-    widget.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+    widget.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+    widget.setColumnWidth(0, 220)
     widget.setTextElideMode(Qt.ElideRight)
     return widget
 
