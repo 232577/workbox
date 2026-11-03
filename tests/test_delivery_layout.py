@@ -113,12 +113,19 @@ def test_real_shell_allows_more_detail_rows_and_full_detail_view(service):
     sizes = split.sizes()
     selected = page.details.currentItem().data(Qt.UserRole)
     before_focus = page.details.height()
+    summary_height = page.type_summary_card.height()
     page.expand_details_button.click()
     QTest.qWait(80)
     assert not page.table.isVisible() and page.details.isVisible()
     assert page.details.height() >= before_focus + 90
     page.refresh()
     assert page.details.currentItem().data(Qt.UserRole) == selected
+    page.expand_details_button.click()
+    QTest.qWait(80)
+    assert page.type_summary_card.height() == summary_height
+    assert all(abs(actual - expected) <= 1 for actual, expected in zip(split.sizes(), sizes))
+    page.expand_details_button.click()
+    QTest.qWait(80)
     panel.resize(660, 480)
     QTest.qWait(80)
     assert page.details.isVisible() and not page.table.isVisible()
@@ -135,3 +142,23 @@ def test_real_shell_allows_more_detail_rows_and_full_detail_view(service):
     page.shutdown()
     panel.document_pane.shutdown()
     panel.hide()
+
+
+def test_saved_split_ratio_survives_opening_in_a_different_window(service):
+    panel = CompactPanel(service)
+    panel.resize(1000, 700)
+    panel.show()
+    panel.today_button.click()
+    page = panel.today_dialog
+    page.all_dates.setChecked(True)
+    page.table.selectRow(0)
+    QTest.qWait(150)
+    sizes = drag_up(page).sizes()
+    panel.hide()
+    page.shutdown()
+    panel.document_pane.shutdown()
+    reopened = opened(service)
+    restored = reopened.record_splitter.sizes()
+    assert abs(restored[0] / sum(restored) - sizes[0] / sum(sizes)) < .02
+    reopened.close()
+    reopened.shutdown()

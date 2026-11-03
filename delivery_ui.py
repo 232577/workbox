@@ -396,7 +396,12 @@ class TodayDeliveryDialog(QDialog):
 
     def _restore_panel_sizes(self):
         if not self._compact_embedded and not self.expand_details_button.isChecked():
-            self.record_splitter.setSizes(self._panel_sizes)
+            available = sum(self.record_splitter.sizes())
+            if available > 1:
+                # 先按当前空间换算比例，避免 Qt 用新窗口的最小高度截断旧像素值。
+                first = max(1, min(available - 1,
+                                  round(available * self._panel_sizes[0] / sum(self._panel_sizes))))
+                self.record_splitter.setSizes([first, available - first])
 
     def _sync_detail_focus(self, *_):
         expanded = self.expand_details_button.isChecked()
@@ -734,7 +739,6 @@ class TodayDeliveryDialog(QDialog):
             compact=self.height()<580
             self.scope_note.setVisible(not compact)
             self.details_hint.setVisible(not compact)
-            self.type_counts.setMaximumHeight(30 if compact else 64)
             self.type_summary_layout.setContentsMargins(8 if compact else 12, 6 if compact else 10,
                                                        8 if compact else 12, 6 if compact else 10)
             self._summary_layout_timer.start(0)
@@ -827,8 +831,8 @@ class TodayDeliveryDialog(QDialog):
         self.details.setMinimumHeight(92)
         self.scope_note.hide()
         self.compact_filter_button.setToolTip(self.scope_note.text())
-        self.type_counts.setMaximumHeight(32)
         self.type_summary_layout.setContentsMargins(8,6,8,6)
+        self._summary_layout_timer.start(0)
         self.reason.setVisible(not compact or details)
         self.status_note.setMaximumHeight(32 if compact else 16777215)
         self.status_note.setToolTip(self.status_note.text())
