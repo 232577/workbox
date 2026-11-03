@@ -1492,7 +1492,9 @@ class ProjectDeliveryDialog(QDialog):
         self.setWindowTitle('确认交付 · ' + project['name'])
         self.resize(520, 230)
         layout = QVBoxLayout(self)
-        layout.addWidget(label(project['name'], 'title', True))
+        from dialog_chrome import add_header, add_actions
+        apply_to(self)
+        add_header(layout, '确认本次交付', project['name'], icon=FluentIcon.DOCUMENT, eyebrow='WORKBOX / 交付确认')
         caption = label('交付内容')
         layout.addWidget(caption)
         self.version_box = QComboBox()
@@ -1522,7 +1524,7 @@ class ProjectDeliveryDialog(QDialog):
         self.confirm_button.clicked.connect(self.confirm)
         controls.addWidget(self.cancel_button)
         controls.addWidget(self.confirm_button)
-        layout.addLayout(controls)
+        add_actions(layout, controls)
         self.version_box.currentIndexChanged.connect(self.update_choice)
         self.update_choice()
         self.cancel_button.setFocus(Qt.OtherFocusReason)
@@ -1562,6 +1564,8 @@ class FileIntakeLogDialog(QDialog):
         self.resize(860, 610)
         self.setMinimumSize(640, 460)
         layout = QVBoxLayout(self)
+        from dialog_chrome import add_header, add_actions
+        add_header(layout, '收录历史', '查看来源、去向和判断依据；此窗口只读。', icon=FluentIcon.HISTORY)
         self.scope_note = label('这里只记录普通文件收录；ZIP 请查看 ZIP 版本记录。旧记录未记录判断依据。', 'subtle', True)
         layout.addWidget(self.scope_note)
         search_row = QHBoxLayout()
@@ -1601,7 +1605,7 @@ class FileIntakeLogDialog(QDialog):
         close.setAutoDefault(False)
         close.clicked.connect(self.accept)
         actions.addWidget(close)
-        layout.addLayout(actions)
+        add_actions(layout, actions)
         self.table.itemSelectionChanged.connect(self.show_details)
         self.search.textChanged.connect(self.refresh)
         self.refresh_button.clicked.connect(self.refresh)
@@ -1668,18 +1672,34 @@ class DirectorySettingsDialog(QDialog):
     def __init__(self, service, parent=None):
         super().__init__(parent)
         from qfluentwidgets import SettingCard, SettingCardGroup, CardWidget, FluentIcon
+        from dialog_chrome import add_header, add_actions, InlineError, FilterEdit
         self.service = service
         self.types_changed = False
         self.setWindowTitle('工作目录与收录规则设置')
         apply_to(self)
         available = self.screen().availableGeometry()
-        self.resize(min(640, available.width() - 32), min(540, available.height() - 32))
+        self.resize(min(760, available.width() - 32), min(660, available.height() - 32))
         settings = service.workspaces.settings()
         outer = QVBoxLayout(self)
         outer.setContentsMargins(20, 18, 20, 16)
         outer.setSpacing(12)
-        outer.addWidget(label('工作设置', 'pageTitle'))
-        outer.addWidget(label('目录和收录规则在保存后生效。', 'subtle', True))
+        add_header(outer, '工作设置', '目录与规则需保存；类型管理中的操作单独即时保存。',
+                   icon=FluentIcon.SETTING, eyebrow='WORKBOX / 设置中心')
+        tools = QHBoxLayout()
+        self.settings_search = FilterEdit()
+        self.settings_search.setPlaceholderText('搜索设置，例如目录、交付、等待…')
+        self.settings_search.setAccessibleName('搜索工作设置')
+        self.settings_search.setClearButtonEnabled(True)
+        self.section_filter = QComboBox()
+        self.section_filter.setAccessibleName('定位设置分区')
+        self.section_filter.addItem('全部设置')
+        self.section_filter.setMinimumWidth(135)
+        tools.addWidget(self.settings_search, 1)
+        tools.addWidget(self.section_filter)
+        outer.addLayout(tools)
+        self.no_results = label('没有匹配设置。清除搜索或选择“全部设置”。', 'settingsNoResults', True)
+        self.no_results.hide()
+        outer.addWidget(self.no_results)
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -1700,6 +1720,7 @@ class DirectorySettingsDialog(QDialog):
             section.setMinimumWidth(0)
             layout.addWidget(section)
             self._setting_groups.append((section, []))
+            self.section_filter.addItem(title)
             return section
 
         def add_card(section, card):
@@ -1798,13 +1819,16 @@ class DirectorySettingsDialog(QDialog):
         types_body.addWidget(self.project_types_button, 0, Qt.AlignLeft)
         types_body.addWidget(label('项目类型和新项目默认类型单独保存。新增、改名、停用及默认类型选择立即生效，不受本设置窗口的取消影响。默认类型只用于以后创建的项目。', 'subtle', True))
         layout.addStretch()
-        self.error = label('', 'subtle', True)
+        self.error = InlineError()
         outer.addWidget(self.error)
         actions = QHBoxLayout()
         self.reset_rules_button = button('恢复默认规则')
         self.reset_rules_button.setToolTip('填回默认规则，点击保存后生效；不改变目录。')
         self.reset_rules_button.clicked.connect(self.reset_rules)
         actions.addWidget(self.reset_rules_button)
+        self.pending_label = label('设置已同步', 'pendingSettings')
+        self.pending_label.setAccessibleName('工作设置保存状态')
+        actions.addWidget(self.pending_label)
         actions.addStretch()
         cancel = self.cancel_button = button('取消')
         cancel.clicked.connect(self.reject)
@@ -1813,7 +1837,7 @@ class DirectorySettingsDialog(QDialog):
         save.clicked.connect(self.save)
         actions.addWidget(cancel)
         actions.addWidget(save)
-        outer.addLayout(actions)
+        add_actions(outer, actions)
         # 库分组以卡片实际高度布局；正文按当前视口宽度换行，避免默认固定高度截字。
         for section, cards in self._setting_groups:
             for card in cards:
@@ -1823,12 +1847,46 @@ class DirectorySettingsDialog(QDialog):
                         text_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         scroll.viewport().installEventFilter(self)
         self._layout_setting_cards()
+        # Index explanatory labels, never mutable paths or file contents.
+        self._section_text = [
+            (' '.join([self.section_filter.itemText(i + 1), *(w.text() for w in section.findChildren(QLabel)),
+                       *(w.text() for w in section.findChildren(QCheckBox))])).casefold()
+            for i, (section, _) in enumerate(self._setting_groups)]
+        self.settings_search.textChanged.connect(self._filter_settings)
+        self.section_filter.currentIndexChanged.connect(self._filter_settings)
+        self._initial_values = self._form_values()
+        for edit in (self.work_root, self.archive_root):
+            edit.textChanged.connect(self._update_pending)
+        for check in (self.auto_create_projects, self.auto_deliver_zip):
+            check.toggled.connect(self._update_pending)
+        for spin in (self.stable_seconds, self.zip_delivery_min_files):
+            spin.valueChanged.connect(self._update_pending)
+
+    def _form_values(self):
+        return (self.work_root.text(), self.archive_root.text(), self.stable_seconds.value(),
+                self.auto_create_projects.isChecked(), self.auto_deliver_zip.isChecked(),
+                self.zip_delivery_min_files.value())
+
+    def _update_pending(self, *_):
+        self.pending_label.setText('有未保存的修改' if self._form_values() != self._initial_values else '设置已同步')
+
+    def _filter_settings(self, *_):
+        terms = self.settings_search.text().casefold().split()
+        selected = self.section_filter.currentIndex()
+        shown = 0
+        for i, (section, _) in enumerate(self._setting_groups):
+            visible = (selected == 0 or selected == i + 1) and all(term in self._section_text[i] for term in terms)
+            section.setVisible(visible)
+            shown += visible
+        self.no_results.setVisible(shown == 0)
+        self.settings_scroll.verticalScrollBar().setValue(0)
+        self._layout_setting_cards()
 
     def eventFilter(self, watched, event):
         from PySide6.QtCore import QEvent, QTimer
         if watched is self.settings_scroll.viewport() and event.type() == QEvent.Resize and not self._pending_card_layout:
             self._pending_card_layout = True
-            QTimer.singleShot(0, self._layout_setting_cards)
+            QTimer.singleShot(0, self, self._layout_setting_cards)
         return super().eventFilter(watched, event)
 
     def _layout_setting_cards(self):
@@ -1883,8 +1941,8 @@ class ProjectDetailsDialog(QDialog):
         apply_to(self)
         self.resize(560, 420)
         layout = QVBoxLayout(self)
-        title = label(project['name'], 'title', True)
-        layout.addWidget(title)
+        from dialog_chrome import add_header, add_actions, InlineError
+        add_header(layout, '备注与截止日期', project['name'], icon=FluentIcon.EDIT)
         if self.read_only:
             layout.addWidget(label('此项目已归档，恢复后可编辑。', 'subtle'))
         notes_label = label('项目备注（最多 10,000 字）')
@@ -1912,7 +1970,7 @@ class ProjectDetailsDialog(QDialog):
         dates.addStretch()
         layout.addLayout(dates)
         layout.addWidget(label('取消勾选可清除日期；日期仅用于项目排序和筛选。', 'subtle', True))
-        self.error = label('', 'subtle', True)
+        self.error = InlineError()
         layout.addWidget(self.error)
         actions = QHBoxLayout()
         actions.addStretch()
@@ -1923,7 +1981,7 @@ class ProjectDetailsDialog(QDialog):
         self.save_button.clicked.connect(self.save)
         actions.addWidget(cancel)
         actions.addWidget(self.save_button)
-        layout.addLayout(actions)
+        add_actions(layout, actions)
         self.original = self.values()
 
     def values(self):

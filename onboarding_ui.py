@@ -12,6 +12,7 @@ from compact_ui import button, label
 from theme import apply_to
 from ui_components import LineEdit as QLineEdit, SpinBox as QSpinBox
 from ui import app_icon
+from dialog_chrome import add_header, add_actions, InlineError, InstructionCard
 
 
 def _identify(widget, name):
@@ -54,8 +55,7 @@ def _instructions(layout):
         ('2. 放入文件', '将文件或文件夹拖到悬浮球，也可点击“收进文件”。名称明确时自动匹配；有歧义时选择对应项目。原件保留。'),
         ('3. 归档与交付', '已登记工作目录中的 ZIP 和主动收进的 ZIP 会持续监视，ZIP 稳定后复制归档。通用模式请在项目右键菜单点击“确认交付…”。普通文件收进工作目录，人工确认交付时才另存归档，无需 ZIP。'),
     ):
-        layout.addWidget(label(title, 'title', True))
-        layout.addWidget(label(text, '', True))
+        layout.addWidget(InstructionCard(title, text))
 
 
 class FirstRunDialog(QDialog):
@@ -67,6 +67,7 @@ class FirstRunDialog(QDialog):
         self._initial_settings = service.workspaces.settings()
         settings = self._initial_settings
         layout = _dialog_layout(self, '欢迎使用 WorkBox · 首次设置')
+        add_header(layout, '欢迎使用 WorkBox', '三个步骤，建立你的本地工作空间。', eyebrow='WORKBOX / 开始使用')
         self.step_label = _identify(label('', 'title', True), '首次设置步骤')
         layout.addWidget(self.step_label)
         self.pages = _identify(QStackedWidget(), '首次设置内容')
@@ -134,7 +135,7 @@ class FirstRunDialog(QDialog):
         next_layout.addStretch()
         self.pages.addWidget(next_steps)
 
-        self.error = _identify(label('', 'subtle', True), '首次设置错误提示')
+        self.error = _identify(InlineError(), '首次设置错误提示')
         self.error.hide()
         layout.addWidget(self.error)
         actions = QHBoxLayout()
@@ -151,7 +152,7 @@ class FirstRunDialog(QDialog):
         actions.addWidget(self.back_button)
         actions.addWidget(self.next_button)
         actions.addWidget(self.finish_button)
-        layout.addLayout(actions)
+        add_actions(layout, actions)
         self.set_step(0)
         _fit_screen(self, 580, 510)
 
@@ -199,6 +200,7 @@ class QuickStartDialog(QDialog):
     def __init__(self, service, parent=None):
         super().__init__(parent)
         layout = _dialog_layout(self, 'WorkBox · 使用指南')
+        add_header(layout, '使用指南', '收件、整理、交付；原件与历史记录留在本机。', eyebrow='WORKBOX / 快速上手')
         content = QWidget()
         body = QVBoxLayout(content)
         body.setContentsMargins(0, 0, 0, 0)
@@ -230,5 +232,5 @@ class QuickStartDialog(QDialog):
         self.close_button.setDefault(True)
         self.close_button.clicked.connect(self.reject)
         actions.addWidget(self.close_button)
-        layout.addLayout(actions)
+        add_actions(layout, actions)
         _fit_screen(self, 580, 570)
