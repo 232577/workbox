@@ -1469,11 +1469,11 @@ class CompactPanel(DropSurface, QWidget):
                                                10 if narrow else 14, 8)
         if density_changed:
             # 样式重算可能触发布局，不能在Qt仍处理resize时重入polish。
-            QTimer.singleShot(0, lambda: apply_to(self))
+            QTimer.singleShot(0, self, lambda: apply_to(self))
         super().resizeEvent(event)
         if self.today_dialog is not None:
             self.today_dialog._sync_embedded_layout()
-        QTimer.singleShot(0, self._reveal_current_after_resize)
+        QTimer.singleShot(0, self, self._reveal_current_after_resize)
 
     def _reveal_current_after_resize(self):
         item = self.project_list.currentItem()
