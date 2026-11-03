@@ -72,6 +72,7 @@ def inspect_zip(
 
 
 CODE = re.compile(r"(?<![a-z0-9])WB[-_](\d{1,12})(?!\d)", re.IGNORECASE)
+DOWNLOAD_COPY = re.compile(r"(?P<name>.+) \([1-9]\d*\)$")
 SUFFIX = re.compile(
     r"[\s_.\-（(【\[]+(?:v?\d+\.\d+(?:\.\d+)*|20\d{6}|20\d{2}[-.]\d{2}[-.]\d{2}|"
     r"final|release|delivery|交付包|交付|成品|完成版|正式版|最终版|"
@@ -91,10 +92,16 @@ def match_projects(filename: str, projects: list[dict]) -> list[dict]:
     if codes:
         return [project for project in projects if project["id"] in codes or
                 any(type(value) is int and value in codes for value in project.get('merged_project_ids', []))]
-    direct = [project for project in projects if _key(project["name"]) == _key(stem)]
-    if direct:
-        return direct
-    variants = {_key(stem)}
+    variants = set()
+    while True:
+        variants.add(_key(stem))
+        direct = [project for project in projects if _key(project["name"]) == _key(stem)]
+        if direct:
+            return direct
+        copy = DOWNLOAD_COPY.fullmatch(unicodedata.normalize("NFKC", stem))
+        if copy is None:
+            break
+        stem = copy.group('name')
     while True:
         shorter = SUFFIX.sub("", stem)
         if shorter == stem:

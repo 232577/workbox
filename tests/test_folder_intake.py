@@ -57,6 +57,30 @@ def test_existing_project_edition_folder_routes_to_original_workspace(service, t
     assert [row['id'] for row in service.list_projects()] == [pid]
 
 
+@pytest.mark.parametrize('name', ['客户-系统_v2.1', '客户-系统_v2.1 (2)', '客户-系统_最终版 (2)'])
+def test_version_and_copy_folder_reuses_existing_project(service, tmp_path, name):
+    pid = project(service, '客户-系统')
+    project(service, '客户')
+    root = tmp_path / 'source' / name
+    source = file(root, '资料/readme.txt')
+    result = intake(service, root)
+    target = Path(service.workspaces.get_workspace(pid)['path'])
+    assert result['copied'] == 1 and result['created_project_ids'] == []
+    assert (target / '资料/readme.txt').read_bytes() == source.read_bytes()
+    assert len(service.list_projects()) == 2
+
+
+def test_version_and_copy_folder_keeps_complete_project_priority(service, tmp_path):
+    project(service, '客户-系统')
+    pid = project(service, '客户-系统_v2.1')
+    root = tmp_path / 'source' / '客户-系统_v2.1 (2)'
+    file(root, 'readme.txt')
+    result = intake(service, root)
+    assert result['copied'] == 1 and result['created_project_ids'] == []
+    assert (Path(service.workspaces.get_workspace(pid)['path']) / 'readme.txt').is_file()
+    assert len(service.list_projects()) == 2
+
+
 def test_unknown_folder_creates_one_project_for_generic_material_names(service, tmp_path):
     root = tmp_path / '新建档案系统'
     file(root, '操作手册.docx')

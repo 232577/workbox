@@ -100,6 +100,40 @@ def test_named_edition_zip_prefers_existing_full_project_then_existing_base_proj
     assert [p['id'] for p in manager().match_projects('甲系统_测试版.zip', projects)] == [1]
 
 
+@pytest.mark.parametrize('filename', [
+    '客户-系统_最终版 (2).zip', '客户-系统_v2.1 (2).zip',
+    '客户-系统_测试版 (2) (3).zip',
+])
+def test_download_copy_zip_recognizes_the_existing_project(filename):
+    projects = [{'id': 1, 'name': '客户-系统'}, {'id': 2, 'name': '客户'}]
+    assert manager().match_projects(filename, projects) == [projects[0]]
+
+
+def test_download_copy_zip_preserves_existing_complete_names():
+    projects = [{'id': 1, 'name': '客户-系统'},
+                {'id': 2, 'name': '客户-系统_最终版'},
+                {'id': 3, 'name': '客户-系统_最终版 (2)'}]
+    assert manager().match_projects('客户-系统_最终版 (2).zip', projects) == [projects[2]]
+    assert manager().match_projects('客户-系统_最终版 (3).zip', projects) == [projects[1]]
+
+
+def test_download_copy_zip_keeps_batch_ambiguity_and_project_numbers():
+    projects = [{'id': 1, 'name': '甲系统', 'batch_name': '第一批'},
+                {'id': 2, 'name': '甲系统', 'batch_name': '第二批'}]
+    assert manager().match_projects('甲系统_最终版 (2).zip', projects) == projects
+    assert manager().match_projects('第二批_甲系统_最终版 (2).zip', projects) == [projects[1]]
+    for filename in ['甲系统-2.zip', '甲系统2.zip', '甲系统(2).zip', '甲系统_未知 (2).zip']:
+        assert manager().match_projects(filename, projects) == []
+    from bundle_analyzer import bundle_hint
+    assert bundle_hint('甲系统-2.zip')['declared_count'] == 2
+
+
+def test_download_copy_zip_preserves_registered_alias_with_copy_number():
+    projects = [{'id': 1, 'name': '新项目', 'name_aliases': ['旧项目 (2)']}]
+    assert manager().match_projects('旧项目 (2).zip', projects) == projects
+    assert manager().match_projects('旧项目 (2) (3).zip', projects) == projects
+
+
 def test_same_name_in_different_batches_is_ambiguous():
     projects = [{"id": 1, "name": "同名项目", "batch_name": "第一批"}, {"id": 2, "name": "同名项目", "batch_name": "第二批"}]
     assert {p["id"] for p in manager().match_projects("同名项目.zip", projects)} == {1, 2}

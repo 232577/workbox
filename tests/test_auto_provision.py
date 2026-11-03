@@ -70,6 +70,19 @@ def test_unknown_zip_creates_full_stem_then_watches_and_archives(service, tmp_pa
     assert service.db.counts()['projects'] == 1 and source.is_file()
 
 
+def test_download_copy_zip_reuses_project_and_keeps_original_filename(service, tmp_path):
+    ids = service.capture_message('1. 客户-系统\n2. 客户', '本批')['project_ids']
+    source = package(tmp_path, '客户-系统_最终版 (2).zip', ('a.txt', 'b.txt', 'c.txt', 'd.txt'))
+    original = source.read_bytes()
+    result = service.receive_file(source)
+    assert result['project_id'] == ids[0]
+    assert service.db.counts()['projects'] == 2
+    working = Path(result['working_zip_path'])
+    assert working.parent == Path(service.workspaces.get_workspace(ids[0])['path'])
+    assert working.name == source.name and working.read_bytes() == original
+    assert source.read_bytes() == original
+
+
 @pytest.mark.parametrize('kind', ['missing', 'directory', 'invalid-zip', 'long-name'])
 def test_invalid_source_does_not_create_project(service, tmp_path, tmp_path_factory, kind):
     source = tmp_path / '不存在.txt'
