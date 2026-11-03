@@ -14,7 +14,7 @@
 | `--build-info` | `scripts.build_installer` 产生的 `BUILD_INFO.json`。 |
 | `--payload` | 同一次构建的 `payload`，包含 `PACKAGE_CONTENTS.sha256`。 |
 | `--installer` | 复制为最终发布日期/修订文件名的同字节安装包；复制不得覆盖既有发布资产。 |
-| `--runtime-info` | 可信候选 `WorkBox.exe --build-info` 的输出，加上实际 EXE 的 `app_sha256`。 |
+| `--runtime-info` | 可信候选 `WorkBox.exe --build-info --build-info-output` 写入的新文件，选取版本和发布标签，再加上实际 EXE 的 `app_sha256`。 |
 | `--expected-tag` | 本次明确要发布的标签，不从远端 latest 猜测。 |
 
 例如 `v1.0.0.20261103.1` 必须对应 `WorkBox-1.0.0-Setup-x64-20261103-r1.exe`。未带修订号的日期标签不添加 `-r1`。软件版本仍为 1.0.0。
@@ -24,17 +24,32 @@
 ```powershell
 # 示例路径须换成同一次可信候选构建；不要指向正式业务目录。
 $exe = (Resolve-Path '.local/candidate/payload/WorkBox.exe').Path
+$probe = [IO.Path]::GetFullPath('.local/candidate/runtime-probe.json')
+$report = [IO.Path]::GetFullPath('.local/candidate/runtime-info.json')
+if ((Test-Path -LiteralPath $probe) -or (Test-Path -LiteralPath $report)) {
+    throw '运行标识证据已存在，请使用新的候选目录，不覆盖旧报告'
+}
 $before = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLowerInvariant()
-$raw = & $exe --build-info
-if ($LASTEXITCODE -ne 0) { throw '候选构建标识读取失败' }
-$info = $raw | ConvertFrom-Json
+$process = Start-Process -FilePath $exe -ArgumentList @(
+    '--build-info', '--build-info-output', ('"{0}"' -f $probe)
+) -Wait -PassThru -WindowStyle Hidden
+if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $probe -PathType Leaf)) {
+    throw '候选构建标识读取失败'
+}
+$info = Get-Content -LiteralPath $probe -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
 $after = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLowerInvariant()
 if ($before -ne $after) { throw '读取期间 EXE 发生变化' }
-$info | Add-Member -NotePropertyName app_sha256 -NotePropertyValue $after
-$info | ConvertTo-Json | Set-Content -Encoding UTF8 '.local/candidate/runtime-info.json'
+$shareable = [ordered]@{
+    version = $info.version
+    release_tag = $info.release_tag
+    app_sha256 = $after
+} | ConvertTo-Json
+$stream = [IO.File]::Open($report, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)
+$writer = [IO.StreamWriter]::new($stream, [Text.UTF8Encoding]::new($false))
+try { $writer.WriteLine($shareable) } finally { $writer.Dispose() }
 ```
 
-`--build-info` 不访问 WorkBox 数据库；上面命令由发布者明确执行，不由校验器执行。运行报告格式为 `version`、`release_tag`、`app_sha256` 三个字段，不能拿其他 EXE 的旧报告复用。
+冻结程序没有控制台，不能依赖标准输出采集报告；`Start-Process -Wait` 明确等待进程结束后再读取新文件。`--build-info` 不访问 WorkBox 数据库；上面命令由发布者明确执行，不由校验器执行。原始 `runtime-probe.json` 可能包含本机 `data_dir`，仅在本机保留；用于校验和分享的 `runtime-info.json` 只保留 `version`、`release_tag`、`app_sha256` 三个字段，不能拿其他 EXE 的旧报告复用。
 
 ## 执行
 

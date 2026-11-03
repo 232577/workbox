@@ -97,6 +97,34 @@ def test_metadata_must_be_one_official_stable_release(candidate, field, value):
     with pytest.raises(ValueError): tool.verify_release(**candidate)
 
 
+@pytest.mark.parametrize('body', [True, 1, 1.5, ['notes'], {'notes': 'text'}])
+def test_release_notes_rejected_by_updater_are_rejected_by_gate(candidate, body):
+    from update_client import parse_release
+
+    candidate['manifest']['body'] = body
+    with pytest.raises(ValueError):
+        parse_release(candidate['manifest'], current_tag='v1.0.0.20261102')
+    with pytest.raises(ValueError):
+        gate().verify_release(**candidate)
+
+
+@pytest.mark.parametrize('body', ['release notes', '', None, False, 0, [], {}])
+def test_release_notes_accepted_by_updater_are_accepted_by_gate(candidate, body):
+    from update_client import parse_release
+
+    candidate['manifest']['body'] = body
+    assert parse_release(candidate['manifest'], current_tag='v1.0.0.20261102').tag == TAG
+    assert gate().verify_release(**candidate)['status'] == 'passed'
+
+
+def test_missing_release_notes_keep_the_updater_fallback(candidate):
+    from update_client import parse_release
+
+    candidate['manifest'].pop('body')
+    assert parse_release(candidate['manifest'], current_tag='v1.0.0.20261102').tag == TAG
+    assert gate().verify_release(**candidate)['status'] == 'passed'
+
+
 @pytest.mark.parametrize('field,value', [
     ('size', True), ('size', 2), ('digest', 'sha256:' + '0' * 64),
     ('state', 'new'), ('name', 'WorkBox.exe'),

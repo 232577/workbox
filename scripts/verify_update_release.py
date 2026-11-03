@@ -155,6 +155,8 @@ def verify_release(manifest: dict, build_info: dict, runtime_info: dict,
             and manifest.get('prerelease') is False, 'Release identity or stable state mismatch.')
     require(manifest.get('html_url') == RELEASE_ROOT + 'tag/' + expected_tag,
             'Release page is not the expected official URL.')
+    require(isinstance(manifest.get('body') or '', str),
+            'Release notes must be text when nonempty.')
     assets = manifest.get('assets')
     require(isinstance(assets, list), 'Release assets must be a list.')
     matches = [a for a in assets if isinstance(a, dict) and a.get('name') == filename]
