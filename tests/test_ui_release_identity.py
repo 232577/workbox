@@ -13,6 +13,10 @@ def test_completed_secondary_ui_is_newer_than_the_orb_fix_release():
     assert update_client.build_key(update_client.CURRENT_TAG) > update_client.build_key('v1.0.0.20261103.3')
 
 
+def test_integrated_delivery_is_newer_than_the_published_r4():
+    assert update_client.build_key(update_client.CURRENT_TAG) > update_client.build_key('v1.0.0.20261103.4')
+
+
 def test_build_probe_reports_release_without_creating_business_data(tmp_path):
     data = tmp_path / 'unused-data'
     result = tmp_path / 'identity.json'
