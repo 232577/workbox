@@ -91,17 +91,16 @@ def test_actual_files_are_recursive_and_ids_survive_external_edits(context):
     assert next(row for row in first['documents'] if row['name'].endswith('ZIP'))['kind'] == 'ZIP工作副本'
 
 
-def test_registered_missing_files_deduplicate_by_path_and_keep_missing_status(context):
+def test_registered_missing_files_are_not_shown_when_actual_files_differ(context):
     service, root = context
     register_file(service, root, '已移走.docx')
     register_file(service, root, '已移走.docx', file_id=2)
     register_file(service, root, '现有.txt', file_id=3).write_bytes(b'actual')
     rows = query(service)['documents']
-    assert len(rows) == 2
-    missing = next(row for row in rows if row['name'] == '已移走.docx')
-    assert missing['exists'] is False and missing['size'] is None
-    assert missing['origin'] == 'work_files'
-    assert next(row for row in rows if row['name'] == '现有.txt')['size'] == 6
+    assert [(row['name'], row['size']) for row in rows] == [('现有.txt', 6)]
+    renamed = root / '已改名.docx'
+    renamed.write_bytes(b'actual renamed file')
+    assert {row['name'] for row in query(service)['documents']} == {'现有.txt', '已改名.docx'}
 
 
 def test_other_projects_nested_paths_and_office_locks_are_excluded(context):
@@ -130,13 +129,12 @@ def test_only_current_real_zip_links_and_physical_paths_are_used(context, tmp_pa
     with service.db.connect() as connection:
         connection.execute('INSERT INTO zip_bundle_members VALUES(1,1)')
     rows = query(service)['documents']
-    assert {row['path'] for row in rows} == {str(shared), str(missing)}
+    assert {row['path'] for row in rows} == {str(shared)}
     assert all(row['kind'] == 'ZIP归档' for row in rows)
-    assert next(row for row in rows if row['path'] == str(missing))['exists'] is False
     with service.db.connect() as connection:
         connection.execute('DELETE FROM zip_bundle_members')
         connection.execute('UPDATE zips SET project_id=2 WHERE id=2')
-    assert [row['name'] for row in query(service)['documents']] == ['old.zip']
+    assert query(service)['documents'] == []
 
 
 def test_known_archive_library_is_not_scanned_as_work_files(context):

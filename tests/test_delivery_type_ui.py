@@ -347,7 +347,10 @@ def test_long_project_and_type_names_wrap_completely(dialog, qapp, width, height
     row = next(i for i in range(dialog.table.rowCount()) if dialog.table.item(i, 0).data(Qt.UserRole) == pid)
     dialog.table.scrollToItem(dialog.table.item(row, 0), QAbstractItemView.PositionAtTop)
     settle(qapp)
-    assert dialog.table.isColumnHidden(1) is (width < 820)
+    assert all(not dialog.table.isColumnHidden(column)
+               for column in range(dialog.table.columnCount()))
+    if width < 820:
+        assert dialog.table.horizontalScrollBar().maximum() > 0
     for column, text in ((0, name), (4, kind_name)):
         item = dialog.table.item(row, column)
         assert item.text() == text and text in item.toolTip()

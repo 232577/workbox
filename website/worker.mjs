@@ -3,6 +3,30 @@ export { SiteMetrics } from './analytics.mjs';
 // 固定版本的公开下载入口；不读取、转发访问者的登录信息。
 export const releases = Object.freeze([Object.freeze({
   version: '1.0.0',
+  tag: 'v1.0.0.20261103.3',
+  edition: '正式安装版',
+  date: '2026-11-03',
+  filename: 'WorkBox-1.0.0-Setup-x64-20261103-r3.exe',
+  size: 38410914,
+  sha256: '590d0337091c1aae91c945d3ec206f2e5fbff4fb102d30b7b42670733380a36f',
+}), Object.freeze({
+  version: '1.0.0',
+  tag: 'v1.0.0.20261103.2',
+  edition: '正式安装版',
+  date: '2026-11-03',
+  filename: 'WorkBox-1.0.0-Setup-x64-20261103-r2.exe',
+  size: 38413646,
+  sha256: '2a0ecc51895e7986f43a0e257ffeab16fafe747daa3dcbb34fd0ef949e0a0943',
+}), Object.freeze({
+  version: '1.0.0',
+  tag: 'v1.0.0.20261103.1',
+  edition: '正式安装版',
+  date: '2026-11-03',
+  filename: 'WorkBox-1.0.0-Setup-x64-20261103-r1.exe',
+  size: 38416001,
+  sha256: '82538102216e692820b7e104b31372e9ef2b36864096758bd45d7f81da27ccda',
+}), Object.freeze({
+  version: '1.0.0',
   tag: 'v1.0.0.20261102',
   edition: '正式安装版',
   date: '2026-11-02',
@@ -135,6 +159,19 @@ export async function handleRequest(request, env, fetcher = fetch, context = nul
   if(pathname.startsWith('/api/')) return analyticsRoute(request,env);
   if (!['GET', 'HEAD'].includes(request.method)) {
     return new Response('仅支持 GET 和 HEAD。', { status: 405, headers: { ...safeHeaders, Allow: 'GET, HEAD' } });
+  }
+  if (pathname === '/updates/stable.json') {
+    const metadata = {
+      tag_name: release.tag, draft: false, prerelease: false,
+      html_url: `https://github.com/232577/workbox/releases/tag/${release.tag}`,
+      body: `WorkBox ${release.version} 正式安装版 · ${release.date}。统一工作台与基础组件、材料缺项筛选和检查摘要、可调列表列宽、明确更新阶段。保留项目状态、交付历史和文件。升级前请备份数据；安装时保存数据库恢复点。安装包尚无商业代码签名。`,
+      assets: [{name: release.filename, size: release.size, state: 'uploaded',
+        digest: `sha256:${release.sha256}`,
+        browser_download_url: `https://github.com/232577/workbox/releases/download/${release.tag}/${release.filename}`}],
+    };
+    return new Response(request.method === 'HEAD' ? null : JSON.stringify(metadata), {
+      headers: {...safeHeaders, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store'},
+    });
   }
   if (pathname === '/healthz') {
     return new Response(request.method === 'HEAD' ? null : JSON.stringify(release), {

@@ -5,12 +5,13 @@ from __future__ import annotations
 from html.parser import HTMLParser
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, QRectF, Qt, Signal
+from PySide6.QtCore import QPoint, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QRadialGradient
 from PySide6.QtWidgets import QApplication, QMenu, QWidget
 
 from branding import draw_mark
 from theme import tokens, theme_signal
+from window_zorder import keep_window_topmost
 
 
 class _TextHTML(HTMLParser):
@@ -117,8 +118,32 @@ class FloatingBall(DropSurface, QWidget):
         self.count = 0
         self.busy = False
         self.percent = 0
+        self._topmost_timer = QTimer(self)
+        self._topmost_timer.setInterval(1000)
+        self._topmost_timer.setTimerType(Qt.CoarseTimer)
+        self._topmost_timer.timeout.connect(self._ensure_topmost)
         theme_signal().connect(self._appearance_changed)
         self.setToolTip('文字拖入即收录项目并建工作目录\n文件收进项目，ZIP 稳定后复制归档，原件保留\n单击管理 · 按住拖动 · 右键更多')
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Qt establishes initial topmost order. Wait until its native surface is
+        # ready rather than forcing winId() reentrantly during showEvent.
+        self._topmost_timer.start()
+
+    def hideEvent(self, event):
+        self._topmost_timer.stop()
+        super().hideEvent(event)
+
+    def _ensure_topmost(self):
+        # Only the orb participates. The expanded manager remains a normal window.
+        # Let our menus/dialogs and an in-progress drag finish without Z-order churn.
+        if (not self.isVisible() or self.isMinimized() or self._press is not None
+                or QApplication.activePopupWidget() is not None
+                or QApplication.activeModalWidget() is not None):
+            return
+        if QApplication.platformName() == 'windows':
+            keep_window_topmost(int(self.winId()))
 
     def set_drop_hint(self, kind):
         self.drop_kind = kind

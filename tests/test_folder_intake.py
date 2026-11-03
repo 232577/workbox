@@ -46,6 +46,17 @@ def test_existing_folder_preserves_tree_and_distinct_identical_files(service, tm
     assert len(service.intake_log.list_recent()) == 4
 
 
+def test_existing_project_edition_folder_routes_to_original_workspace(service, tmp_path):
+    pid = project(service, '甲系统')
+    root = tmp_path / 'source' / '甲系统_测试版'
+    file(root, '资料/readme.txt')
+    result = intake(service, root)
+    target = Path(service.workspaces.get_workspace(pid)['path'])
+    assert result['copied'] == 1 and result['created_project_ids'] == []
+    assert (target / '资料/readme.txt').read_bytes() == b'isolated'
+    assert [row['id'] for row in service.list_projects()] == [pid]
+
+
 def test_unknown_folder_creates_one_project_for_generic_material_names(service, tmp_path):
     root = tmp_path / '新建档案系统'
     file(root, '操作手册.docx')

@@ -6,6 +6,7 @@ from PySide6.QtWidgets import QDialog, QHBoxLayout, QInputDialog, QListWidget, Q
 
 from theme import apply_to
 from ui_components import button, ComboBox
+from dialog_chrome import add_header, add_actions, InlineError, FilterEdit
 from dialog_lifecycle import transient_dialog
 from fluent_views import WorkbenchListWidget
 
@@ -31,7 +32,7 @@ class ProjectTypePickerDialog(QDialog):
         self.setMinimumWidth(320)
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
-        layout.addWidget(label('修改类型', 'pageTitle'))
+        add_header(layout, '修改项目类型', '分类调整不会改写交付记录或工作量。')
         self.selection_label = label(f'为所选 {len(self.projects)} 个项目设置类型。', 'subtle', True)
         layout.addWidget(self.selection_label)
         self.type_combo = ComboBox()
@@ -47,7 +48,7 @@ class ProjectTypePickerDialog(QDialog):
         layout.addWidget(label('仅在点击“保存类型”后修改项目归属。', 'subtle', True))
         self.management_note = label('“管理类型…”中的新增、改名、停用或启用会立即保存；取消此窗口不会撤销这些操作。', 'subtle', True)
         layout.addWidget(self.management_note)
-        self.error = label('', 'error', True)
+        self.error = InlineError()
         layout.addWidget(self.error)
         layout.addStretch()
         row = QHBoxLayout()
@@ -64,7 +65,7 @@ class ProjectTypePickerDialog(QDialog):
         self.save_button.setDefault(True)
         self.save_button.clicked.connect(self.accept)
         row.addWidget(self.save_button)
-        layout.addLayout(row)
+        add_actions(layout, row)
         self.type_combo.currentIndexChanged.connect(self.update_choice)
         common = {p.get('project_type_id') for p in self.projects}
         self._initial_choice = next(iter(common)) if len(common) == 1 else self._UNSELECTED
@@ -163,9 +164,9 @@ class ProjectTypesDialog(QDialog):
         self.service = service
         self.setWindowTitle('项目类型')
         apply_to(self)
-        self.resize(540, 540)
+        self.resize(640, 620)
         layout = QVBoxLayout(self)
-        layout.addWidget(label('项目类型', 'pageTitle'))
+        add_header(layout, '项目类型', '分类与新项目默认值', eyebrow='WORKBOX / 类型管理')
         layout.addWidget(label('每次操作立即保存，取消外层窗口不会撤销。停用后保留项目归属和历史，不能再分配该类型；停用默认类型后，新项目改为未分类。', 'subtle', True))
         default_card = CardWidget(self)
         default_layout = QVBoxLayout(default_card)
@@ -183,6 +184,11 @@ class ProjectTypesDialog(QDialog):
         self._saved_default_type = None
         self.default_type_combo.currentIndexChanged.connect(self.save_default_type)
         self.type_list = WorkbenchListWidget()
+        self.type_search = FilterEdit()
+        self.type_search.setPlaceholderText('搜索类型名称…')
+        self.type_search.setAccessibleName('搜索项目类型')
+        self.type_search.setClearButtonEnabled(True)
+        layout.addWidget(self.type_search)
         self.type_list.setWordWrap(True)
         self.type_list.setAccessibleName('项目类型列表')
         standard_list_scrolling(self.type_list)
@@ -192,7 +198,7 @@ class ProjectTypesDialog(QDialog):
         self.empty = label('还没有自定义类型，点击“新增类型”。已有项目继续保持未分类。', 'subtle', True)
         layout.addWidget(self.empty)
         layout.addWidget(self.type_list, 1)
-        self.error = label('', 'error', True)
+        self.error = InlineError()
         layout.addWidget(self.error)
         row = QHBoxLayout()
         self.add_button = button('新增类型', True)
@@ -207,8 +213,9 @@ class ProjectTypesDialog(QDialog):
         close = button('关闭')
         close.clicked.connect(self.accept)
         row.addWidget(close)
-        layout.addLayout(row)
+        add_actions(layout, row)
         self.type_list.currentItemChanged.connect(self.update_actions)
+        self.type_search.textChanged.connect(self.filter_types)
         self.refresh()
 
     def refresh(self, selected_id=None):
@@ -235,6 +242,13 @@ class ProjectTypesDialog(QDialog):
             self.type_list.addItem(item)
             if kind['id'] == selected_id:
                 self.type_list.setCurrentItem(item)
+        self.filter_types()
+
+    def filter_types(self, *_):
+        text = self.type_search.text().strip().casefold()
+        for i in range(self.type_list.count()):
+            item = self.type_list.item(i)
+            item.setHidden(text not in item.data(Qt.UserRole)['name'].casefold())
         self.update_actions()
 
     def save_default_type(self, *_):
@@ -253,8 +267,12 @@ class ProjectTypesDialog(QDialog):
         self.types_changed.emit()
 
     def update_actions(self, *_):
-        self.empty.setVisible(self.type_list.count()==0)
+        count = sum(not self.type_list.item(i).isHidden() for i in range(self.type_list.count()))
+        self.empty.setText('没有匹配类型，请修改或清除搜索。' if self.type_list.count() else '还没有自定义类型，点击“新增类型”。已有项目继续保持未分类。')
+        self.empty.setVisible(count == 0)
         current = self.type_list.currentItem()
+        if current is not None and current.isHidden():
+            current = None
         self.rename_button.setEnabled(current is not None)
         self.toggle_button.setEnabled(current is not None)
         self.toggle_button.setText('启用' if current and not current.data(Qt.UserRole)['active'] else '停用')
@@ -276,7 +294,7 @@ class ProjectTypesDialog(QDialog):
 
     def rename_type(self):
         current = self.type_list.currentItem()
-        if not current:
+        if not current or current.isHidden():
             return
         kind = current.data(Qt.UserRole)
         name, accepted = QInputDialog.getText(self, '更改项目类型名称', '类型名称', text=kind['name'])
@@ -285,6 +303,6 @@ class ProjectTypesDialog(QDialog):
 
     def toggle_type(self):
         current = self.type_list.currentItem()
-        if current:
+        if current and not current.isHidden():
             kind = current.data(Qt.UserRole)
             self.perform(lambda: self.service.set_project_type_active(kind['id'], not kind['active']))

@@ -19,11 +19,30 @@ def default_data_dir() -> Path:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="WorkBox 工作箱 v1.0 · 项目收件与 ZIP 持续归档")
     parser.add_argument("--version", action="version", version=f"WorkBox {VERSION}")
+    parser.add_argument("--build-info", action="store_true", help="输出构建标识，不打开数据或联网")
+    parser.add_argument("--build-info-output", type=Path, help="将构建标识写入新的JSON文件，仅与--build-info共用")
     parser.add_argument("--data-dir", type=Path, default=None, help="指定本地数据目录；默认是程序目录下的 data")
     parser.add_argument("--check", action="store_true", help="初始化/检查数据库，输出计数后退出，不打开窗口")
     parser.add_argument("--panel", action="store_true", help="启动时展开管理面板；默认仅显示悬浮球")
     parser.add_argument("--no-tray", action="store_true", help="不用系统托盘，仍可从球右键退出")
     args = parser.parse_args(argv)
+    if args.build_info_output is not None and not args.build_info:
+        parser.error('--build-info-output requires --build-info')
+    if args.build_info:
+        from update_client import CURRENT_TAG
+        info = {'version': VERSION, 'release_tag': CURRENT_TAG}
+        if args.build_info_output is not None:
+            from native_files import plain_path
+            try:
+                destination = plain_path(args.build_info_output)
+                info['data_dir'] = str((args.data_dir if args.data_dir is not None else default_data_dir()).resolve())
+                with destination.open('x', encoding='utf-8') as stream:
+                    json.dump(info, stream, ensure_ascii=False)
+            except (OSError, ValueError):
+                return 1
+        elif sys.stdout is not None:
+            print(json.dumps(info))
+        return 0
     data_dir = args.data_dir if args.data_dir is not None else default_data_dir()
     if args.check:
         try:
@@ -67,6 +86,10 @@ def main(argv: list[str] | None = None) -> int:
         if controller is not None:
             controller.shutdown()
             controller.dispose_ui()
+            try:
+                controller.launch_pending_update()
+            except (OSError, ValueError, RuntimeError) as error:
+                QMessageBox.critical(None, '升级未执行', str(error) + '\n下载和数据库恢复点已保留，请重新启动WorkBox检查。')
 
 
 if __name__ == "__main__":

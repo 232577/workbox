@@ -6,6 +6,7 @@ from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPlainTextEdit, QSiz
 
 from theme import apply_to
 from ui_components import ComboBox, LineEdit, button
+from dialog_chrome import add_header, add_actions
 
 
 class ProjectChangeDialog(QDialog):
@@ -23,6 +24,7 @@ class ProjectChangeDialog(QDialog):
         self.resize(620, 520)
         apply_to(self, 'dialog')
         layout = QVBoxLayout(self)
+        add_header(layout, '修正项目名称', project['name'], eyebrow='WORKBOX / 先预览，再确认')
         layout.addWidget(QLabel('项目名称'))
         self.name_edit = LineEdit(project['name'])
         self.name_edit.setAccessibleName('新的项目名称')
@@ -40,7 +42,7 @@ class ProjectChangeDialog(QDialog):
         self.summary = QPlainTextEdit()
         self.summary.setAccessibleName('项目变更检查结果')
         self.summary.setReadOnly(True)
-        self.summary.setPlainText('输入名称后点击“检查变更”。只修改项目工作目录名称，普通文件和 ZIP 文件名保持原样。')
+        self.summary.setPlainText('输入名称后点击“检查变更”。若已有同名项目，将先列出合并计划；普通文件和 ZIP 文件名保持原样。')
         layout.addWidget(self.summary, 1)
         row = QHBoxLayout()
         self.check_button = button('检查变更')
@@ -51,7 +53,7 @@ class ProjectChangeDialog(QDialog):
         row.addStretch()
         row.addWidget(cancel)
         row.addWidget(self.confirm_button)
-        layout.addLayout(row)
+        add_actions(layout, row)
         self.name_edit.textChanged.connect(self._name_changed)
         self.target_box.currentIndexChanged.connect(self._target_changed)
         self.check_button.clicked.connect(self._check)
@@ -138,14 +140,14 @@ class ProjectChangeDialog(QDialog):
                     f"工作目录：{item.get('workspace_path') or '无'}"]
         lines = describe('原项目', plan.get('source')) + describe('保留项目', plan.get('target'))
         for key, label in [('new_name', '新名称'), ('folder_from', '原目录'), ('folder_to', '变更后目录'),
-                           ('copy_path', '合并资料位置'), ('result_status', '合并后状态'),
+                           ('result_status', '合并后状态'),
                            ('result_type_name', '合并后类型')]:
             if plan.get(key) is not None:
                 lines.append(f"{label}：{plan[key]}")
         if plan.get('result_included') is not None:
             lines.append('合并后计入工作量：' + ('是' if plan['result_included'] else '否'))
         if plan.get('kind') == 'merge':
-            lines.append('保留目标项目批次和类型；备注合并、日期取较早值，加急按任一项目保留。不生成交付记录。旧工作目录保留作备份。')
+            lines.append('保留目标项目批次和类型；备注合并、日期取较早值，加急按任一项目保留。')
             lines.append('合并以最后核对的材料清单为准；请暂停编辑这两个目录，完成后在保留项目中继续工作。')
         if plan.get('warning'):
             lines.append(str(plan['warning']))
@@ -157,7 +159,8 @@ class ProjectChangeDialog(QDialog):
                     lines.append('不可选：' + str(candidate['blocked_reason']))
         if plan.get('kind') == 'blocked':
             lines.append('当前无法执行，请处理上述冲突后重新检查。')
-        lines.append('普通文件和 ZIP 文件名保持原样。')
+        if plan.get('kind') != 'merge':
+            lines.append('普通文件和 ZIP 文件名保持原样。')
         return '\n'.join(lines)
 
     def _confirm(self):
