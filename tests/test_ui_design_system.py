@@ -63,6 +63,24 @@ def test_shared_button_accessible_name_tracks_dynamic_caption(qapp):
     finally:b.deleteLater()
 
 
+def test_danger_button_keeps_semantic_color_with_local_fluent_styles(qapp):
+    from PySide6.QtGui import QPalette
+    from PySide6.QtWidgets import QDialog, QVBoxLayout
+    from ui_components import button
+    from theme import apply_to, set_theme, tokens
+    w=QDialog();apply_to(w);layout=QVBoxLayout(w)
+    b=button('移除所选','danger');layout.addWidget(b);w.show()
+    try:
+        for mode in ('light','dark'):
+            set_theme(mode,persist=False)
+            for _ in range(4):QApplication.processEvents()
+            assert b.palette().color(QPalette.ButtonText).name()==tokens(mode)['error'].lower()
+        b.setEnabled(False)
+        QApplication.processEvents()
+        assert not b.isEnabled() and b.text()=='移除所选'
+    finally:w.close();w.deleteLater();set_theme('light',persist=False)
+
+
 def test_contextual_material_button_is_visible_and_safe(qapp,service,monkeypatch):
     from compact_ui import CompactPanel
     p=CompactPanel(service)

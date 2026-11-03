@@ -286,12 +286,22 @@ def button(text: str, primary: bool | str = False):
         widget.setObjectName('nav' if role == 'nav-menu' else role)
     def native_menu_arrow(theme):
         arrow = FluentIcon.ARROW_DOWN.path(theme)
-        return ("PushButton::menu-indicator { subcontrol-origin: padding; "
+        rules = ("PushButton::menu-indicator { subcontrol-origin: padding; "
                 "subcontrol-position: right center; width: 10px; height: 10px; "
                 f"image: url({arrow}); }}"
                 "QPushButton#nav::menu-indicator { subcontrol-origin: padding; "
                 "subcontrol-position: center right; width: 10px; height: 10px; top: 1px; "
                 f"image: url({arrow}); }}")
+        if role == 'danger':
+            # Fluent's widget-local sheet overrides application selectors.
+            # Keep semantic roles local too, using the same central tokens.
+            from theme import tokens
+            colors = tokens('dark' if theme == Theme.DARK else 'light')
+            rules += ("PushButton#danger { color: %(error)s; background: transparent; "
+                      "border: 1px solid %(border)s; }"
+                      "PushButton#danger:hover, PushButton#danger:pressed { background: %(error_bg)s; }"
+                      "PushButton#danger:disabled { color: %(disabled)s; background: %(disabled_bg)s; }") % colors
+        return rules
     if role != 'nav-menu':
         setCustomStyleSheet(widget, native_menu_arrow(Theme.LIGHT), native_menu_arrow(Theme.DARK))
     return widget
