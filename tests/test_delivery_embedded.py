@@ -1,7 +1,8 @@
 """交付管理与主工作台共用窗口，切页保留工作位置。"""
+import time
 import pytest
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtTest import QTest
+from PySide6.QtTest import QTest, QSignalSpy
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from compact_ui import CompactPanel
@@ -202,11 +203,31 @@ def test_compact_menu_standard_activation_opens_menu(panel):
     panel.resize(660,480)
     panel.today_button.click()
     page = panel.today_dialog
+    deadline = time.monotonic() + 2
+    while not page.compact_filter_button.isVisible() and time.monotonic() < deadline:
+        QTest.qWait(10)
+    assert page.compact_filter_button.isVisible() and page.compact_filter_button.isEnabled()
     seen=[]
+    shown=QSignalSpy(page.compact_filter_menu.aboutToShow)
+    observer=QTimer(page.compact_filter_menu)
+    observer.setSingleShot(True)
+    observer.setInterval(0)
     def close_menu():
         seen.append(page.compact_filter_menu.isVisible())
         page.compact_filter_menu.close()
-    QTimer.singleShot(60,close_menu)
-    page.compact_filter_button.click()
-    QTest.qWait(90)
-    assert seen==[True]
+    observer.timeout.connect(close_menu)
+    # Observe after the menu's actual show event, not a wall-clock race between
+    # a 60ms timer and a 90ms sleep on a loaded Windows CI host. A missing or
+    # invisible menu still fails; the visibility assertion is not weakened.
+    page.compact_filter_menu.aboutToShow.connect(observer.start)
+    try:
+        page.compact_filter_button.click()
+        deadline=time.monotonic()+2
+        while not seen and time.monotonic()<deadline:
+            QTest.qWait(10)
+        assert shown.count()==1
+        assert seen==[True]
+    finally:
+        observer.stop()
+        page.compact_filter_menu.aboutToShow.disconnect(observer.start)
+        page.compact_filter_menu.close()
