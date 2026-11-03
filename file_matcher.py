@@ -25,7 +25,7 @@ _RELEASE_SUFFIX = re.compile(
     r'交付包|交付|成品|完成版|正式版|最终版)$',
     re.IGNORECASE,
 )
-_EDITION_SUFFIX = re.compile(r'(?P<name>.+?)[ _.-]+[^ _./\\]{1,20}版$')
+_EDITION_SUFFIX = re.compile(r'(?P<name>.+?)[ _.-]+[^ _./\\-]{1,20}版$')
 
 
 def _normalized(value: str) -> str:
