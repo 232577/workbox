@@ -246,6 +246,10 @@ class DesktopService(WorkBox):
         if key == 'appearance_theme':
             if type(value) is not str or value not in ('light', 'dark', 'system'):
                 raise ValueError('外观只支持浅色、深色或跟随系统。')
+        elif key == 'delivery_panel_sizes':
+            if not isinstance(value, list) or len(value) != 2 or not all(
+                    type(size) is int and 0 < size <= 100000 for size in value):
+                raise ValueError('无效的交付列表高度设置。')
         elif key not in {'orb_position', 'manager_geometry'} or not isinstance(value, list) or not all(type(v) is int for v in value) or len(value) not in (2, 4):
             raise ValueError('无效的窗口位置设置。')
         with self.db.connect() as connection:

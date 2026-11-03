@@ -268,10 +268,26 @@ QCheckBox::indicator, QRadioButton::indicator { width: 18px; height: 18px; }
 QCheckBox::indicator:focus, QRadioButton::indicator:focus { border: 2px solid %(accent)s; }
 QGroupBox { color: %(ink)s; border: 1px solid %(border)s; border-radius: 8px; margin-top: 12px; padding-top: 12px; }
 QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }
+/* Native calendar cells and year editors cannot use full-size list/input padding. */
+QCalendarWidget { min-width: 280px; min-height: 240px; }
 QCalendarWidget QWidget { background: %(surface)s; color: %(ink)s; }
-QCalendarWidget QToolButton { color: %(ink)s; background: %(surface)s; border: none; border-radius: 5px; }
+QCalendarWidget QToolButton {
+    color: %(ink)s; background: %(surface)s; border: none; border-radius: 5px;
+    padding: 4px 6px; min-height: 24px;
+}
+QCalendarWidget QToolButton:focus { padding: 4px 6px; border: none; }
 QCalendarWidget QToolButton:hover { background: %(hover)s; }
-QCalendarWidget QAbstractItemView { color: %(ink)s; background: %(surface)s; selection-background-color: %(selection)s; selection-color: %(selection_text)s; }
+QCalendarWidget QAbstractItemView {
+    color: %(ink)s; background: %(surface)s; padding: 0;
+    selection-background-color: %(selection)s; selection-color: %(selection_text)s;
+}
+QCalendarWidget QAbstractItemView::item { padding: 0; }
+QCalendarWidget QSpinBox, QCalendarWidget QSpinBox:focus {
+    padding: 2px 24px 2px 4px; min-width: 64px; min-height: 24px;
+}
+QCalendarWidget QSpinBox QLineEdit, QCalendarWidget QSpinBox QLineEdit:focus {
+    padding: 0; border: none; min-height: 0;
+}
 QScrollArea { background: transparent; border: none; }
 QScrollBar:vertical { width: 16px; background: transparent; margin: 4px 0; border: none; }
 QScrollBar:horizontal { height: 16px; background: transparent; margin: 0 4px; border: none; }
