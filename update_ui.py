@@ -8,6 +8,8 @@ from PySide6.QtWidgets import QDialog, QHBoxLayout, QVBoxLayout, QPlainTextEdit,
 from theme import apply_to
 from ui import FileJob, button, label, human_size
 from update_client import CURRENT_TAG, check_for_update, download_release, verify_installer
+from ui_components import DialogHeader, StatusBanner
+from qfluentwidgets import FluentIcon
 
 
 class UpdateDialog(QDialog):
@@ -16,21 +18,29 @@ class UpdateDialog(QDialog):
         self.worker = None
         self.release = self.installer = None
         self._job_kind = ''
+        self.phase = 'idle'
         self._close_pending = self._closed = False
         self.cache_root = Path(cache_root) if cache_root is not None else Path(
             os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'WorkBox' / 'updates'
         self.setWindowTitle('检查更新 · WorkBox')
-        self.resize(620, 480)
-        self.setMinimumSize(480, 380)
+        self.resize(680, 540)
+        self.setMinimumSize(500, 460)
         apply_to(self)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(22, 20, 22, 20)
         layout.setSpacing(10)
-        layout.addWidget(label('保持工作箱更新', 'pageTitle'))
-        layout.addWidget(label('当前构建：' + CURRENT_TAG, 'muted'))
-        self.status_label = label('点击检查更新后才连接官方项目发布源。', wrap=True)
+        self.header=DialogHeader('软件更新', '当前构建：' + CURRENT_TAG,
+                                 icon=FluentIcon.DOWNLOAD, eyebrow='WORKBOX / 更新中心')
+        layout.addWidget(self.header)
+        self.stage_label=label('1 检查版本  →  2 下载与校验  →  3 确认安装', 'updateStages', True)
+        self.stage_label.setAccessibleName('更新阶段')
+        layout.addWidget(self.stage_label)
+        self.status_label = StatusBanner('点击检查更新后才连接官方项目发布源。')
         layout.addWidget(self.status_label)
+        layout.addWidget(label('版本说明', 'sectionTitle'))
         self.notes = QPlainTextEdit()
+        self.notes.setObjectName('releaseNotes')
+        self.notes.setAccessibleName('版本说明')
         self.notes.setReadOnly(True)
         self.notes.setPlaceholderText('新版说明会显示在这里。不会上传项目、文档或数据库。')
         layout.addWidget(self.notes, 1)
@@ -40,9 +50,11 @@ class UpdateDialog(QDialog):
         layout.addWidget(self.progress)
         layout.addWidget(label('来源：232577/workbox · HTTPS + SHA-256校验。安装包尚无商业代码签名。', 'muted', True))
         layout.addWidget(label('安装需确认；先安全退出并保存数据库恢复点。项目文件仍请自行备份。', 'muted', True))
+        self.mode_note=label('当前为源码运行：可检查和下载，不会替换开发目录。','muted',True)
+        layout.addWidget(self.mode_note)
         row = QHBoxLayout()
         self.check_button = button('检查更新')
-        self.download_button = button('下载更新')
+        self.download_button = button('下载更新', 'primary')
         self.install_button = button('退出并安装', 'primary')
         self.close_button = button('关闭')
         for widget in (self.check_button, self.download_button, self.install_button, self.close_button):
@@ -63,11 +75,28 @@ class UpdateDialog(QDialog):
         self.install_button.setEnabled(idle and self.installer is not None and supported)
         self.install_button.setToolTip('源码运行只检查和下载，不会替换开发目录。' if not supported else '保存恢复点并安全退出后打开安装向导。')
         self.close_button.setText('取消' if self.worker is not None else '关闭')
+        self.mode_note.setVisible(not supported)
+        self.download_button.setVisible(self.release is not None and self.installer is None)
+        self.install_button.setVisible(self.installer is not None)
+        stages={
+            'idle':'1 检查版本  →  2 下载与校验  →  3 确认安装',
+            'check':'正在检查版本  →  下载与校验  →  确认安装',
+            'available':'版本已确认  →  下一步：下载与校验  →  确认安装',
+            'download':'版本已确认  →  正在下载与校验  →  确认安装',
+            'verified':'版本已确认  →  校验已通过  →  下一步：确认安装',
+            'current':'版本检查完成 · 没有更高的正式构建',
+            'cancelled':'操作已取消 · 可重新检查',
+            'error':'本次操作未完成 · 现有程序保持不变',
+            'install':'校验已通过 · 正在交给安全退出与安装流程',
+        }
+        self.stage_label.setText(stages[self.phase])
 
     def _start(self, kind, operation):
         if self.worker is not None or self._closed:
             return
         self._job_kind = kind
+        self.phase = kind
+        self.status_label.setTone('busy')
         self.worker = FileJob(operation, self)
         self.worker.progress_changed.connect(self.progress.setValue)
         self.worker.finished.connect(self._finished)
@@ -101,17 +130,22 @@ class UpdateDialog(QDialog):
         if not self._closed:
             self.progress.hide()
             if worker.cancelled:
+                self.phase='cancelled';self.status_label.setTone('neutral')
                 self.status_label.setText('已取消；现有版本和数据未改变。')
             elif worker.error:
+                self.phase='error';self.status_label.setTone('error')
                 self.status_label.setText('更新操作未完成：' + worker.error[:500])
             elif self._job_kind == 'check':
                 self.release = worker.result
                 if self.release is None:
+                    self.phase='current';self.status_label.setTone('success')
                     self.status_label.setText('没有更新：当前构建不低于最新正式发布。')
                 else:
+                    self.phase='available';self.status_label.setTone('neutral')
                     self.status_label.setText('发现新构建：' + self.release.tag + ' · ' + human_size(self.release.size))
                     self.notes.setPlainText(self.release.notes)
             else:
+                self.phase='verified';self.status_label.setTone('success')
                 self.installer = worker.result
                 self.status_label.setText('下载完成，长度与SHA-256校验通过。可退出并安装。')
             self._sync()
@@ -126,6 +160,7 @@ class UpdateDialog(QDialog):
             verify_installer(self.installer, self.release)
         except (OSError, ValueError) as error:
             self.installer = None
+            self.phase='error';self.status_label.setTone('error')
             self.status_label.setText(str(error))
             self._sync()
             return
@@ -134,6 +169,7 @@ class UpdateDialog(QDialog):
             '原项目文件和交付归档不会删除。请先保存正在编辑的其他资料。\n\n继续退出并安装？',
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if answer == QMessageBox.Yes:
+            self.phase='install';self._sync()
             self.accept()
 
     def reject(self):
