@@ -1,9 +1,9 @@
 """基础 Fluent 控件适配；业务模型、原生窗口和滚动仍由原有 Qt 层负责。"""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QColor, QIcon
-from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QPushButton, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QPushButton, QToolButton, QVBoxLayout, QWidget, QFrame, QHBoxLayout, QSizePolicy
 from qfluentwidgets.common.icon import FluentIconBase, toQIcon
 from qfluentwidgets import (
     CheckBox as _FluentCheckBox,
@@ -22,7 +22,107 @@ from qfluentwidgets import (
     qconfig,
 )
 
-__all__ = ['button', 'LineEdit', 'CheckBox', 'SpinBox', 'ComboBox', 'init_fluent_theme']
+__all__ = ['button', 'LineEdit', 'CheckBox', 'SpinBox', 'ComboBox', 'init_fluent_theme',
+           'StatusBanner', 'DialogHeader', 'MetricStrip']
+
+
+class ElidedLabel(QLabel):
+    """One-line context retains complete plain text in its tooltip and a11y name."""
+    def __init__(self, text='', parent=None):
+        super().__init__(parent)
+        self.fullText = ''
+        self.setTextFormat(Qt.PlainText)
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.setText(text)
+
+    def setText(self, text):
+        self.fullText = str(text)
+        self.setToolTip(self.fullText)
+        self.setAccessibleName(self.fullText)
+        self._elide()
+
+    def _elide(self):
+        super().setText(self.fontMetrics().elidedText(self.fullText, Qt.ElideRight, max(1, self.width())))
+
+    def resizeEvent(self, event):
+        self._elide()
+        super().resizeEvent(event)
+
+
+class StatusBanner(QLabel):
+    """Explicit text + tone; never infer success from a color or message."""
+    TONES = {'neutral': '提示', 'busy': '处理中', 'success': '已完成', 'warning': '需留意', 'error': '未完成'}
+
+    def __init__(self, text='', parent=None):
+        super().__init__(text, parent)
+        self.setObjectName('statusBanner')
+        self.setTextFormat(Qt.PlainText)
+        self.setWordWrap(True)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.setTone('neutral')
+
+    def setTone(self, tone):
+        if tone not in self.TONES:
+            raise ValueError('Unknown feedback tone')
+        self.setProperty('tone', tone)
+        self.setAccessibleDescription(self.TONES[tone])
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.updateGeometry()
+        self.update()
+
+
+class DialogHeader(QWidget):
+    """Shared title/context, preserving the native dialog and focus loop."""
+    def __init__(self, title, subtitle='', parent=None, *, icon=None, eyebrow='WORKBOX'):
+        super().__init__(parent)
+        self.setObjectName('dialogHeader')
+        self._source_icon=icon
+        row=QHBoxLayout(self);row.setContentsMargins(0,0,0,0);row.setSpacing(12)
+        if icon is not None:
+            self.icon_label=QLabel(self)
+            self.icon_label.setObjectName('headerIcon')
+            self.icon_label.setFixedSize(44,44)
+            self.icon_label.setAlignment(Qt.AlignCenter)
+            self._refresh_icon()
+            qconfig.themeChanged.connect(self._refresh_icon)
+            row.addWidget(self.icon_label)
+        copy=QVBoxLayout();copy.setSpacing(3);copy.setContentsMargins(0,0,0,0)
+        self.eyebrow=QLabel(eyebrow);self.eyebrow.setObjectName('headerEyebrow');self.eyebrow.setTextFormat(Qt.PlainText)
+        self.title=QLabel(title);self.title.setObjectName('pageTitle');self.title.setTextFormat(Qt.PlainText)
+        self.subtitle=ElidedLabel(subtitle);self.subtitle.setObjectName('headerSubtitle')
+        for label in (self.eyebrow,self.title,self.subtitle):copy.addWidget(label)
+        row.addLayout(copy,1)
+
+    def setSubtitle(self, text):
+        self.subtitle.setText(text)
+
+    def _refresh_icon(self,*_):
+        if self._source_icon is not None:
+            self.icon_label.setPixmap(toQIcon(self._source_icon).pixmap(QSize(24,24)))
+
+
+class MetricStrip(QFrame):
+    """Small stable counters. Updating values never rebuilds widgets or queries."""
+    def __init__(self, captions, parent=None):
+        super().__init__(parent)
+        self.setObjectName('metricStrip')
+        self.setSizePolicy(QSizePolicy.Expanding,QSizePolicy.Fixed)
+        row=QHBoxLayout(self);row.setContentsMargins(16,8,16,8);row.setSpacing(16)
+        self.captions=tuple(captions);self.value_labels=[]
+        for caption in self.captions:
+            column=QVBoxLayout();column.setSpacing(0)
+            value=QLabel('—');value.setObjectName('metricValue');value.setTextFormat(Qt.PlainText)
+            value.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Preferred)
+            title=QLabel(caption);title.setObjectName('metricCaption');title.setTextFormat(Qt.PlainText)
+            column.addWidget(value);column.addWidget(title);row.addLayout(column,1)
+            self.value_labels.append(value)
+
+    def setValues(self, values):
+        values=tuple(values)
+        if len(values)!=len(self.value_labels):raise ValueError('Metric count mismatch')
+        for caption,label,value in zip(self.captions,self.value_labels,values):
+            label.setText(str(value));label.setAccessibleName(f'{caption}：{value}')
 
 
 def _exec_native_edit_menu(edit: QLineEdit, global_position) -> None:
@@ -43,6 +143,8 @@ class LineEdit(_FluentLineEdit):
             self.setText(text)
         else:
             super().__init__(parent if parent is not None else text)
+
+        self.setMinimumHeight(32)
 
     def contextMenuEvent(self, event):
         _exec_native_edit_menu(self, event.globalPos())
@@ -178,16 +280,28 @@ def button(text: str, primary: bool | str = False):
             'nav': NavigationButton, 'nav-menu': NavigationMenuButton}.get(role, PushButton)
     widget = kind(text)
     widget.setCursor(Qt.PointingHandCursor)
+    # Keep Qt's text-derived accessible name live when captions change.
+    # Callers may still supply an explicit, stable descriptive name.
     if role:
         widget.setObjectName('nav' if role == 'nav-menu' else role)
     def native_menu_arrow(theme):
         arrow = FluentIcon.ARROW_DOWN.path(theme)
-        return ("PushButton::menu-indicator { subcontrol-origin: padding; "
+        rules = ("PushButton::menu-indicator { subcontrol-origin: padding; "
                 "subcontrol-position: right center; width: 10px; height: 10px; "
                 f"image: url({arrow}); }}"
                 "QPushButton#nav::menu-indicator { subcontrol-origin: padding; "
                 "subcontrol-position: center right; width: 10px; height: 10px; top: 1px; "
                 f"image: url({arrow}); }}")
+        if role == 'danger':
+            # Fluent's widget-local sheet overrides application selectors.
+            # Keep semantic roles local too, using the same central tokens.
+            from theme import tokens
+            colors = tokens('dark' if theme == Theme.DARK else 'light')
+            rules += ("PushButton#danger { color: %(error)s; background: transparent; "
+                      "border: 1px solid %(border)s; }"
+                      "PushButton#danger:hover, PushButton#danger:pressed { background: %(error_bg)s; }"
+                      "PushButton#danger:disabled { color: %(disabled)s; background: %(disabled_bg)s; }") % colors
+        return rules
     if role != 'nav-menu':
         setCustomStyleSheet(widget, native_menu_arrow(Theme.LIGHT), native_menu_arrow(Theme.DARK))
     return widget

@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from theme import apply_to, apply_scrollbar, stylesheet, install_theme, set_theme, current_mode, theme_signal
 from dialog_lifecycle import transient_dialog
 from ui_components import button as fluent_button, LineEdit as QLineEdit, CheckBox as QCheckBox, SpinBox as QSpinBox, ComboBox as QComboBox
+from ui_components import MetricStrip
 from qfluentwidgets import FluentIcon, InfoBadge, InfoLevel, CardWidget, SegmentedWidget
 from fluent_views import (WorkbenchListWidget, WorkbenchTableWidget, configure_native_scroll,
                           ProjectListDelegate, PROJECT_NAME_ROLE, PROJECT_DETAIL_ROLE)
@@ -298,7 +299,7 @@ class CompactPanel(DropSurface, QWidget):
         self.brand_label = label('WorkBox', 'brandName')
         self.brand_row.addWidget(self.brand_label)
         nav.addLayout(self.brand_row)
-        self.nav_caption = label('工作箱', 'subtle')
+        self.nav_caption = label('本地项目工作空间', 'subtle')
         nav.addWidget(self.nav_caption)
         nav.addSpacing(18)
         self.nav_projects = button('项目', 'nav')
@@ -320,13 +321,23 @@ class CompactPanel(DropSurface, QWidget):
             control.setAccessibleName(caption)
             nav.addWidget(control)
         nav.addStretch()
+        # A wrapping sidebar label turns the *root* horizontal layout into a
+        # height-for-width layout and Windows clamps to the old wide-page hint
+        # before compact widgets can hide. This fixed one-line footer needs no wrap.
+        self.workspace_status = label('数据保存在本机', 'workspaceStatus')
+        self.workspace_status.setToolTip('项目文件与业务数据保存在本机，不随 Git 同步。')
+        nav.addWidget(self.workspace_status)
         shell.addWidget(self.navigation)
         self.workbench = QWidget()
         shell.addWidget(self.workbench, 1)
         layout = self.workbench_layout = QVBoxLayout(self.workbench)
         layout.setContentsMargins(14, 12, 14, 8)
         layout.setSpacing(8)
-        top = QHBoxLayout()
+        self.header_surface = QFrame()
+        self.header_surface.setObjectName('workbenchHeader')
+        top = QHBoxLayout(self.header_surface)
+        top.setContentsMargins(12, 10, 12, 10)
+        top.setSpacing(8)
         heading = QVBoxLayout()
         heading.setSpacing(4)
         brand_row = QHBoxLayout()
@@ -374,15 +385,18 @@ class CompactPanel(DropSurface, QWidget):
             control.setToolTip(caption)
             control.setMinimumWidth(0)
             nav.addWidget(control)
-        layout.addLayout(top)
+        layout.addWidget(self.header_surface)
         self.search = QLineEdit()
         self.search.setPlaceholderText('搜索项目、备注、批次或 ZIP 名称')
         self.search.setAccessibleName('搜索项目、备注、批次或 ZIP 名称')
         self.search.setClearButtonEnabled(True)
+        self.search.setMinimumHeight(36)
         intake_bar = QHBoxLayout()
         intake_bar.setSpacing(10)
         intake_bar.addWidget(self.search, 1)
         layout.addLayout(intake_bar)
+        self.overview = MetricStrip(('全部项目', '当前结果', '交付包', '待核对'))
+        layout.addWidget(self.overview)
         self.notice = label('', 'notice')
         self.notice.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.notice.setMaximumHeight(72)
@@ -454,6 +468,13 @@ class CompactPanel(DropSurface, QWidget):
         options.setSpacing(8)
         options.addWidget(self.urgent_filter)
         options.addStretch()
+        self.material_check_button = button('材料检查')
+        self.material_check_button.setIcon(FluentIcon.DOCUMENT)
+        self.material_check_button.setAccessibleName('材料检查')
+        self.material_check_button.setToolTip('检查所选项目的材料与缺项（Alt+M）；不改变交付状态。')
+        self.material_check_button.setShortcut('Alt+M')
+        self.material_check_button.clicked.connect(lambda: self.open_material_check(self.current_project['id']) if self.current_project else None)
+        options.addWidget(self.material_check_button)
         self.change_type_button = button('修改类型…')
         self.change_type_button.setAccessibleName('修改所选项目的类型')
         self.change_type_button.setToolTip('修改当前选中项目的类型；批量选择时应用到所选项目。也可管理自定义类型。')
@@ -477,7 +498,7 @@ class CompactPanel(DropSurface, QWidget):
         self.project_splitter.setChildrenCollapsible(False)
         self.project_splitter.setHandleWidth(6)
         project_side = CardWidget()
-        project_side.setBorderRadius(8)
+        project_side.setBorderRadius(12)
         project_side.setObjectName('projectSurface')
         project_side.setMinimumWidth(180)
         project_layout = self.project_card_layout = QVBoxLayout(project_side)
@@ -488,7 +509,7 @@ class CompactPanel(DropSurface, QWidget):
         project_layout.addWidget(self.empty)
         project_layout.addWidget(self.project_list,1)
         document_side = self.document_side = CardWidget()
-        document_side.setBorderRadius(8)
+        document_side.setBorderRadius(12)
         document_side.setObjectName('documentSurface')
         document_side.setMinimumWidth(350)
         document_layout = self.document_card_layout = QVBoxLayout(document_side)
@@ -665,6 +686,7 @@ class CompactPanel(DropSurface, QWidget):
             control.setChecked(position == index)
         self.search.setVisible(index != 3)
         self.summary.setVisible(index != 3 and self.height() >= 560 and self.width() >= 820)
+        self.overview.setVisible(index == 0 and self.height() >= 650 and self.width() >= 900)
 
     def refresh_type_controls(self):
         selected_type = self.type_filter.currentData()
@@ -737,6 +759,7 @@ class CompactPanel(DropSurface, QWidget):
             self.tabs.setTabText(2, f'待核对 {len(receipts)}' if receipts else '待核对')
             self.nav_review.setToolTip(f'待核对 {len(receipts)}' if receipts else '待核对')
             counts = self.service.db.counts()
+            self.overview.setValues((counts['projects'], len(rows), counts['zips'], len(receipts)))
             self.summary.setText(f"共 {counts['projects']} 个项目 · 当前 {len(rows)} 项 · {counts['zips']} 个交付包")
             if deleted_view:
                 self.summary.setText(f'已删除 {len(rows)} 项 · 原文件、归档和交付记录保留')
@@ -838,7 +861,7 @@ class CompactPanel(DropSurface, QWidget):
             p = self.current_project
             self.project_title.setText(p['name'] if p else '选择一个项目，查看对应文档')
             self.project_type_label.setText('类型 · ' + (p.get('project_type_name') or '未分类') if p else '')
-            self.project_type_label.setVisible(p is not None)
+            self.project_type_label.setVisible(p is not None and self.height() >= 560)
             self.project_status_badge.setVisible(p is not None)
             if p is not None:
                 self.project_status_badge.setText(p['status'])
@@ -852,6 +875,10 @@ class CompactPanel(DropSurface, QWidget):
         self.document_pane.set_project(self.current_project['id'] if self.current_project else None)
 
     def update_actions(self, *_):
+        project = self.current_project
+        self.material_check_button.setEnabled(bool(project) and not self.busy
+            and not project.get('deleted_at') and not project.get('block_reason')
+            and project.get('merged_into_id') is None)
         for control in (self.link_button, self.review_button, self.dismiss_button):
             control.setEnabled(not self.busy)
         count = len(self.project_list.selectedItems())
@@ -1398,6 +1425,7 @@ class CompactPanel(DropSurface, QWidget):
         self.navigation.layout().setContentsMargins(8 if narrow else 12, 14, 8 if narrow else 12, 14)
         self.brand_label.setVisible(not narrow)
         self.nav_caption.setVisible(not narrow)
+        self.workspace_status.setVisible(not narrow)
         for control, caption in self.nav_controls:
             control.setProperty('compactNav', narrow)
             text = getattr(self, '_today_caption', caption) if control is self.today_button else caption
@@ -1419,7 +1447,14 @@ class CompactPanel(DropSurface, QWidget):
         density_changed = self.property('dense') != compact
         self.setProperty('dense', compact)
         self.document_pane.set_compact(compact)
+        # The selected row already includes type; avoid a duplicate line taking
+        # space from file rows in the supported 660x492 compact workspace.
+        self.project_type_label.setVisible(self.current_project is not None and not compact)
         self.summary.setVisible(not compact and self.width() >= 820 and self.tabs.currentIndex() != 3)
+        self.overview.setVisible(self.height() >= 650 and not narrow and self.tabs.currentIndex() == 0)
+        self.header_surface.layout().setContentsMargins(8 if compact else 12, 4 if compact else 10,
+                                                       8 if compact else 12, 4 if compact else 10)
+        self.search.setMinimumHeight(28 if compact else 36)
         self.project_list_heading.setVisible(not compact)
         self.project_page_layout.setContentsMargins(8 if compact else 14, 8 if compact else 14,
                                                    8 if compact else 14, 8 if compact else 12)
