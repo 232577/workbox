@@ -22,10 +22,10 @@ test('公开下载固定版本并流式保留文件字节，不转发访问者�
   });
   assert.equal(response.status, 200);
   assert.deepEqual([...new Uint8Array(await response.arrayBuffer())], [77, 90, 1, 2]);
-  assert.equal(requested.target, 'https://github.com/232577/workbox/releases/download/v1.0.0.20261103.3/WorkBox-1.0.0-Setup-x64-20261103-r3.exe');
+  assert.equal(requested.target, 'https://github.com/232577/workbox/releases/download/v1.0.0.20261103.5/WorkBox-1.0.0-Setup-x64-20261103-r5.exe');
   assert.equal(requested.options.headers.has('Cookie'), false);
   assert.equal(requested.options.headers.has('Authorization'), false);
-  assert.match(response.headers.get('Content-Disposition'), /attachment; filename="WorkBox-1.0.0-Setup-x64-20261103-r3.exe"/);
+  assert.match(response.headers.get('Content-Disposition'), /attachment; filename="WorkBox-1.0.0-Setup-x64-20261103-r5.exe"/);
 });
 
 test('断点续传保留206和Content-Range', async () => {
@@ -71,15 +71,17 @@ test('版本信息公开且页面回退到静态资源', async () => {
   assert.equal(await home.text(), 'workbox page');
 });
 
-test('小悬浮球置顶修复使用独立标签与安装包，十三个旧版本目录和摘要保持不变', async () => {
-  assert.equal(release.tag,'v1.0.0.20261103.3');
-  assert.equal(release.filename,'WorkBox-1.0.0-Setup-x64-20261103-r3.exe');
+test('统一交付使用独立r5安装包，十五个旧版本目录和摘要保持不变', async () => {
+  assert.equal(release.tag,'v1.0.0.20261103.5');
+  assert.equal(release.filename,'WorkBox-1.0.0-Setup-x64-20261103-r5.exe');
   assert.equal(release.edition,'正式安装版');
   assert.equal(release.date,'2026-11-03');
-  assert.equal(release.size,38410914);
-  assert.equal(release.sha256,'590d0337091c1aae91c945d3ec206f2e5fbff4fb102d30b7b42670733380a36f');
-  assert.equal(releases.length,14);
+  assert.equal(release.size,38425694);
+  assert.equal(release.sha256,'7ededf3d1a844bd9fc595697650dd7d1f8e8867dcf0c600b74a389714c9f2179');
+  assert.equal(releases.length,16);
   assert.deepEqual(releases.slice(1).map(item => [item.tag,item.filename,item.size,item.sha256]), [
+    ['v1.0.0.20261103.4','WorkBox-1.0.0-Setup-x64-20261103-r4.exe',38427656,'8ba1ca559be45ffe007cb4d2ff8571ac5227017f7735d568088697236610ae53'],
+    ['v1.0.0.20261103.3','WorkBox-1.0.0-Setup-x64-20261103-r3.exe',38410914,'590d0337091c1aae91c945d3ec206f2e5fbff4fb102d30b7b42670733380a36f'],
     ['v1.0.0.20261103.2','WorkBox-1.0.0-Setup-x64-20261103-r2.exe',38413646,'2a0ecc51895e7986f43a0e257ffeab16fafe747daa3dcbb34fd0ef949e0a0943'],
     ['v1.0.0.20261103.1','WorkBox-1.0.0-Setup-x64-20261103-r1.exe',38416001,'82538102216e692820b7e104b31372e9ef2b36864096758bd45d7f81da27ccda'],
     ['v1.0.0.20261102','WorkBox-1.0.0-Setup-x64-20261102.exe',39784180,'7760e997ded567dd5c1aec4435f023b82b64664ae757e249568999aac4f690fc'],
