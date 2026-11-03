@@ -6,6 +6,7 @@ from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPlainTextEdit, QSiz
 
 from theme import apply_to
 from ui_components import ComboBox, LineEdit, button
+from dialog_chrome import add_header, add_actions
 
 
 class ProjectChangeDialog(QDialog):
@@ -23,6 +24,7 @@ class ProjectChangeDialog(QDialog):
         self.resize(620, 520)
         apply_to(self, 'dialog')
         layout = QVBoxLayout(self)
+        add_header(layout, '修正项目名称', project['name'], eyebrow='WORKBOX / 先预览，再确认')
         layout.addWidget(QLabel('项目名称'))
         self.name_edit = LineEdit(project['name'])
         self.name_edit.setAccessibleName('新的项目名称')
@@ -51,7 +53,7 @@ class ProjectChangeDialog(QDialog):
         row.addStretch()
         row.addWidget(cancel)
         row.addWidget(self.confirm_button)
-        layout.addLayout(row)
+        add_actions(layout, row)
         self.name_edit.textChanged.connect(self._name_changed)
         self.target_box.currentIndexChanged.connect(self._target_changed)
         self.check_button.clicked.connect(self._check)

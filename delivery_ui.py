@@ -647,6 +647,12 @@ class TodayDeliveryDialog(QDialog):
                                                        8 if compact else 12, 6 if compact else 10)
             if self.embedded:
                 self._sync_embedded_layout()
+            else:
+                # Keep full-height inputs without squeezing a wrapped project
+                # row below one readable line group in the 680x460 view.
+                margin = 8 if compact else 9
+                self.layout().setContentsMargins(margin, margin, margin, margin)
+                self.layout().setSpacing(4 if compact else 6)
         super().resizeEvent(event)
 
     def _populate_compact_filters(self):
