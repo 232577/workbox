@@ -138,6 +138,12 @@ def test_real_shell_allows_more_detail_rows_and_full_detail_view(service):
     restored = split.sizes()
     assert page.table.isVisible()
     assert abs(restored[0] / sum(restored) - sizes[0] / sum(sizes)) < .03
+    panel.nav_projects.click()
+    QTest.qWait(80)
+    panel.today_button.click()
+    QTest.qWait(100)
+    assert all(abs(actual - expected) <= 1 for actual, expected in zip(split.sizes(), sizes))
+    assert page.details.currentItem().data(Qt.UserRole) == selected
     assert panel.delivery_page_container.verticalScrollBar().maximum() == 0
     page.shutdown()
     panel.document_pane.shutdown()

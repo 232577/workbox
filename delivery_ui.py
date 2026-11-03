@@ -751,6 +751,9 @@ class TodayDeliveryDialog(QDialog):
                 self.layout().setContentsMargins(margin, margin, margin, margin)
                 self.layout().setSpacing(4)
         super().resizeEvent(event)
+        if self.isVisible() and hasattr(self, '_panel_layout_timer'):
+            # 外层滚动区在切页后可能再次定尺寸，按最终可用空间恢复偏好。
+            self._panel_layout_timer.start(0)
 
     def _populate_compact_filters(self):
         menu = self.compact_filter_menu
