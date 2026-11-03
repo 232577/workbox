@@ -76,7 +76,7 @@ class TodayDeliveryDialog(QDialog):
             area = self.screen().availableGeometry()
             self.resize(min(980,area.width()-24),min(680,area.height()-48))
         layout = QVBoxLayout(self)
-        layout.setSpacing(6)
+        layout.setSpacing(4)
         self.scope_note = label('按北京时间统计个人工作量。代交项目可设为不计工作量，已交付状态和文件保留；真正误记请用下方“撤销误记”。','subtle',True)
         layout.addWidget(self.scope_note)
         controls = QHBoxLayout()
@@ -725,9 +725,9 @@ class TodayDeliveryDialog(QDialog):
             else:
                 # Keep full-height inputs without squeezing a wrapped project
                 # row below one readable line group in the 680x460 view.
-                margin = 8 if compact else 9
+                margin = 8
                 self.layout().setContentsMargins(margin, margin, margin, margin)
-                self.layout().setSpacing(4 if compact else 6)
+                self.layout().setSpacing(4)
         super().resizeEvent(event)
 
     def _populate_compact_filters(self):
