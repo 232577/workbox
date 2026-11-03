@@ -2,7 +2,9 @@
 
 个人项目收件、工作目录与交付归档工具。使用 Python、PySide6 和 SQLite；不需要账号或云端服务。
 
-本次发布标识为 `v1.0.0.20261103.1`，软件版本仍为 **1.0.0**。安装包从已审阅主分支提交 `684095b9fcdcd84a84d03d0dd853185f7ca0b0c7` 重新构建，包含统一工作台与组件、材料检查、可调列宽和在线更新。旧版标签与安装包保留。
+本次发布标识为 `v1.0.0.20261103.2`，软件版本仍为 **1.0.0**。安装包来自已审阅主分支提交 `dcc87cdd60aa8075e5ca015a9a84143af8525507`，修复“退出并安装”后安装助手未执行的问题，并包含统一工作台与组件、材料检查、可调列宽和在线更新。旧版标签与安装包保留。
+
+**旧版只退出、没有更新时：** 先备份数据，确认 WorkBox 已退出，再运行本次经过校验的安装包，选择原安装目录；不要卸载，也不要删除 data 或重建项目。旧二进制的交接缺陷不会仅因下载了新包而消失，首次可能需要辅助安装。详见 [更新故障恢复](docs/UPDATE-RECOVERY.md)。
 
 ## 开发与维护入口
 
@@ -24,13 +26,13 @@ python scripts/dev.py start feat/my-task
 
 安装版提供“检查更新”入口，点击后才连接官网更新清单（GitHub为备用源），支持下载、取消、长度与SHA-256校验，以及确认后安全退出再安装。安装前保存数据库恢复点，不删除项目文件；源码模式不允许替换开发目录。更早没有更新入口的安装版仍需一次引导安装。设计及安全边界见 [在线升级](docs/ONLINE-UPDATES.md)。
 
-- [官网下载](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261103-r1.exe)
-- [GitHub Release](https://github.com/232577/workbox/releases/tag/v1.0.0.20261103.1)
+- [官网下载](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261103-r2.exe)
+- [GitHub Release](https://github.com/232577/workbox/releases/tag/v1.0.0.20261103.2)
 - [源码](https://github.com/232577/workbox)
 
-文件：`WorkBox-1.0.0-Setup-x64-20261103-r1.exe`，38,416,001字节。
+文件：`WorkBox-1.0.0-Setup-x64-20261103-r2.exe`，38,413,646字节。
 
-SHA-256：`82538102216e692820b7e104b31372e9ef2b36864096758bd45d7f81da27ccda`。
+SHA-256：`2a0ecc51895e7986f43a0e257ffeab16fafe747daa3dcbb34fd0ef949e0a0943`。
 
 目标平台为 Windows 10 1809+ / Windows 11 x64；实际原生验收在一台 Windows 11 x64 设备完成，不代表已在其他物理设备或所有Windows版本实测。安装包尚无商业代码签名。按当前用户安装，带独立运行时，不含用户数据库、工作文件、归档或私有凭据。升级前请备份自己的数据，卸载保留运行时生成的data目录。
 

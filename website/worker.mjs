@@ -3,6 +3,14 @@ export { SiteMetrics } from './analytics.mjs';
 // 固定版本的公开下载入口；不读取、转发访问者的登录信息。
 export const releases = Object.freeze([Object.freeze({
   version: '1.0.0',
+  tag: 'v1.0.0.20261103.2',
+  edition: '正式安装版',
+  date: '2026-11-03',
+  filename: 'WorkBox-1.0.0-Setup-x64-20261103-r2.exe',
+  size: 38413646,
+  sha256: '2a0ecc51895e7986f43a0e257ffeab16fafe747daa3dcbb34fd0ef949e0a0943',
+}), Object.freeze({
+  version: '1.0.0',
   tag: 'v1.0.0.20261103.1',
   edition: '正式安装版',
   date: '2026-11-03',
