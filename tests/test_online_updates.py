@@ -7,9 +7,17 @@ import os
 import sqlite3
 import threading
 from concurrent.futures import CancelledError
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
+from update_client import CURRENT_TAG, build_key
+
+
+# Transport/security fixtures stay newer than the binary; ordering tests below
+# use explicit historical tags independently of this rolling fixture.
+_next_day = datetime.strptime(str(build_key(CURRENT_TAG)[0]), '%Y%m%d') + timedelta(days=1)
+FIXTURE_TAG = 'v1.0.0.' + _next_day.strftime('%Y%m%d') + '.1'
 
 
 @pytest.fixture
@@ -18,7 +26,7 @@ def client():
     return importlib.import_module('update_client')
 
 
-def payload(data=b'MZisolated installer', tag='v1.0.0.20261103.1'):
+def payload(data=b'MZisolated installer', tag=FIXTURE_TAG):
     suffix = tag.split('.', 3)[3].replace('.', '-r')
     name = f'WorkBox-1.0.0-Setup-x64-{suffix}.exe'
     return dict(tag_name=tag, draft=False, prerelease=False, body='匿名发行说明',
@@ -29,11 +37,12 @@ def payload(data=b'MZisolated installer', tag='v1.0.0.20261103.1'):
 
 
 def test_valid_release_and_same_version_are_distinguished(client):
-    release = client.parse_release(payload(), current_tag='v1.0.0.20261102.1')
+    record = payload(tag='v1.0.0.20261103.1')
+    release = client.parse_release(record, current_tag='v1.0.0.20261102.1')
     assert release.tag == 'v1.0.0.20261103.1'
     assert release.notes == '匿名发行说明'
-    assert client.parse_release(payload(), current_tag=release.tag) is None
-    assert client.parse_release(payload(), current_tag='v1.0.0.20261104') is None
+    assert client.parse_release(record, current_tag=release.tag) is None
+    assert client.parse_release(record, current_tag='v1.0.0.20261104') is None
 
 
 @pytest.mark.parametrize('tag', ['v1.0.0.20261301', 'v1.0.0.20260230', 'v1.0.0.20261102.0',
@@ -106,7 +115,7 @@ def test_metadata_fetch_is_bounded_and_does_not_send_secrets(client,monkeypatch)
     called=[]
     def open_url(url): called.append(url);return Response(json.dumps(payload()).encode(),url)
     monkeypatch.setattr(client,'_open',open_url)
-    assert client.check_for_update().tag=='v1.0.0.20261103.1'
+    assert client.check_for_update().tag == FIXTURE_TAG
     assert called==['https://workbox.ltxiangzi.dpdns.org/updates/stable.json']
     monkeypatch.setattr(client,'_open',lambda url:Response(b' '* (client.MAX_METADATA+1),url))
     with pytest.raises(ValueError):client.check_for_update()
@@ -149,7 +158,7 @@ def test_site_manifest_avoids_anonymous_api_rate_limit(client,monkeypatch):
         if url==site:return Response(json.dumps(payload()).encode(),url)
         raise HTTPError(url,403,'rate limit exceeded',{},None)
     monkeypatch.setattr(client,'_open',transport)
-    assert client.check_for_update().tag=='v1.0.0.20261103.1'
+    assert client.check_for_update().tag == FIXTURE_TAG
 
 
 def test_github_fallback_when_site_unavailable(client,monkeypatch):
