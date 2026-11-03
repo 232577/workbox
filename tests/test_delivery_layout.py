@@ -5,6 +5,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QSplitter
 
 from delivery_ui import TodayDeliveryDialog
+from compact_ui import CompactPanel
 from desktop_service import DesktopService
 
 
@@ -50,8 +51,10 @@ def test_detail_height_can_be_dragged_and_survives_refresh_and_reopen(service):
     assert page.details.viewport().height() >= 140
     assert page.type_summary_card.height() <= 84
     before = page.details.height()
+    visible_rows = page.details.viewport().height() // page.details.rowHeight(0)
     split = drag_up(page)
-    assert page.details.height() >= before + 55
+    assert page.details.height() > before
+    assert page.details.viewport().height() // page.details.rowHeight(0) >= visible_rows + 1
     chosen = page.details.currentItem().data(Qt.UserRole)
     sizes = split.sizes()
     page.refresh()
@@ -93,3 +96,42 @@ def test_list_height_setting_is_validated_without_changing_business_facts(servic
             service.set_setting('delivery_panel_sizes', invalid)
     with service.db.connect() as connection:
         assert [tuple(row) for row in connection.execute('SELECT * FROM delivery_events')] == before
+
+
+def test_real_shell_allows_more_detail_rows_and_full_detail_view(service):
+    panel = CompactPanel(service)
+    panel.resize(1000, 700)
+    panel.show()
+    panel.today_button.click()
+    page = panel.today_dialog
+    page.all_dates.setChecked(True)
+    page.table.selectRow(0)
+    QTest.qWait(150)
+    initial = page.details.viewport().height()
+    split = drag_up(page)
+    assert page.details.viewport().height() >= initial + 20
+    sizes = split.sizes()
+    selected = page.details.currentItem().data(Qt.UserRole)
+    before_focus = page.details.height()
+    page.expand_details_button.click()
+    QTest.qWait(80)
+    assert not page.table.isVisible() and page.details.isVisible()
+    assert page.details.height() >= before_focus + 90
+    page.refresh()
+    assert page.details.currentItem().data(Qt.UserRole) == selected
+    panel.resize(660, 480)
+    QTest.qWait(80)
+    assert page.details.isVisible() and not page.table.isVisible()
+    assert not page.expand_details_button.isVisible()
+    panel.resize(1000, 700)
+    QTest.qWait(80)
+    assert page.details.isVisible() and not page.table.isVisible()
+    page.expand_details_button.click()
+    QTest.qWait(80)
+    restored = split.sizes()
+    assert page.table.isVisible()
+    assert abs(restored[0] / sum(restored) - sizes[0] / sum(sizes)) < .03
+    assert panel.delivery_page_container.verticalScrollBar().maximum() == 0
+    page.shutdown()
+    panel.document_pane.shutdown()
+    panel.hide()

@@ -172,6 +172,9 @@ class TodayDeliveryDialog(QDialog):
         self.record_splitter.setObjectName('deliveryPanels')
         self.record_splitter.setAccessibleName('项目记录与交付明细高度')
         self.record_splitter.setChildrenCollapsible(False)
+        if not embedded:
+            # 可伸缩列表不把展开说明时的最小高度固化为 Windows 窗口下限。
+            self.record_splitter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
         self.record_splitter.setHandleWidth(10)
         self.record_splitter.setStyleSheet('''QSplitter#deliveryPanels::handle {
             background: palette(midlight); border-radius: 2px; margin: 2px 0;
@@ -199,7 +202,7 @@ class TodayDeliveryDialog(QDialog):
         project_actions.addWidget(self.include_count_button)
         project_layout.addLayout(project_actions)
         self.table = self._table('交付项目列表',['项目','批次','首次有效交付','我的工作量','项目类型'],wrapped=True)
-        self.table.setMinimumHeight(112)
+        self.table.setMinimumHeight(116)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table.setWordWrap(True)
         self.table.setTextElideMode(Qt.ElideNone)
@@ -247,6 +250,9 @@ class TodayDeliveryDialog(QDialog):
         self.open_folder_button = button('打开归档目录')
         self.void_button = button('撤销误记')
         self.restore_button = button('恢复记录')
+        self.expand_details_button = button('放大明细')
+        self.expand_details_button.setCheckable(True)
+        self.expand_details_button.setToolTip('让交付明细使用整个列表区域，再次点击恢复上下分栏')
         self.close_button = button('返回项目' if embedded else '关闭')
         self.compact_actions_button = button('项目操作')
         self.compact_actions_button.setAccessibleName('所选交付记录操作')
@@ -257,13 +263,14 @@ class TodayDeliveryDialog(QDialog):
         actions.addWidget(self.compact_actions_button)
         for widget in (self.open_folder_button,self.void_button,self.restore_button):
             actions.addWidget(widget)
+        actions.addWidget(self.expand_details_button)
         actions.addStretch()
         actions.addWidget(self.close_button)
         layout.addLayout(actions)
         self.status_note = label('','subtle',True)
         self.status_note.hide()
         layout.addWidget(self.status_note)
-        for widget in (self.today_button,self.refresh_button,self.open_folder_button,self.void_button,self.restore_button,self.close_button,self.exclude_count_button,self.include_count_button,self.change_type_button):
+        for widget in (self.today_button,self.refresh_button,self.open_folder_button,self.void_button,self.restore_button,self.close_button,self.exclude_count_button,self.include_count_button,self.change_type_button,self.expand_details_button):
             widget.setAutoDefault(False)
         self.timer = QTimer(self)
         self.timer.setInterval(2000)
@@ -283,6 +290,7 @@ class TodayDeliveryDialog(QDialog):
         self.include_count_button.clicked.connect(lambda:self.manage_workload(True))
         self.change_type_button.clicked.connect(self.manage_project_types)
         self.close_button.clicked.connect(self.return_requested.emit if embedded else self.close)
+        self.expand_details_button.toggled.connect(self._sync_detail_focus)
         self.refresh()
 
     @staticmethod
@@ -376,8 +384,8 @@ class TodayDeliveryDialog(QDialog):
         limit = 32 if self.embedded or self.height() < 580 else 64
         height = min(limit, max(28, ceil(self.type_counts.document().size().height())
                                 + 2 * self.type_counts.frameWidth()))
-        if self.type_counts.height() != height or self.type_counts.maximumHeight() != height:
-            self.type_counts.setFixedHeight(height)
+        if self.type_counts.maximumHeight() != height:
+            self.type_counts.setMaximumHeight(height)
 
     def _remember_panel_sizes(self, *_):
         if not self._compact_embedded:
@@ -387,8 +395,18 @@ class TodayDeliveryDialog(QDialog):
                 self._panel_sizes_dirty = True
 
     def _restore_panel_sizes(self):
-        if not self._compact_embedded:
+        if not self._compact_embedded and not self.expand_details_button.isChecked():
             self.record_splitter.setSizes(self._panel_sizes)
+
+    def _sync_detail_focus(self, *_):
+        expanded = self.expand_details_button.isChecked()
+        self.expand_details_button.setText('恢复分栏' if expanded else '放大明细')
+        if self.embedded:
+            self._sync_embedded_layout()
+        else:
+            self.project_panel.setVisible(not expanded)
+        if not expanded:
+            self._panel_layout_timer.start(0)
 
     def _save_panel_sizes(self):
         if not self._panel_sizes_dirty:
@@ -767,6 +785,9 @@ class TodayDeliveryDialog(QDialog):
         host = self.window()
         compact = host.height()<620 or host.width()<820
         if compact != self._compact_embedded or not self._embedded_layout_initialized:
+            if compact and self.expand_details_button.isChecked():
+                with QSignalBlocker(self.compact_tabs):
+                    self.compact_tabs.setCurrentIndex(1)
             self._compact_embedded = compact
             self._embedded_layout_initialized = True
             for control in (self.date_edit,self.search,self.refresh_button):
@@ -783,6 +804,12 @@ class TodayDeliveryDialog(QDialog):
             if not compact:
                 self._panel_layout_timer.start(0)
         details = self.compact_tabs.currentIndex()==1
+        if compact and not details and self.expand_details_button.isChecked():
+            with QSignalBlocker(self.expand_details_button):
+                self.expand_details_button.setChecked(False)
+        expanded = self.expand_details_button.isChecked()
+        self.expand_details_button.setText('恢复分栏' if expanded else '放大明细')
+        self.expand_details_button.setVisible(not compact)
         for control in (self.today_button,self.all_dates,self.show_voided,self.refresh_button,
                         self.scope_note,self.summary,self.type_summary_card,self.project_selection_note,
                         self.change_type_button,self.exclude_count_button,self.include_count_button,
@@ -794,9 +821,9 @@ class TodayDeliveryDialog(QDialog):
         self.compact_actions_button.setText('记录操作' if details else '项目操作')
         self.table.setVisible(not compact or not details)
         self.details.setVisible(not compact or details)
-        self.project_panel.setVisible(not compact or not details)
+        self.project_panel.setVisible((not compact and not expanded) or (compact and not details))
         self.detail_panel.setVisible(not compact or details)
-        self.table.setMinimumHeight(92 if compact else 128)
+        self.table.setMinimumHeight(92)
         self.details.setMinimumHeight(92)
         self.scope_note.hide()
         self.compact_filter_button.setToolTip(self.scope_note.text())
