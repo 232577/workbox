@@ -75,6 +75,7 @@ class UpdateDialog(QDialog):
         self.install_button.setEnabled(idle and self.installer is not None and supported)
         self.install_button.setToolTip('源码运行只检查和下载，不会替换开发目录。' if not supported else '保存恢复点并安全退出后打开安装向导。')
         self.close_button.setText('取消' if self.worker is not None else '关闭')
+        self.close_button.setAccessibleName(self.close_button.text())
         self.mode_note.setVisible(not supported)
         self.download_button.setVisible(self.release is not None and self.installer is None)
         self.install_button.setVisible(self.installer is not None)

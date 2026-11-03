@@ -53,6 +53,16 @@ def test_status_banner_has_explicit_text_tone_and_no_rich_text(qapp):
     finally:w.deleteLater()
 
 
+def test_shared_button_accessible_name_tracks_dynamic_caption(qapp):
+    from PySide6.QtGui import QAccessible
+    from ui_components import button
+    b=button('检查更新')
+    try:
+        b.setText('正在检查')
+        assert QAccessible.queryAccessibleInterface(b).text(QAccessible.Name)=='正在检查'
+    finally:b.deleteLater()
+
+
 def test_contextual_material_button_is_visible_and_safe(qapp,service,monkeypatch):
     from compact_ui import CompactPanel
     p=CompactPanel(service)

@@ -213,6 +213,7 @@ class MaterialCheckDialog(QDialog):
         for widget in (self.rule_table,self.preset,self.preset_button,self.add_button,self.remove_button,self.save_button,self.check_button):
             widget.setEnabled(idle)
         self.close_button.setText('取消并关闭' if self.worker is not None else '关闭')
+        self.close_button.setAccessibleName(self.close_button.text())
         self.copy_summary_button.setEnabled(idle and self.report is not None)
         self.missing_only.setEnabled(idle and self.report is not None)
         self.progress.setVisible(self.worker is not None)

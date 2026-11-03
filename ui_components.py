@@ -280,7 +280,8 @@ def button(text: str, primary: bool | str = False):
             'nav': NavigationButton, 'nav-menu': NavigationMenuButton}.get(role, PushButton)
     widget = kind(text)
     widget.setCursor(Qt.PointingHandCursor)
-    widget.setAccessibleName(text)
+    # Keep Qt's text-derived accessible name live when captions change.
+    # Callers may still supply an explicit, stable descriptive name.
     if role:
         widget.setObjectName('nav' if role == 'nav-menu' else role)
     def native_menu_arrow(theme):
