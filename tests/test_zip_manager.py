@@ -93,6 +93,13 @@ def test_name_and_recognized_delivery_suffixes_match(filename):
     assert [p["id"] for p in manager().match_projects(filename, projects)] == [1]
 
 
+def test_named_edition_zip_prefers_existing_full_project_then_existing_base_project():
+    projects = [{"id": 1, "name": "甲系统", "batch_name": "本批"},
+                {"id": 2, "name": "甲系统_企业版", "batch_name": "本批"}]
+    assert [p['id'] for p in manager().match_projects('甲系统_企业版.zip', projects)] == [2]
+    assert [p['id'] for p in manager().match_projects('甲系统_测试版.zip', projects)] == [1]
+
+
 def test_same_name_in_different_batches_is_ambiguous():
     projects = [{"id": 1, "name": "同名项目", "batch_name": "第一批"}, {"id": 2, "name": "同名项目", "batch_name": "第二批"}]
     assert {p["id"] for p in manager().match_projects("同名项目.zip", projects)} == {1, 2}

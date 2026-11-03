@@ -63,7 +63,8 @@ def test_same_name_requires_confirmation_and_merges_pending_progress_with_preser
     initial = rows(service,'projects')
     plan = service.preview_project_rename(source_id,'正确项目')
     assert plan['kind']=='merge' and plan['target']['id']==target and plan['result_status']=='待交付'
-    assert rows(service,'projects')==initial and not Path(plan['copy_path']).exists()
+    assert rows(service,'projects')==initial
+    assert not (Path(plan['folder_to'])/source.name).exists()
     with pytest.raises(ValueError,match='合并|确认'):
         service.rename_project(source_id,'正确项目')
     assert rows(service,'projects')==initial
@@ -79,6 +80,131 @@ def test_same_name_requires_confirmation_and_merges_pending_progress_with_preser
     assert service.db.counts()['projects']==1
     with pytest.raises(ValueError,match='合并'):
         service.workspaces.import_file(source,source_id)
+
+
+def test_merge_places_files_in_target_root_and_numbers_different_name_collisions(service,tmp_path):
+    target = service.receive_text('1. 保留项目')['project_ids'][0]
+    source_id = service.receive_text('1. 误建项目')['project_ids'][0]
+    target_root = Path(service.workspaces.get_workspace(target)['path'])
+    source_root = Path(service.workspaces.get_workspace(source_id)['path'])
+    first = tmp_path/'第一份'
+    second = tmp_path/'第二份'
+    first.mkdir(); second.mkdir()
+    (first/'共有.txt').write_text('目标原件',encoding='utf-8')
+    (second/'共有.txt').write_text('来源原件',encoding='utf-8')
+    service.workspaces.import_file(first/'共有.txt',target)
+    service.workspaces.import_file(second/'共有.txt',source_id)
+    plan,result = apply(service,source_id,'保留项目')
+    assert result['project_id'] == target
+    assert (target_root/'共有.txt').read_text(encoding='utf-8') == '目标原件'
+    assert (target_root/'共有 (2).txt').read_text(encoding='utf-8') == '来源原件'
+    assert (source_root/'共有.txt').read_text(encoding='utf-8') == '来源原件'
+    assert not (target_root/'合并资料').exists()
+    assert {Path(row['path']).name for row in rows(service,'work_files')} == {'共有.txt','共有 (2).txt'}
+
+
+def test_existing_project_edition_file_does_not_create_duplicate_project(service,tmp_path):
+    project_id = service.receive_text('1. 甲系统')['project_ids'][0]
+    edition = tmp_path/'甲系统_测试版.docx'
+    edition.write_bytes(b'edition')
+    received = service.receive_path(edition)
+    assert received['file']['project_id'] == project_id
+    assert [row['id'] for row in service.list_projects()] == [project_id]
+
+
+@pytest.mark.parametrize('kind', ['ordinary', 'zip'])
+def test_merge_preserves_identical_file_registrations_without_colliding_paths(service,tmp_path,kind):
+    target = service.receive_text('1. 保留项目')['project_ids'][0]
+    source_id = service.receive_text('1. 误建项目')['project_ids'][0]
+    target_root = Path(service.workspaces.get_workspace(target)['path'])
+    source_root = Path(service.workspaces.get_workspace(source_id)['path'])
+    name = '共有.zip' if kind == 'zip' else '共有.txt'
+    if kind == 'zip':
+        with ZipFile(target_root/name, 'w') as archive:
+            archive.writestr('材料.txt', b'payload')
+        (source_root/name).write_bytes((target_root/name).read_bytes())
+        service.snapshots.watch_zip(target_root/name, target)
+        service.snapshots.watch_zip(source_root/name, source_id)
+    else:
+        (target_root/name).write_bytes(b'payload')
+        (source_root/name).write_bytes(b'payload')
+        service.workspaces.import_file(target_root/name, target)
+        service.workspaces.import_file(source_root/name, source_id)
+    plan,result = apply(service, source_id, '保留项目')
+    numbered = target_root / ('共有 (2)' + Path(name).suffix)
+    assert numbered.read_bytes() == (target_root/name).read_bytes()
+    assert [row['id'] for row in service.list_projects()] == [target]
+    table = 'zip_sources' if kind == 'zip' else 'work_files'
+    field = 'source_path' if kind == 'zip' else 'path'
+    assert {Path(row[field]) for row in rows(service, table)} == {target_root/name, numbered}
+    assert {row['project_id'] for row in rows(service, table)} == {target}
+
+
+def test_existing_project_edition_zip_does_not_create_duplicate_project(service,tmp_path):
+    project_id = service.receive_text('1. 甲系统')['project_ids'][0]
+    edition = tmp_path/'甲系统_测试版.zip'
+    with ZipFile(edition,'w') as archive:
+        archive.writestr('材料.txt','edition')
+    received = service.receive_path(edition)
+    assert received.get('created_project_ids', []) == []
+    assert [row['id'] for row in service.list_projects()] == [project_id]
+    assert service.snapshots.list_sources()[0]['project_id'] == project_id
+
+
+def test_merge_numbered_zip_copies_do_not_create_new_delivery_events(service,tmp_path):
+    target = service.receive_text('1. 保留项目')['project_ids'][0]
+    source_id = service.receive_text('1. 误建项目')['project_ids'][0]
+    for pid in (target, source_id):
+        root = Path(service.workspaces.get_workspace(pid)['path'])
+        with ZipFile(root/'共有.zip','w') as archive:
+            for index in range(4):
+                archive.writestr(str(index)+'.txt',str(pid))
+        service.snapshots.watch_zip(root/'共有.zip',pid)
+    service.scan_archives(now=0);service.scan_archives(now=20)
+    events, versions = rows(service,'delivery_events'), rows(service,'zips')
+    assert len(events) == 2
+    apply(service,source_id,'保留项目')
+    service.scan_archives(now=40);service.scan_archives(now=60)
+    assert rows(service,'delivery_events') == events
+    assert len(rows(service,'zips')) == len(versions)
+
+
+def test_merge_keeps_unprocessed_zip_edit_pending(service,tmp_path):
+    target = service.receive_text('1. 保留项目')['project_ids'][0]
+    source_id = service.receive_text('1. 误建项目')['project_ids'][0]
+    root = Path(service.workspaces.get_workspace(source_id)['path'])
+    package = root/'材料.zip'
+    def write(content):
+        with ZipFile(package,'w') as archive:
+            for index in range(4):
+                archive.writestr(str(index)+'.txt',content)
+    write('original')
+    service.snapshots.watch_zip(package,source_id)
+    service.scan_archives(now=0);service.scan_archives(now=20)
+    versions = len(rows(service,'zips'))
+    write('edited content before merge')
+    apply(service,source_id,'保留项目')
+    service.scan_archives(now=40);service.scan_archives(now=60)
+    assert len(rows(service,'zips')) == versions + 1
+    assert service.get_project(target)['status'] == '已交付'
+
+
+def test_committed_merge_reports_backup_cleanup_failure_and_retries_on_recovery(service,tmp_path,monkeypatch):
+    target = service.receive_text('1. 保留项目')['project_ids'][0]
+    source_id, source, _ = receive(service,tmp_path,'误建项目')
+    target_root = Path(service.workspaces.get_workspace(target)['path'])
+    plan = service.preview_project_rename(source_id,'保留项目')
+    original = service.directory_changes._discard_backup
+    monkeypatch.setattr(service.directory_changes,'_discard_backup',lambda *_: (_ for _ in ()).throw(PermissionError('暂时占用')))
+    result = service.rename_project(source_id,'保留项目',expected_token=plan['token'],
+                                    merge_target_id=target,confirmed_merge=True)
+    assert '清理未完成' in result['message']
+    assert (target_root/source.name).exists()
+    assert service.get_project(source_id)['merged_into_id'] == target
+    assert list(target_root.parent.glob('.workbox-merge-backup-*'))
+    monkeypatch.setattr(service.directory_changes,'_discard_backup',original)
+    assert service.recover_project_changes() == []
+    assert not list(target_root.parent.glob('.workbox-merge-backup-*'))
 
 
 def test_existing_same_name_rows_can_merge_without_changing_display_name(service,tmp_path):
@@ -246,7 +372,8 @@ def test_stale_confirmation_never_changes_name_or_folder(service,tmp_path,change
     with pytest.raises(ValueError,match='变化|重新'):
         service.rename_project(pid,'正确项目',expected_token=plan['token'],merge_target_id=target,confirmed_merge=True)
     assert service.get_project(pid)['name']=='误建项目' and old.exists()
-    assert not rows(service,'project_merges') and not Path(plan['copy_path']).exists()
+    assert not rows(service,'project_merges')
+    assert not (Path(plan['folder_to'])/'误建项目_操作手册.txt').exists()
 
 
 @pytest.mark.parametrize('boundary',['archived','deleted'])
@@ -288,7 +415,7 @@ def test_new_file_before_sql_commit_rolls_back_merge_without_hiding_latest_mater
     assert service.get_project(source_id)['merged_into_id'] is None
     assert not rows(service,'project_merges') and not rows(service,'project_change_commits')
     assert (old/'刚保存的材料.txt').read_text(encoding='utf-8')=='应留在未合并的来源项目'
-    assert (old/source.name).exists() and not Path(plan['copy_path']).exists()
+    assert (old/source.name).exists() and not (Path(plan['folder_to'])/source.name).exists()
 
 
 def test_merge_keeps_delivery_facts_and_uses_first_valid_count(service,tmp_path):

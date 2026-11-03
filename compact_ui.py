@@ -1827,7 +1827,7 @@ class DirectorySettingsDialog(QDialog):
         self.reset_rules_button.clicked.connect(self.reset_rules)
         actions.addWidget(self.reset_rules_button)
         self.pending_label = label('设置已同步', 'pendingSettings')
-        self.pending_label.setAccessibleName('工作设置保存状态')
+        self.pending_label.setAccessibleDescription('工作设置保存状态')
         actions.addWidget(self.pending_label)
         actions.addStretch()
         cancel = self.cancel_button = button('取消')

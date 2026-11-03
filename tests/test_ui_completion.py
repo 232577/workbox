@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QAccessible
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QFrame
 
@@ -71,6 +72,42 @@ def test_inline_error_is_plain_visible_only_when_present(qapp):
         error.clear()
         assert error.isHidden() and error.text() == ''
     finally: error.deleteLater()
+
+
+def test_inline_error_accessibility_exposes_current_message_and_clears_it(qapp):
+    from dialog_chrome import InlineError
+    error = InlineError('设置未保存：匿名目录不合法')
+    try:
+        error.show(); qapp.processEvents()
+        accessible = QAccessible.queryAccessibleInterface(error)
+        assert accessible.text(QAccessible.Name) == '设置未保存：匿名目录不合法'
+        error.setText('项目类型未保存：<匿名类型>已存在')
+        qapp.processEvents()
+        assert accessible.text(QAccessible.Name) == '项目类型未保存：<匿名类型>已存在'
+        error.clear()
+        qapp.processEvents()
+        assert error.isHidden()
+        assert accessible.text(QAccessible.Name) == ''
+    finally: error.close(); error.deleteLater(); qapp.processEvents()
+
+
+def test_settings_accessibility_exposes_current_save_state(qapp, service):
+    from compact_ui import DirectorySettingsDialog
+    before = service.workspaces.settings()
+    d = DirectorySettingsDialog(service)
+    try:
+        d.show(); qapp.processEvents()
+        accessible = QAccessible.queryAccessibleInterface(d.pending_label)
+        assert accessible.text(QAccessible.Name) == '设置已同步'
+        original = d.stable_seconds.value()
+        d.stable_seconds.setValue(original + 1)
+        qapp.processEvents()
+        assert accessible.text(QAccessible.Name) == '有未保存的修改'
+        d.stable_seconds.setValue(original)
+        qapp.processEvents()
+        assert accessible.text(QAccessible.Name) == '设置已同步'
+        assert service.workspaces.settings() == before
+    finally: d.reject(); d.deleteLater(); qapp.processEvents()
 
 
 def test_shared_text_inputs_keep_readable_height_through_theme_and_disabled_states(qapp):

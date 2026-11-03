@@ -25,6 +25,7 @@ _RELEASE_SUFFIX = re.compile(
     r'交付包|交付|成品|完成版|正式版|最终版)$',
     re.IGNORECASE,
 )
+_EDITION_SUFFIX = re.compile(r'(?P<name>.+?)[ _.-]+[^ _./\\-]{1,20}版$')
 
 
 def _normalized(value: str) -> str:
@@ -71,6 +72,7 @@ def match_work_file_projects(filename: str, projects: list[dict]) -> dict:
             (_DOCUMENT_SUFFIX, '材料文件后缀'),
             (_DOWNLOAD_COPY, '下载副本'),
             (_RELEASE_SUFFIX, '版本或交付后缀'),
+            (_EDITION_SUFFIX, '版本名称后缀'),
         ):
             match = rule.fullmatch(stem)
             if match:
