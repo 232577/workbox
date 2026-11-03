@@ -114,6 +114,10 @@ QStatusBar::item { border: none; }
 QFrame#sidebar { background: %(raised)s; border: none; border-right: 1px solid %(border)s; }
 QTabWidget#workbenchPages::pane { background: transparent; border: none; }
 QLabel, QCheckBox, QRadioButton { background: transparent; }
+QFrame#dialogActions { background: transparent; border: none; border-top: 1px solid %(border)s; }
+QFrame#dialogSection { background: %(surface)s; border: 1px solid %(border)s; border-radius: 10px; }
+QLabel#pendingSettings { color: %(muted)s; font-size: 12px; }
+QLabel#settingsNoResults { color: %(muted)s; background: %(subtle_surface)s; border-radius: 8px; padding: 18px; }
 QLabel#heading, QLabel#pageTitle { font-size: 20px; font-weight: 700; }
 QLabel#title, QLabel#sectionTitle { font-size: 15px; font-weight: 600; }
 QLabel#subtle, QLabel#muted { font-size: 12px; color: %(muted)s; }

@@ -146,6 +146,12 @@ class LineEdit(_FluentLineEdit):
 
         self.setMinimumHeight(32)
 
+        # A widget-local Fluent sheet wins over the application padding during
+        # Qt polish and otherwise reduces this to 22px despite minimumHeight.
+        rule = ('LineEdit, LineEdit:focus, LineEdit:disabled '
+                '{ min-height: 30px; max-height: 40px; padding: 0px 10px; }')
+        setCustomStyleSheet(self, rule, rule)
+
     def contextMenuEvent(self, event):
         _exec_native_edit_menu(self, event.globalPos())
         event.accept()
