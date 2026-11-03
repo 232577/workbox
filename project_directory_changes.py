@@ -88,6 +88,13 @@ class _DirectoryLease:
             raise ctypes.WinError(ctypes.get_last_error())
         self.path = target
 
+    def remove_empty(self):
+        if not self.movable:
+            raise ValueError('只读目录保护句柄不能删除目录。')
+        disposition = ctypes.c_ubyte(1)
+        if not self.api.SetFileInformationByHandle(self.handle, 4, ctypes.byref(disposition), 1):
+            raise ctypes.WinError(ctypes.get_last_error())
+
 
 @contextmanager
 def _parents_locked(paths, *, movable_paths=()):
@@ -185,6 +192,58 @@ class ProjectDirectoryChanges:
                 raise RuntimeError('合并副本内容核对不一致，合并未提交。')
 
     @staticmethod
+    def _merge_layout(source, target, source_inventory, target_inventory):
+        """沿用目标目录的大小写拼写；同名的并入文件编号保留。"""
+        occupied = {item['path'].casefold(): item for item in target_inventory}
+        assigned = {}
+        mapping = {}
+        for item in source_inventory:
+            relative = item['path']
+            key = relative.casefold()
+            current = occupied.get(key)
+            parent = occupied.get(Path(relative).parent.as_posix().casefold())
+            destination = Path(parent['path'] if parent else '.') / Path(relative).name
+            if item['kind'] == 'directory':
+                if current is not None and current['kind'] != 'directory':
+                    raise ValueError('合并目录与目标文件同名，请先整理目录。')
+                occupied.setdefault(key, dict(item, path=destination.as_posix()))
+                continue
+            if current is not None and current['kind'] == 'directory':
+                raise ValueError('合并文件与目标目录同名，请先整理目录。')
+            if current is not None:
+                index = 2
+                while True:
+                    candidate = destination.with_name(f'{destination.stem} ({index}){destination.suffix}').as_posix()
+                    if candidate.casefold() not in occupied:
+                        destination = Path(candidate)
+                        break
+                    index += 1
+            final = destination.as_posix()
+            occupied[final.casefold()] = dict(item, path=final)
+            assigned[relative] = final
+            if final != relative:
+                mapping[str(source / Path(relative))] = str(target / destination)
+        mapping[str(source)] = str(target)
+        expected = sorted(({key: value for key, value in item.items() if key != 'identity'}
+                           for item in occupied.values()), key=lambda item: (item['path'].casefold(), item['path']))
+        return assigned, mapping, expected
+
+    def _copy_merge_stage(self, source, target, stage, plan, *, cancel_event=None, progress=None):
+        self._copy_tree(target, stage, plan['target_inventory'], cancel_event=cancel_event, progress=progress)
+        for item in plan['inventory']:
+            cancelled(cancel_event)
+            relative = Path(item['path'])
+            if item['kind'] == 'directory':
+                (stage / relative).mkdir(exist_ok=True)
+                continue
+            destination = stage / Path(plan['merge_files'][item['path']])
+            metadata = copy_verified(source / relative, destination, cancel_event=cancel_event, progress=progress)
+            if (metadata['size'], metadata['sha256']) != (item['size'], item['sha256']):
+                raise RuntimeError('并入材料在复制期间变化，合并未提交。')
+        if self._content(self._inventory(stage, cancel_event=cancel_event)) != plan['merge_inventory']:
+            raise RuntimeError('合并副本材料清单核对不一致，合并未提交。')
+
+    @staticmethod
     def _stage_path(plan, operation_id):
         target = next((row for row in plan['workspaces'] if row['project_id'] == plan['target_id']), None)
         if target is None:
@@ -220,20 +279,31 @@ class ProjectDirectoryChanges:
             record['stage_identity'] = _directory_identity(stage)
             record['state'] = 'copying'
             self._write(record)
-            self._copy_tree(old, stage, current['inventory'], cancel_event=cancel_event, progress=progress)
-            new.parent.mkdir(exist_ok=True)
-            plain_path(new.parent)
-            with _DirectoryLease(stage) as stage_lease:
-                if stage_lease.identity != record['stage_identity']:
-                    raise RuntimeError('暂存目录已被替换，未发布合并副本。')
-                with _DirectoryLease(new.parent, movable=False):
-                    cancelled(cancel_event)
-                    stage_lease.rename(new)
-            self._hold_tree(new, current['inventory'], leases, include_root=True)
+            self._copy_merge_stage(old, new, stage, current, cancel_event=cancel_event, progress=progress)
+            if self._inventory(new, cancel_event=cancel_event) != current['target_inventory']:
+                raise RuntimeError('目标材料在复制期间变化，合并未提交。')
+            if self._inventory(old, cancel_event=cancel_event) != current['inventory']:
+                raise RuntimeError('来源材料在复制期间变化，合并未提交。')
+            backup = plain_path(new.parent / ('.workbox-merge-backup-' + record['operation_id']))
+            if backup.exists():
+                raise FileExistsError('合并恢复目录已存在，未覆盖。')
+            record['backup_path'] = str(backup)
+            record['backup_identity'] = current['target_identity']
+            self._write(record)
+            with _DirectoryLease(new) as target_lease, _DirectoryLease(stage) as stage_lease:
+                if target_lease.identity != current['target_identity'] or stage_lease.identity != record['stage_identity']:
+                    raise RuntimeError('目标或暂存目录已被替换，未发布合并副本。')
+                cancelled(cancel_event)
+                target_lease.rename(backup)
+                stage_lease.rename(new)
+            self._hold_tree(backup, current['target_inventory'], leases, include_root=True)
+            self._hold_tree(new, self._inventory(new, cancel_event=cancel_event), leases, include_root=True)
+            if self._inventory(backup, cancel_event=cancel_event) != current['target_inventory']:
+                raise RuntimeError('原目标材料在发布期间变化，合并未提交。')
             if _directory_identity(new) != record['stage_identity']:
                 raise RuntimeError('已发布副本目录被替换，合并未提交。')
             result['published_identity'] = list(record['stage_identity'])
-            if self._content(self._inventory(new, cancel_event=cancel_event)) != self._content(current['inventory']):
+            if self._content(self._inventory(new, cancel_event=cancel_event)) != current['merge_inventory']:
                 raise RuntimeError('已发布合并副本内容核对不一致，合并未提交。')
             if self._inventory(old, cancel_event=cancel_event) != current['inventory']:
                 raise RuntimeError('来源材料在发布期间变化，合并未提交。')
@@ -258,8 +328,12 @@ class ProjectDirectoryChanges:
             raise RuntimeError('已发布副本目录在提交前被替换，合并未提交。')
         if self._inventory(source, cancel_event=cancel_event) != fs_plan['inventory']:
             raise RuntimeError('来源材料清单在提交前变化，合并未提交；新增材料保留在来源目录。')
-        if self._content(self._inventory(published, cancel_event=cancel_event)) != self._content(fs_plan['inventory']):
+        if self._content(self._inventory(published, cancel_event=cancel_event)) != fs_plan['merge_inventory']:
             raise RuntimeError('已发布副本清单或内容在提交前变化，合并未提交。')
+        backup = Path(published.parent / ('.workbox-merge-backup-' + fs_result['operation_id']))
+        if (_directory_identity(backup) != fs_plan['target_identity'] or
+                self._inventory(backup, cancel_event=cancel_event) != fs_plan['target_inventory']):
+            raise RuntimeError('原目标材料在提交前变化，合并未提交。')
         cancelled(cancel_event)
 
     def _protected(self, connection):
@@ -301,6 +375,7 @@ class ProjectDirectoryChanges:
             plan = dict(version=1, kind='merge' if target else 'rename', source_id=source_id,
                         target_id=target_id, new_name=new_name.strip(), source_path='', target_path='',
                         source_group_path='', target_group_path='', path_mapping={}, inventory=[],
+                        target_inventory=[], merge_inventory=[], merge_files={},
                         source_identity=None, parent_identity=None, target_identity=None,
                         source_project=source, target_project=target,
                         workspaces=all_workspaces, protected_paths=[str(path) for path in protected])
@@ -313,16 +388,18 @@ class ProjectDirectoryChanges:
                     _directory_identity(other)
                     if _overlap(old, other):
                         raise ValueError('合并项目目录不能相同或互相包含。')
-                    base = other / '合并资料' / old.name
-                    destination, index = base, 1
-                    while destination.exists():
-                        cancelled(cancel_event)
-                        index += 1
-                        destination = base.with_name(base.name + f' ({index})')
+                    destination = other
+                    source_inventory = self._inventory(old, cancel_event=cancel_event)
+                    target_inventory = self._inventory(other, cancel_event=cancel_event)
+                    merge_files, path_mapping, merge_inventory = self._merge_layout(
+                        old, other, source_inventory, target_inventory)
                 else:
                     destination = old.parent / _folder_name(new_name.strip())
                     if destination.exists() and destination != old:
                         raise FileExistsError('同名工作目录已存在，请先核对项目和合并方式。')
+                    source_inventory = self._inventory(old, cancel_event=cancel_event)
+                    target_inventory, merge_files, merge_inventory = [], {}, []
+                    path_mapping = {} if str(old) == str(destination) else {str(old): str(destination)}
                 plain_path(destination)
                 for row in all_workspaces:
                     cancelled(cancel_event)
@@ -341,10 +418,11 @@ class ProjectDirectoryChanges:
                     source_group_path=source_workspace['group_path'],
                     target_group_path=target_workspace['group_path'] if target_workspace else
                         (str(destination) if Path(source_workspace['group_path']) == old else source_workspace['group_path']),
-                    path_mapping={} if str(old) == str(destination) else {str(old): str(destination)},
+                    path_mapping=path_mapping,
                     source_identity=_directory_identity(old), parent_identity=dict(path=str(parent), identity=_directory_identity(parent)),
                     target_identity=None if other is None else _directory_identity(other),
-                    inventory=self._inventory(old, cancel_event=cancel_event))
+                    inventory=source_inventory, target_inventory=target_inventory,
+                    merge_files=merge_files, merge_inventory=merge_inventory)
             cancelled(cancel_event)
             plan['fingerprint'] = hashlib.sha256(_json(plan).encode('utf-8')).hexdigest()
             return plan
@@ -369,6 +447,10 @@ class ProjectDirectoryChanges:
             expected = ProjectDirectoryChanges._stage_path(plan, operation_id)
             if plan['kind'] != 'merge' or Path(record['stage_path']) != expected:
                 raise ValueError('目录变更暂存路径与计划不一致。')
+        if record.get('backup_path'):
+            expected = Path(plan['target_path']).parent / ('.workbox-merge-backup-' + operation_id)
+            if plan['kind'] != 'merge' or Path(record['backup_path']) != expected:
+                raise ValueError('目录变更备份路径与计划不一致。')
 
     def _write(self, record):
         root = plain_path(self.journal_root)
@@ -406,6 +488,54 @@ class ProjectDirectoryChanges:
         if not expected or not self._same(Path(plan['target_path']), expected):
             raise RuntimeError('已提交项目的目标目录缺失或被替换，已保护项目且不回滚已提交变更。')
 
+    def _discard_backup(self, record):
+        if record['plan']['kind'] != 'merge' or not record.get('backup_path'):
+            return
+        backup = Path(record['backup_path'])
+        if not backup.exists():
+            return
+        plan = record['plan']
+        published = Path(plan['target_path'])
+        with _parents_locked([str(backup.parent), str(published.parent)]), ExitStack() as leases:
+            root_lease = leases.enter_context(_DirectoryLease(backup))
+            if root_lease.identity != plan['target_identity']:
+                raise RuntimeError('合并原目标备份目录已变化，未清理。')
+            expected = {item['path']: item for item in plan['target_inventory']}
+            inventory = self._inventory(backup)
+            if any(item != expected.get(item['path']) for item in inventory):
+                raise RuntimeError('合并原目标备份内容已变化，未清理。')
+            directories = []
+            for item in inventory:
+                if item['kind'] == 'directory':
+                    lease = leases.enter_context(_DirectoryLease(backup / item['path']))
+                    if lease.identity != item['identity']:
+                        raise RuntimeError('合并原目标备份子目录已变化，未清理。')
+                    directories.append(lease)
+            self._hold_tree(published, self._inventory(published), leases, include_root=True)
+            if self._content(self._inventory(published)) != plan['merge_inventory']:
+                raise RuntimeError('合并目标内容已变化，未清理备份。')
+            with ExitStack() as file_handles:
+                files = []
+                for item in inventory:
+                    if item['kind'] != 'file':
+                        continue
+                    lease = file_handles.enter_context(ZipLease(backup / item['path']))
+                    info = os.fstat(lease.stream.fileno())
+                    digest, size = _hash_stream(lease.stream)
+                    zone = lease.zone_metadata()
+                    if ([info.st_dev, info.st_ino, info.st_mtime_ns] != item['identity'] or
+                            size != item['size'] or digest != item['sha256'] or
+                            (None if zone is None else hashlib.sha256(zone).hexdigest()) != item['zone_sha256']):
+                        raise RuntimeError('合并原目标备份文件已变化，未清理。')
+                    files.append(lease)
+                # 只删除已核对并持有同一身份句柄的文件；新增内容不在删除清单内。
+                for lease in files:
+                    lease.remove_after_verified_commit()
+            for lease in sorted(directories, key=lambda entry: len(entry.path.parts), reverse=True):
+                lease.remove_empty()
+                lease.__exit__()
+            root_lease.remove_empty()
+
     @staticmethod
     def _content(inventory):
         return [{key: value for key, value in item.items() if key != 'identity'} for item in inventory]
@@ -439,16 +569,36 @@ class ProjectDirectoryChanges:
                 if not self._same(old, plan['source_identity']):
                     raise RuntimeError('合并来源目录标识变化，已保留现场。')
                 expected = record.get('stage_identity')
-                if new.exists():
-                    if not expected or not self._same(new, expected) or stage is None or stage.exists():
+                if 'backup_path' not in record:
+                    # 升级前的日志发布在“合并资料/原项目名”，仍按旧布局恢复。
+                    if new.exists():
+                        if not expected or not self._same(new, expected) or stage is None or stage.exists():
+                            raise RuntimeError('合并副本目录标识变化，已保留现场。')
+                        with _DirectoryLease(new) as lease:
+                            lease.rename(stage)
+                    elif stage is not None and stage.exists():
+                        if not expected or not self._same(stage, expected):
+                            raise RuntimeError('暂存副本目录标识变化，已保留现场。')
+                    elif expected:
+                        raise RuntimeError('已登记的暂存副本缺失，已保留现场。')
+                    return
+                backup = Path(record['backup_path']) if record.get('backup_path') else None
+                if new.exists() and expected and self._same(new, expected):
+                    if stage is None or stage.exists():
                         raise RuntimeError('合并副本目录标识变化，已保留现场。')
                     with _DirectoryLease(new) as lease:
                         lease.rename(stage)
-                elif stage is not None and stage.exists():
-                    if not expected or not self._same(stage, expected):
-                        raise RuntimeError('暂存副本目录标识变化，已保留现场。')
-                elif expected:
-                    raise RuntimeError('已登记的暂存副本缺失，已保留现场。')
+                elif new.exists() and not self._same(new, plan['target_identity']):
+                    raise RuntimeError('合并目标目录标识变化，已保留现场。')
+                if backup is not None and backup.exists():
+                    if not self._same(backup, plan['target_identity']) or new.exists():
+                        raise RuntimeError('原目标目录标识变化，已保留现场。')
+                    with _DirectoryLease(backup) as lease:
+                        lease.rename(new)
+                elif not self._same(new, plan['target_identity']):
+                    raise RuntimeError('原目标目录缺失，已保留现场。')
+                if stage is not None and stage.exists() and not self._same(stage, expected):
+                    raise RuntimeError('暂存副本目录标识变化，已保留现场。')
 
     def recover(self):
         errors = []
@@ -461,15 +611,31 @@ class ProjectDirectoryChanges:
                 try:
                     record = self._read(path)
                     self._validate_record(record)
-                    if record.get('state') in ('complete', 'rolled_back'):
+                    if record.get('state') == 'complete':
+                        if record.get('error') and record.get('backup_path'):
+                            try:
+                                self._verify_committed(record)
+                                self._discard_backup(record)
+                                record['error'] = ''
+                                self._write(record)
+                            except (OSError, RuntimeError, ValueError):
+                                pass
+                        continue
+                    if record.get('state') == 'rolled_back':
                         continue
                     if self._committed(record['operation_id']):
                         self._verify_committed(record)
+                        try:
+                            self._discard_backup(record)
+                        except (OSError, RuntimeError, ValueError) as cleanup_error:
+                            record['error'] = '合并已完成，旧目标备份清理失败：' + str(cleanup_error)
+                        else:
+                            record['error'] = ''
                         record['state'] = 'complete'
                     else:
                         self._rollback(record)
                         record['state'] = 'rolled_back'
-                    record['error'] = ''
+                        record['error'] = ''
                     self._write(record)
                     self._unblock(record['operation_id'])
                 except Exception as error:
@@ -503,7 +669,7 @@ class ProjectDirectoryChanges:
                           target_id=current['target_id'], new_name=current['new_name'],
                           source_path=current['source_path'], target_path=current['target_path'])
             record = dict(operation_id=operation_id, plan=current, state='prepared',
-                          stage_path='', stage_identity=None, error='')
+                          stage_path='', stage_identity=None, backup_path='', backup_identity=None, error='')
             self._write(record)
             try:
                 if current['source_path'] and current['path_mapping']:
@@ -533,6 +699,11 @@ class ProjectDirectoryChanges:
                     callback_result = commit_callback(operation_id, current['path_mapping'], result)
                 if not self._committed(operation_id):
                     raise RuntimeError('数据库未登记变更提交标记，目录变更未确认。')
+                try:
+                    self._discard_backup(record)
+                except (OSError, RuntimeError, ValueError) as cleanup_error:
+                    record['error'] = '合并已完成，旧目标备份清理失败：' + str(cleanup_error)
+                    result['cleanup_error'] = record['error']
                 record['state'] = 'complete'
                 self._write(record)
                 self._unblock(operation_id)

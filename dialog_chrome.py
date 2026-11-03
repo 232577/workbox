@@ -41,11 +41,11 @@ class InlineError(StatusBanner):
     def __init__(self, text='', parent=None):
         super().__init__('', parent)
         self.setTone('error')
-        self.setAccessibleName('操作未完成的原因')
         self.setText(text)
 
     def setText(self, text):
         super().setText(str(text))
+        self.setAccessibleName(str(text))
         self.setVisible(bool(str(text).strip()))
 
     def clear(self):
