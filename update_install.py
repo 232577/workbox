@@ -56,6 +56,7 @@ $ErrorActionPreference = 'Stop'
 $cfg = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('__CONFIG__')) | ConvertFrom-Json
 $lease = $null
 try {
+  @{status='helper-started';release_tag=$cfg.tag} | ConvertTo-Json | Set-Content -Encoding UTF8 -LiteralPath $cfg.result
   $parent = $null
   try { $parent = [Diagnostics.Process]::GetProcessById([int]$cfg.pid) } catch [ArgumentException] {}
   if ($null -ne $parent -and -not $parent.WaitForExit(120000)) { throw 'WorkBox did not exit safely; no installation.' }
@@ -96,5 +97,10 @@ def launch_installer(installer: Path, release: Release, data_dir: Path):
         raise ValueError('仅支持Windows安装版内执行升级；源码运行不会替换开发目录。')
     command = handoff_command(installer, release, Path(sys.executable).resolve().parent,
                               os.getpid(), data_dir)
-    return subprocess.Popen(command, close_fds=True,
-        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS)
+    # Windows PowerShell can exit 0 without running an EncodedCommand when it
+    # inherits DETACHED_PROCESS from a windowless parent. Keep a hidden console
+    # subsystem instead; the helper must outlive this process and run its script.
+    environment = dict(os.environ, PYINSTALLER_RESET_ENVIRONMENT='1')
+    return subprocess.Popen(command, close_fds=True, env=environment,
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW)
