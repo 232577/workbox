@@ -74,7 +74,8 @@ def inspect_zip(
 CODE = re.compile(r"(?<![a-z0-9])WB[-_](\d{1,12})(?!\d)", re.IGNORECASE)
 SUFFIX = re.compile(
     r"[\s_.\-（(【\[]+(?:v?\d+\.\d+(?:\.\d+)*|20\d{6}|20\d{2}[-.]\d{2}[-.]\d{2}|"
-    r"final|release|delivery|交付包|交付|成品|完成版|正式版|最终版)[\s）)】\]]*$",
+    r"final|release|delivery|交付包|交付|成品|完成版|正式版|最终版|"
+    r"[^ _./\\-]{1,20}版)[\s）)】\]]*$",
     re.IGNORECASE,
 )
 

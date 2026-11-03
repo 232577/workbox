@@ -104,6 +104,13 @@ def test_full_name_with_version_takes_priority_over_shorter_project():
     assert match_work_file_projects('甲系统_v1.0_代码（Python）.txt', projects)['candidates'] == [projects[1]]
 
 
+def test_existing_project_matches_named_edition_suffix_without_creating_another_project():
+    projects = [{'id': 1, 'name': '甲系统'}, {'id': 2, 'name': '甲系统_企业版'}]
+    assert match_work_file_projects('甲系统_企业版.txt', projects)['candidates'] == [projects[1]]
+    assert match_work_file_projects('甲系统_测试版.docx', projects)['candidates'] == [projects[0]]
+    assert match_work_file_projects('甲系统_未知.txt', projects)['candidates'] == []
+
+
 @pytest.mark.parametrize('suffix', [
     '_申请表重新下载', '_申请书_重新下载', '_操作手册 下载说明',
     '_用户手册-下载链接', '_申请表_下载链接_v1.0 (2)',

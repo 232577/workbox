@@ -100,19 +100,201 @@ def test_merge_copies_complete_tree_without_overwriting_or_removing_source(conte
     (root / '空目录').mkdir()
     (root / '资料' / '来源系统.zip').write_bytes(b'source')
     (target_root / '来源系统.zip').write_bytes(b'target')
-    reserved = target_root / '合并资料' / root.name
-    reserved.mkdir(parents=True)
-    (reserved / '保留.txt').write_bytes(b'reserved')
     changes = coordinator(context)
     plan = changes.preview(source, '目标系统', target)
-    assert Path(plan['target_path']) != reserved
+    assert Path(plan['target_path']) == target_root
     changes.execute(plan, commit(context))
-    copied = Path(plan['target_path'])
-    assert (copied / '资料' / '来源系统.zip').read_bytes() == b'source'
-    assert (copied / '空目录').is_dir()
+    assert (target_root / '资料' / '来源系统.zip').read_bytes() == b'source'
+    assert (target_root / '空目录').is_dir()
     assert (root / '资料' / '来源系统.zip').read_bytes() == b'source'
     assert (target_root / '来源系统.zip').read_bytes() == b'target'
-    assert (reserved / '保留.txt').read_bytes() == b'reserved'
+    assert not (target_root / '合并资料').exists()
+    assert not list(target_root.parent.glob('.workbox-merge-backup-*'))
+
+
+def test_recover_interrupted_flat_merge_restores_original_target(context):
+    import uuid
+    from project_directory_changes import _directory_identity
+    source, target = create(context, ['来源系统', '目标系统'])
+    old = Path(context[1].get_workspace(source)['path'])
+    retained = Path(context[1].get_workspace(target)['path'])
+    (old / '并入.txt').write_bytes(b'source')
+    (retained / '原有.txt').write_bytes(b'target')
+    changes = coordinator(context)
+    plan = changes.preview(source, '目标系统', target)
+    operation_id = uuid.uuid4().hex
+    stage = changes._stage_path(plan, operation_id)
+    backup = retained.parent / ('.workbox-merge-backup-' + operation_id)
+    stage.mkdir()
+    changes._copy_merge_stage(old, retained, stage, plan)
+    record = dict(operation_id=operation_id, plan=plan, state='published',
+                  stage_path=str(stage), stage_identity=_directory_identity(stage),
+                  backup_path=str(backup), backup_identity=plan['target_identity'], error='')
+    changes._write(record)
+    retained.rename(backup)
+    stage.rename(retained)
+    assert (retained / '并入.txt').read_bytes() == b'source'
+    assert changes.recover() == []
+    assert (retained / '原有.txt').read_bytes() == b'target'
+    assert not (retained / '并入.txt').exists()
+    assert (old / '并入.txt').read_bytes() == b'source'
+    assert (stage / '并入.txt').read_bytes() == b'source'
+
+
+def test_merge_reuses_target_directory_spelling_and_maps_nested_files(context):
+    source, target = create(context, ['SourceProject', 'TargetProject'])
+    old = Path(context[1].get_workspace(source)['path'])
+    retained = Path(context[1].get_workspace(target)['path'])
+    (old / 'docs').mkdir()
+    (old / 'docs' / 'new.txt').write_bytes(b'source')
+    (retained / 'Docs').mkdir()
+    (retained / 'Docs' / 'existing.txt').write_bytes(b'target')
+    changes = coordinator(context)
+    plan = changes.preview(source, 'TargetProject', target)
+    changes.execute(plan, commit(context))
+    assert (retained / 'Docs' / 'new.txt').read_bytes() == b'source'
+    assert (retained / 'Docs' / 'existing.txt').read_bytes() == b'target'
+    assert plan['path_mapping'][str(old / 'docs' / 'new.txt')] == str(retained / 'Docs' / 'new.txt')
+    assert 'Docs' in [path.name for path in retained.iterdir()]
+
+
+def test_merge_cleanup_preserves_material_added_after_backup_inventory(context, monkeypatch):
+    source, target = create(context, ['SourceProject', 'TargetProject'])
+    old = Path(context[1].get_workspace(source)['path'])
+    retained = Path(context[1].get_workspace(target)['path'])
+    (old / 'source.txt').write_bytes(b'source')
+    (retained / 'target.txt').write_bytes(b'target')
+    changes = coordinator(context)
+    original = changes._inventory
+    added = []
+    def save_after_inventory(root, **kwargs):
+        inventory = original(root, **kwargs)
+        if Path(root).name.startswith('.workbox-merge-backup-') and not kwargs and not added:
+            latest = Path(root) / 'latest.txt'
+            latest.write_bytes(b'only copy of newly saved material')
+            added.append(latest)
+        return inventory
+    monkeypatch.setattr(changes, '_inventory', save_after_inventory)
+    plan = changes.preview(source, 'TargetProject', target)
+    result = changes.execute(plan, commit(context))
+    assert added and added[0].read_bytes() == b'only copy of newly saved material'
+    assert result.get('cleanup_error')
+    assert (retained / 'target.txt').read_bytes() == b'target'
+    assert (retained / 'source.txt').read_bytes() == b'source'
+
+
+def test_merge_cleanup_detects_backup_edits_after_inventory(context, monkeypatch):
+    source, target = create(context, ['SourceProject', 'TargetProject'])
+    retained = Path(context[1].get_workspace(target)['path'])
+    (retained / 'target.txt').write_bytes(b'target')
+    changes = coordinator(context)
+    original = changes._inventory
+    edited = []
+    def edit_after_inventory(root, **kwargs):
+        inventory = original(root, **kwargs)
+        if Path(root).name.startswith('.workbox-merge-backup-') and not kwargs and not edited:
+            latest = Path(root) / 'target.txt'
+            latest.write_bytes(b'latest external edit')
+            edited.append(latest)
+        return inventory
+    monkeypatch.setattr(changes, '_inventory', edit_after_inventory)
+    plan = changes.preview(source, 'TargetProject', target)
+    result = changes.execute(plan, commit(context))
+    assert edited and edited[0].read_bytes() == b'latest external edit'
+    assert result.get('cleanup_error')
+    assert (retained / 'target.txt').read_bytes() == b'target'
+
+
+def test_merge_cleanup_locks_backup_identity_and_published_bytes(context, monkeypatch):
+    source, target = create(context, ['SourceProject', 'TargetProject'])
+    retained = Path(context[1].get_workspace(target)['path'])
+    (retained / 'target.txt').write_bytes(b'target')
+    changes = coordinator(context)
+    import project_directory_changes as module
+    original_inventory = changes._inventory
+    original_remove = module.ZipLease.remove_after_verified_commit
+    denied = []
+    def replace_after_inventory(root, **kwargs):
+        inventory = original_inventory(root, **kwargs)
+        if Path(root).name.startswith('.workbox-merge-backup-') and not kwargs and not denied:
+            try:
+                Path(root).rename(Path(root).with_name('externally-moved-backup'))
+            except PermissionError:
+                denied.append('backup')
+        return inventory
+    def edit_published_before_remove(lease):
+        try:
+            (retained / 'target.txt').write_bytes(b'external edit')
+        except PermissionError:
+            denied.append('published')
+        return original_remove(lease)
+    monkeypatch.setattr(changes, '_inventory', replace_after_inventory)
+    monkeypatch.setattr(module.ZipLease, 'remove_after_verified_commit', edit_published_before_remove)
+    plan = changes.preview(source, 'TargetProject', target)
+    result = changes.execute(plan, commit(context))
+    assert denied == ['backup', 'published']
+    assert not result.get('cleanup_error')
+    assert (retained / 'target.txt').read_bytes() == b'target'
+
+
+def test_merge_cleanup_resumes_after_partial_file_deletion(context, monkeypatch):
+    source, target = create(context, ['SourceProject', 'TargetProject'])
+    retained = Path(context[1].get_workspace(target)['path'])
+    (retained / 'nested').mkdir()
+    (retained / 'nested' / 'first.txt').write_bytes(b'first')
+    (retained / 'nested' / 'second.txt').write_bytes(b'second')
+    changes = coordinator(context)
+    import project_directory_changes as module
+    original = module.ZipLease.remove_after_verified_commit
+    removed = []
+    def interrupt_after_removal(lease):
+        original(lease)
+        removed.append(lease.path)
+        raise OSError('simulated cleanup interruption')
+    monkeypatch.setattr(module.ZipLease, 'remove_after_verified_commit', interrupt_after_removal)
+    plan = changes.preview(source, 'TargetProject', target)
+    result = changes.execute(plan, commit(context))
+    assert result.get('cleanup_error') and len(removed) == 1
+    assert not removed[0].exists()
+    assert list(retained.parent.glob('.workbox-merge-backup-*'))
+    monkeypatch.setattr(module.ZipLease, 'remove_after_verified_commit', original)
+    assert changes.recover() == []
+    assert not list(retained.parent.glob('.workbox-merge-backup-*'))
+    assert (retained / 'nested' / 'first.txt').read_bytes() == b'first'
+    assert (retained / 'nested' / 'second.txt').read_bytes() == b'second'
+
+
+def test_recover_preupgrade_nested_merge_journal(context):
+    import hashlib
+    import uuid
+    from project_directory_changes import _directory_identity, _json
+    source, target = create(context, ['来源系统', '目标系统'])
+    old = Path(context[1].get_workspace(source)['path'])
+    retained = Path(context[1].get_workspace(target)['path'])
+    (old / '并入.txt').write_bytes(b'source')
+    changes = coordinator(context)
+    plan = changes.preview(source, '目标系统', target)
+    nested = retained / '合并资料' / old.name
+    nested.parent.mkdir()
+    plan['target_path'] = str(nested)
+    plan['path_mapping'] = {str(old): str(nested)}
+    plan['parent_identity'] = dict(path=str(nested.parent), identity=_directory_identity(nested.parent))
+    for key in ('target_inventory', 'merge_inventory', 'merge_files', 'fingerprint'):
+        plan.pop(key)
+    plan['fingerprint'] = hashlib.sha256(_json(plan).encode('utf-8')).hexdigest()
+    operation_id = uuid.uuid4().hex
+    stage = changes._stage_path(plan, operation_id)
+    stage.mkdir()
+    changes._copy_tree(old, stage, plan['inventory'])
+    record = dict(operation_id=operation_id, plan=plan, state='published',
+                  stage_path=str(stage), stage_identity=_directory_identity(stage), error='')
+    changes._write(record)
+    stage.rename(nested)
+    assert changes.recover() == []
+    assert (old / '并入.txt').read_bytes() == b'source'
+    assert not nested.exists()
+    assert retained.is_dir()
+    assert (stage / '并入.txt').read_bytes() == b'source'
 
 
 @pytest.mark.parametrize('kind', ['rename', 'merge'])
@@ -125,7 +307,10 @@ def test_database_failure_restores_original_and_preserves_owned_stage(context, k
     with pytest.raises(RuntimeError, match='模拟提交失败'):
         changes.execute(plan, commit(context, fail=True))
     assert (old / '保留.txt').read_bytes() == b'keep'
-    assert not Path(plan['target_path']).exists()
+    if kind == 'rename':
+        assert not Path(plan['target_path']).exists()
+    else:
+        assert Path(plan['target_path']).is_dir()
     assert changes.recover() == []
     if kind == 'merge':
         assert any(path.name == '保留.txt' for path in old.parent.rglob('保留.txt'))
@@ -490,7 +675,8 @@ def test_merge_staging_and_rollback_copy_are_outside_registered_workspaces(conte
         changes.execute(plan, commit(context, fail=True))
     assert seen and seen[0][1]
     assert (seen[0][0] / '材料.txt').read_bytes() == b'payload'
-    assert not Path(plan['target_path']).exists()
+    assert Path(plan['target_path']).is_dir()
+    assert not (Path(plan['target_path']) / '材料.txt').exists()
 
 
 def test_edit_in_publish_to_lease_gap_is_detected_and_retained_on_rollback(context, monkeypatch):
@@ -502,8 +688,10 @@ def test_edit_in_publish_to_lease_gap_is_detected_and_retained_on_rollback(conte
     import project_directory_changes as module
     original = module._DirectoryLease.rename
     def edited(lease, destination):
+        publishing = (lease.path.name.startswith('.workbox-merge-')
+                      and not lease.path.name.startswith('.workbox-merge-backup-'))
         original(lease, destination)
-        if Path(destination) == Path(plan['target_path']):
+        if publishing and Path(destination) == Path(plan['target_path']):
             (Path(destination) / '材料.txt').write_bytes(b'external latest edit')
     monkeypatch.setattr(module._DirectoryLease, 'rename', edited)
     called = []
@@ -511,7 +699,8 @@ def test_edit_in_publish_to_lease_gap_is_detected_and_retained_on_rollback(conte
         changes.execute(plan, lambda *args: called.append(args))
     assert called == []
     assert (old / '材料.txt').read_bytes() == b'previewed'
-    assert not Path(plan['target_path']).exists()
+    assert Path(plan['target_path']).is_dir()
+    assert not (Path(plan['target_path']) / '材料.txt').exists()
     journals = [json.loads(path.read_text(encoding='utf-8')) for path in changes.journal_root.glob('*.json')]
     assert (Path(journals[0]['stage_path']) / '材料.txt').read_bytes() == b'external latest edit'
 
@@ -577,7 +766,8 @@ def test_commit_boundary_rejects_new_material_entries_and_retains_latest(context
         return commit(context)(operation_id, mapping, result)
     with pytest.raises(RuntimeError, match='材料|副本'):
         changes.execute(plan, apply)
-    assert not Path(plan['target_path']).exists()
+    assert Path(plan['target_path']).is_dir()
+    assert not (Path(plan['target_path']) / '新材料.txt').exists()
     with context[0].db.connect() as connection:
         assert connection.execute('SELECT count(*) FROM project_change_commits').fetchone()[0] == 0
     if location == 'source':
