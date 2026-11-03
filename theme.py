@@ -30,6 +30,8 @@ _TOKENS = {
         'state_new': '#526575', 'state_pending': '#8A4A0C',
         'state_working': '#175EA8', 'state_delivered': '#0F766E',
         'error': '#AF303B', 'notice_bg': '#E5F2EF',
+        'subtle_surface': '#F8FAFC', 'info_bg': '#EDF4FB',
+        'success_bg': '#E8F5EF', 'warning_bg': '#FFF4E3', 'error_bg': '#FDEDF0',
         'orb_bg': '#FFFFFF', 'orb_border': '#CBD5DF', 'orb_ink': '#172B3A',
         'orb_accent': '#0F766E', 'orb_glow': '#D2EAE4', 'orb_shadow': '#526575',
     },
@@ -43,6 +45,8 @@ _TOKENS = {
         'state_new': '#B7C3CF', 'state_pending': '#F2BD73',
         'state_working': '#93C5FD', 'state_delivered': '#69D5BE',
         'error': '#FFACB4', 'notice_bg': '#263D3B',
+        'subtle_surface': '#1D232D', 'info_bg': '#223449',
+        'success_bg': '#203D36', 'warning_bg': '#433424', 'error_bg': '#442B35',
         'orb_bg': '#222833', 'orb_border': '#465365', 'orb_ink': '#F0F4F8',
         'orb_accent': '#69D5BE', 'orb_glow': '#2D4645', 'orb_shadow': '#000000',
     },
@@ -110,6 +114,10 @@ QStatusBar::item { border: none; }
 QFrame#sidebar { background: %(raised)s; border: none; border-right: 1px solid %(border)s; }
 QTabWidget#workbenchPages::pane { background: transparent; border: none; }
 QLabel, QCheckBox, QRadioButton { background: transparent; }
+QFrame#dialogActions { background: transparent; border: none; border-top: 1px solid %(border)s; }
+QFrame#dialogSection { background: %(surface)s; border: 1px solid %(border)s; border-radius: 10px; }
+QLabel#pendingSettings { color: %(muted)s; font-size: 12px; }
+QLabel#settingsNoResults { color: %(muted)s; background: %(subtle_surface)s; border-radius: 8px; padding: 18px; }
 QLabel#heading, QLabel#pageTitle { font-size: 20px; font-weight: 700; }
 QLabel#title, QLabel#sectionTitle { font-size: 15px; font-weight: 600; }
 QLabel#subtle, QLabel#muted { font-size: 12px; color: %(muted)s; }
@@ -319,6 +327,40 @@ QWidget#manager[dense="true"] QLabel#notice { padding: 5px 8px; font-size: 12px;
     if role in ('feedback', 'bubble'):
         rules += ('\nQWidget#feedbackBubble { background: %(surface)s; color: %(ink)s; '
                   'border: 1px solid %(border)s; border-radius: 8px; }\n') % c
+    # Shared presentation primitives; no model refresh or business-setting writes.
+    rules += """
+QFrame#workbenchHeader { background: %(surface)s; border: 1px solid %(border)s; border-radius: 12px; }
+QWidget#dialogHeader { background: transparent; border: none; }
+QLabel#headerSubtitle { color: %(muted)s; font-size: 12px; }
+QLabel#headerEyebrow { color: %(accent)s; font-size: 11px; font-weight: 600; }
+QLabel#headerIcon { background: %(notice_bg)s; border: none; border-radius: 12px; }
+QFrame#metricStrip { background: %(surface)s; border: 1px solid %(border)s; border-radius: 12px; }
+QLabel#metricValue { color: %(ink)s; font-size: 22px; font-weight: 600; }
+QLabel#metricCaption { color: %(muted)s; font-size: 11px; }
+QLabel#statusBanner { color: %(ink)s; background: %(subtle_surface)s; border: 1px solid %(border)s;
+    border-radius: 8px; padding: 8px 12px; font-size: 12px; }
+QLabel#statusBanner[tone="busy"] { background: %(info_bg)s; border-left: 3px solid %(state_working)s; }
+QLabel#statusBanner[tone="success"] { background: %(success_bg)s; border-left: 3px solid %(state_delivered)s; }
+QLabel#statusBanner[tone="warning"] { background: %(warning_bg)s; border-left: 3px solid %(state_pending)s; }
+QLabel#statusBanner[tone="error"] { background: %(error_bg)s; border-left: 3px solid %(error)s; }
+QFrame#actionBar { background: %(subtle_surface)s; border: none; border-top: 1px solid %(border)s; }
+QLabel#workspaceStatus { color: %(muted)s; font-size: 11px; padding: 8px 2px; }
+QLabel#saveState { color: %(muted)s; font-size: 11px; }
+QLabel#updateStages { background: %(subtle_surface)s; color: %(muted)s; border: 1px solid %(border)s;
+    border-radius: 8px; padding: 10px 12px; font-size: 12px; }
+QPushButton#subtle { background: transparent; border-color: transparent; }
+QPushButton#subtle:hover { background: %(hover)s; border-color: %(border)s; }
+QPushButton#danger { color: %(error)s; background: transparent; border-color: %(border)s; }
+QPushButton#danger:hover { background: %(error_bg)s; }
+QPushButton#danger:disabled { color: %(disabled)s; background: %(disabled_bg)s; }
+QWidget#projectSurface, QWidget#documentSurface { border-radius: 12px; }
+QAbstractSpinBox QLineEdit { border: none; padding: 0px; min-height: 0px; background: transparent; }
+QPlainTextEdit#releaseNotes { background: %(surface)s; border-color: %(border)s; padding: 12px; }
+QTableWidget#materialRules, QTableWidget#materialResults, QTableWidget#materialChoices {
+    background: %(surface)s; alternate-background-color: %(subtle_surface)s; border: 1px solid %(border)s;
+    border-radius: 8px; gridline-color: transparent; }
+QWidget#manager[dense="true"] QFrame#workbenchHeader { border-radius: 8px; }
+""" % c
     base = _base_stylesheet(actual) if QApplication.instance() is not None else ''
     return base + '\n/* WorkBox semantic appearance */\n' + rules
 

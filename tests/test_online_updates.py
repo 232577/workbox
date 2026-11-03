@@ -7,9 +7,17 @@ import os
 import sqlite3
 import threading
 from concurrent.futures import CancelledError
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
+from update_client import CURRENT_TAG, build_key
+
+
+# Transport/security fixtures stay newer than the binary; ordering tests below
+# use explicit historical tags independently of this rolling fixture.
+_next_day = datetime.strptime(str(build_key(CURRENT_TAG)[0]), '%Y%m%d') + timedelta(days=1)
+FIXTURE_TAG = 'v1.0.0.' + _next_day.strftime('%Y%m%d') + '.1'
 
 
 @pytest.fixture
@@ -18,7 +26,7 @@ def client():
     return importlib.import_module('update_client')
 
 
-def payload(data=b'MZisolated installer', tag='v1.0.0.20261103.1'):
+def payload(data=b'MZisolated installer', tag=FIXTURE_TAG):
     suffix = tag.split('.', 3)[3].replace('.', '-r')
     name = f'WorkBox-1.0.0-Setup-x64-{suffix}.exe'
     return dict(tag_name=tag, draft=False, prerelease=False, body='匿名发行说明',
@@ -29,11 +37,12 @@ def payload(data=b'MZisolated installer', tag='v1.0.0.20261103.1'):
 
 
 def test_valid_release_and_same_version_are_distinguished(client):
-    release = client.parse_release(payload(), current_tag='v1.0.0.20261102.1')
+    record = payload(tag='v1.0.0.20261103.1')
+    release = client.parse_release(record, current_tag='v1.0.0.20261102.1')
     assert release.tag == 'v1.0.0.20261103.1'
     assert release.notes == '匿名发行说明'
-    assert client.parse_release(payload(), current_tag=release.tag) is None
-    assert client.parse_release(payload(), current_tag='v1.0.0.20261104') is None
+    assert client.parse_release(record, current_tag=release.tag) is None
+    assert client.parse_release(record, current_tag='v1.0.0.20261104') is None
 
 
 @pytest.mark.parametrize('tag', ['v1.0.0.20261301', 'v1.0.0.20260230', 'v1.0.0.20261102.0',
@@ -106,7 +115,7 @@ def test_metadata_fetch_is_bounded_and_does_not_send_secrets(client,monkeypatch)
     called=[]
     def open_url(url): called.append(url);return Response(json.dumps(payload()).encode(),url)
     monkeypatch.setattr(client,'_open',open_url)
-    assert client.check_for_update().tag=='v1.0.0.20261103.1'
+    assert client.check_for_update().tag == FIXTURE_TAG
     assert called==['https://workbox.ltxiangzi.dpdns.org/updates/stable.json']
     monkeypatch.setattr(client,'_open',lambda url:Response(b' '* (client.MAX_METADATA+1),url))
     with pytest.raises(ValueError):client.check_for_update()
@@ -149,7 +158,7 @@ def test_site_manifest_avoids_anonymous_api_rate_limit(client,monkeypatch):
         if url==site:return Response(json.dumps(payload()).encode(),url)
         raise HTTPError(url,403,'rate limit exceeded',{},None)
     monkeypatch.setattr(client,'_open',transport)
-    assert client.check_for_update().tag=='v1.0.0.20261103.1'
+    assert client.check_for_update().tag == FIXTURE_TAG
 
 
 def test_github_fallback_when_site_unavailable(client,monkeypatch):
@@ -171,3 +180,38 @@ def test_download_retains_windows_internet_origin(client,tmp_path,monkeypatch):
     result=client.download_release(release,tmp_path)
     origin=Path(str(result)+':Zone.Identifier').read_text(encoding='utf-8')
     assert 'ZoneId=3' in origin and 'HostUrl='+release.url in origin
+
+
+def test_windowed_build_probe_writes_identity_without_opening_data(client,tmp_path,monkeypatch):
+    import main
+    data=tmp_path/'untouched custom data';report=tmp_path/'build-info.json'
+    with monkeypatch.context() as patch:
+        patch.setattr(main.sys,'stdout',None)
+        assert main.main(['--build-info','--build-info-output',str(report),'--data-dir',str(data)])==0
+    result=json.loads(report.read_text(encoding='utf-8'))
+    assert result=={'version':'1.0.0','release_tag':client.CURRENT_TAG,'data_dir':str(data.resolve())}
+    assert not data.exists()
+    before=report.read_bytes()
+    assert main.main(['--build-info','--build-info-output',str(report)])==1
+    assert report.read_bytes()==before
+
+
+def test_handoff_checks_installed_build_and_data_before_relaunch(client,tmp_path):
+    import base64
+    from update_install import handoff_command
+    release=client.parse_release(payload());installer=tmp_path/release.filename;installer.write_bytes(b'MZisolated installer')
+    app=tmp_path/'custom app';app.mkdir();(app/'WorkBox.exe').write_bytes(b'fixture')
+    script=base64.b64decode(handoff_command(installer,release,app,1234,tmp_path/'custom data')[-1]).decode('utf-16le')
+    assert '--build-info-output' in script and '$actual.release_tag' in script and '$actual.data_dir' in script
+    assert script.index('$actual.release_tag') < script.index("'--panel --data-dir=")
+    assert '$probe.WaitForExit(30000)' in script
+
+
+def test_online_installer_hides_and_validates_original_target(client):
+    script=(Path(__file__).resolve().parents[1]/'packaging/workbox.iss').read_text(encoding='utf-8')
+    assert 'DisableDirPage=no' in script, 'ordinary manual installation remains configurable'
+    assert 'function ShouldSkipPage(PageID: Integer): Boolean;' in script
+    assert 'Result := IsOnlineUpdate and (PageID = wpSelectDir);' in script
+    assert 'function PrepareToInstall(var NeedsRestart: Boolean): String;' in script
+    assert 'CompareText(ExpandFileName' in script and 'OnlineTargetDir' in script
+    assert 'WizardForm.DirEdit.Enabled := False;' in script

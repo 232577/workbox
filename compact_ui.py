@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from theme import apply_to, apply_scrollbar, stylesheet, install_theme, set_theme, current_mode, theme_signal
 from dialog_lifecycle import transient_dialog
 from ui_components import button as fluent_button, LineEdit as QLineEdit, CheckBox as QCheckBox, SpinBox as QSpinBox, ComboBox as QComboBox
+from ui_components import MetricStrip
 from qfluentwidgets import FluentIcon, InfoBadge, InfoLevel, CardWidget, SegmentedWidget
 from fluent_views import (WorkbenchListWidget, WorkbenchTableWidget, configure_native_scroll,
                           ProjectListDelegate, PROJECT_NAME_ROLE, PROJECT_DETAIL_ROLE)
@@ -298,7 +299,7 @@ class CompactPanel(DropSurface, QWidget):
         self.brand_label = label('WorkBox', 'brandName')
         self.brand_row.addWidget(self.brand_label)
         nav.addLayout(self.brand_row)
-        self.nav_caption = label('工作箱', 'subtle')
+        self.nav_caption = label('本地项目工作空间', 'subtle')
         nav.addWidget(self.nav_caption)
         nav.addSpacing(18)
         self.nav_projects = button('项目', 'nav')
@@ -320,13 +321,23 @@ class CompactPanel(DropSurface, QWidget):
             control.setAccessibleName(caption)
             nav.addWidget(control)
         nav.addStretch()
+        # A wrapping sidebar label turns the *root* horizontal layout into a
+        # height-for-width layout and Windows clamps to the old wide-page hint
+        # before compact widgets can hide. This fixed one-line footer needs no wrap.
+        self.workspace_status = label('数据保存在本机', 'workspaceStatus')
+        self.workspace_status.setToolTip('项目文件与业务数据保存在本机，不随 Git 同步。')
+        nav.addWidget(self.workspace_status)
         shell.addWidget(self.navigation)
         self.workbench = QWidget()
         shell.addWidget(self.workbench, 1)
         layout = self.workbench_layout = QVBoxLayout(self.workbench)
         layout.setContentsMargins(14, 12, 14, 8)
         layout.setSpacing(8)
-        top = QHBoxLayout()
+        self.header_surface = QFrame()
+        self.header_surface.setObjectName('workbenchHeader')
+        top = QHBoxLayout(self.header_surface)
+        top.setContentsMargins(12, 10, 12, 10)
+        top.setSpacing(8)
         heading = QVBoxLayout()
         heading.setSpacing(4)
         brand_row = QHBoxLayout()
@@ -374,15 +385,18 @@ class CompactPanel(DropSurface, QWidget):
             control.setToolTip(caption)
             control.setMinimumWidth(0)
             nav.addWidget(control)
-        layout.addLayout(top)
+        layout.addWidget(self.header_surface)
         self.search = QLineEdit()
         self.search.setPlaceholderText('搜索项目、备注、批次或 ZIP 名称')
         self.search.setAccessibleName('搜索项目、备注、批次或 ZIP 名称')
         self.search.setClearButtonEnabled(True)
+        self.search.setMinimumHeight(36)
         intake_bar = QHBoxLayout()
         intake_bar.setSpacing(10)
         intake_bar.addWidget(self.search, 1)
         layout.addLayout(intake_bar)
+        self.overview = MetricStrip(('全部项目', '当前结果', '交付包', '待核对'))
+        layout.addWidget(self.overview)
         self.notice = label('', 'notice')
         self.notice.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.notice.setMaximumHeight(72)
@@ -454,6 +468,13 @@ class CompactPanel(DropSurface, QWidget):
         options.setSpacing(8)
         options.addWidget(self.urgent_filter)
         options.addStretch()
+        self.material_check_button = button('材料检查')
+        self.material_check_button.setIcon(FluentIcon.DOCUMENT)
+        self.material_check_button.setAccessibleName('材料检查')
+        self.material_check_button.setToolTip('检查所选项目的材料与缺项（Alt+M）；不改变交付状态。')
+        self.material_check_button.setShortcut('Alt+M')
+        self.material_check_button.clicked.connect(lambda: self.open_material_check(self.current_project['id']) if self.current_project else None)
+        options.addWidget(self.material_check_button)
         self.change_type_button = button('修改类型…')
         self.change_type_button.setAccessibleName('修改所选项目的类型')
         self.change_type_button.setToolTip('修改当前选中项目的类型；批量选择时应用到所选项目。也可管理自定义类型。')
@@ -477,7 +498,7 @@ class CompactPanel(DropSurface, QWidget):
         self.project_splitter.setChildrenCollapsible(False)
         self.project_splitter.setHandleWidth(6)
         project_side = CardWidget()
-        project_side.setBorderRadius(8)
+        project_side.setBorderRadius(12)
         project_side.setObjectName('projectSurface')
         project_side.setMinimumWidth(180)
         project_layout = self.project_card_layout = QVBoxLayout(project_side)
@@ -488,7 +509,7 @@ class CompactPanel(DropSurface, QWidget):
         project_layout.addWidget(self.empty)
         project_layout.addWidget(self.project_list,1)
         document_side = self.document_side = CardWidget()
-        document_side.setBorderRadius(8)
+        document_side.setBorderRadius(12)
         document_side.setObjectName('documentSurface')
         document_side.setMinimumWidth(350)
         document_layout = self.document_card_layout = QVBoxLayout(document_side)
@@ -665,6 +686,7 @@ class CompactPanel(DropSurface, QWidget):
             control.setChecked(position == index)
         self.search.setVisible(index != 3)
         self.summary.setVisible(index != 3 and self.height() >= 560 and self.width() >= 820)
+        self.overview.setVisible(index == 0 and self.height() >= 650 and self.width() >= 900)
 
     def refresh_type_controls(self):
         selected_type = self.type_filter.currentData()
@@ -737,6 +759,7 @@ class CompactPanel(DropSurface, QWidget):
             self.tabs.setTabText(2, f'待核对 {len(receipts)}' if receipts else '待核对')
             self.nav_review.setToolTip(f'待核对 {len(receipts)}' if receipts else '待核对')
             counts = self.service.db.counts()
+            self.overview.setValues((counts['projects'], len(rows), counts['zips'], len(receipts)))
             self.summary.setText(f"共 {counts['projects']} 个项目 · 当前 {len(rows)} 项 · {counts['zips']} 个交付包")
             if deleted_view:
                 self.summary.setText(f'已删除 {len(rows)} 项 · 原文件、归档和交付记录保留')
@@ -838,7 +861,7 @@ class CompactPanel(DropSurface, QWidget):
             p = self.current_project
             self.project_title.setText(p['name'] if p else '选择一个项目，查看对应文档')
             self.project_type_label.setText('类型 · ' + (p.get('project_type_name') or '未分类') if p else '')
-            self.project_type_label.setVisible(p is not None)
+            self.project_type_label.setVisible(p is not None and self.height() >= 560)
             self.project_status_badge.setVisible(p is not None)
             if p is not None:
                 self.project_status_badge.setText(p['status'])
@@ -852,6 +875,10 @@ class CompactPanel(DropSurface, QWidget):
         self.document_pane.set_project(self.current_project['id'] if self.current_project else None)
 
     def update_actions(self, *_):
+        project = self.current_project
+        self.material_check_button.setEnabled(bool(project) and not self.busy
+            and not project.get('deleted_at') and not project.get('block_reason')
+            and project.get('merged_into_id') is None)
         for control in (self.link_button, self.review_button, self.dismiss_button):
             control.setEnabled(not self.busy)
         count = len(self.project_list.selectedItems())
@@ -917,6 +944,8 @@ class CompactPanel(DropSurface, QWidget):
 
         add(menu, '工作目录' if project.get('workspace') else '建工作目录',
             lambda: self.open_project_workspace(project_id), active and (editable or project.get('workspace')))
+        add(menu, '材料检查…', lambda: self.open_material_check(project_id),
+            active and not project.get('deleted_at') and not project.get('block_reason'))
         states = menu._states_menu = QMenu('开发状态', menu)
         menu.addMenu(states)
         states.setEnabled(bool(editable))
@@ -980,6 +1009,27 @@ class CompactPanel(DropSurface, QWidget):
                 menu.exec(position)
             finally:
                 menu.deleteLater()
+
+    def open_material_check(self, project_id):
+        if self._action_project(project_id) is None:
+            return
+        if getattr(self, 'material_dialog', None) is not None:
+            self.material_dialog.raise_()
+            return
+        from material_check_ui import MaterialCheckDialog
+        try:
+            dialog = MaterialCheckDialog(self.service, project_id, self)
+        except (ValueError, KeyError, sqlite3.Error) as error:
+            self.show_notice('材料检查未打开：' + str(error))
+            return
+        self.material_dialog = dialog
+        try:
+            dialog.exec()
+        finally:
+            # Never delete an object whose reader has not safely stopped.
+            dialog.shutdown()
+            self.material_dialog = None
+            dialog.deleteLater()
 
     @staticmethod
     def project_version_caption(project, version, index):
@@ -1375,6 +1425,7 @@ class CompactPanel(DropSurface, QWidget):
         self.navigation.layout().setContentsMargins(8 if narrow else 12, 14, 8 if narrow else 12, 14)
         self.brand_label.setVisible(not narrow)
         self.nav_caption.setVisible(not narrow)
+        self.workspace_status.setVisible(not narrow)
         for control, caption in self.nav_controls:
             control.setProperty('compactNav', narrow)
             text = getattr(self, '_today_caption', caption) if control is self.today_button else caption
@@ -1396,7 +1447,14 @@ class CompactPanel(DropSurface, QWidget):
         density_changed = self.property('dense') != compact
         self.setProperty('dense', compact)
         self.document_pane.set_compact(compact)
+        # The selected row already includes type; avoid a duplicate line taking
+        # space from file rows in the supported 660x492 compact workspace.
+        self.project_type_label.setVisible(self.current_project is not None and not compact)
         self.summary.setVisible(not compact and self.width() >= 820 and self.tabs.currentIndex() != 3)
+        self.overview.setVisible(self.height() >= 650 and not narrow and self.tabs.currentIndex() == 0)
+        self.header_surface.layout().setContentsMargins(8 if compact else 12, 4 if compact else 10,
+                                                       8 if compact else 12, 4 if compact else 10)
+        self.search.setMinimumHeight(28 if compact else 36)
         self.project_list_heading.setVisible(not compact)
         self.project_page_layout.setContentsMargins(8 if compact else 14, 8 if compact else 14,
                                                    8 if compact else 14, 8 if compact else 12)
@@ -1411,11 +1469,11 @@ class CompactPanel(DropSurface, QWidget):
                                                10 if narrow else 14, 8)
         if density_changed:
             # 样式重算可能触发布局，不能在Qt仍处理resize时重入polish。
-            QTimer.singleShot(0, lambda: apply_to(self))
+            QTimer.singleShot(0, self, lambda: apply_to(self))
         super().resizeEvent(event)
         if self.today_dialog is not None:
             self.today_dialog._sync_embedded_layout()
-        QTimer.singleShot(0, self._reveal_current_after_resize)
+        QTimer.singleShot(0, self, self._reveal_current_after_resize)
 
     def _reveal_current_after_resize(self):
         item = self.project_list.currentItem()
@@ -1434,7 +1492,9 @@ class ProjectDeliveryDialog(QDialog):
         self.setWindowTitle('确认交付 · ' + project['name'])
         self.resize(520, 230)
         layout = QVBoxLayout(self)
-        layout.addWidget(label(project['name'], 'title', True))
+        from dialog_chrome import add_header, add_actions
+        apply_to(self)
+        add_header(layout, '确认本次交付', project['name'], icon=FluentIcon.DOCUMENT, eyebrow='WORKBOX / 交付确认')
         caption = label('交付内容')
         layout.addWidget(caption)
         self.version_box = QComboBox()
@@ -1464,7 +1524,7 @@ class ProjectDeliveryDialog(QDialog):
         self.confirm_button.clicked.connect(self.confirm)
         controls.addWidget(self.cancel_button)
         controls.addWidget(self.confirm_button)
-        layout.addLayout(controls)
+        add_actions(layout, controls)
         self.version_box.currentIndexChanged.connect(self.update_choice)
         self.update_choice()
         self.cancel_button.setFocus(Qt.OtherFocusReason)
@@ -1504,6 +1564,8 @@ class FileIntakeLogDialog(QDialog):
         self.resize(860, 610)
         self.setMinimumSize(640, 460)
         layout = QVBoxLayout(self)
+        from dialog_chrome import add_header, add_actions
+        add_header(layout, '收录历史', '查看来源、去向和判断依据；此窗口只读。', icon=FluentIcon.HISTORY)
         self.scope_note = label('这里只记录普通文件收录；ZIP 请查看 ZIP 版本记录。旧记录未记录判断依据。', 'subtle', True)
         layout.addWidget(self.scope_note)
         search_row = QHBoxLayout()
@@ -1525,10 +1587,9 @@ class FileIntakeLogDialog(QDialog):
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.verticalHeader().hide()
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        for column, width in enumerate((170, 100, 260, 180)):
+            self.table.setColumnWidth(column, width)
         self.table.setMinimumHeight(130)
         layout.addWidget(self.table, 2)
         layout.addWidget(label('收录详情（可选中文字并复制）', 'subtle'))
@@ -1544,7 +1605,7 @@ class FileIntakeLogDialog(QDialog):
         close.setAutoDefault(False)
         close.clicked.connect(self.accept)
         actions.addWidget(close)
-        layout.addLayout(actions)
+        add_actions(layout, actions)
         self.table.itemSelectionChanged.connect(self.show_details)
         self.search.textChanged.connect(self.refresh)
         self.refresh_button.clicked.connect(self.refresh)
@@ -1611,18 +1672,34 @@ class DirectorySettingsDialog(QDialog):
     def __init__(self, service, parent=None):
         super().__init__(parent)
         from qfluentwidgets import SettingCard, SettingCardGroup, CardWidget, FluentIcon
+        from dialog_chrome import add_header, add_actions, InlineError, FilterEdit
         self.service = service
         self.types_changed = False
         self.setWindowTitle('工作目录与收录规则设置')
         apply_to(self)
         available = self.screen().availableGeometry()
-        self.resize(min(640, available.width() - 32), min(540, available.height() - 32))
+        self.resize(min(760, available.width() - 32), min(660, available.height() - 32))
         settings = service.workspaces.settings()
         outer = QVBoxLayout(self)
         outer.setContentsMargins(20, 18, 20, 16)
         outer.setSpacing(12)
-        outer.addWidget(label('工作设置', 'pageTitle'))
-        outer.addWidget(label('目录和收录规则在保存后生效。', 'subtle', True))
+        add_header(outer, '工作设置', '目录与规则需保存；类型管理中的操作单独即时保存。',
+                   icon=FluentIcon.SETTING, eyebrow='WORKBOX / 设置中心')
+        tools = QHBoxLayout()
+        self.settings_search = FilterEdit()
+        self.settings_search.setPlaceholderText('搜索设置，例如目录、交付、等待…')
+        self.settings_search.setAccessibleName('搜索工作设置')
+        self.settings_search.setClearButtonEnabled(True)
+        self.section_filter = QComboBox()
+        self.section_filter.setAccessibleName('定位设置分区')
+        self.section_filter.addItem('全部设置')
+        self.section_filter.setMinimumWidth(135)
+        tools.addWidget(self.settings_search, 1)
+        tools.addWidget(self.section_filter)
+        outer.addLayout(tools)
+        self.no_results = label('没有匹配设置。清除搜索或选择“全部设置”。', 'settingsNoResults', True)
+        self.no_results.hide()
+        outer.addWidget(self.no_results)
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -1643,6 +1720,7 @@ class DirectorySettingsDialog(QDialog):
             section.setMinimumWidth(0)
             layout.addWidget(section)
             self._setting_groups.append((section, []))
+            self.section_filter.addItem(title)
             return section
 
         def add_card(section, card):
@@ -1741,13 +1819,16 @@ class DirectorySettingsDialog(QDialog):
         types_body.addWidget(self.project_types_button, 0, Qt.AlignLeft)
         types_body.addWidget(label('项目类型和新项目默认类型单独保存。新增、改名、停用及默认类型选择立即生效，不受本设置窗口的取消影响。默认类型只用于以后创建的项目。', 'subtle', True))
         layout.addStretch()
-        self.error = label('', 'subtle', True)
+        self.error = InlineError()
         outer.addWidget(self.error)
         actions = QHBoxLayout()
         self.reset_rules_button = button('恢复默认规则')
         self.reset_rules_button.setToolTip('填回默认规则，点击保存后生效；不改变目录。')
         self.reset_rules_button.clicked.connect(self.reset_rules)
         actions.addWidget(self.reset_rules_button)
+        self.pending_label = label('设置已同步', 'pendingSettings')
+        self.pending_label.setAccessibleName('工作设置保存状态')
+        actions.addWidget(self.pending_label)
         actions.addStretch()
         cancel = self.cancel_button = button('取消')
         cancel.clicked.connect(self.reject)
@@ -1756,7 +1837,7 @@ class DirectorySettingsDialog(QDialog):
         save.clicked.connect(self.save)
         actions.addWidget(cancel)
         actions.addWidget(save)
-        outer.addLayout(actions)
+        add_actions(outer, actions)
         # 库分组以卡片实际高度布局；正文按当前视口宽度换行，避免默认固定高度截字。
         for section, cards in self._setting_groups:
             for card in cards:
@@ -1766,12 +1847,46 @@ class DirectorySettingsDialog(QDialog):
                         text_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         scroll.viewport().installEventFilter(self)
         self._layout_setting_cards()
+        # Index explanatory labels, never mutable paths or file contents.
+        self._section_text = [
+            (' '.join([self.section_filter.itemText(i + 1), *(w.text() for w in section.findChildren(QLabel)),
+                       *(w.text() for w in section.findChildren(QCheckBox))])).casefold()
+            for i, (section, _) in enumerate(self._setting_groups)]
+        self.settings_search.textChanged.connect(self._filter_settings)
+        self.section_filter.currentIndexChanged.connect(self._filter_settings)
+        self._initial_values = self._form_values()
+        for edit in (self.work_root, self.archive_root):
+            edit.textChanged.connect(self._update_pending)
+        for check in (self.auto_create_projects, self.auto_deliver_zip):
+            check.toggled.connect(self._update_pending)
+        for spin in (self.stable_seconds, self.zip_delivery_min_files):
+            spin.valueChanged.connect(self._update_pending)
+
+    def _form_values(self):
+        return (self.work_root.text(), self.archive_root.text(), self.stable_seconds.value(),
+                self.auto_create_projects.isChecked(), self.auto_deliver_zip.isChecked(),
+                self.zip_delivery_min_files.value())
+
+    def _update_pending(self, *_):
+        self.pending_label.setText('有未保存的修改' if self._form_values() != self._initial_values else '设置已同步')
+
+    def _filter_settings(self, *_):
+        terms = self.settings_search.text().casefold().split()
+        selected = self.section_filter.currentIndex()
+        shown = 0
+        for i, (section, _) in enumerate(self._setting_groups):
+            visible = (selected == 0 or selected == i + 1) and all(term in self._section_text[i] for term in terms)
+            section.setVisible(visible)
+            shown += visible
+        self.no_results.setVisible(shown == 0)
+        self.settings_scroll.verticalScrollBar().setValue(0)
+        self._layout_setting_cards()
 
     def eventFilter(self, watched, event):
         from PySide6.QtCore import QEvent, QTimer
         if watched is self.settings_scroll.viewport() and event.type() == QEvent.Resize and not self._pending_card_layout:
             self._pending_card_layout = True
-            QTimer.singleShot(0, self._layout_setting_cards)
+            QTimer.singleShot(0, self, self._layout_setting_cards)
         return super().eventFilter(watched, event)
 
     def _layout_setting_cards(self):
@@ -1826,8 +1941,8 @@ class ProjectDetailsDialog(QDialog):
         apply_to(self)
         self.resize(560, 420)
         layout = QVBoxLayout(self)
-        title = label(project['name'], 'title', True)
-        layout.addWidget(title)
+        from dialog_chrome import add_header, add_actions, InlineError
+        add_header(layout, '备注与截止日期', project['name'], icon=FluentIcon.EDIT)
         if self.read_only:
             layout.addWidget(label('此项目已归档，恢复后可编辑。', 'subtle'))
         notes_label = label('项目备注（最多 10,000 字）')
@@ -1855,7 +1970,7 @@ class ProjectDetailsDialog(QDialog):
         dates.addStretch()
         layout.addLayout(dates)
         layout.addWidget(label('取消勾选可清除日期；日期仅用于项目排序和筛选。', 'subtle', True))
-        self.error = label('', 'subtle', True)
+        self.error = InlineError()
         layout.addWidget(self.error)
         actions = QHBoxLayout()
         actions.addStretch()
@@ -1866,7 +1981,7 @@ class ProjectDetailsDialog(QDialog):
         self.save_button.clicked.connect(self.save)
         actions.addWidget(cancel)
         actions.addWidget(self.save_button)
-        layout.addLayout(actions)
+        add_actions(layout, actions)
         self.original = self.values()
 
     def values(self):

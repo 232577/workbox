@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from theme import apply_to, stylesheet, tokens, theme_signal
 from dialog_lifecycle import transient_dialog
+from dialog_chrome import add_header, add_actions, InlineError
 from ui_components import button as fluent_button, LineEdit as QLineEdit, CheckBox as QCheckBox, ComboBox as QComboBox
 from app import WorkBox
 from branding import brand_icon
@@ -52,8 +53,8 @@ def table(headers: list[str]) -> QTableWidget:
     widget.verticalHeader().hide()
     widget.verticalHeader().setDefaultSectionSize(46)
     widget.setShowGrid(False)
-    widget.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-    widget.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+    widget.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+    widget.setColumnWidth(0, 220)
     widget.setTextElideMode(Qt.ElideRight)
     return widget
 
@@ -96,8 +97,7 @@ class CaptureDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(26, 24, 26, 22)
         layout.setSpacing(12)
-        layout.addWidget(label("收录一条消息", "pageTitle"))
-        layout.addWidget(label("粘贴你选择的项目消息。先检查拆分结果，再放进工作箱。", "muted"))
+        add_header(layout, '收录项目消息', '粘贴 → 拆分预览 → 确认收录；不监听剪贴板。', eyebrow='WORKBOX / 项目收件')
         self.batch_edit = QComboBox()
         self.batch_edit.setEditable(True)
         moment = datetime.now()
@@ -123,7 +123,7 @@ class CaptureDialog(QDialog):
         self.preview_table = table(["项目名称 · 可直接修改", "加急"])
         self.preview_table.setEditTriggers(QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed)
         layout.addWidget(self.preview_table, 3)
-        self.error_label = label("", "error", True)
+        self.error_label = InlineError()
         layout.addWidget(self.error_label)
         bottom = QHBoxLayout()
         bottom.addWidget(label("加急独立于开发状态；新项目默认为待开发。", "muted"))
@@ -133,7 +133,7 @@ class CaptureDialog(QDialog):
         self.save_button.setEnabled(False)
         bottom.addWidget(cancel)
         bottom.addWidget(self.save_button)
-        layout.addLayout(bottom)
+        add_actions(layout, bottom)
         self.preview_button.clicked.connect(self.preview)
         self.save_button.clicked.connect(self.save)
         self.add_button.clicked.connect(lambda: self.add_row(ParsedProject("")))
