@@ -19,11 +19,15 @@ DOCUMENT_EXTENSIONS = {'.txt', '.md', '.pdf', '.doc', '.docx', '.rtf', '.odt',
 
 class DocumentTable(WorkbenchTableWidget):
     width_about_to_change = Signal()
+    width_changed = Signal()
 
     def resizeEvent(self, event):
-        if event.oldSize().width() != event.size().width():
+        changed = event.oldSize().width() != event.size().width()
+        if changed:
             self.width_about_to_change.emit()
         super().resizeEvent(event)
+        if changed:
+            self.width_changed.emit()
 
 
 class ProjectDocumentsPane(QWidget):
@@ -67,9 +71,14 @@ class ProjectDocumentsPane(QWidget):
         self.table.verticalHeader().hide()
         self.table.verticalHeader().setDefaultSectionSize(40)
         self.table.verticalHeader().setMinimumSectionSize(40)
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Interactive)
+        self.table.setColumnWidth(1, 94)
+        self.table.setColumnWidth(2, 70)
+        self._manual_columns = False
+        self._fitting_columns = False
+        header.sectionResized.connect(self._column_resized)
+        self.table.width_changed.connect(self._fit_columns)
         self._row_layout_timer = QTimer(self)
         self._row_layout_timer.setSingleShot(True)
         self._row_layout_anchor = None
@@ -100,6 +109,22 @@ class ProjectDocumentsPane(QWidget):
         self.timer = QTimer(self)
         self.timer.setInterval(3000)
         self.timer.timeout.connect(self.request_refresh)
+
+    def _column_resized(self, *_):
+        if not self._fitting_columns and self.table.isVisible():
+            self._manual_columns = True
+
+    def _fit_columns(self):
+        if self._manual_columns:
+            return
+        width = max(120, self.table.viewport().width()
+                    - self.table.columnWidth(1) - self.table.columnWidth(2))
+        if self.table.columnWidth(0) != width:
+            self._fitting_columns = True
+            try:
+                self.table.setColumnWidth(0, width)
+            finally:
+                self._fitting_columns = False
 
     def set_project(self, project_id):
         if project_id == self.project_id:

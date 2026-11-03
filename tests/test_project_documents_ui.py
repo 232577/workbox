@@ -2,10 +2,10 @@ import time
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import QPoint, Qt, QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtTest import QSignalSpy
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtTest import QSignalSpy, QTest
+from PySide6.QtWidgets import QApplication, QHeaderView, QMessageBox
 
 from compact_ui import CompactPanel
 from desktop_service import DesktopService
@@ -65,6 +65,33 @@ def test_projects_are_left_and_selected_documents_are_right(panel,qapp):
         assert panel.width()==width and panel.height()==height and pane.table.viewport().height()>=40
         assert panel.rect().contains(pane.open_button.mapTo(panel,pane.open_button.rect().bottomRight()))
         assert pane.table.geometry().bottom() < pane.open_button.geometry().top(), '文件表不能被底部按钮遮挡'
+
+
+def test_document_columns_drag_and_keep_user_width_when_window_changes(panel, qapp):
+    choose(panel, 1)
+    pane = panel.document_pane
+    wait(lambda: pane.worker is None and pane.table.rowCount() == 1)
+    header = pane.table.horizontalHeader()
+    assert all(header.sectionResizeMode(column) == QHeaderView.Interactive for column in range(3))
+    before = pane.table.columnWidth(0)
+    boundary = header.sectionViewportPosition(0) + before
+    QTest.mousePress(header.viewport(), Qt.LeftButton, pos=QPoint(boundary - 2, header.height() // 2))
+    QTest.mouseMove(header.viewport(), QPoint(boundary - 42, header.height() // 2))
+    QTest.mouseRelease(header.viewport(), Qt.LeftButton, pos=QPoint(boundary - 42, header.height() // 2))
+    qapp.processEvents()
+    assert pane.table.columnWidth(0) < before - 20
+    chosen = pane.table.columnWidth(0)
+    panel.resize(1000, 700)
+    qapp.processEvents()
+    assert pane.table.columnWidth(0) == chosen
+    pane.request_refresh()
+    wait(lambda: pane.worker is None)
+    assert pane.table.columnWidth(0) == chosen
+    header.resizeSection(0, pane.table.viewport().width() + 100)
+    qapp.processEvents()
+    assert pane.table.horizontalScrollBar().maximum() > 0
+    pane.table.horizontalScrollBar().setValue(pane.table.horizontalScrollBar().maximum())
+    assert header.sectionViewportPosition(2) < pane.table.viewport().width()
 
 
 def test_document_refresh_preserves_selection_and_handles_external_new_files(panel,qapp):

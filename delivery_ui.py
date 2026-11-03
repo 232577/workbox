@@ -174,12 +174,9 @@ class TodayDeliveryDialog(QDialog):
         self.table.setWrapColumns({0, 4})
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._project_context_menu)
-        for column in (0,1):
-            self.table.horizontalHeader().setSectionResizeMode(column,QHeaderView.Stretch)
-        for column in (2,3):
-            self.table.horizontalHeader().setSectionResizeMode(column,QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(4,QHeaderView.Interactive)
-        self.table.setColumnWidth(4,240)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        for column, width in enumerate((250, 100, 150, 100, 220)):
+            self.table.setColumnWidth(column, width)
         self._project_layout_anchor = None
         self._project_layout_timer = QTimer(self)
         self._project_layout_timer.setSingleShot(True)
@@ -192,9 +189,9 @@ class TodayDeliveryDialog(QDialog):
         self.details = self._table('所选项目交付明细',['交付时间（北京时间）','计数说明','交付方式','归档位置'])
         self.event_table = self.details
         self.details.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        for column in range(3):
-            self.details.horizontalHeader().setSectionResizeMode(column,QHeaderView.ResizeToContents)
-        self.details.horizontalHeader().setSectionResizeMode(3,QHeaderView.Stretch)
+        self.details.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        for column, width in enumerate((180, 120, 130, 280)):
+            self.details.setColumnWidth(column, width)
         layout.addWidget(self.details,1)
         self.reason = QLineEdit()
         self.reason.setAccessibleName('撤销或恢复备注')
@@ -642,15 +639,6 @@ class TodayDeliveryDialog(QDialog):
 
     def resizeEvent(self,event):
         if hasattr(self,'details_hint'):
-            narrow = self.width()<820
-            if self.table.isColumnHidden(1) != narrow:
-                self._queue_project_layout()
-                self.table.setColumnHidden(1,narrow)
-                # 窄窗将日期与时分秒分成两行，把长名称的阅读宽度留给项目及类型。
-                header = self.table.horizontalHeader()
-                header.setSectionResizeMode(2,QHeaderView.Fixed if narrow else QHeaderView.ResizeToContents)
-                if narrow:
-                    self.table.setColumnWidth(2,110)
             compact=self.height()<580
             self.scope_note.setVisible(not compact)
             self.details_hint.setVisible(not compact)
@@ -730,8 +718,6 @@ class TodayDeliveryDialog(QDialog):
         self.type_counts.setMaximumHeight(32)
         self.type_summary_layout.setContentsMargins(8,6,8,6)
         self.reason.setVisible(not compact or details)
-        self.table.setColumnHidden(2,compact)
-        self.table.setColumnWidth(4,110 if compact else 240)
         self.status_note.setMaximumHeight(32 if compact else 16777215)
         self.status_note.setToolTip(self.status_note.text())
         self.layout().setContentsMargins(6 if compact else 9,6 if compact else 9,
