@@ -2,7 +2,7 @@
 
 import pytest
 from PySide6.QtCore import QDateTime, Qt, QTimer
-from PySide6.QtWidgets import QApplication, QAbstractItemView
+from PySide6.QtWidgets import QApplication, QAbstractItemView, QHeaderView
 
 import compact_ui
 from desktop_service import DesktopService
@@ -45,6 +45,26 @@ def test_empty_dialog_explains_scope_and_is_read_only(qapp, service):
         assert dialog.details.isReadOnly()
         assert dialog.table.editTriggers() == QAbstractItemView.NoEditTriggers
         assert dialog.search.accessibleName()
+    finally:
+        dialog.close()
+
+
+def test_intake_columns_allow_manual_width_and_horizontal_reveal(qapp, service):
+    append(service.intake_log, name='隔离资料_' + '长文件名' * 30 + '.txt')
+    dialog = make_dialog(service)
+    try:
+        dialog.resize(640, 460)
+        dialog.show()
+        qapp.processEvents()
+        header = dialog.table.horizontalHeader()
+        assert all(header.sectionResizeMode(column) == QHeaderView.Interactive for column in range(4))
+        chosen = dialog.table.columnWidth(2) + 120
+        header.resizeSection(2, chosen)
+        qapp.processEvents()
+        assert dialog.table.columnWidth(2) == chosen
+        assert dialog.table.horizontalScrollBar().maximum() > 0
+        dialog.table.horizontalScrollBar().setValue(dialog.table.horizontalScrollBar().maximum())
+        assert header.sectionViewportPosition(3) < dialog.table.viewport().width()
     finally:
         dialog.close()
 

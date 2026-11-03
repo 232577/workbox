@@ -46,8 +46,8 @@ def list_project_documents(service, project_id, *, cancel_event=None):
 
     documents 行包含 id/name/relative_path/path/kind/size/mtime_ns/modified_at/
     exists/is_directory/origin/source。id 只取项目编号及规范绝对路径，修改
-    内容或补登记不会改变 id；missing 行实时元数据为 None。目录归档的
-    size 为 None。这里的 exists 仅代表查询时的状态，不代表内容已验证。
+    内容或补登记不会改变 id。已移走的登记文件不显示；目录归档的 size 为 None。
+    这里的 exists 仅代表查询时的状态，不代表内容已验证。
     """
     result = dict(project_id=project_id, workspace_path=None, documents=[], errors=[])
     errors, documents = result['errors'], {}
@@ -94,7 +94,7 @@ def list_project_documents(service, project_id, *, cancel_event=None):
             exists, mtime = True, info.st_mtime_ns
             size = None if directory else info.st_size
         except FileNotFoundError:
-            exists, mtime, size = False, None, None
+            return
         except OSError as error:
             problem(f'无法读取文件信息：{path}（{error}）')
             return

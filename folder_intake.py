@@ -11,6 +11,7 @@ from pathlib import Path
 from native_files import ZipLease, cancelled, path_is_within
 from workspace_manager import _folder_name, _path, _zip_structure
 from bundle_analyzer import analyze_bundle
+from file_matcher import match_work_file_projects
 from workflow_policy import creation_disabled_message
 
 
@@ -65,8 +66,13 @@ class FolderIntake:
         current = [row for row in projects if _normalized(row['name']) == _normalized(name)]
         if current:
             return current
-        return [row for row in projects if any(isinstance(alias, str)
+        aliases = [row for row in projects if any(isinstance(alias, str)
                 and _normalized(alias) == _normalized(name) for alias in row.get('name_aliases', []))]
+        if aliases:
+            return aliases
+        if name.endswith('版'):
+            return match_work_file_projects(name + '.txt', projects)['candidates']
+        return []
 
     def _directory_route(self, names, projects):
         matches = [self._named(name, projects) for name in names]

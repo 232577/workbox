@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import unicodedata
 from pathlib import Path
 
@@ -169,7 +170,7 @@ class ProjectChanges:
             public['result_type_name'] = (target['type_name'] or '未分类') if target else None
             public['result_included'] = bool(target['included'] and plan['source']['included']) if target else None
             if plan['kind'] == 'merge':
-                public['warning'] = ('材料复制到独立子目录，原工作目录保留作恢复备份；日常列表保留目标项目。'
+                public['warning'] = ('文件直接并入保留项目工作目录；同名文件会编号保留。原工作目录保留作恢复备份。'
                                      '原交付明细保留，按同一项目统计首次交付，不新增交付记录。')
             return public
 
@@ -200,11 +201,31 @@ class ProjectChanges:
                 path = self._map_path(row['path'], mapping)
                 if path != row['path']:
                     connection.execute('UPDATE work_files SET path=? WHERE id=?', (path, row['id']))
-            for row in connection.execute('SELECT id,source_path FROM zip_sources').fetchall():
+            for row in connection.execute('SELECT id,source_path,processed_stat FROM zip_sources').fetchall():
                 path = self._map_path(row['source_path'], mapping)
+                processed_stat = row['processed_stat']
+                if plan['kind'] == 'merge' and processed_stat:
+                    directory = plan['directory_plan']
+                    for root, inventory in ((directory['source_path'], directory['inventory']),
+                                            (directory['target_path'], directory['target_inventory'])):
+                        original = Path(row['source_path'])
+                        if not original.is_relative_to(Path(root)):
+                            continue
+                        relative = original.relative_to(Path(root)).as_posix().casefold()
+                        item = next((entry for entry in inventory if entry['kind']=='file'
+                                     and entry['path'].casefold()==relative), None)
+                        if item:
+                            device, inode, modified = item['identity']
+                            if json.loads(processed_stat) == [device, inode, item['size'], modified]:
+                                from native_files import identity
+                                processed_stat = json.dumps(identity(os.stat(path)))
+                        break
                 if path != row['source_path']:
-                    connection.execute('UPDATE zip_sources SET source_path=?,source_key=?,last_stat=NULL,stable_since=NULL WHERE id=?',
-                                       (path, self.service.snapshots._key(Path(path)), row['id']))
+                    connection.execute('UPDATE zip_sources SET source_path=?,source_key=?,processed_stat=?,last_stat=NULL,stable_since=NULL WHERE id=?',
+                                       (path, self.service.snapshots._key(Path(path)), processed_stat, row['id']))
+                elif processed_stat != row['processed_stat']:
+                    connection.execute('UPDATE zip_sources SET processed_stat=?,last_stat=NULL,stable_since=NULL WHERE id=?',
+                                       (processed_stat, row['id']))
             source_id = plan['source']['id']
             target_id = plan['target']['id'] if plan['target'] else None
             if plan['kind'] == 'merge':
@@ -245,12 +266,16 @@ class ProjectChanges:
             if plan['kind'] == 'merge' and not expected_token:
                 raise ValueError('合并需要有效的预览，请重新检查后确认。')
             cancelled(cancel_event)
-            self.directories.execute(plan['directory_plan'],
+            directory_result = self.directories.execute(plan['directory_plan'],
                 lambda operation_id, mapping, result: self.service._commit_project_change(
                     plan, operation_id, mapping, result, cancel_event=cancel_event),
                 cancel_event=cancel_event, progress=progress)
             self.service.snapshots._observed.clear()
             retained = plan['target'] or plan['source']
+            message = ('项目已合并，文件位于保留项目目录；原文件和交付记录已保留。'
+                       if plan['kind']=='merge' else '项目名称和工作目录已同步。')
+            if directory_result.get('cleanup_error'):
+                message += ' 旧目标备份清理未完成，请保留现场并检查目录变更记录。'
             return dict(operation=plan['kind'], project_id=retained['id'], project_ids=[retained['id']],
                         name=retained['name'] if plan['kind']=='merge' else plan['new_name'],
-                        message='项目已合并，原文件和交付记录已保留。' if plan['kind']=='merge' else '项目名称和工作目录已同步。')
+                        message=message)
