@@ -1,12 +1,13 @@
 """交付历史与统计管理：首次有效交付计数，误记可撤销和恢复。"""
 from datetime import datetime
+from math import ceil
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QDate, QLocale, QSignalBlocker, QTimer, Signal, QItemSelectionModel
 from PySide6.QtGui import QTextOption
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QDateEdit, QDialog,
     QHBoxLayout, QHeaderView, QLineEdit, QMenu, QMessageBox, QSizePolicy, QTextBrowser,
-    QTableWidget, QTableWidgetItem, QVBoxLayout, QTabBar, QWidget)
+    QTableWidget, QTableWidgetItem, QVBoxLayout, QTabBar, QWidget, QSplitter)
 
 from compact_ui import button, label, WrappedNameDelegate
 from theme import apply_to
@@ -54,6 +55,13 @@ class TodayDeliveryDialog(QDialog):
             # 复用管理内容和任务生命周期，由主窗口承担导航和窗口行为。
             self.setWindowFlags(Qt.Widget)
         self.service = service
+        self._panel_sizes_dirty = False
+        try:
+            sizes = service.get_setting('delivery_panel_sizes', [400, 400])
+        except Exception:
+            sizes = None
+        self._panel_sizes = sizes if (isinstance(sizes, list) and len(sizes) == 2
+            and all(type(size) is int and 0 < size <= 100000 for size in sizes)) else [400, 400]
         self.rows,self.events = [],[]
         self._summary_signature = self._details_signature = None
         self._history,self._day = None,None
@@ -68,7 +76,7 @@ class TodayDeliveryDialog(QDialog):
             area = self.screen().availableGeometry()
             self.resize(min(980,area.width()-24),min(680,area.height()-48))
         layout = QVBoxLayout(self)
-        layout.setSpacing(6)
+        layout.setSpacing(4)
         self.scope_note = label('按北京时间统计个人工作量。代交项目可设为不计工作量，已交付状态和文件保留；真正误记请用下方“撤销误记”。','subtle',True)
         layout.addWidget(self.scope_note)
         controls = QHBoxLayout()
@@ -114,6 +122,7 @@ class TodayDeliveryDialog(QDialog):
         self.type_summary_card = CardWidget(self)
         self.type_summary_card.setBorderRadius(8)
         self.type_summary_card.setAccessibleName('交付类型统计')
+        self.type_summary_card.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         self.type_summary_layout = QVBoxLayout(self.type_summary_card)
         self.type_summary_layout.setContentsMargins(12, 10, 12, 10)
         self.type_summary_layout.setSpacing(4)
@@ -136,6 +145,11 @@ class TodayDeliveryDialog(QDialog):
         self.type_counts.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Preferred)
         self.type_counts.setMinimumHeight(28)
         self.type_counts.setMaximumHeight(64)
+        self._summary_layout_timer = QTimer(self)
+        self._summary_layout_timer.setSingleShot(True)
+        self._summary_layout_timer.timeout.connect(self._fit_type_summary)
+        self.type_counts.document().documentLayout().documentSizeChanged.connect(
+            lambda *_: self._summary_layout_timer.start(0))
         self.type_summary_layout.addWidget(self.type_counts)
         layout.addWidget(self.type_summary_card)
         self.compact_view_bar = QWidget(self)
@@ -154,6 +168,26 @@ class TodayDeliveryDialog(QDialog):
         compact_view_layout.addWidget(self.compact_total)
         self.compact_view_bar.hide()
         layout.addWidget(self.compact_view_bar)
+        self.record_splitter = QSplitter(Qt.Vertical, self)
+        self.record_splitter.setObjectName('deliveryPanels')
+        self.record_splitter.setAccessibleName('项目记录与交付明细高度')
+        self.record_splitter.setChildrenCollapsible(False)
+        if not embedded:
+            # 可伸缩列表不把展开说明时的最小高度固化为 Windows 窗口下限。
+            self.record_splitter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
+        self.record_splitter.setHandleWidth(10)
+        self.record_splitter.setStyleSheet('''QSplitter#deliveryPanels::handle {
+            background: palette(midlight); border-radius: 2px; margin: 2px 0;
+        }
+        QSplitter#deliveryPanels::handle:hover { background: palette(highlight); }''')
+        self.project_panel = QWidget()
+        project_layout = QVBoxLayout(self.project_panel)
+        project_layout.setContentsMargins(0, 0, 0, 0)
+        project_layout.setSpacing(4)
+        self.detail_panel = QWidget()
+        detail_layout = QVBoxLayout(self.detail_panel)
+        detail_layout.setContentsMargins(0, 0, 0, 0)
+        detail_layout.setSpacing(4)
         project_actions = QHBoxLayout()
         self.project_selection_note = label('选择项目，可按 Ctrl 多选','subtle',True)
         self.project_selection_note.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Preferred)
@@ -166,8 +200,9 @@ class TodayDeliveryDialog(QDialog):
         project_actions.addWidget(self.change_type_button)
         project_actions.addWidget(self.exclude_count_button)
         project_actions.addWidget(self.include_count_button)
-        layout.addLayout(project_actions)
+        project_layout.addLayout(project_actions)
         self.table = self._table('交付项目列表',['项目','批次','首次有效交付','我的工作量','项目类型'],wrapped=True)
+        self.table.setMinimumHeight(116)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table.setWordWrap(True)
         self.table.setTextElideMode(Qt.ElideNone)
@@ -183,16 +218,29 @@ class TodayDeliveryDialog(QDialog):
         self._project_layout_timer.timeout.connect(self._resize_project_rows)
         self.table.width_about_to_change.connect(self._queue_project_layout)
         self.table.horizontalHeader().sectionResized.connect(self._queue_project_layout)
-        layout.addWidget(self.table,2)
+        project_layout.addWidget(self.table,1)
         self.details_hint = label('选择项目查看交付记录，可按住 Ctrl 或 Shift 多选明细。','subtle',True)
-        layout.addWidget(self.details_hint)
+        detail_layout.addWidget(self.details_hint)
         self.details = self._table('所选项目交付明细',['交付时间（北京时间）','计数说明','交付方式','归档位置'])
         self.event_table = self.details
         self.details.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.details.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
         for column, width in enumerate((180, 120, 130, 280)):
             self.details.setColumnWidth(column, width)
-        layout.addWidget(self.details,1)
+        detail_layout.addWidget(self.details,1)
+        self.record_splitter.addWidget(self.project_panel)
+        self.record_splitter.addWidget(self.detail_panel)
+        self.record_splitter.setStretchFactor(0, 1)
+        self.record_splitter.setStretchFactor(1, 1)
+        self.record_splitter.setSizes(self._panel_sizes)
+        handle = self.record_splitter.handle(1)
+        handle.setToolTip('上下拖动，调整项目记录与交付明细的高度')
+        handle.setAccessibleName('拖动调整上下列表高度')
+        self.record_splitter.splitterMoved.connect(self._remember_panel_sizes)
+        self._panel_layout_timer = QTimer(self)
+        self._panel_layout_timer.setSingleShot(True)
+        self._panel_layout_timer.timeout.connect(self._restore_panel_sizes)
+        layout.addWidget(self.record_splitter,1)
         self.reason = QLineEdit()
         self.reason.setAccessibleName('撤销或恢复备注')
         self.reason.setPlaceholderText('调整工作量或撤销、恢复记录的说明（可选）')
@@ -202,6 +250,9 @@ class TodayDeliveryDialog(QDialog):
         self.open_folder_button = button('打开归档目录')
         self.void_button = button('撤销误记')
         self.restore_button = button('恢复记录')
+        self.expand_details_button = button('放大明细')
+        self.expand_details_button.setCheckable(True)
+        self.expand_details_button.setToolTip('让交付明细使用整个列表区域，再次点击恢复上下分栏')
         self.close_button = button('返回项目' if embedded else '关闭')
         self.compact_actions_button = button('项目操作')
         self.compact_actions_button.setAccessibleName('所选交付记录操作')
@@ -212,13 +263,14 @@ class TodayDeliveryDialog(QDialog):
         actions.addWidget(self.compact_actions_button)
         for widget in (self.open_folder_button,self.void_button,self.restore_button):
             actions.addWidget(widget)
+        actions.addWidget(self.expand_details_button)
         actions.addStretch()
         actions.addWidget(self.close_button)
         layout.addLayout(actions)
         self.status_note = label('','subtle',True)
         self.status_note.hide()
         layout.addWidget(self.status_note)
-        for widget in (self.today_button,self.refresh_button,self.open_folder_button,self.void_button,self.restore_button,self.close_button,self.exclude_count_button,self.include_count_button,self.change_type_button):
+        for widget in (self.today_button,self.refresh_button,self.open_folder_button,self.void_button,self.restore_button,self.close_button,self.exclude_count_button,self.include_count_button,self.change_type_button,self.expand_details_button):
             widget.setAutoDefault(False)
         self.timer = QTimer(self)
         self.timer.setInterval(2000)
@@ -238,6 +290,7 @@ class TodayDeliveryDialog(QDialog):
         self.include_count_button.clicked.connect(lambda:self.manage_workload(True))
         self.change_type_button.clicked.connect(self.manage_project_types)
         self.close_button.clicked.connect(self.return_requested.emit if embedded else self.close)
+        self.expand_details_button.toggled.connect(self._sync_detail_focus)
         self.refresh()
 
     @staticmethod
@@ -326,6 +379,50 @@ class TodayDeliveryDialog(QDialog):
     def _date_changed(self,*_):
         self._following_today = False
         self.refresh()
+
+    def _fit_type_summary(self):
+        limit = 32 if self.embedded or self.height() < 580 else 64
+        height = min(limit, max(28, ceil(self.type_counts.document().size().height())
+                                + 2 * self.type_counts.frameWidth()))
+        if self.type_counts.maximumHeight() != height:
+            self.type_counts.setMaximumHeight(height)
+
+    def _remember_panel_sizes(self, *_):
+        if not self._compact_embedded:
+            sizes = self.record_splitter.sizes()
+            if len(sizes) == 2 and all(sizes):
+                self._panel_sizes = sizes
+                self._panel_sizes_dirty = True
+
+    def _restore_panel_sizes(self):
+        if not self._compact_embedded and not self.expand_details_button.isChecked():
+            available = sum(self.record_splitter.sizes())
+            if available > 1:
+                # 先按当前空间换算比例，避免 Qt 用新窗口的最小高度截断旧像素值。
+                first = max(1, min(available - 1,
+                                  round(available * self._panel_sizes[0] / sum(self._panel_sizes))))
+                self.record_splitter.setSizes([first, available - first])
+
+    def _sync_detail_focus(self, *_):
+        expanded = self.expand_details_button.isChecked()
+        self.expand_details_button.setText('恢复分栏' if expanded else '放大明细')
+        if self.embedded:
+            self._sync_embedded_layout()
+        else:
+            self.project_panel.setVisible(not expanded)
+        if not expanded:
+            self._panel_layout_timer.start(0)
+
+    def _save_panel_sizes(self):
+        if not self._panel_sizes_dirty:
+            return
+        try:
+            self.service.set_setting('delivery_panel_sizes', self._panel_sizes)
+        except Exception as error:
+            self.status_note.setText('本次高度已调整，但未能保存布局：' + str(error))
+            self.status_note.show()
+        else:
+            self._panel_sizes_dirty = False
 
     def _scope_changed(self,*_):
         self.date_edit.setEnabled(not self.all_dates.isChecked())
@@ -642,18 +739,21 @@ class TodayDeliveryDialog(QDialog):
             compact=self.height()<580
             self.scope_note.setVisible(not compact)
             self.details_hint.setVisible(not compact)
-            self.type_counts.setMaximumHeight(30 if compact else 64)
             self.type_summary_layout.setContentsMargins(8 if compact else 12, 6 if compact else 10,
                                                        8 if compact else 12, 6 if compact else 10)
+            self._summary_layout_timer.start(0)
             if self.embedded:
                 self._sync_embedded_layout()
             else:
                 # Keep full-height inputs without squeezing a wrapped project
                 # row below one readable line group in the 680x460 view.
-                margin = 8 if compact else 9
+                margin = 8
                 self.layout().setContentsMargins(margin, margin, margin, margin)
-                self.layout().setSpacing(4 if compact else 6)
+                self.layout().setSpacing(4)
         super().resizeEvent(event)
+        if self.isVisible() and hasattr(self, '_panel_layout_timer'):
+            # 外层滚动区在切页后可能再次定尺寸，按最终可用空间恢复偏好。
+            self._panel_layout_timer.start(0)
 
     def _populate_compact_filters(self):
         menu = self.compact_filter_menu
@@ -692,6 +792,9 @@ class TodayDeliveryDialog(QDialog):
         host = self.window()
         compact = host.height()<620 or host.width()<820
         if compact != self._compact_embedded or not self._embedded_layout_initialized:
+            if compact and self.expand_details_button.isChecked():
+                with QSignalBlocker(self.compact_tabs):
+                    self.compact_tabs.setCurrentIndex(1)
             self._compact_embedded = compact
             self._embedded_layout_initialized = True
             for control in (self.date_edit,self.search,self.refresh_button):
@@ -705,7 +808,15 @@ class TodayDeliveryDialog(QDialog):
                 self.date_controls.insertWidget(1,self.date_edit)
                 self.date_controls.insertWidget(4,self.search,1)
                 self.date_controls.insertWidget(5,self.refresh_button)
+            if not compact:
+                self._panel_layout_timer.start(0)
         details = self.compact_tabs.currentIndex()==1
+        if compact and not details and self.expand_details_button.isChecked():
+            with QSignalBlocker(self.expand_details_button):
+                self.expand_details_button.setChecked(False)
+        expanded = self.expand_details_button.isChecked()
+        self.expand_details_button.setText('恢复分栏' if expanded else '放大明细')
+        self.expand_details_button.setVisible(not compact)
         for control in (self.today_button,self.all_dates,self.show_voided,self.refresh_button,
                         self.scope_note,self.summary,self.type_summary_card,self.project_selection_note,
                         self.change_type_button,self.exclude_count_button,self.include_count_button,
@@ -717,12 +828,14 @@ class TodayDeliveryDialog(QDialog):
         self.compact_actions_button.setText('记录操作' if details else '项目操作')
         self.table.setVisible(not compact or not details)
         self.details.setVisible(not compact or details)
-        self.table.setMinimumHeight(92 if compact else 128)
+        self.project_panel.setVisible((not compact and not expanded) or (compact and not details))
+        self.detail_panel.setVisible(not compact or details)
+        self.table.setMinimumHeight(92)
         self.details.setMinimumHeight(92)
         self.scope_note.hide()
         self.compact_filter_button.setToolTip(self.scope_note.text())
-        self.type_counts.setMaximumHeight(32)
         self.type_summary_layout.setContentsMargins(8,6,8,6)
+        self._summary_layout_timer.start(0)
         self.reason.setVisible(not compact or details)
         self.status_note.setMaximumHeight(32 if compact else 16777215)
         self.status_note.setToolTip(self.status_note.text())
@@ -742,6 +855,8 @@ class TodayDeliveryDialog(QDialog):
     def shutdown(self):
         self.timer.stop()
         self._project_layout_timer.stop()
+        self._summary_layout_timer.stop()
+        self._panel_layout_timer.stop()
         if self.worker:
             if not self.worker.wait(15000):
                 raise RuntimeError('交付记录管理操作仍未结束，请稍后再退出。')
@@ -768,16 +883,24 @@ class TodayDeliveryDialog(QDialog):
             QTimer.singleShot(0,self._fit_visible_screen)
         self.refresh()
         self._queue_project_layout()
+        self._panel_layout_timer.start(0)
+        self._summary_layout_timer.start(0)
         self.timer.start()
 
     def hideEvent(self,event):
         self.timer.stop()
         self._project_layout_timer.stop()
+        self._summary_layout_timer.stop()
+        self._panel_layout_timer.stop()
+        self._save_panel_sizes()
         super().hideEvent(event)
 
     def closeEvent(self,event):
         self.timer.stop()
         self._project_layout_timer.stop()
+        self._summary_layout_timer.stop()
+        self._panel_layout_timer.stop()
+        self._save_panel_sizes()
         super().closeEvent(event)
 
     def reject(self):
