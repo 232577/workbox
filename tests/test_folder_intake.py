@@ -142,7 +142,7 @@ def test_protected_or_ambiguous_folder_never_guesses(service, tmp_path, protecte
     assert len(service.list_projects(archived=None, deleted=None)) == (2 if protected == 'duplicate' else 1)
 
 
-def test_conflicting_filename_waits_and_same_name_never_overwrites(service, tmp_path):
+def test_conflicting_filename_waits_and_same_name_keeps_new_name_and_old_content(service, tmp_path):
     pid = project(service, '甲系统')
     project(service, '乙系统')
     root = tmp_path / 'source' / '甲系统'
@@ -152,8 +152,10 @@ def test_conflicting_filename_waits_and_same_name_never_overwrites(service, tmp_
     file(root, 'readme.txt', b'two')
     assert intake(service, root)['copied'] == 1
     target = Path(service.workspaces.get_workspace(pid)['path'])
-    assert (target / 'readme.txt').read_bytes() == b'one'
+    assert (target / 'readme.txt').read_bytes() == b'two'
     assert sorted(p.read_bytes() for p in target.glob('*.txt')) == [b'one', b'two']
+    assert (root / 'readme.txt').read_bytes() == b'two'
+    assert (root / '乙系统_代码.docx').is_file()
 
 
 def test_bad_zip_is_failure_valid_zip_keeps_stable_watch(service, tmp_path):
