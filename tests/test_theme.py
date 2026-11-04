@@ -64,7 +64,9 @@ def contrast(first, second):
 def test_text_and_semantic_colors_have_readable_contrast(theme, mode):
     colors = theme.tokens(mode)
     for foreground, background in [('ink', 'bg'), ('ink', 'surface'), ('muted', 'surface'),
-                                   ('accent_text', 'accent'), ('selection_text', 'selection')]:
+                                   ('accent_text', 'accent'), ('selection_text', 'selection'),
+                                   ('nav_ink', 'nav_bg'), ('nav_muted', 'nav_bg'),
+                                   ('nav_accent', 'nav_selected')]:
         assert contrast(colors[foreground], colors[background]) >= 4.5, (mode, foreground)
     for state in ['state_new', 'state_pending', 'state_working', 'state_delivered']:
         assert contrast(colors[state], colors['surface']) >= 4.5, (mode, state)
@@ -86,7 +88,7 @@ def test_install_reads_saved_theme_without_writing_and_keeps_other_settings(them
     theme.install_theme(store)
     assert theme.current_mode() == theme.resolved_mode() == 'dark'
     assert store.values == before and store.writes == []
-    assert qapp.palette().color(QPalette.Window).name().upper() == '#181C24'
+    assert qapp.palette().color(QPalette.Window).name().upper() == '#181A1C'
     assert qapp.font().family() == 'Microsoft YaHei UI'
     assert qapp.font().pointSize() == 10
 

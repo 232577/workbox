@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QColor, QIcon
+from PySide6.QtGui import QColor, QIcon, QPainter
 from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QPushButton, QToolButton, QVBoxLayout, QWidget, QFrame, QHBoxLayout, QSizePolicy
 from qfluentwidgets.common.icon import FluentIconBase, toQIcon
+from control_styles import control_style
 from qfluentwidgets import (
     CheckBox as _FluentCheckBox,
     FluentIcon,
@@ -20,6 +21,7 @@ from qfluentwidgets import (
     setTheme,
     setThemeColor,
     qconfig,
+    SegmentedWidget,
 )
 
 __all__ = ['button', 'LineEdit', 'CheckBox', 'SpinBox', 'ComboBox', 'init_fluent_theme',
@@ -148,9 +150,7 @@ class LineEdit(_FluentLineEdit):
 
         # A widget-local Fluent sheet wins over the application padding during
         # Qt polish and otherwise reduces this to 22px despite minimumHeight.
-        rule = ('LineEdit, LineEdit:focus, LineEdit:disabled '
-                '{ min-height: 30px; max-height: 40px; padding: 0px 10px; }')
-        setCustomStyleSheet(self, rule, rule)
+        setCustomStyleSheet(self, control_style('light', 'line'), control_style('dark', 'line'))
 
     def contextMenuEvent(self, event):
         _exec_native_edit_menu(self, event.globalPos())
@@ -183,8 +183,21 @@ class CheckBox(_FluentCheckBox):
         super().__init__(*args, **kwargs)
         rule = ('CheckBox::indicator, CheckBox::indicator:checked, '
                 'CheckBox::indicator:unchecked, CheckBox::indicator:indeterminate '
-                '{ image: none; border: none; background: transparent; }')
+                '{ image: none; border: none; background: transparent; width: 17px; height: 17px; }')
         setCustomStyleSheet(self, rule, rule)
+
+    def _borderColor(self):
+        from theme import tokens
+        colors = tokens()
+        return QColor(colors['disabled_check' if self.isChecked() else 'border'] if not self.isEnabled() else
+                      colors['accent'] if self.isChecked() or self.isHover else colors['control_border'])
+
+    def _backgroundColor(self):
+        from theme import tokens
+        colors = tokens()
+        return QColor(colors['disabled_check' if self.isChecked() else 'disabled_bg'] if not self.isEnabled() else
+                      colors['accent'] if self.isChecked() else
+                      colors['raised'] if self.isPressed else colors['surface'])
 
 
 class ComboBox(QComboBox):
@@ -195,10 +208,28 @@ class ComboBox(QComboBox):
         FluentStyleSheet.COMBO_BOX.apply(self)
         def native_chrome(theme):
             arrow = FluentIcon.ARROW_DOWN.path(theme)
-            return ("ComboBox::drop-down { subcontrol-origin: padding; "
+            return (control_style('dark' if theme == Theme.DARK else 'light', 'combo') +
+                    "ComboBox::drop-down { subcontrol-origin: padding; "
                     "subcontrol-position: top right; width: 28px; border: none; background: transparent; }"
                     f"ComboBox::down-arrow {{ image: url({arrow}); width: 10px; height: 10px; }}")
         setCustomStyleSheet(self, native_chrome(Theme.LIGHT), native_chrome(Theme.DARK))
+
+
+class StatusSegments(SegmentedWidget):
+    """Keep Fluent navigation/keyboard behavior with WorkBox's selection surface."""
+
+    def paintEvent(self, event):
+        QWidget.paintEvent(self, event)
+        item = self.currentItem()
+        if item is None:
+            return
+        from theme import tokens
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(tokens()['notice_bg']))
+        rect = item.rect().adjusted(1, 1, -1, -1).translated(int(self.slideAni.value()), 0)
+        painter.drawRoundedRect(rect, 6, 6)
 
 
 class NavigationButton(QPushButton):
@@ -246,12 +277,12 @@ class NavigationButton(QPushButton):
 
     def _refresh_icon(self, *_):
         if isinstance(self._source_icon, FluentIconBase):
+            from theme import tokens
             if self.isChecked():
-                from theme import tokens
-                color = tokens()['accent'] if self.property('softSelection') else 'white'
+                color = tokens()['nav_accent'] if self.property('softSelection') else 'white'
                 icon = self._source_icon.icon(color=QColor(color))
             else:
-                icon = toQIcon(self._source_icon)
+                icon = self._source_icon.icon(color=QColor(tokens()['nav_ink']))
             super().setIcon(icon)
         else:
             super().setIcon(toQIcon(self._source_icon) if self._source_icon is not None else QIcon())
@@ -262,6 +293,7 @@ class NavigationMenuButton(QToolButton):
 
     def __init__(self, text: str):
         super().__init__()
+        FluentStyleSheet.BUTTON.apply(self)
         self.setText(text)
         self.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         # Qt 的 InstantPopup 虽声明 ShowMenu 无障碍动作，却不执行它。
@@ -281,7 +313,11 @@ class NavigationMenuButton(QToolButton):
         self._refresh_icon()
 
     def _refresh_icon(self, *_):
-        super().setIcon(toQIcon(self._source_icon) if self._source_icon is not None else QIcon())
+        if isinstance(self._source_icon, FluentIconBase):
+            from theme import tokens
+            super().setIcon(self._source_icon.icon(color=QColor(tokens()['nav_ink'])))
+        else:
+            super().setIcon(toQIcon(self._source_icon) if self._source_icon is not None else QIcon())
 
 
 def button(text: str, primary: bool | str = False):
@@ -297,7 +333,8 @@ def button(text: str, primary: bool | str = False):
         widget.setObjectName('nav' if role == 'nav-menu' else role)
     def native_menu_arrow(theme):
         arrow = FluentIcon.ARROW_DOWN.path(theme)
-        rules = ("PushButton::menu-indicator { subcontrol-origin: padding; "
+        rules = (control_style('dark' if theme == Theme.DARK else 'light', 'button') +
+                "PushButton::menu-indicator { subcontrol-origin: padding; "
                 "subcontrol-position: right center; width: 10px; height: 10px; "
                 f"image: url({arrow}); }}"
                 "QPushButton#nav::menu-indicator { subcontrol-origin: padding; "
@@ -312,9 +349,14 @@ def button(text: str, primary: bool | str = False):
                       "border: 1px solid %(border)s; }"
                       "PushButton#danger:hover, PushButton#danger:pressed { background: %(error_bg)s; }"
                       "PushButton#danger:disabled { color: %(disabled)s; background: %(disabled_bg)s; }") % colors
+        if role == 'nav-menu':
+            nav_arrow = FluentIcon.ARROW_DOWN.path(theme)
+            rules += ('QToolButton#nav::menu-indicator { subcontrol-origin: padding; '
+                      'subcontrol-position: center right; width: 10px; height: 10px; '
+                      f'image: url({nav_arrow}); }}'
+                      'QToolButton#nav[compactNav="true"]::menu-indicator { image: none; width: 0px; height: 0px; }')
         return rules
-    if role != 'nav-menu':
-        setCustomStyleSheet(widget, native_menu_arrow(Theme.LIGHT), native_menu_arrow(Theme.DARK))
+    setCustomStyleSheet(widget, native_menu_arrow(Theme.LIGHT), native_menu_arrow(Theme.DARK))
     return widget
 
 

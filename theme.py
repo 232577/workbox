@@ -21,11 +21,11 @@ from qdarkstyle.light.palette import LightPalette
 _MODES = ('light', 'dark', 'system')
 _TOKENS = {
     'light': {
-        'bg': '#F3F5F8', 'surface': '#FFFFFF', 'raised': '#EBF0F5',
-        'ink': '#172B3A', 'muted': '#3D5266', 'border': '#CBD5DF', 'control_border': '#7890A1',
+        'bg': '#F4F6F8', 'surface': '#FFFFFF', 'raised': '#E8EDF0',
+        'ink': '#242A30', 'muted': '#46535D', 'border': '#DCE3E8', 'control_border': '#89949D',
         'accent': '#0F766E', 'accent_hover': '#0B615A', 'accent_text': '#FFFFFF',
         'hover': '#E5F2EF', 'selection': '#0F766E', 'selection_text': '#FFFFFF',
-        'disabled': '#657585', 'disabled_bg': '#E8EDF2',
+        'disabled': '#657585', 'disabled_bg': '#F0F3F5', 'disabled_check': '#526575',
         'scroll_handle': '#8395A5', 'scroll_hover': '#526575',
         'state_new': '#526575', 'state_pending': '#8A4A0C',
         'state_working': '#175EA8', 'state_delivered': '#0F766E',
@@ -34,21 +34,25 @@ _TOKENS = {
         'success_bg': '#E8F5EF', 'warning_bg': '#FFF4E3', 'error_bg': '#FDEDF0',
         'orb_bg': '#FFFFFF', 'orb_border': '#CBD5DF', 'orb_ink': '#172B3A',
         'orb_accent': '#0F766E', 'orb_glow': '#D2EAE4', 'orb_shadow': '#526575',
+        'nav_bg': '#EDF1F3', 'nav_ink': '#303B43', 'nav_muted': '#46535D',
+        'nav_hover': '#E2E8EB', 'nav_selected': '#DCE9E5', 'nav_accent': '#0B615A',
     },
     'dark': {
-        'bg': '#181C24', 'surface': '#222833', 'raised': '#2B3340',
-        'ink': '#F0F4F8', 'muted': '#B7C3CF', 'border': '#465365', 'control_border': '#64778B',
+        'bg': '#181A1C', 'surface': '#222528', 'raised': '#2C3034',
+        'ink': '#F0F2F4', 'muted': '#BBC4CD', 'border': '#3C4248', 'control_border': '#71808D',
         'accent': '#69D5BE', 'accent_hover': '#86E2CE', 'accent_text': '#172B3A',
         'hover': '#2D4645', 'selection': '#2F8278', 'selection_text': '#FFFFFF',
-        'disabled': '#93A1B0', 'disabled_bg': '#303947',
+        'disabled': '#93A1B0', 'disabled_bg': '#303947', 'disabled_check': '#93A1B0',
         'scroll_handle': '#6F8298', 'scroll_hover': '#A1B4C8',
         'state_new': '#B7C3CF', 'state_pending': '#F2BD73',
         'state_working': '#93C5FD', 'state_delivered': '#69D5BE',
         'error': '#FFACB4', 'notice_bg': '#263D3B',
-        'subtle_surface': '#1D232D', 'info_bg': '#223449',
+        'subtle_surface': '#1D2023', 'info_bg': '#223449',
         'success_bg': '#203D36', 'warning_bg': '#433424', 'error_bg': '#442B35',
         'orb_bg': '#222833', 'orb_border': '#465365', 'orb_ink': '#F0F4F8',
         'orb_accent': '#69D5BE', 'orb_glow': '#2D4645', 'orb_shadow': '#000000',
+        'nav_bg': '#1D2023', 'nav_ink': '#D7E0E6', 'nav_muted': '#BBC4CD',
+        'nav_hover': '#2C3034', 'nav_selected': '#263D3B', 'nav_accent': '#9DE8D9',
     },
 }
 _manager = None
@@ -345,12 +349,18 @@ QWidget#manager[dense="true"] QLabel#notice { padding: 5px 8px; font-size: 12px;
                   'border: 1px solid %(border)s; border-radius: 8px; }\n') % c
     # Shared presentation primitives; no model refresh or business-setting writes.
     rules += """
-QWidget#workbenchCanvas { background: %(surface)s; }
-QFrame#workbenchHeader { background: %(surface)s; border: none; border-bottom: 1px solid %(border)s; border-radius: 0px; }
+QWidget#workbenchCanvas { background: %(bg)s; }
+QFrame#workbenchHeader { background: %(bg)s; border: none; border-radius: 0px; }
 QFrame#workbenchHeader QLabel#pageTitle { font-size: 23px; }
 QLabel#selectedProjectName { font-size: 18px; font-weight: 600; }
-QFrame#sidebar { background: %(subtle_surface)s; }
-QFrame#sidebar QPushButton#nav[softSelection="true"]:checked { background: %(notice_bg)s; color: %(accent)s; }
+QFrame#sidebar { background: %(nav_bg)s; border: none; border-radius: 0px; }
+QFrame#sidebar QLabel#brandName { color: %(nav_ink)s; }
+QFrame#sidebar QLabel#subtle, QFrame#sidebar QLabel#workspaceStatus { color: %(nav_muted)s; }
+QLabel#projectStatusBadge { color: %(state_new)s; background: %(raised)s;
+    border: none; border-radius: 5px; padding: 3px 7px; font-size: 12px; font-weight: 500; }
+QLabel#projectStatusBadge[state="开发中"] { color: %(state_working)s; background: %(info_bg)s; }
+QLabel#projectStatusBadge[state="待交付"] { color: %(state_pending)s; background: %(warning_bg)s; }
+QLabel#projectStatusBadge[state="已交付"] { color: %(state_delivered)s; background: %(success_bg)s; }
 QWidget#dialogHeader { background: transparent; border: none; }
 QLabel#headerSubtitle { color: %(muted)s; font-size: 12px; }
 QLabel#headerEyebrow { color: %(accent)s; font-size: 11px; font-weight: 600; }
@@ -374,9 +384,12 @@ QPushButton#subtle:hover { background: %(hover)s; border-color: %(border)s; }
 QPushButton#danger { color: %(error)s; background: transparent; border-color: %(border)s; }
 QPushButton#danger:hover { background: %(error_bg)s; }
 QPushButton#danger:disabled { color: %(disabled)s; background: %(disabled_bg)s; }
-QWidget#projectSurface, QWidget#documentSurface { background: %(surface)s; border: none; border-radius: 0px; }
-QSplitter#projectWorkspaceSplit::handle { background: %(subtle_surface)s; border-left: 1px solid %(border)s; margin: 0px 3px; }
-QSplitter#projectWorkspaceSplit::handle:hover { background: %(accent)s; }
+QWidget#projectSurface { background: transparent; border: none; }
+QWidget#documentSurface { background: %(surface)s; border: 1px solid %(border)s; border-radius: 12px; }
+QListWidget#projectList { background: transparent; border: none; }
+QSplitter#projectWorkspaceSplit::handle { background: transparent; border: none; margin: 0px 3px; }
+QSplitter#projectWorkspaceSplit::handle:hover { background: %(accent)s; border-radius: 1px; }
+QFrame#workbenchFooter { background: %(bg)s; border: none; }
 QAbstractSpinBox QLineEdit { border: none; padding: 0px; min-height: 0px; background: transparent; }
 QPlainTextEdit#releaseNotes { background: %(surface)s; border-color: %(border)s; padding: 12px; }
 QTableWidget#materialRules, QTableWidget#materialResults, QTableWidget#materialChoices {
@@ -426,7 +439,9 @@ class ThemeManager(QObject):
         app.styleHints().colorSchemeChanged.connect(self._on_system_color_scheme_changed)
         app.installEventFilter(self)
         app.setStyle('Fusion')
-        app.setFont(QFont('Microsoft YaHei UI', 10))
+        app_font = QFont('Microsoft YaHei UI', 10)
+        app_font.setStyleStrategy(QFont.PreferAntialias)
+        app.setFont(app_font)
         self._apply()
 
     def _style_native_window(self, widget):

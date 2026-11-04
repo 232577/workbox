@@ -132,7 +132,7 @@ def test_selected_navigation_icon_is_legible_on_its_background(panel, mode):
                      if image.pixelColor(x, y).alpha() >= 200)
     assert opaque
     foreground = QColor(opaque.most_common(1)[0][0])
-    background = QColor(tokens(mode)['notice_bg'])
+    background = QColor(tokens(mode)['nav_selected'])
 
     def luminance(color):
         values = [value / 12.92 if value <= .04045 else ((value + .055) / 1.055) ** 2.4

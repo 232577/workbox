@@ -1,14 +1,16 @@
 """项目已有文档的只读异步列表，未变化时保持条目、选择和滚动。"""
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, QSignalBlocker, QUrl, Signal
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import Qt, QTimer, QSignalBlocker, QUrl, QSize, Signal
+from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QHeaderView, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QSizePolicy, QMessageBox
+from qfluentwidgets import FluentIcon
 
 from compact_ui import button, label, local_timestamp
 from fluent_views import WorkbenchTableWidget
 from native_files import plain_path
 from project_documents import list_project_documents
+from theme import theme_signal, tokens
 from ui import FileJob, human_size
 
 
@@ -49,7 +51,7 @@ class ProjectDocumentsPane(QWidget):
         self._deferred = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 6, 0, 0)
-        layout.setSpacing(4)
+        layout.setSpacing(6)
         self.hint = label('选择左侧项目，查看对应的文件。', 'subtle')
         self.hint.setMinimumWidth(0)
         self.hint.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Fixed)
@@ -65,6 +67,7 @@ class ProjectDocumentsPane(QWidget):
         self.table.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.table.setTextElideMode(Qt.ElideNone)
         self.table.setWordWrap(True)
+        self.table.setIconSize(QSize(16, 16))
         self.table.setShowGrid(False)
         self.table.setWrapColumns({0})
         self.table.setMinimumHeight(90)
@@ -72,6 +75,7 @@ class ProjectDocumentsPane(QWidget):
         self.table.verticalHeader().setDefaultSectionSize(40)
         self.table.verticalHeader().setMinimumSectionSize(40)
         header = self.table.horizontalHeader()
+        header.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         header.setSectionResizeMode(QHeaderView.Interactive)
         self.table.setColumnWidth(1, 94)
         self.table.setColumnWidth(2, 70)
@@ -87,10 +91,12 @@ class ProjectDocumentsPane(QWidget):
         self.table.horizontalHeader().sectionResized.connect(self._queue_row_layout)
         layout.addWidget(self.table, 1)
         actions = QHBoxLayout()
-        actions.setSpacing(4)
-        self.open_button = button('打开文件', True)
+        actions.setSpacing(8)
+        self.open_button = button('打开文件')
         self.folder_button = button('所在目录')
         self.refresh_button = button('刷新文档')
+        for control in (self.open_button, self.folder_button, self.refresh_button):
+            control.setProperty('workboxRole', 'secondary')
         self.open_button.setEnabled(False)
         self.folder_button.setEnabled(False)
         self.refresh_button.setEnabled(False)
@@ -109,6 +115,20 @@ class ProjectDocumentsPane(QWidget):
         self.timer = QTimer(self)
         self.timer.setInterval(3000)
         self.timer.timeout.connect(self.request_refresh)
+        theme_signal().connect(self._refresh_document_icons)
+
+    def _document_icons(self):
+        color = QColor(tokens()['muted'])
+        return {False: FluentIcon.DOCUMENT.icon(color=color),
+                True: FluentIcon.FOLDER.icon(color=color)}
+
+    def _refresh_document_icons(self, *_):
+        icons = self._document_icons()
+        with QSignalBlocker(self.table):
+            for row, record in enumerate(self.documents):
+                item = self.table.item(row, 0)
+                if item is not None:
+                    item.setIcon(icons[bool(record.get('is_directory'))])
 
     def _column_resized(self, *_):
         if not self._fitting_columns and self.table.isVisible():
@@ -139,6 +159,9 @@ class ProjectDocumentsPane(QWidget):
         self.documents = []
         self._read_error = self._result_errors = False
         self.table.setRowCount(0)
+        self.table.horizontalHeaderItem(0).setText('文件名称')
+        self.table.horizontalHeaderItem(0).setToolTip('')
+        self.table.setAccessibleDescription('')
         self.refresh_button.setEnabled(project_id is not None)
         self.hint.setText('正在读取项目文件…' if project_id is not None else '选择左侧一个项目，查看对应的文件。')
         self.hint.setToolTip('')
@@ -206,6 +229,7 @@ class ProjectDocumentsPane(QWidget):
         self.documents = result['documents']
         new_ids = [row['id'] for row in self.documents]
         versions=sorted(row['zip_id'] for row in self.documents if row.get('zip_id') is not None)
+        icons = self._document_icons()
         with QSignalBlocker(self.table):
             if old_ids != new_ids:
                 self.table.setRowCount(0)
@@ -235,6 +259,7 @@ class ProjectDocumentsPane(QWidget):
                     item.setToolTip(tooltip)
                     if column == 0:
                         item.setData(Qt.UserRole, record['id'])
+                        item.setIcon(icons[bool(record.get('is_directory'))])
             if selected_id in new_ids:
                 self.table.selectRow(new_ids.index(selected_id))
             elif old_ids != new_ids:
@@ -260,6 +285,8 @@ class ProjectDocumentsPane(QWidget):
         self._read_error = False
         self._result_errors = bool(result['errors'])
         count = len(result['documents'])
+        self.table.horizontalHeaderItem(0).setText(f'文件名称 · {count}')
+        self.table.setAccessibleDescription(f'{count} 项文件与归档')
         caption = f'{count} 项文件与归档' if count else '这个项目还没有文件，可将文件拖入工作箱。'
         if result['errors']:
             caption = f'{count} 项文件与归档 · 部分位置暂不可读'
@@ -268,6 +295,7 @@ class ProjectDocumentsPane(QWidget):
         tooltip='\n'.join(result['errors']) or (result['workspace_path'] or '项目尚未登记工作目录。')
         if self.hint.toolTip()!=tooltip:
             self.hint.setToolTip(tooltip)
+        self.table.horizontalHeaderItem(0).setToolTip(caption + '\n' + tooltip)
         self._sync_layout()
 
     def set_compact(self,compact):
@@ -276,7 +304,7 @@ class ProjectDocumentsPane(QWidget):
 
     def _sync_layout(self):
         self.layout().setContentsMargins(0, 0 if self._compact else 6, 0, 0)
-        show=not self._compact or not self.documents or self._read_error or self._result_errors
+        show=not self.documents or self._read_error or self._result_errors
         if self.hint.isHidden()==show:
             self.hint.setVisible(show)
         minimum=64 if self._compact and show else 90
