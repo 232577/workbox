@@ -159,6 +159,9 @@ class ProjectChangeDialog(QDialog):
                     lines.append('不可选：' + str(candidate['blocked_reason']))
         if plan.get('kind') == 'blocked':
             lines.append('当前无法执行，请处理上述冲突后重新检查。')
+            lines.append('合并不由待开发或待交付状态决定；请按上方目录、占用或归属原因处理，不要反复改名绕过保护。')
+        if plan.get('diagnostic_warning'):
+            lines.append(plan['diagnostic_warning'])
         if plan.get('kind') != 'merge':
             lines.append('普通文件和 ZIP 文件名保持原样。')
         return '\n'.join(lines)

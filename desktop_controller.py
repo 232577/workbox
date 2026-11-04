@@ -491,6 +491,8 @@ class FloatingController(QObject):
         elif isinstance(worker.result, dict) and 'state' in worker.result:
             result = worker.result
             message = '已保留消息，请点击「待核对」检查项目名。' if result['state'] == 'needs-review' else f"{'已收录过，未重复创建' if result.get('duplicate') else '已收录'} {len(result['project_ids'])} 个项目。"
+            if result.get('reason'):
+                message += '\n' + result['reason']
             if result.get('workspace_error'):
                 message += '\n工作目录创建失败：' + result['workspace_error'] + '。选择项目后点击「工作目录」可重试。'
             elif result.get('workspaces'):

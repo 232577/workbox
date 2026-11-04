@@ -4,10 +4,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import tempfile
 import unicodedata
+from datetime import datetime, timezone
 from pathlib import Path
 
-from native_files import cancelled
+from native_files import cancelled, plain_path
 
 
 def normalized_name(value):
@@ -172,7 +174,43 @@ class ProjectChanges:
             if plan['kind'] == 'merge':
                 public['warning'] = ('文件直接并入保留项目工作目录；同名文件会编号保留。原工作目录保留作恢复备份。'
                                      '原交付明细保留，按同一项目统计首次交付，不新增交付记录。')
+            elif plan['kind'] == 'blocked':
+                self._record_failed_preview(public)
             return public
+
+    def _record_failed_preview(self, plan):
+        """Keep the latest refusal locally, separate from recovery/business journals.
+
+        No project names, file inventory or document contents are copied. Failure
+        to save diagnostics never turns a refused preview into an allowed one.
+        Successful/cancelled previews do not overwrite the last failure.
+        """
+        source, target = plan.get('source') or {}, plan.get('target') or {}
+        warning = str(plan.get('warning', ''))
+        for row in (source, target):
+            for key in ('workspace_path', 'group_path', 'name'):
+                if row.get(key):
+                    warning = warning.replace(row[key], '[项目]')
+        data = dict(schema=1, at=datetime.now(timezone.utc).isoformat(), kind='blocked',
+                    source_id=source.get('id'), target_id=target.get('id'),
+                    source_status=source.get('status'), target_status=target.get('status'),
+                    warning=warning[:1200])
+        temporary = None
+        try:
+            target_path = plain_path(self.db.path.parent / 'project-preview-failure.json')
+            with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=target_path.parent,
+                                             prefix='.project-preview-', suffix='.tmp', delete=False) as stream:
+                temporary = Path(stream.name)
+                json.dump(data, stream, ensure_ascii=False)
+            os.replace(temporary, target_path)
+        except (OSError, ValueError):
+            plan['diagnostic_warning'] = '本地预检诊断未能保存，请保留上方具体原因；没有执行改名或合并。'
+        finally:
+            if temporary is not None:
+                try:
+                    temporary.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
     @staticmethod
     def _map_path(value, mapping):

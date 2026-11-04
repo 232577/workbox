@@ -20,6 +20,7 @@ from zip_manager import match_projects
 from file_matcher import match_work_file_projects, new_file_project_name
 from bundle_analyzer import analyze_bundle, bundle_hint
 from workflow_policy import read_policy, creation_disabled_message
+from text_intake import TextProjectConflict, resolve_text_projects
 import unicodedata
 from functools import wraps
 
@@ -135,11 +136,9 @@ class DesktopService(WorkBox):
 
     @staticmethod
     def _commit_text(connection, receipt, projects):
-        if not projects or len(projects) > 500:
-            raise ValueError('请保留 1 至 500 个项目。')
-        for project in projects:
-            if not isinstance(project, ParsedProject) or not project.name.strip() or len(project.name.strip()) > 200 or type(project.urgent) is not bool:
-                raise ValueError('项目名称不能为空、不能超过 200 字符，加急必须为是或否。')
+        # Resolve every name before creating any batch/project. The caller owns
+        # the write transaction, including review confirmation and queued intake.
+        planned = resolve_text_projects(connection, projects)
         batch_name = receipt['batch_name']
         suffix = 1
         while connection.execute('SELECT 1 FROM batches WHERE name=?', (batch_name,)).fetchone():
@@ -148,15 +147,30 @@ class DesktopService(WorkBox):
         batch_id = connection.execute('INSERT INTO batches(name) VALUES (?)', (batch_name,)).lastrowid
         connection.execute('UPDATE intake_receipts SET batch_name=? WHERE id=?', (batch_name, receipt['id']))
         message_id = connection.execute('INSERT INTO messages(batch_id,raw_text) VALUES (?,?)', (batch_id, receipt['raw_text'])).lastrowid
-        ids = [connection.execute('INSERT INTO projects(message_id,batch_id,name,urgent) VALUES (?,?,?,?)',
-               (message_id, batch_id, project.name.strip(), int(project.urgent))).lastrowid for project in projects]
-        Database._assign_default_project_type(connection, ids)
-        connection.execute("UPDATE intake_receipts SET state='committed',batch_id=?,project_ids=?,reason='' WHERE id=?", (batch_id, json.dumps(ids), receipt['id']))
+        ids, created, reused = [], [], []
+        for project, existing_id in planned:
+            if existing_id is None:
+                pid = connection.execute('INSERT INTO projects(message_id,batch_id,name,urgent) VALUES (?,?,?,?)',
+                    (message_id, batch_id, project.name.strip(), int(project.urgent))).lastrowid
+                created.append(pid)
+            else:
+                pid = existing_id
+                if pid not in reused:
+                    reused.append(pid)
+            if pid not in ids:
+                ids.append(pid)
+        if created:
+            Database._assign_default_project_type(connection, created)
+        reason = f'沿用 {len(reused)} 个已有项目，原状态、批次和工作目录保持。' if reused else ''
+        connection.execute("UPDATE intake_receipts SET state='committed',batch_id=?,project_ids=?,reason=? WHERE id=?",
+                           (batch_id, json.dumps(ids), reason, receipt['id']))
+        return dict(created_project_ids=created, reused_project_ids=reused)
 
     @_serialized_storage
     def receive_text(self, text):
         projects, reason = classify_text(text)
         fingerprint = hashlib.sha256(text.strip().encode('utf-8')).hexdigest()
+        changes = {}
         with self.db.connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
             row = connection.execute('SELECT * FROM intake_receipts WHERE fingerprint=?', (fingerprint,)).fetchone()
@@ -170,8 +184,12 @@ class DesktopService(WorkBox):
                 connection.execute('UPDATE intake_receipts SET batch_name=? WHERE id=?', (batch_name, receipt_id))
                 receipt = connection.execute('SELECT * FROM intake_receipts WHERE id=?', (receipt_id,)).fetchone()
                 if not reason:
-                    self._commit_text(connection, receipt, projects)
+                    try:
+                        changes = self._commit_text(connection, receipt, projects)
+                    except TextProjectConflict as error:
+                        connection.execute('UPDATE intake_receipts SET reason=? WHERE id=?', (str(error), receipt_id))
                 result = self._receipt(connection.execute('SELECT * FROM intake_receipts WHERE id=?', (receipt_id,)).fetchone())
+        result.update(changes)
         return self._attach_workspaces(result)
 
     def _attach_workspaces(self, result):
@@ -229,8 +247,9 @@ class DesktopService(WorkBox):
             receipt = connection.execute('SELECT * FROM intake_receipts WHERE id=?', (receipt_id,)).fetchone()
             if receipt is None or receipt['state'] != 'needs-review':
                 raise ValueError('这条收件已处理，请刷新。')
-            self._commit_text(connection, receipt, projects)
+            changes = self._commit_text(connection, receipt, projects)
             result = self._receipt(connection.execute('SELECT * FROM intake_receipts WHERE id=?', (receipt_id,)).fetchone())
+        result.update(changes)
         return self._attach_workspaces(result)
 
     def dismiss_receipt(self, receipt_id):
