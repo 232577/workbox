@@ -1,7 +1,7 @@
 """正式工作台使用真实库组件，视觉筛选与实际数据范围保持一致。"""
 import pytest
-from PySide6.QtWidgets import QApplication
-from qfluentwidgets import CardWidget, ListWidget, SegmentedWidget, TableWidget
+from PySide6.QtWidgets import QApplication, QFrame
+from qfluentwidgets import ListWidget, SegmentedWidget, TableWidget
 from compact_ui import CompactPanel, ReviewDialog
 from desktop_service import DesktopService
 from theme import install_theme
@@ -10,7 +10,7 @@ from theme import install_theme
 def app():
     return QApplication.instance() or QApplication([])
 
-def test_workbench_uses_library_views_cards_and_status_segment(app, tmp_path):
+def test_workbench_uses_library_views_flat_panes_and_status_segment(app, tmp_path):
     service=DesktopService(tmp_path/'workbox.db')
     install_theme(service)
     panel=CompactPanel(service)
@@ -18,7 +18,9 @@ def test_workbench_uses_library_views_cards_and_status_segment(app, tmp_path):
         assert isinstance(panel.project_list,ListWidget)
         assert isinstance(panel.zip_list,ListWidget) and isinstance(panel.receipt_list,ListWidget)
         assert isinstance(panel.document_pane.table,TableWidget)
-        assert isinstance(panel.document_side,CardWidget)
+        # 主工作台改为平面分区，列表、表格及分段筛选继续使用库控件。
+        assert type(panel.document_side) is QFrame
+        assert panel.project_splitter.widget(1) is panel.document_side
         assert isinstance(panel.status_segments,SegmentedWidget)
         assert panel.status_segments.currentRouteKey()=='all'
         panel.status_buttons['开发中'].click()
