@@ -246,7 +246,12 @@ class NavigationButton(QPushButton):
 
     def _refresh_icon(self, *_):
         if isinstance(self._source_icon, FluentIconBase):
-            icon = self._source_icon.icon(color=QColor('white')) if self.isChecked() else toQIcon(self._source_icon)
+            if self.isChecked():
+                from theme import tokens
+                color = tokens()['accent'] if self.property('softSelection') else 'white'
+                icon = self._source_icon.icon(color=QColor(color))
+            else:
+                icon = toQIcon(self._source_icon)
             super().setIcon(icon)
         else:
             super().setIcon(toQIcon(self._source_icon) if self._source_icon is not None else QIcon())

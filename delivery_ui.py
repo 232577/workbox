@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QDate, QLocale, QSignalBlocker, QTimer, Signal, QItemSelectionModel
 from PySide6.QtGui import QTextOption
-from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QDateEdit, QDialog,
+from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QDialog,
     QHBoxLayout, QHeaderView, QLineEdit, QMenu, QMessageBox, QSizePolicy, QTextBrowser,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QTabBar, QWidget, QSplitter)
 
@@ -17,6 +17,7 @@ from qfluentwidgets import CardWidget
 from database import DELIVERY_TIMEZONE
 from ui import FileJob
 from project_types_ui import choose_project_type
+from date_edit import DateEdit
 
 KIND_TEXT = {'auto-zip':'ZIP 自动交付','manual-zip':'手动 ZIP 交付',
              'manual-files':'手动材料交付','legacy':'旧交付事实'}
@@ -81,7 +82,7 @@ class TodayDeliveryDialog(QDialog):
         layout.addWidget(self.scope_note)
         controls = QHBoxLayout()
         self.today_button = button('今天')
-        self.date_edit = QDateEdit()
+        self.date_edit = DateEdit()
         self.date_edit.setAccessibleName('交付记录日期')
         self.date_edit.setLocale(QLocale(QLocale.Chinese,QLocale.China))
         self.date_edit.setDisplayFormat('yyyy-MM-dd')
@@ -278,6 +279,8 @@ class TodayDeliveryDialog(QDialog):
         self.refresh_button.clicked.connect(self.refresh)
         self.today_button.clicked.connect(self.go_today)
         self.date_edit.dateChanged.connect(self._date_changed)
+        self.date_edit.input_rejected.connect(self._date_input_rejected)
+        self.date_edit.input_accepted.connect(self._date_input_accepted)
         self.all_dates.toggled.connect(self._scope_changed)
         self.show_voided.toggled.connect(self.refresh)
         self.search.textChanged.connect(self.refresh)
@@ -380,6 +383,16 @@ class TodayDeliveryDialog(QDialog):
         self._following_today = False
         self.refresh()
 
+    def _date_input_rejected(self, message):
+        self._date_error = message
+        self.status_note.setText(message)
+        self.status_note.show()
+
+    def _date_input_accepted(self):
+        if getattr(self, '_date_error', None) == self.status_note.text():
+            self.status_note.hide()
+        self._date_error = None
+
     def _fit_type_summary(self):
         limit = 32 if self.embedded or self.height() < 580 else 64
         height = min(limit, max(28, ceil(self.type_counts.document().size().height())
@@ -429,6 +442,7 @@ class TodayDeliveryDialog(QDialog):
         self.refresh()
 
     def go_today(self):
+        self.date_edit.discard_pending_input()
         self._following_today = True
         with QSignalBlocker(self.all_dates):
             self.all_dates.setChecked(False)
@@ -439,8 +453,11 @@ class TodayDeliveryDialog(QDialog):
         try:
             if self._following_today:
                 today = self.service.db.today_delivery_summary()['day']
-                with QSignalBlocker(self.date_edit):
-                    self.date_edit.setDate(QDate.fromString(today,'yyyy-MM-dd'))
+                date = QDate.fromString(today,'yyyy-MM-dd')
+                # 同日刷新也会让 Qt 重写编辑文本，丢弃尚未输完的年份。
+                if self.date_edit.date() != date:
+                    with QSignalBlocker(self.date_edit):
+                        self.date_edit.setDate(date)
             day = None if self.all_dates.isChecked() else self.date_edit.date().toPython()
             history = self.service.db.delivery_history(day,keyword=self.search.text())
             catalog = self.service.list_project_types(include_inactive=True)
