@@ -3,6 +3,14 @@ export { SiteMetrics } from './analytics.mjs';
 // 固定版本的公开下载入口；不读取、转发访问者的登录信息。
 export const releases = Object.freeze([Object.freeze({
   version: '1.0.0',
+  tag: 'v1.0.0.20261104.2',
+  edition: '正式安装版',
+  date: '2026-11-04',
+  filename: 'WorkBox-1.0.0-Setup-x64-20261104-r2.exe',
+  size: 39888489,
+  sha256: 'f369cdee7e7f86a730440ce433e92c9d07f665bd5e7cb46b15033447460194d5',
+}), Object.freeze({
+  version: '1.0.0',
   tag: 'v1.0.0.20261103.5',
   edition: '正式安装版',
   date: '2026-11-03',
@@ -180,7 +188,7 @@ export async function handleRequest(request, env, fetcher = fetch, context = nul
     const metadata = {
       tag_name: release.tag, draft: false, prerelease: false,
       html_url: `https://github.com/232577/workbox/releases/tag/${release.tag}`,
-      body: `WorkBox ${release.version} 正式安装版 · ${release.date}。统一工作台与基础组件、材料缺项筛选和检查摘要、可调列表列宽、明确更新阶段。保留项目状态、交付历史和文件。升级前请备份数据；安装时保存数据库恢复点。安装包尚无商业代码签名。`,
+      body: `WorkBox ${release.version} 正式安装版 · ${release.date}。主工作台采用平面双栏，操作跟随项目；统一按钮、输入与状态筛选控件，项目队列使用透明背景融入工作区，文件与目录使用统一图标，深色外观采用中性炭灰层次；日期输入更清晰，交付明细可拖高及放大。普通文件先建项后，不同文字批次的唯一同名项目沿用原身份；多同名或受保护状态仍需核对。保留材料检查、项目状态、交付历史和文件。升级前请备份数据；安装时保存数据库恢复点。安装包尚无商业代码签名。`,
       assets: [{name: release.filename, size: release.size, state: 'uploaded',
         digest: `sha256:${release.sha256}`,
         browser_download_url: `https://github.com/232577/workbox/releases/download/${release.tag}/${release.filename}`}],
