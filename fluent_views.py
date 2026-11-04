@@ -8,8 +8,8 @@ from __future__ import annotations
 import math
 import re
 
-from PySide6.QtCore import QPointF, QRect, QSize, Qt
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QTextLayout, QTextOption
+from PySide6.QtCore import QPointF, QRect, QRectF, QSize, Qt
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPen, QTextLayout, QTextOption
 from PySide6.QtWidgets import QAbstractItemView, QListView, QStyle, QStyleOptionViewItem, QWidget
 from qfluentwidgets import ListWidget, SmoothMode, TableWidget, setCustomStyleSheet
 from qfluentwidgets.components.widgets.list_view import ListItemDelegate
@@ -20,15 +20,28 @@ PROJECT_NAME_ROLE = int(Qt.UserRole) + 10
 PROJECT_DETAIL_ROLE = int(Qt.UserRole) + 11
 
 
-def _fluent_item_styles(selector: str, horizontal_padding: int, color: str) -> str:
-    """隔离父窗口旧 item QSS；背景和选择指示仍由库委托绘制。"""
+def _fluent_item_styles(selector: str, horizontal_padding: int, mode: str) -> str:
+    """局部覆盖 Fluent 和父窗口样式；行状态由库委托钩子统一绘制。"""
+    from theme import tokens
+    colors = tokens(mode)
+    color = colors['ink']
     states = ('', ':hover', ':focus', ':selected', ':selected:hover', ':selected:focus',
               ':hover:focus', ':selected:active', ':selected:!active', ':!selected:hover',
               ':selected:active:focus', ':selected:!active:focus')
     items = ',\n'.join(f'{selector}::item{state}' for state in states)
-    header = 'QHeaderView::section { padding: 0px 5px; }' if selector == 'QTableView' else ''
+    header = f'''
+    QHeaderView {{ background: {colors['surface']}; border: none; }}
+    QHeaderView::section, QHeaderView::section:horizontal {{
+        color: {colors['muted']}; background: {colors['surface']};
+        border: none; border-bottom: 1px solid {colors['border']};
+        padding: 7px 16px; font-size: 12px; font-weight: 500;
+    }}
+    QHeaderView::section:hover {{ background: {colors['subtle_surface']}; }}
+    QTableCornerButton::section {{ background: {colors['surface']}; border: none; }}
+    ''' if selector == 'QTableView' else ''
+    project_background = 'QListView#projectList { background: transparent; }' if selector == 'QListView' else ''
     return f'''{selector} {{
-        color: {color}; selection-color: {color};
+        color: {color}; selection-color: {color}; background: {colors['surface']};
         selection-background-color: transparent; alternate-background-color: transparent;
     }}
     {items} {{
@@ -36,7 +49,8 @@ def _fluent_item_styles(selector: str, horizontal_padding: int, color: str) -> s
         background: transparent; color: {color}; selection-color: {color};
         selection-background-color: transparent;
     }}
-    {header}'''
+    {header}
+    {project_background}'''
 
 
 def configure_native_scroll(widget):
@@ -67,6 +81,53 @@ def configure_native_scroll(widget):
     for bar in (widget.verticalScrollBar(), widget.horizontalScrollBar()):
         bar.setTracking(True)
     return delegate
+
+
+class _WorkbenchRowStates:
+    """沿用 Fluent 的交互状态，以产品语义色替换默认灰底与侧边粗条。"""
+
+    def _idle_row_color(self, colors):
+        return colors['surface']
+
+    def _row_rect(self, option):
+        view = self.parent()
+        if isinstance(view, TableWidget):
+            # 每个单元格仍由 Fluent 裁切；同一行的完整轮廓不会出现列间接缝。
+            return QRectF(-view.horizontalScrollBar().value() + 1, option.rect.top(),
+                          view.horizontalHeader().length() - 2, option.rect.height())
+        return QRectF(option.rect).adjusted(1, 0, -1, 0)
+
+    def _drawBackground(self, painter, option, index):
+        from theme import tokens
+        colors = tokens()
+        selected = index.row() in self.selectedRows
+        hovered = index.row() == self.hoverRow
+        pressed = index.row() == self.pressedRow
+        focused = self.parent().hasFocus() and self.parent().currentIndex().row() == index.row()
+        color = colors['notice_bg'] if selected or pressed else (
+            colors['subtle_surface'] if hovered else self._idle_row_color(colors))
+        rect = self._row_rect(option)
+        painter.save()
+        try:
+            painter.setBrush(QColor(color))
+            painter.setPen(Qt.NoPen)
+            painter.drawRoundedRect(rect, 6, 6)
+            if focused:
+                painter.setBrush(Qt.NoBrush)
+                painter.setPen(QPen(QColor(colors['accent']), 1))
+                painter.drawRoundedRect(rect.adjusted(.5, .5, -.5, -.5), 6, 6)
+            elif not selected and not hovered and isinstance(self.parent(), TableWidget):
+                rule = QColor(colors['border'])
+                rule.setAlpha(100)
+                painter.setPen(QPen(rule, 1))
+                painter.drawLine(QPointF(rect.left() + 16, rect.bottom()),
+                                 QPointF(rect.right() - 16, rect.bottom()))
+        finally:
+            painter.restore()
+
+    def _drawIndicator(self, painter, option, index):
+        # 选择由整行浅色承载；键盘焦点轮廓在背景钩子绘制，避免长行侧边粗条。
+        pass
 
 
 class _WrappedFluentText:
@@ -114,8 +175,8 @@ class _WrappedFluentText:
         return size
 
 
-class WrappedFluentListDelegate(_WrappedFluentText, ListItemDelegate):
-    """列表保留真正的 Fluent 选中、悬停、按下绘制。"""
+class WrappedFluentListDelegate(_WorkbenchRowStates, _WrappedFluentText, ListItemDelegate):
+    """保留 Fluent 状态、原生选择与完整文本测量。"""
 
 
 class ProjectListDelegate(WrappedFluentListDelegate):
@@ -128,6 +189,9 @@ class ProjectListDelegate(WrappedFluentListDelegate):
     def __init__(self, parent):
         super().__init__(parent)
         self._painting_background = False
+
+    def _idle_row_color(self, colors):
+        return Qt.transparent
 
     def initStyleOption(self, option, index):
         super().initStyleOption(option, index)
@@ -155,10 +219,10 @@ class ProjectListDelegate(WrappedFluentListDelegate):
 
     def _text_blocks(self, index, width):
         font = QFont(self.parent().font())
-        font.setPixelSize(13)
+        font.setPixelSize(14)
         font.setWeight(QFont.DemiBold)
         name = self._text_layout(str(index.data(PROJECT_NAME_ROLE)), font, width)
-        font.setPixelSize(11)
+        font.setPixelSize(12)
         font.setWeight(QFont.Normal)
         detail = index.data(PROJECT_DETAIL_ROLE) or ''
         return name, self._text_layout(str(detail), font, width)
@@ -206,7 +270,7 @@ class ProjectListDelegate(WrappedFluentListDelegate):
             painter.restore()
 
 
-class WrappedFluentTableDelegate(_WrappedFluentText, TableItemDelegate):
+class WrappedFluentTableDelegate(_WorkbenchRowStates, _WrappedFluentText, TableItemDelegate):
     """整张表共用一个交互状态，仅指定列按内容换行。"""
 
     def __init__(self, parent):
@@ -226,8 +290,8 @@ class WorkbenchListWidget(ListWidget):
         self.setTextElideMode(Qt.ElideNone)
         self.setResizeMode(QListView.Adjust)
         # 库内置的固定35px行高不适用于业务长名称。
-        setCustomStyleSheet(self, _fluent_item_styles('QListView', 11, '#172B3A'),
-                            _fluent_item_styles('QListView', 11, '#F0F4F8'))
+        setCustomStyleSheet(self, _fluent_item_styles('QListView', 11, 'light'),
+                            _fluent_item_styles('QListView', 11, 'dark'))
         configure_native_scroll(self)
         # 业务刷新会直接改Qt模型/选择，库的鼠标回调之外也同步其选中绘制状态。
         self.selectionModel().selectionChanged.connect(self._sync_selection)
@@ -246,10 +310,11 @@ class WorkbenchTableWidget(TableWidget):
         self.setRowCount(rows)
         self.setColumnCount(columns)
         self.setItemDelegate(WrappedFluentTableDelegate(self))
+        self.setAlternatingRowColors(False)
         self.setWordWrap(True)
         self.setTextElideMode(Qt.ElideNone)
-        setCustomStyleSheet(self, _fluent_item_styles('QTableView', 16, '#172B3A'),
-                            _fluent_item_styles('QTableView', 16, '#F0F4F8'))
+        setCustomStyleSheet(self, _fluent_item_styles('QTableView', 16, 'light'),
+                            _fluent_item_styles('QTableView', 16, 'dark'))
         configure_native_scroll(self)
         self.selectionModel().selectionChanged.connect(self._sync_selection)
         self.model().modelReset.connect(self._sync_selection)

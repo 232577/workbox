@@ -18,8 +18,9 @@ from PySide6.QtWidgets import (
 from theme import apply_to, apply_scrollbar, stylesheet, install_theme, set_theme, current_mode, theme_signal
 from dialog_lifecycle import transient_dialog
 from ui_components import button as fluent_button, LineEdit as QLineEdit, CheckBox as QCheckBox, SpinBox as QSpinBox, ComboBox as QComboBox
-from ui_components import ElidedLabel
-from qfluentwidgets import FluentIcon, InfoBadge, InfoLevel, SegmentedWidget
+from ui_components import ElidedLabel, StatusSegments
+from qfluentwidgets import FluentIcon, setCustomStyleSheet
+from control_styles import control_style
 from fluent_views import (WorkbenchListWidget, WorkbenchTableWidget, configure_native_scroll,
                           ProjectListDelegate, PROJECT_NAME_ROLE, PROJECT_DETAIL_ROLE)
 from database import STATUSES
@@ -284,10 +285,10 @@ class CompactPanel(DropSurface, QWidget):
         self.navigation.setFixedWidth(164)
         nav = QVBoxLayout(self.navigation)
         nav.setContentsMargins(12, 20, 12, 14)
-        nav.setSpacing(8)
+        nav.setSpacing(6)
         self.brand_row = QHBoxLayout()
         self.brand_row.setContentsMargins(0, 0, 0, 0)
-        self.brand_row.setSpacing(6)
+        self.brand_row.setSpacing(10)
         self.brand_icon = QLabel()
         self.brand_icon.setStyleSheet('padding: 0px; border: 0px; background: transparent;')
         self.brand_icon.setAlignment(Qt.AlignCenter)
@@ -353,6 +354,7 @@ class CompactPanel(DropSurface, QWidget):
         heading.addWidget(self.summary)
         top.addWidget(self.header_heading, 1)
         self.paste_button = button('粘贴消息')
+        self.paste_button.setProperty('workboxRole', 'secondary')
         self.paste_button.setIcon(FluentIcon.PASTE)
         self.files_button = button('收进文件', True)
         self.files_button.setIcon(FluentIcon.ADD)
@@ -393,7 +395,7 @@ class CompactPanel(DropSurface, QWidget):
         self.search.setPlaceholderText('搜索项目、备注、批次或 ZIP 名称')
         self.search.setAccessibleName('搜索项目、备注、批次或 ZIP 名称')
         self.search.setClearButtonEnabled(True)
-        self.search.setMinimumHeight(36)
+        self.search.setMinimumHeight(32)
         self.search.setMinimumWidth(100)
         top.insertWidget(1, self.search, 2)
         self.notice = label('', 'notice')
@@ -418,12 +420,15 @@ class CompactPanel(DropSurface, QWidget):
         filters = QHBoxLayout()
         self.status_group = QButtonGroup(self)
         self.status_buttons = {}
-        self.status_segments = SegmentedWidget()
+        self.status_segments = StatusSegments()
+        setCustomStyleSheet(self.status_segments, control_style('light', 'segments'),
+                            control_style('dark', 'segments'))
         self.status_segments.setMaximumWidth(430)
         self.status_segments.setAccessibleName('项目状态筛选')
         for index, state in enumerate((None, *STATUSES)):
             route = state or 'all'
             item = self.status_segments.addItem(route, state or '全部')
+            setCustomStyleSheet(item, control_style('light', 'segments'), control_style('dark', 'segments'))
             item.setObjectName('statusFilterItem')
             item.setCheckable(True)
             self.status_group.addButton(item, index)
@@ -469,16 +474,19 @@ class CompactPanel(DropSurface, QWidget):
         filters.addWidget(self.urgent_filter)
         filters.addWidget(self.bulk_mode)
         self.material_check_button = button('材料检查')
+        self.material_check_button.setProperty('workboxRole', 'secondary')
         self.material_check_button.setIcon(FluentIcon.DOCUMENT)
         self.material_check_button.setAccessibleName('材料检查')
         self.material_check_button.setToolTip('检查所选项目的材料与缺项（Alt+M）；不改变交付状态。')
         self.material_check_button.setShortcut('Alt+M')
         self.material_check_button.clicked.connect(lambda: self.open_material_check(self.current_project['id']) if self.current_project else None)
         self.change_type_button = button('修改类型…')
+        self.change_type_button.setProperty('workboxRole', 'secondary')
         self.change_type_button.setAccessibleName('修改所选项目的类型')
         self.change_type_button.setToolTip('修改当前选中项目的类型；批量选择时应用到所选项目。也可管理自定义类型。')
         self.change_type_button.clicked.connect(self.change_selected_project_types)
         self.intake_log_button = button('收录记录')
+        self.intake_log_button.setProperty('workboxRole', 'secondary')
         self.intake_log_button.setAccessibleName('收录记录')
         self.intake_log_button.setToolTip('查看普通文件收录结果、所属项目与判断依据')
         self.intake_log_button.clicked.connect(self.show_intake_log)
@@ -517,7 +525,8 @@ class CompactPanel(DropSurface, QWidget):
         self.project_title.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         document_heading = QHBoxLayout()
         document_heading.addWidget(self.project_title, 1)
-        self.project_status_badge = InfoBadge('', document_side)
+        self.project_status_badge = label('', 'projectStatusBadge')
+        self.project_status_badge.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
         self.project_status_badge.setAccessibleName('所选项目当前状态')
         self.project_status_badge.hide()
         document_heading.addWidget(self.project_status_badge, 0, Qt.AlignTop)
@@ -527,6 +536,7 @@ class CompactPanel(DropSurface, QWidget):
         self.project_type_label.hide()
         document_layout.addWidget(self.project_type_label)
         self.project_actions_button = button('项目操作')
+        self.project_actions_button.setProperty('workboxRole', 'secondary')
         self.project_actions_button.setAccessibleName('所选项目操作')
         self.project_actions_button.setToolTip('开发状态、备注与日期、改名、交付和归档')
         self.project_actions_button.clicked.connect(self._open_selected_project_menu)
@@ -626,7 +636,9 @@ class CompactPanel(DropSurface, QWidget):
         review_row.addStretch()
         rl.addLayout(review_row)
         self.tabs.addTab(pending, '待核对')
-        footer = QHBoxLayout()
+        self.footer_surface = QFrame()
+        self.footer_surface.setObjectName('workbenchFooter')
+        footer = QHBoxLayout(self.footer_surface)
         footer.setContentsMargins(14, 4, 14, 10)
         footer_hint = self.footer_hint = label('后台运行保留托盘；退出将停止自动归档。', 'subtle')
         footer_hint.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
@@ -653,7 +665,9 @@ class CompactPanel(DropSurface, QWidget):
         footer.addWidget(self.cancel_button)
         footer.addWidget(self.background_button)
         footer.addWidget(self.exit_button)
-        layout.addLayout(footer)
+        for control in (self.update_button, self.help_button, self.background_button, self.exit_button):
+            control.setProperty('workboxRole', 'secondary')
+        layout.addWidget(self.footer_surface)
         self.paste_button.clicked.connect(self.paste_requested)
         self.files_button.clicked.connect(self.files_requested)
         self.root_button.clicked.connect(lambda: self.folder_requested.emit(service.workspaces.settings()['archive_root']))
@@ -879,9 +893,9 @@ class CompactPanel(DropSurface, QWidget):
             self.project_status_badge.setVisible(p is not None)
             if p is not None:
                 self.project_status_badge.setText(p['status'])
-                levels = {'待开发': InfoLevel.INFOAMTION, '开发中': InfoLevel.ATTENTION,
-                          '待交付': InfoLevel.WARNING, '已交付': InfoLevel.SUCCESS}
-                self.project_status_badge.setLevel(levels[p['status']])
+                self.project_status_badge.setProperty('state', p['status'])
+                self.project_status_badge.style().unpolish(self.project_status_badge)
+                self.project_status_badge.style().polish(self.project_status_badge)
             self.project_title.setToolTip((p['name'] + '\n' + (p.get('workspace') or {}).get('path', '工作目录尚未创建')) if p else '')
         finally:
             self.refreshing = False
@@ -1443,7 +1457,7 @@ class CompactPanel(DropSurface, QWidget):
     def resize_navigation(self):
         narrow = self.width() < 900
         caption = getattr(self, '_today_caption', '今日工作量 0')
-        control_width = max(140, self.today_button.fontMetrics().horizontalAdvance(caption) + 52)
+        control_width = max(152, self.today_button.fontMetrics().horizontalAdvance(caption) + 52)
         self.navigation.setFixedWidth(72 if narrow else control_width + 24)
         self.navigation.layout().setContentsMargins(8 if narrow else 12, 14, 8 if narrow else 12, 14)
         self.brand_label.setVisible(not narrow)
@@ -1476,9 +1490,9 @@ class CompactPanel(DropSurface, QWidget):
         # space from file rows in the supported 660x492 compact workspace.
         self.project_type_label.setVisible(self.current_project is not None and not compact)
         self.summary.setVisible(not compact and self.width() >= 820 and self.tabs.currentIndex() != 3)
-        self.header_surface.layout().setContentsMargins(10 if compact else 18, 8 if compact else 14,
-                                                       10 if compact else 18, 8 if compact else 14)
-        self.search.setMinimumHeight(28 if compact else 36)
+        self.header_surface.layout().setContentsMargins(10 if compact else 18, 8 if compact else 10,
+                                                       10 if compact else 18, 8 if compact else 10)
+        self.search.setMinimumHeight(28 if compact else 32)
         self.project_list_heading.setVisible(not compact)
         self.urgent_filter.setText('加急' if narrow else '只看加急')
         self.bulk_mode.setText('多选' if narrow else '批量选择')
@@ -1486,7 +1500,8 @@ class CompactPanel(DropSurface, QWidget):
                                                    8 if compact else 14, 6 if compact else 10)
         self.project_page_layout.setSpacing(4 if compact else 8)
         self.project_card_layout.setContentsMargins(0, 0, 6 if compact else 12, 0)
-        self.document_card_layout.setContentsMargins(6 if compact else 12, 0, 0, 0)
+        self.document_card_layout.setContentsMargins(8 if compact else 14, 4 if compact else 8,
+                                                     8 if compact else 14, 4 if compact else 8)
         self.document_card_layout.setSpacing(4 if compact else 6)
         if density_changed:
             # 样式重算可能触发布局，不能在Qt仍处理resize时重入polish。
