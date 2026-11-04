@@ -3,11 +3,11 @@ from datetime import datetime
 from math import ceil
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QDate, QLocale, QSignalBlocker, QTimer, Signal, QItemSelectionModel
+from PySide6.QtCore import Qt, QDate, QLocale, QSignalBlocker, QTimer, Signal, QItemSelectionModel, QStandardPaths
 from PySide6.QtGui import QTextOption
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QDialog,
     QHBoxLayout, QHeaderView, QLineEdit, QMenu, QMessageBox, QSizePolicy, QTextBrowser,
-    QTableWidget, QTableWidgetItem, QVBoxLayout, QTabBar, QWidget, QSplitter)
+    QTableWidget, QTableWidgetItem, QVBoxLayout, QTabBar, QWidget, QSplitter, QFileDialog)
 
 from compact_ui import button, label, WrappedNameDelegate
 from theme import apply_to
@@ -18,6 +18,7 @@ from database import DELIVERY_TIMEZONE
 from ui import FileJob
 from project_types_ui import choose_project_type
 from date_edit import DateEdit
+from native_files import identity
 
 KIND_TEXT = {'auto-zip':'ZIP 自动交付','manual-zip':'手动 ZIP 交付',
              'manual-files':'手动材料交付','legacy':'旧交付事实'}
@@ -100,6 +101,9 @@ class TodayDeliveryDialog(QDialog):
         self.search.setClearButtonEnabled(True)
         self.search.setMaxLength(200)
         self.refresh_button = button('刷新')
+        self.export_button = button('导出表格')
+        self.export_button.setAccessibleName('导出全部有效交付项目')
+        self.export_button.setToolTip('导出全部有效交付项目，每个项目一行，不受当前筛选影响。')
         for widget in (self.today_button,self.date_edit,self.all_dates,self.show_voided):
             controls.addWidget(widget)
         if embedded:
@@ -110,6 +114,7 @@ class TodayDeliveryDialog(QDialog):
         self.search_controls = controls
         controls.addWidget(self.search,1)
         controls.addWidget(self.refresh_button)
+        controls.addWidget(self.export_button)
         self.compact_filter_button = button('筛选')
         self.compact_filter_button.setAccessibleName('交付筛选与统计')
         self.compact_filter_menu = QMenu(self.compact_filter_button)
@@ -271,12 +276,13 @@ class TodayDeliveryDialog(QDialog):
         self.status_note = label('','subtle',True)
         self.status_note.hide()
         layout.addWidget(self.status_note)
-        for widget in (self.today_button,self.refresh_button,self.open_folder_button,self.void_button,self.restore_button,self.close_button,self.exclude_count_button,self.include_count_button,self.change_type_button,self.expand_details_button):
+        for widget in (self.today_button,self.refresh_button,self.export_button,self.open_folder_button,self.void_button,self.restore_button,self.close_button,self.exclude_count_button,self.include_count_button,self.change_type_button,self.expand_details_button):
             widget.setAutoDefault(False)
         self.timer = QTimer(self)
         self.timer.setInterval(2000)
         self.timer.timeout.connect(self.refresh)
         self.refresh_button.clicked.connect(self.refresh)
+        self.export_button.clicked.connect(self.export_projects)
         self.today_button.clicked.connect(self.go_today)
         self.date_edit.dateChanged.connect(self._date_changed)
         self.date_edit.input_rejected.connect(self._date_input_rejected)
@@ -586,6 +592,7 @@ class TodayDeliveryDialog(QDialog):
     def _update_open_action(self):
         events = self._selected_events()
         idle = self.worker is None and not self._choosing_type
+        self.export_button.setEnabled(idle)
         self.open_folder_button.setEnabled(idle and self._selected_archive_folder() is not None)
         self.void_button.setEnabled(idle and any(not event['voided'] for event in events))
         self.restore_button.setEnabled(idle and any(event['voided'] for event in events))
@@ -611,6 +618,71 @@ class TodayDeliveryDialog(QDialog):
         folder = self._selected_archive_folder()
         if folder:
             self.folder_requested.emit(folder)
+
+    def export_projects(self):
+        if self.worker or self._choosing_type:
+            return
+        documents = QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation)
+        name = 'WorkBox交付项目_' + datetime.now(DELIVERY_TIMEZONE).strftime('%Y%m%d_%H%M%S') + '.xlsx'
+        selected, _ = QFileDialog.getSaveFileName(
+            self, '导出全部有效交付项目', str(Path(documents or str(Path.home())) / name),
+            'Excel 工作簿 (*.xlsx)', options=QFileDialog.DontConfirmOverwrite)
+        if not selected:
+            self.status_note.setText('已取消导出。')
+            self.status_note.show()
+            return
+        target = Path(selected)
+        appended = not target.suffix
+        if appended:
+            target = target.with_suffix('.xlsx')
+        if target.suffix.casefold() != '.xlsx':
+            self.status_note.setText('导出未完成：请选择 .xlsx 文件。')
+            self.status_note.show()
+            return
+        try:
+            try:
+                target_id = identity(target.stat())
+            except FileNotFoundError:
+                target_id = None
+            # 在最终路径上确认，并把确认时的身份交给后台检查。
+            if target_id is not None and QMessageBox.question(
+                    self, '替换文件', f'文件已存在，是否替换？\n\n{target}',
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+                self.status_note.setText('已取消导出。')
+                self.status_note.show()
+                return
+        except OSError as error:
+            self.status_note.setText('导出未完成：' + str(error))
+            self.status_note.show()
+            return
+        def run_export(**kwargs):
+            from delivery_export import export_delivered_projects
+            return export_delivered_projects(self.service.db, target,
+                replace_existing=target_id is not None, expected_target_identity=target_id, **kwargs)
+        self.worker = FileJob(run_export, self)
+        self.worker.management_kind = 'export'
+        self.worker.finished.connect(self._export_finished)
+        self.status_note.setText('正在导出全部有效交付项目…')
+        self.status_note.show()
+        self._update_open_action()
+        self.worker.start()
+
+    def _export_finished(self):
+        worker = self.worker
+        if worker is None:
+            return
+        self.worker = None
+        if worker.cancelled:
+            message = '已取消导出。'
+        elif worker.error:
+            message = '导出未完成：' + worker.error + '。可重试。'
+        else:
+            message = f"已导出 {worker.result['project_count']} 个项目，保存位置：{worker.result['path']}"
+        self.status_note.setText(message)
+        self.status_note.setToolTip(message)
+        self.status_note.show()
+        worker.deleteLater()
+        self._update_open_action()
 
     def _project_context_menu(self,point):
         index = self.table.indexAt(point)
@@ -814,17 +886,19 @@ class TodayDeliveryDialog(QDialog):
                     self.compact_tabs.setCurrentIndex(1)
             self._compact_embedded = compact
             self._embedded_layout_initialized = True
-            for control in (self.date_edit,self.search,self.refresh_button):
+            for control in (self.date_edit,self.search,self.refresh_button,self.export_button):
                 self.date_controls.removeWidget(control)
                 self.search_controls.removeWidget(control)
             if compact:
                 self.search_controls.insertWidget(0,self.date_edit)
                 self.search_controls.insertWidget(1,self.search,1)
                 self.search_controls.insertWidget(2,self.refresh_button)
+                self.search_controls.insertWidget(3,self.export_button)
             else:
                 self.date_controls.insertWidget(1,self.date_edit)
                 self.date_controls.insertWidget(4,self.search,1)
                 self.date_controls.insertWidget(5,self.refresh_button)
+                self.date_controls.insertWidget(6,self.export_button)
             if not compact:
                 self._panel_layout_timer.start(0)
         details = self.compact_tabs.currentIndex()==1
@@ -877,8 +951,9 @@ class TodayDeliveryDialog(QDialog):
         if self.worker:
             if not self.worker.wait(15000):
                 raise RuntimeError('交付记录管理操作仍未结束，请稍后再退出。')
-            self.worker.finished.disconnect(self._mutation_finished)
-            self._mutation_finished()
+            callback = self._export_finished if getattr(self.worker,'management_kind',None)=='export' else self._mutation_finished
+            self.worker.finished.disconnect(callback)
+            callback()
         self.close()
 
     def _fit_visible_screen(self):
@@ -913,6 +988,11 @@ class TodayDeliveryDialog(QDialog):
         super().hideEvent(event)
 
     def closeEvent(self,event):
+        if self.worker:
+            self.status_note.setText('操作进行中，请稍后关闭。')
+            self.status_note.show()
+            event.ignore()
+            return
         self.timer.stop()
         self._project_layout_timer.stop()
         self._summary_layout_timer.stop()

@@ -533,7 +533,8 @@ class Database:
         current, _, _ = self._delivery_day_bounds(day)
         return self.delivery_history(date.fromisoformat(current), project_id=project_id)['events']
 
-    def delivery_history(self, day: date | None = None, keyword: str = '', project_id: int | None = None) -> dict:
+    def delivery_history(self, day: date | None = None, keyword: str = '', project_id: int | None = None,
+                         *, connection: sqlite3.Connection | None = None) -> dict:
         """day=None 查询全部历史。排序和首次认定始终在筛选之前按真实时间及 ID 计算。"""
         if not isinstance(keyword, str) or len(keyword) > 200:
             raise ValueError('交付历史关键词不能超过 200 个字符。')
@@ -552,9 +553,18 @@ class Database:
             conditions.append('(instr(lower(e.project_name),lower(?))>0 OR instr(lower(e.batch_name),lower(?))>0)')
             parameters.extend((keyword, keyword))
         where = ' WHERE ' + ' AND '.join(conditions) if conditions else ''
-        with self.connect() as connection:
-            # 字典与交付行使用同一读取快照，避免并发改名或停用导致统计口径不一致。
-            connection.execute('BEGIN')
+        supplied_connection = connection is not None
+        if supplied_connection:
+            if not isinstance(connection, sqlite3.Connection) or not connection.in_transaction:
+                raise ValueError('交付历史共用连接需要已开始的读取事务。')
+            main_path = next((row[2] for row in connection.execute('PRAGMA database_list')
+                              if row[1] == 'main'), '')
+            if not main_path or Path(main_path).resolve() != self.path:
+                raise ValueError('交付历史连接不是当前工作箱数据库。')
+        with (nullcontext(connection) if supplied_connection else self.connect()) as connection:
+            # 导出可共用调用方快照读取归档事实；不提交、回滚或关闭调用方的事务。
+            if not supplied_connection:
+                connection.execute('BEGIN')
             if project_id is not None:
                 # 旧交付入口仍可查看合并后的完整历史；只读归一不授权旧 ID 写入。
                 canonical = self._canonical_project_id(connection, project_id)
