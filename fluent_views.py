@@ -34,7 +34,7 @@ def _fluent_item_styles(selector: str, horizontal_padding: int, mode: str) -> st
     QHeaderView::section, QHeaderView::section:horizontal {{
         color: {colors['muted']}; background: {colors['surface']};
         border: none; border-bottom: 1px solid {colors['border']};
-        padding: 7px 16px; font-size: 12px; font-weight: 500;
+        height: 18px; padding: 7px 16px; font-size: 12px; font-weight: 500;
     }}
     QHeaderView::section:hover {{ background: {colors['subtle_surface']}; }}
     QTableCornerButton::section {{ background: {colors['surface']}; border: none; }}

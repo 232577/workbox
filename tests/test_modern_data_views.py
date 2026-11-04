@@ -111,7 +111,8 @@ def test_project_list_retains_six_complete_two_line_rows(qapp):
         item.setData(PROJECT_NAME_ROLE, name)
         item.setData(PROJECT_DETAIL_ROLE, 'Ready for delivery')
         view.addItem(item)
-    view.resize(380, 290)
+    # Leave room for Windows font hinting while rejecting the former 7px row padding.
+    view.resize(380, 310)
     view.show()
     qapp.processEvents()
     complete = [row for row in range(view.count())

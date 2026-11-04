@@ -58,7 +58,7 @@ def test_open_and_hidden_dialogs_feedback_and_scrollbar_follow_one_theme(qapp, t
         settings.work_root.setText(saved_input)
         set_theme('dark', service)
         for widget in (panel, settings, guide, feedback):
-            assert widget.palette().color(QPalette.Window) in (QColor('#222833'), QColor('#181C24')), type(widget).__name__
+            assert widget.palette().color(QPalette.Window) in (QColor('#222528'), QColor('#181A1C')), type(widget).__name__
         assert settings.work_root.text() == saved_input
         assert panel.project_list.verticalScrollBar().palette().color(panel.project_list.verticalScrollBar().backgroundRole()).isValid()
     finally:

@@ -99,10 +99,10 @@ def test_narrow_rows_cover_both_text_blocks_without_elision(qapp, name):
     wide = view.delegate.sizeHint(option_for(view, 360), index)
     narrow = view.delegate.sizeHint(option_for(view, 180), index)
     name_font = QFont(view.font())
-    name_font.setPixelSize(13)
+    name_font.setPixelSize(14)
     name_font.setWeight(QFont.DemiBold)
     detail_font = QFont(view.font())
-    detail_font.setPixelSize(11)
+    detail_font.setPixelSize(12)
     detail_font.setWeight(QFont.Normal)
     required = measured_height(name, name_font, 180 - 28)
     required += 4 + measured_height(detail, detail_font, 180 - 28)
@@ -118,7 +118,7 @@ def test_offscreen_paint_uses_distinct_fonts_theme_colors_and_library_background
         qapp, monkeypatch, mode, enabled):
     import theme
     colors = theme.tokens(mode)
-    monkeypatch.setattr(theme, 'tokens', lambda: colors)
+    monkeypatch.setattr(theme, 'tokens', lambda mode=None: colors)
     view, item, index = project_view()
     if not enabled:
         item.setFlags(item.flags() & ~Qt.ItemIsEnabled)
@@ -155,8 +155,8 @@ def test_offscreen_paint_uses_distinct_fonts_theme_colors_and_library_background
     fonts = {text: font for text, font in captured}
     name_font = fonts[item.data(fluent_views.PROJECT_NAME_ROLE)]
     detail_font = fonts[item.data(fluent_views.PROJECT_DETAIL_ROLE)]
-    assert (name_font.pixelSize(), name_font.weight()) == (13, QFont.DemiBold)
-    assert (detail_font.pixelSize(), detail_font.weight()) == (11, QFont.Normal)
+    assert (name_font.pixelSize(), name_font.weight()) == (14, QFont.DemiBold)
+    assert (detail_font.pixelSize(), detail_font.weight()) == (12, QFont.Normal)
     assert name_font.family() == detail_font.family() == view.font().family()
     assert background_calls == ([{0}] if enabled else [set()])
     assert background_texts == ['']
