@@ -20,6 +20,7 @@ from native_files import ZipLease, cancelled, identity, plain_path
 from intake_log import FileIntakeLog
 from first_run import initialize as initialize_first_run, setup_required as read_setup_required, complete as complete_first_run
 from workflow_policy import DEFAULTS as POLICY_DEFAULTS, read_policy, validate as validate_policy
+from document_versions import DocumentVersions
 
 
 def _workspace_operation(method):
@@ -213,6 +214,7 @@ class WorkspaceManager:
         with self.db.connect() as connection:
             connection.executemany('INSERT OR IGNORE INTO workflow_archive_roots(path) VALUES (?)',
                                    [(str(Path(os.path.abspath(root))),) for root in sorted(roots)])
+        self.document_versions = DocumentVersions(self.db)
 
     def setup_required(self):
         with self.db.connect() as connection:
@@ -351,6 +353,13 @@ class WorkspaceManager:
     def import_file(self, source, project_id, *, cancel_event=None, progress=None, routing=None, relative_path=None):
         if type(project_id) is not int or project_id < 1:
             raise ValueError('请先明确选择文件所属项目。')
+        with self.document_versions.operation(project_id) as versions:
+            return self._import_file(source, project_id, cancel_event=cancel_event, progress=progress,
+                                     routing=routing, relative_path=relative_path, versions=versions)
+
+    def _import_file(self, source, project_id, *, cancel_event=None, progress=None, routing=None, relative_path=None, versions):
+        if type(project_id) is not int or project_id < 1:
+            raise ValueError('请先明确选择文件所属项目。')
         source = _path(source, allow_network=True)
         if not source.is_file():
             raise ValueError('请选择本机普通文件，不能收录目录。')
@@ -388,7 +397,11 @@ class WorkspaceManager:
                             connection=connection)
                     for row in connection.execute('SELECT * FROM work_files WHERE project_id=? AND sha256=? AND size=? ORDER BY id', (project_id, digest, size)):
                         saved = _path(row['path'])
-                        if Path(row['source_path']).name != source.name:
+                        if (source.suffix.casefold() != '.zip' and not source.is_relative_to(directory)
+                                and saved != parent / source.name):
+                            # 历史副本内容相同也不是当前稿；本次收件应恢复标准名。
+                            continue
+                        if Path(row['source_path']).name.casefold() != source.name.casefold():
                             continue
                         if relative is not None and saved.parent != parent:
                             continue
@@ -404,14 +417,18 @@ class WorkspaceManager:
                                         sha256=digest, mtime_ns=source.stat().st_mtime_ns)
                     else:
                         target = parent / source.name
-                        if target.exists():
-                            target = parent / f'{source.stem} ({digest[:8]}){source.suffix}'
-                        index = 2
-                        while target.exists():
-                            target = parent / f'{source.stem} ({digest[:8]}) ({index}){source.suffix}'
-                            index += 1
-                        metadata = copy_verified(source, target, cancel_event=cancel_event, progress=progress)
-                        own_copy = metadata
+                        if target.exists() and source.suffix.casefold() != '.zip':
+                            metadata = versions.publish(connection, source, target, digest, size, copy_verified,
+                                                        cancel_event=cancel_event, progress=progress)
+                        else:
+                            if target.exists():
+                                target = parent / f'{source.stem} ({digest[:8]}){source.suffix}'
+                            index = 2
+                            while target.exists():
+                                target = parent / f'{source.stem} ({digest[:8]}) ({index}){source.suffix}'
+                                index += 1
+                            metadata = copy_verified(source, target, cancel_event=cancel_event, progress=progress)
+                            own_copy = metadata
                     cancelled(cancel_event)
                     file_id = connection.execute('INSERT INTO work_files(project_id,source_path,path,filename,size,sha256,mtime_ns) VALUES (?,?,?,?,?,?,?)',
                                                  (project_id, metadata['source_path'], metadata['path'], metadata['filename'], metadata['size'], metadata['sha256'], metadata['mtime_ns'])).lastrowid

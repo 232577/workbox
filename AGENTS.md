@@ -14,6 +14,8 @@ Stack: Python, PySide6, SQLite and PyInstaller; software version remains 1.0.0. 
 
 Intake copies and verifies files; originals and archive basenames remain intact. ZIPs are not extracted or executed. Ambiguous matching needs explicit selection. Immutable delivery events and append-only corrections must be preserved. First valid delivery counts by project and Asia/Shanghai day; re-delivery is history, not another new project. Revoking an effective event returns the project to 待交付; restoring validity alone does not set 已交付. Excluding personal workload is not revoking delivery.
 
+For ordinary document intake, a different revision at the same managed destination keeps the incoming standard filename; rename the previous working copy to a non-overwriting version name and preserve its identity/history. Keep external sources and ZIP/archive names unchanged. Rotation requires identity checks, transaction-bound recovery records, and safe restart recovery; unresolved recovery blocks storage mutations. Never silently suffix the new ordinary document to bypass an unsafe collision.
+
 Rename/merge needs an explicit current preview and separate confirmation. Preserve original materials and historical delivery identities; do not merge automatically at startup. New default type never backfills old projects. Archive/deletion are reversible project visibility actions, not file deletion.
 
 Use mature Qt controls, native menus and scrolling. Keep QFluentWidgets pinned and preserve selection, scroll and worker shutdown safety. Test Windows through `python -m scripts.run_tests`, not by disabling system-wide crash reporting. Fixtures must be isolated and anonymous. Do not open or modify a person's actual database for tests.
