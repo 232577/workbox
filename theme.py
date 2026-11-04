@@ -345,7 +345,12 @@ QWidget#manager[dense="true"] QLabel#notice { padding: 5px 8px; font-size: 12px;
                   'border: 1px solid %(border)s; border-radius: 8px; }\n') % c
     # Shared presentation primitives; no model refresh or business-setting writes.
     rules += """
-QFrame#workbenchHeader { background: %(surface)s; border: 1px solid %(border)s; border-radius: 12px; }
+QWidget#workbenchCanvas { background: %(surface)s; }
+QFrame#workbenchHeader { background: %(surface)s; border: none; border-bottom: 1px solid %(border)s; border-radius: 0px; }
+QFrame#workbenchHeader QLabel#pageTitle { font-size: 23px; }
+QLabel#selectedProjectName { font-size: 18px; font-weight: 600; }
+QFrame#sidebar { background: %(subtle_surface)s; }
+QFrame#sidebar QPushButton#nav[softSelection="true"]:checked { background: %(notice_bg)s; color: %(accent)s; }
 QWidget#dialogHeader { background: transparent; border: none; }
 QLabel#headerSubtitle { color: %(muted)s; font-size: 12px; }
 QLabel#headerEyebrow { color: %(accent)s; font-size: 11px; font-weight: 600; }
@@ -369,13 +374,16 @@ QPushButton#subtle:hover { background: %(hover)s; border-color: %(border)s; }
 QPushButton#danger { color: %(error)s; background: transparent; border-color: %(border)s; }
 QPushButton#danger:hover { background: %(error_bg)s; }
 QPushButton#danger:disabled { color: %(disabled)s; background: %(disabled_bg)s; }
-QWidget#projectSurface, QWidget#documentSurface { border-radius: 12px; }
+QWidget#projectSurface, QWidget#documentSurface { background: %(surface)s; border: none; border-radius: 0px; }
+QSplitter#projectWorkspaceSplit::handle { background: %(subtle_surface)s; border-left: 1px solid %(border)s; margin: 0px 3px; }
+QSplitter#projectWorkspaceSplit::handle:hover { background: %(accent)s; }
 QAbstractSpinBox QLineEdit { border: none; padding: 0px; min-height: 0px; background: transparent; }
 QPlainTextEdit#releaseNotes { background: %(surface)s; border-color: %(border)s; padding: 12px; }
 QTableWidget#materialRules, QTableWidget#materialResults, QTableWidget#materialChoices {
     background: %(surface)s; alternate-background-color: %(subtle_surface)s; border: 1px solid %(border)s;
     border-radius: 8px; gridline-color: transparent; }
-QWidget#manager[dense="true"] QFrame#workbenchHeader { border-radius: 8px; }
+QWidget#manager[dense="true"] QFrame#workbenchHeader QLabel#pageTitle { font-size: 18px; }
+QWidget#manager[dense="true"] QLabel#selectedProjectName { font-size: 15px; }
 """ % c
     base = _base_stylesheet(actual) if QApplication.instance() is not None else ''
     return base + '\n/* WorkBox semantic appearance */\n' + rules

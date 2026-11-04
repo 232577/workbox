@@ -193,7 +193,8 @@ def test_window_size_does_not_enlarge_control_fonts_or_shell_spacing(panel):
         panel.resize(width,height)
         QTest.qWait(180)
         assert [control.font().pixelSize() for control in controls] == [13]*len(controls)
-        assert panel.page_title.font().pixelSize()==20
+        # 改版标题在紧凑/常规布局使用 18/23px；宽屏不会继续放大。
+        assert panel.page_title.font().pixelSize() == (18 if height < 560 else 23)
         margins = panel.workbench_layout.contentsMargins()
         assert margins.top()<=12 and margins.bottom()<=8
         assert panel.workbench_layout.spacing()<=8
