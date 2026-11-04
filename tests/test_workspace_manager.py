@@ -82,8 +82,12 @@ def test_import_copy_dedup_versions_source_inside_and_archived(context, tmp_path
     assert manager.import_file(source, pid)['duplicate']
     source.write_bytes(b'second')
     second = manager.import_file(source, pid)
-    assert second['file']['path'] != first['file']['path']
-    assert hashlib.sha256(b'second').hexdigest()[:8] in Path(second['file']['path']).name
+    assert second['file']['path'] == first['file']['path']
+    assert Path(second['file']['path']).name == source.name
+    with service.db.connect() as connection:
+        old = connection.execute('SELECT * FROM work_files WHERE id=?', (first['file']['id'],)).fetchone()
+    assert hashlib.sha256(b'first').hexdigest()[:8] in Path(old['path']).name
+    assert Path(old['path']).read_bytes() == b'first'
     inside = Path(manager.get_workspace(pid)['path']) / '内部.txt'
     inside.write_bytes(b'inside')
     registered = manager.import_file(inside, pid)

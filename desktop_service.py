@@ -80,8 +80,9 @@ def _serialized_storage(method):
         with self.archive._lock:
             if not self._project_changes_ready:
                 self.recover_project_changes()
-            if any(error.get('global_block') for error in self.project_change_errors):
-                raise RuntimeError('项目目录变更日志需要恢复，暂不能收录或修改文件。请保留现场并检查恢复记录。')
+            if (any(error.get('global_block') for error in self.project_change_errors)
+                    or self.workspaces.document_versions.blocked):
+                raise RuntimeError('项目目录或文档版本记录需要恢复，暂不能收录或修改文件。请保留现场并检查恢复记录。')
             return method(self, *args, **kwargs)
     return guarded
 
@@ -106,6 +107,7 @@ class DesktopService(WorkBox):
     def recover_project_changes(self):
         with self.archive._lock:
             self.project_change_errors = self.directory_changes.recover()
+            self.project_change_errors.extend(self.workspaces.document_versions.recover())
             self._project_changes_ready = True
             return self.project_change_errors
 
