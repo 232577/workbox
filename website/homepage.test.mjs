@@ -62,10 +62,10 @@ test('首次使用推荐通用模式，自动交付门槛只适用于自动模�
 test('十一月发布展示当前构建截图，明确旧教程日期和显式合并边界', async () => {
   const registry = JSON.parse(await readFile(new URL('./MEDIA.json', import.meta.url), 'utf8'));
   for (const theme of ['light', 'dark']) {
-    const path = `/media/workbox-desktop-${theme}-ui-20261103.png`;
+    const path = `/media/workbox-desktop-${theme}-20261104-r2.png`;
     assert.ok(tags.some(tag => tag.name === 'img' && tag.attrs.src === path));
     const record = registry.files[`public${path}`];
-    assert.equal(record?.source_exe_sha256, 'c305d1160a336b78d52b32625a11c5f23379b7c92c8d1f926fcf98b73bc41d7b');
+    assert.equal(record?.source_exe_sha256, '021f59a84ee0a78a823a5eef54b5804803c12ec30f45714984d8bb4206d01352');
   }
   for (const phrase of ['2026-10-30 构建的历史步骤演示', '交付记录管理并入主窗口',
     '同名项目先预览再确认合并', '原材料和历史交付记录保留', '不会在启动时自动合并']) assert.ok(html.includes(phrase), phrase);
@@ -302,7 +302,7 @@ test('所有者统计接入同一外观选择，保留私密登录与空数据�
 
 test('Hero使用实际浅深界面原图链接，尺寸与 PNG 一致并保留文件夹流程图后备', async () => {
   for (const theme of ['light','dark']) {
-    const path=`/media/workbox-desktop-${theme}-ui-20261103.png`;
+    const path=`/media/workbox-desktop-${theme}-20261104-r2.png`;
     const png=await readFile(new URL(`./public${path}`,import.meta.url));
     assert.equal(png.toString('ascii',1,4),'PNG');
     assert.ok(tags.some(tag=>tag.name==='img'&&tag.attrs.src===path&&tag.attrs['data-desktop-image']===theme&&Number(tag.attrs.width)===png.readUInt32BE(16)&&Number(tag.attrs.height)===png.readUInt32BE(20)));

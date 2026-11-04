@@ -2,10 +2,22 @@
   "kind": "verified-screenshot-walkthrough",
   "source_exe_sha256": "ce9e986d53fd0129c905e4058f7a8bfe3b67df4b0e1d6a8310d42dcd8a114890",
   "privacy_reviewed": true,
-  "latest_screenshot_exe_sha256": "c305d1160a336b78d52b32625a11c5f23379b7c92c8d1f926fcf98b73bc41d7b",
+  "latest_screenshot_exe_sha256": "021f59a84ee0a78a823a5eef54b5804803c12ec30f45714984d8bb4206d01352",
   "description": "已验证冻结程序的中性隔离夹具截图步骤演示，展示项目、类型与交付统计；旧媒体保留各自构建来源。",
   "duration_seconds": 44,
   "files": {
+    "public/media/workbox-desktop-light-20261104-r2.png": {
+      "size": 72805,
+      "sha256": "e035b4754584c8524ed8d646616ca080bb1bc3530374f63cab4c2d7bb852beb9",
+      "source_exe_sha256": "021f59a84ee0a78a823a5eef54b5804803c12ec30f45714984d8bb4206d01352",
+      "source_commit": "34b4be852e7fc87825c8ac309b624e48422e3c3a"
+    },
+    "public/media/workbox-desktop-dark-20261104-r2.png": {
+      "size": 73582,
+      "sha256": "b8c34724ce9d1c0ffb9fe3bdf246835b3daa426bcbab19d7d0d968aa20e5342d",
+      "source_exe_sha256": "021f59a84ee0a78a823a5eef54b5804803c12ec30f45714984d8bb4206d01352",
+      "source_commit": "34b4be852e7fc87825c8ac309b624e48422e3c3a"
+    },
     "public/media/workbox-desktop-light-ui-20261103.png": {
       "size": 83100,
       "sha256": "f3077338c3e5d5a198fbd4492d2ab5ed8e4b6172b284fa463c52af2d645082f5",
