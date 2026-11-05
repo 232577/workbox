@@ -36,8 +36,10 @@ test('视频请求先经过Worker以应用范围逻辑',async()=>{
 test('11月4日r2匿名截图来自同一冻结构建，保留全部旧媒体来源',async()=>{
   const registry=JSON.parse(await readFile(new URL('./MEDIA.json',import.meta.url),'utf8'));
   const exe='021f59a84ee0a78a823a5eef54b5804803c12ec30f45714984d8bb4206d01352';
-  assert.equal(registry.latest_screenshot_exe_sha256,exe);
+  assert.equal(registry.latest_screenshot_exe_sha256,'1ed9cffe21ba9f366064224cf14f04b3b49c5983d8b6679e15d1b9c1fd6c05e1');
   const oldFiles={...registry.files};
+  delete oldFiles['public/media/workbox-task-groups-light-20261105-r1.png'];
+  delete oldFiles['public/media/workbox-task-groups-dark-20261105-r1.png'];
   for(const [theme,size,sha256] of [
     ['light',72805,'e035b4754584c8524ed8d646616ca080bb1bc3530374f63cab4c2d7bb852beb9'],
     ['dark',73582,'b8c34724ce9d1c0ffb9fe3bdf246835b3daa426bcbab19d7d0d968aa20e5342d'],
@@ -55,4 +57,24 @@ test('11月4日r2匿名截图来自同一冻结构建，保留全部旧媒体来
   assert.equal(createHash('sha256').update(JSON.stringify(oldFiles)).digest('hex'),'d4660da314aba88a05d9c8dc87dae08e5dd09c38c8a18aa7c5c83449e56baddb');
   assert.equal(registry.source_exe_sha256,'ce9e986d53fd0129c905e4058f7a8bfe3b67df4b0e1d6a8310d42dcd8a114890');
   assert.equal(registry.active_video,'public/media/workbox-official-20261030.mp4');
+});
+
+test('11月5日任务组浅深图来自同一最终EXE且只有中性隔离示例',async()=>{
+  const registryText=await readFile(new URL('./MEDIA.json',import.meta.url),'utf8');
+  const registry=JSON.parse(registryText);
+  const exe='1ed9cffe21ba9f366064224cf14f04b3b49c5983d8b6679e15d1b9c1fd6c05e1';
+  for(const [theme,size,sha256] of [
+    ['light',72436,'f81185be6f1d3e11c08fec3e78601793750ec496fc7ea857a39bf10ca82c1271'],
+    ['dark',72062,'436b2d3b7171f2f4c3792e464156af5e88ee66e6e740dfa6d305f2920b98456b'],
+  ]){
+    const path=`public/media/workbox-task-groups-${theme}-20261105-r1.png`;
+    assert.deepEqual(registry.files[path],{size,sha256,source_exe_sha256:exe,
+      source_commit:'868ae5e17e1b286c2ade1e578721b71c8f77b757',
+      description:'匿名隔离三项目示例；材料就绪2项、人工交接1项。'});
+    const png=await readFile(new URL(`./${path}`,import.meta.url));
+    assert.equal(png.length,size);
+    assert.equal(createHash('sha256').update(png).digest('hex'),sha256);
+    assert.equal(png.readUInt32BE(16),1186);assert.equal(png.readUInt32BE(20),843);
+  }
+  assert.doesNotMatch(registryText,/[A-Za-z]:[\\/]|\.local[\\/]|showcase-20261105/);
 });

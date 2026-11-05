@@ -29,8 +29,8 @@ test('页面明确只修复悬浮球置顶，展开管理窗口不置顶', async
   assert.match(html,/不抢输入焦点/);
 });
 
-test('匿名实机截图标记11月4日r2构建', async () => {
+test('匿名实机任务截图标记11月5日最终构建', async () => {
   const html=await readFile(new URL('./public/index.html',import.meta.url),'utf8');
-  assert.match(html,/截图来自 v1\.0\.0\.20261104\.2 匿名实机截图/);
+  assert.match(html,/截图来自 v1\.0\.0\.20261105\.1 匿名实机截图/);
   assert.doesNotMatch(html,/来自当前安装包的匿名隔离示例/);
 });

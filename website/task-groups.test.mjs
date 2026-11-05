@@ -30,9 +30,20 @@ test('新发布保留全部十八项旧下载及四十四项原媒体来源，�
   assert.equal(createHash('sha256').update(JSON.stringify(releases.slice(1))).digest('hex'),
     '1b5712f062ff03104c55336e4e194ae119845ed900f11c0be1b37e267ce64ce0');
   const media = await readFile(new URL('./MEDIA.json', import.meta.url));
-  assert.equal(Object.keys(JSON.parse(media).files).length, 44);
-  assert.equal(createHash('sha256').update(media).digest('hex'),
-    '7a36f65d41aa6a5037f00088263b58044ce594c30f62b7d76935fbad89d5a951');
+  const registry = JSON.parse(media);
+  const before = JSON.parse(await readFile(new URL('./fixtures/media-before-task-groups.json', import.meta.url), 'utf8'));
+  assert.equal(Object.keys(before).length, 44);
+  assert.equal(Object.keys(registry.files).length, 46);
+  const retained = {};
+  for (const [path, facts] of Object.entries(before)) {
+    assert.deepEqual(registry.files[path], facts, path);
+    const bytes = await readFile(new URL(`./${path}`, import.meta.url));
+    assert.equal(bytes.length, facts.size, path);
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), facts.sha256, path);
+    retained[path] = registry.files[path];
+  }
+  assert.equal(createHash('sha256').update(JSON.stringify(retained)).digest('hex'),
+    'c9469b55de034b9e13117f0ebe8fa0ca636988bcc1d77fb0957b873169c3b2b3');
   assert.deepEqual(JSON.parse(await readFile(new URL('./public/support.json', import.meta.url), 'utf8')),
     { enabled: false, methods: [] });
 });

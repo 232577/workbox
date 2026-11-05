@@ -2,10 +2,24 @@
   "kind": "verified-screenshot-walkthrough",
   "source_exe_sha256": "ce9e986d53fd0129c905e4058f7a8bfe3b67df4b0e1d6a8310d42dcd8a114890",
   "privacy_reviewed": true,
-  "latest_screenshot_exe_sha256": "021f59a84ee0a78a823a5eef54b5804803c12ec30f45714984d8bb4206d01352",
-  "description": "已验证冻结程序的中性隔离夹具截图步骤演示，展示项目、类型与交付统计；旧媒体保留各自构建来源。",
+  "latest_screenshot_exe_sha256": "1ed9cffe21ba9f366064224cf14f04b3b49c5983d8b6679e15d1b9c1fd6c05e1",
+  "description": "已验证冻结程序的匿名隔离截图，展示任务组、材料就绪与人工交接；历史截图和步骤演示保留各自构建来源。",
   "duration_seconds": 44,
   "files": {
+    "public/media/workbox-task-groups-light-20261105-r1.png": {
+      "size": 72436,
+      "sha256": "f81185be6f1d3e11c08fec3e78601793750ec496fc7ea857a39bf10ca82c1271",
+      "source_exe_sha256": "1ed9cffe21ba9f366064224cf14f04b3b49c5983d8b6679e15d1b9c1fd6c05e1",
+      "source_commit": "868ae5e17e1b286c2ade1e578721b71c8f77b757",
+      "description": "匿名隔离三项目示例；材料就绪2项、人工交接1项。"
+    },
+    "public/media/workbox-task-groups-dark-20261105-r1.png": {
+      "size": 72062,
+      "sha256": "436b2d3b7171f2f4c3792e464156af5e88ee66e6e740dfa6d305f2920b98456b",
+      "source_exe_sha256": "1ed9cffe21ba9f366064224cf14f04b3b49c5983d8b6679e15d1b9c1fd6c05e1",
+      "source_commit": "868ae5e17e1b286c2ade1e578721b71c8f77b757",
+      "description": "匿名隔离三项目示例；材料就绪2项、人工交接1项。"
+    },
     "public/media/workbox-desktop-light-20261104-r2.png": {
       "size": 72805,
       "sha256": "e035b4754584c8524ed8d646616ca080bb1bc3530374f63cab4c2d7bb852beb9",
