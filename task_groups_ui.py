@@ -10,13 +10,14 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QColorDialog,
     QDialog, QDialogButtonBox, QInputDialog, QLabel, QMenu, QMessageBox,
     QPlainTextEdit, QPushButton, QSplitter, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
     QHBoxLayout, QHeaderView, QWidget, QStyleOptionViewItem)
-from qfluentwidgets import TreeWidget
+from qfluentwidgets import TreeWidget, setCustomStyleSheet
 from qfluentwidgets.components.widgets.tree_view import TreeItemDelegate
 
 from database import DELIVERY_TIMEZONE
 from fluent_views import configure_native_scroll
 from ui import FileJob
 from ui_components import ComboBox as QComboBox, LineEdit as QLineEdit, CheckBox, button
+from theme import tokens
 
 
 class WrappedTreeDelegate(TreeItemDelegate):
@@ -77,6 +78,11 @@ class TaskGroupsPage(QWidget):
         layout.addWidget(self.note)
         splitter = self.splitter = QSplitter(Qt.Horizontal)
         self.tree = TreeWidget()
+        def tree_selection_style(mode):
+            ink = tokens(mode)['ink']
+            return (f'QTreeView {{ selection-color: {ink}; }} '
+                    f'QTreeView::item:selected {{ color: {ink}; selection-color: {ink}; }}')
+        setCustomStyleSheet(self.tree, tree_selection_style('light'), tree_selection_style('dark'))
         configure_native_scroll(self.tree)
         self.tree.setItemDelegate(WrappedTreeDelegate(self.tree))
         self.tree.setWordWrap(True)
@@ -124,6 +130,7 @@ class TaskGroupsPage(QWidget):
         self.search.textChanged.connect(self.refresh)
         self.refresh_button.clicked.connect(self.refresh)
         self.tree.itemSelectionChanged.connect(self._show_details)
+        self.tree.currentItemChanged.connect(self._show_details)
         self.tree.itemDoubleClicked.connect(lambda *_: self._open_project())
         self.add_button.clicked.connect(lambda: self._text(False))
         self.new_button.clicked.connect(self.new_group)
@@ -213,7 +220,7 @@ class TaskGroupsPage(QWidget):
         key = item.data(0, Qt.UserRole) if item else None
         return next((group for group in self.rows if key == ('group', group['id'])), None)
 
-    def _show_details(self):
+    def _show_details(self, *_):
         group = self._group()
         if not group:
             self.details.setPlainText('选择任务组或任务，查看原消息和关联信息。')
@@ -222,7 +229,9 @@ class TaskGroupsPage(QWidget):
             from delivery_ui import beijing_timestamp
             messages = self.groups.messages(group['id'])
             text = '\n\n'.join(f"原消息 {m.get('sequence', '')}  收件时间（北京时间）：{beijing_timestamp(m.get('received_at', ''))}\n{m.get('raw_text', '')}" for m in messages)
-            tasks = self._selected()
+            item = self.tree.currentItem()
+            key = item.data(0, Qt.UserRole) if item else None
+            tasks = [task for task in group.get('tasks', []) if key == ('task', task['id'])]
             if tasks:
                 task = tasks[0]
                 text += f"\n\n任务：{task.get('code', '')}  {task.get('project_name', '')}\n关联归档：{task.get('archive_path') or '未关联'}\n交付记录：{task.get('event_id') or '未关联'}"

@@ -25,8 +25,14 @@ def controller(qapp, tmp_path, monkeypatch):
     assert value.start()
     value.monitor_timer.stop()
     value.focus_calls = []
+    value.group_focus_calls = []
     # 面板的定位和滚动由其界面测试覆盖，这里观察控制器传出的实际收录目标。
     monkeypatch.setattr(value.panel, 'focus_projects', lambda ids: value.focus_calls.append(tuple(ids)) or True, raising=False)
+    original_focus = value.panel.show_task_groups
+    def focus_group(group_id=None, task_id=None):
+        value.group_focus_calls.append((group_id, task_id))
+        return original_focus(group_id, task_id)
+    monkeypatch.setattr(value.panel, 'show_task_groups', focus_group)
     try:
         yield value
     finally:
@@ -57,19 +63,29 @@ def test_real_multi_project_receipt_only_navigates_on_its_feedback_view(controll
     intake_text(controller, '1. 客户档案系统\n2. 合同归档工具')
     assert controller.service.db.counts()['projects'] == 3
     assert controller.focus_calls == []
+    assert controller.group_focus_calls == []
     controller.orb.open_requested.emit()
     assert controller.focus_calls == []
+    assert controller.group_focus_calls == []
     view(controller)
-    assert controller.focus_calls == [(2, 3)]
+    groups = controller.service.task_groups.snapshot(open_only=False)
+    target = next(group for group in groups if {t['project_id'] for t in group['tasks']} == {2, 3})
+    assert controller.group_focus_calls == [(target['id'], None)]
+    assert controller.panel.task_groups_page._group()['id'] == target['id']
+    assert controller.focus_calls == []
 
 
-def test_duplicate_receipt_still_locates_existing_batch(controller):
+def test_duplicate_receipt_still_locates_existing_task_group(controller):
     intake_text(controller, '1. 客户档案系统\n2. 合同归档工具')
     intake_text(controller, '1. 客户档案系统\n2. 合同归档工具')
     assert controller.service.db.counts()['projects'] == 2
     assert '未重复创建' in controller.bubble.text.text()
     view(controller)
-    assert controller.focus_calls == [(1, 2)]
+    groups = controller.service.task_groups.snapshot(open_only=False)
+    assert len(groups) == 1 and {t['project_id'] for t in groups[0]['tasks']} == {1, 2}
+    assert controller.group_focus_calls == [(groups[0]['id'], None)]
+    assert controller.panel.task_groups_page._group()['id'] == groups[0]['id']
+    assert controller.focus_calls == []
 
 
 def test_real_ordinary_file_result_locates_its_project(controller, tmp_path):
@@ -113,9 +129,13 @@ def test_empty_silent_archive_poll_preserves_feedback_and_target(controller):
     controller.enqueue('检查 ZIP 归档', lambda **kw: controller.service.scan_archives(**kw), silent=True)
     wait_finished(controller)
     assert controller.bubble.text.text() == before
-    assert controller.panel.notice.text() == before
+    assert controller.panel.notice.text() == before.splitlines()[0]
+    assert controller.panel.notice.toolTip() == before
     view(controller)
-    assert controller.focus_calls == [(1,)]
+    group = controller.service.task_groups.snapshot(open_only=False)[0]
+    assert controller.group_focus_calls == [(group['id'], None)]
+    assert controller.panel.task_groups_page._group()['id'] == group['id']
+    assert controller.focus_calls == []
 
 
 def test_empty_silent_poll_does_not_refresh_project_controls(controller, monkeypatch):

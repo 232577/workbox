@@ -154,3 +154,57 @@ def test_moved_task_retains_its_original_message():
     assert '原任务消息' in page.details.toPlainText()
     assert '其他任务消息' not in page.details.toPlainText()
     page.close()
+
+
+def test_current_task_detail_tracks_current_without_selection_change():
+    from PySide6.QtCore import QItemSelectionModel
+    from task_groups_ui import TaskGroupsPage
+    app = QApplication.instance() or QApplication([])
+    class Groups:
+        def snapshot(self, **kwargs):
+            return [{'id': 1, 'code': 'G1', 'tasks': [
+                {'id': 2, 'code': 'G1-01', 'project_name': '甲项目'},
+                {'id': 3, 'code': 'G1-02', 'project_name': '乙项目'}]}]
+        def messages(self, group_id): return [{'raw_text': '原消息'}]
+    page = TaskGroupsPage(Groups()); page.refresh()
+    group = page.tree.topLevelItem(0); group.setExpanded(True)
+    page.tree.setCurrentItem(group.child(0))
+    page.tree.setCurrentItem(group.child(1), 0, QItemSelectionModel.NoUpdate)
+    assert 'G1-02' in page.details.toPlainText()
+    assert '乙项目' in page.details.toPlainText()
+    page.close()
+
+
+def test_selected_group_and_task_text_contrast_in_both_themes():
+    from task_groups_ui import TaskGroupsPage
+    from theme import apply_to, set_theme, tokens
+    app = QApplication.instance() or QApplication([])
+    class Groups:
+        def snapshot(self, **kwargs):
+            return [{'id': 1, 'code': 'G20261105-001', 'color': '#507080', 'tasks': [
+                {'id': 2, 'code': 'G20261105-001-01', 'project_name': '匿名项目'}]}]
+        def messages(self, group_id): return [{'raw_text': '原消息'}]
+    try:
+        for mode in ('light', 'dark'):
+            set_theme(mode, persist=False)
+            page = TaskGroupsPage(Groups()); apply_to(page); page.resize(900, 550)
+            page.show(); page.refresh(); app.processEvents()
+            assert ('selection-color: ' + tokens(mode)['ink']).lower() in page.tree.styleSheet().lower()
+            group = page.tree.topLevelItem(0); group.setExpanded(True)
+            for item in (group, group.child(0)):
+                page.tree.setCurrentItem(item); page.tree.setFocus(); app.processEvents()
+                rect = page.tree.visualItemRect(item)
+                image = page.tree.viewport().grab().toImage()
+                # Ignore the indicator and cell edge; enough foreground pixels must
+                # contrast with the selected row surface in both themes.
+                matches = 0
+                for y in range(max(0, rect.top() + 6), min(image.height(), rect.bottom() - 5)):
+                    for x in range(max(0, rect.left() + 22), min(image.width(), rect.right() - 10)):
+                        color = image.pixelColor(x, y)
+                        if (mode == 'light' and max(color.red(), color.green(), color.blue()) < 110) or (
+                            mode == 'dark' and min(color.red(), color.green(), color.blue()) > 180):
+                            matches += 1
+                assert matches > 25, (mode, item.text(0), matches)
+            page.close()
+    finally:
+        set_theme('light', persist=False)

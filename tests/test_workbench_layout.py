@@ -18,7 +18,8 @@ def test_left_navigation_keeps_tab_contract_and_actions(qapp, tmp_path):
     try:
         assert panel.navigation.width() >= 150
         assert not panel.tabs.tabBar().isVisible()
-        assert panel.tabs.count() == 3
+        assert panel.tabs.count() == 4
+        assert panel.tabs.widget(3) is panel.task_groups_page
         panel.nav_zip.click()
         assert panel.tabs.currentIndex() == 1
         assert panel.page_title.text() == 'ZIP 归档'
@@ -33,6 +34,15 @@ def test_left_navigation_keeps_tab_contract_and_actions(qapp, tmp_path):
         assert '代交' in panel.today_button.toolTip()
         panel.nav_projects.click()
         assert panel.nav_projects.isChecked()
+        panel.nav_task_groups.click()
+        assert panel.tabs.currentWidget() is panel.task_groups_page
+        assert panel.nav_task_groups.isChecked() and not panel.today_button.isChecked()
+        panel.show_today_deliveries()
+        assert panel.tabs.currentIndex() == 3
+        assert panel.tabs.currentWidget() is panel.delivery_page_container
+        assert panel.today_button.isChecked() and not panel.nav_task_groups.isChecked()
+        panel.nav_task_groups.click()
+        assert panel.tabs.currentWidget() is panel.task_groups_page
     finally:
         panel.document_pane.shutdown()
         panel.hide()
