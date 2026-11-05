@@ -4,7 +4,7 @@ from pathlib import Path
 import copy
 import re
 
-from PySide6.QtCore import Qt, Signal, QItemSelectionModel, QRect
+from PySide6.QtCore import Qt, Signal, QItemSelectionModel, QRect, QPoint, QTimer, QPersistentModelIndex, QModelIndex
 from PySide6.QtGui import QColor, QBrush, QFontMetrics
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QColorDialog,
     QDialog, QDialogButtonBox, QInputDialog, QLabel, QMenu, QMessageBox,
@@ -23,6 +23,7 @@ from theme import tokens
 class WrappedTreeDelegate(TreeItemDelegate):
     def initStyleOption(self, option, index):
         super().initStyleOption(option, index)
+        option.fontMetrics = QFontMetrics(option.font)
         if index.column() == 0:
             option.text = re.sub(r'[A-Za-z0-9_./\\-]{12,}',
                                  lambda match: '\u200b'.join(match.group()), option.text)
@@ -54,6 +55,8 @@ class TaskGroupsPage(QWidget):
         self._shutting_down = False
         self._external_busy = False
         self._rows_signature = None
+        self._reflow_pending = False
+        self._reflow_anchor = None
         self.rows = []
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 10, 12, 10)
@@ -95,6 +98,7 @@ class TaskGroupsPage(QWidget):
         self.tree.header().setSectionResizeMode(0, QHeaderView.Stretch)
         self.tree.header().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.tree.header().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.tree.header().sectionResized.connect(self._schedule_tree_reflow)
         splitter.addWidget(self.tree)
         self.details = QPlainTextEdit()
         self.details.setReadOnly(True)
@@ -209,6 +213,29 @@ class TaskGroupsPage(QWidget):
         self.tree.blockSignals(False)
         self.note.setText('没有符合条件的任务组。' if not rows else '')
         self._show_details()
+
+    def _schedule_tree_reflow(self, section, *_):
+        if section != 0 or self._reflow_pending:
+            return
+        index = self.tree.indexAt(QPoint(50, 2))
+        self._reflow_anchor = (QPersistentModelIndex(index), self.tree.visualRect(index).top()) if index.isValid() else None
+        self._reflow_pending = True
+        QTimer.singleShot(0, self, self._reflow_tree)
+
+    def _reflow_tree(self):
+        self._reflow_pending = False
+        anchor, self._reflow_anchor = self._reflow_anchor, None
+        bar = self.tree.verticalScrollBar()
+        previous = bar.value()
+        self.tree.doItemsLayout()
+        if bar.isSliderDown():
+            return
+        if anchor and anchor[0].isValid():
+            index = QModelIndex(anchor[0])
+            self.tree.scrollTo(index, QAbstractItemView.PositionAtTop)
+            bar.setValue(bar.value() - anchor[1])
+        else:
+            bar.setValue(previous)
 
     def _selected(self):
         keys = [item.data(0, Qt.UserRole) for item in self.tree.selectedItems()]
