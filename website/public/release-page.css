@@ -52,3 +52,11 @@ html[data-theme="dark"] .home-page .wb-checksum-details summary,html[data-theme=
 html[data-theme="dark"] .home-page .wb-hash-content .copy-button{color:#c5f0d8;background:#203c2b;border-color:#5a8b6b}
 @media(prefers-reduced-motion:reduce){.home-page *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
 @media(forced-colors:active){.home-page .wb-hero h1 em{background:none;color:CanvasText}.wb-demo,.wb-demo-result,.wb-demo-file{border:1px solid CanvasText}.wb-demo-next,.wb-demo-steps button{border:1px solid ButtonText}}
+.home-page .wb-preview-stage[data-preview-mode="single"][data-light-ready="true"] [data-desktop-link="light"]{visibility:visible}
+.home-page .wb-preview-stage[data-preview-mode="single"][data-light-ready="true"] .wb-preview-fallback{visibility:hidden}
+.home-page .wb-desktop-showcase:has([data-preview-mode="single"][data-light-ready="true"]) .wb-preview-image-caption{display:inline}
+.home-page .wb-desktop-showcase:has([data-preview-mode="single"][data-light-ready="true"]) .wb-preview-flow-caption{display:none}
+.home-page .wb-narrow-project-preview{width:min(100%,662px);margin:36px auto 0}
+.home-page .wb-narrow-project-preview a{display:block;border-radius:16px;overflow:hidden;border:1px solid var(--wb-line)}
+.home-page .wb-narrow-project-preview img{display:block;width:100%;height:auto}
+.home-page .wb-narrow-project-preview figcaption{margin-top:12px;font-size:13px;line-height:1.7;color:var(--wb-muted);text-align:center}

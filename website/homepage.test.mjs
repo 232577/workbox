@@ -59,14 +59,14 @@ test('首次使用推荐通用模式，自动交付门槛只适用于自动模�
   assert.doesNotMatch(html, /ZIP 默认按/);
 });
 
-test('十一月发布展示当前构建截图，明确旧教程日期和显式合并边界', async () => {
+test('十一月发布分别展示当前构建宽浅与窄深截图，明确旧教程和合并边界', async () => {
   const registry = JSON.parse(await readFile(new URL('./MEDIA.json', import.meta.url), 'utf8'));
-  for (const theme of ['light', 'dark']) {
-    const path = `/media/workbox-task-groups-${theme}-20261105-r2.png`;
+  for (const name of ['workbox-project-batches-light-20261105-r3.png', 'workbox-project-batches-narrow-dark-20261105-r3.png']) {
+    const path = `/media/${name}`;
     assert.ok(tags.some(tag => tag.name === 'img' && tag.attrs.src === path));
     const record = registry.files[`public${path}`];
-    assert.equal(record?.source_exe_sha256, '4425eeaf1f1bce42034469951299de0026299eb0641a4edcac0d185c2224282b');
-    assert.equal(record?.source_commit, 'b2724ec9073f3d78126d6fa0e049c5c000045cd5');
+    assert.equal(record?.source_exe_sha256, '3db86834172f225584338465ee245398c16c56a544902d10c200f4108a75bc1d');
+    assert.equal(record?.source_commit, '6eb83f50ce3eba52df0da9439be3243afc47df26');
   }
   for (const phrase of ['2026-10-30 构建的历史步骤演示', '交付记录管理并入主窗口',
     '同名项目先预览再确认合并', '原材料和历史交付记录保留', '不会在启动时自动合并']) assert.ok(html.includes(phrase), phrase);
@@ -301,12 +301,12 @@ test('所有者统计接入同一外观选择，保留私密登录与空数据�
   assert.match(html,/href="https:\/\/github\.com\/232577\/workbox\/blob\/main\/THIRD_PARTY_NOTICES\.md"[^>]*>第三方许可<\/a>/);
 });
 
-test('Hero使用实际浅深界面原图链接，尺寸与 PNG 一致并保留文件夹流程图后备', async () => {
-  for (const theme of ['light','dark']) {
-    const path=`/media/workbox-task-groups-${theme}-20261105-r2.png`;
+test('主宽图与窄窗对照原图尺寸准确，主图保留文件夹流程图后备', async () => {
+  for (const name of ['workbox-project-batches-light-20261105-r3.png', 'workbox-project-batches-narrow-dark-20261105-r3.png']) {
+    const path=`/media/${name}`;
     const png=await readFile(new URL(`./public${path}`,import.meta.url));
     assert.equal(png.toString('ascii',1,4),'PNG');
-    assert.ok(tags.some(tag=>tag.name==='img'&&tag.attrs.src===path&&tag.attrs['data-desktop-image']===theme&&Number(tag.attrs.width)===png.readUInt32BE(16)&&Number(tag.attrs.height)===png.readUInt32BE(20)));
+    assert.ok(tags.some(tag=>tag.name==='img'&&tag.attrs.src===path&&Number(tag.attrs.width)===png.readUInt32BE(16)&&Number(tag.attrs.height)===png.readUInt32BE(20)));
     assert.ok(tags.some(tag=>tag.name==='a'&&tag.attrs.href===path));
   }
   assert.ok(tags.some(tag=>has(tag,'data-desktop-stage')));

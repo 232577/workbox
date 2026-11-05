@@ -4,29 +4,29 @@ import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {handleRequest,release,releases} from './worker.mjs';
 
-test('首页、两份README与稳定发布指向11月5日任务组版，保留全部历史下载',async()=>{
+test('首页、两份README与稳定发布指向11月5日项目批次版，保留全部历史下载',async()=>{
   const html=await readFile(new URL('./public/index.html',import.meta.url),'utf8');
   const readme=await readFile(new URL('../README.md',import.meta.url),'utf8');
   const siteReadme=await readFile(new URL('./README.md',import.meta.url),'utf8');
   for(const text of [html,readme,siteReadme]){
-    assert.ok(text.includes('v1.0.0.20261105.2'));
-    assert.ok(text.includes('WorkBox-1.0.0-Setup-x64-20261105-r2.exe'));
-    assert.ok(text.includes('b60fe41773d7781d79fb9ef06657240445f289837a461f30083fc8286f4af616'));
-    assert.ok(text.includes('b2724ec9073f3d78126d6fa0e049c5c000045cd5'));
+    assert.ok(text.includes('v1.0.0.20261105.3'));
+    assert.ok(text.includes('WorkBox-1.0.0-Setup-x64-20261105-r3.exe'));
+    assert.ok(text.includes('533387b71a3ae6ddbb313a3c3a793d8a46d65ed3640cae624f7e40154af5059a'));
+    assert.ok(text.includes('6eb83f50ce3eba52df0da9439be3243afc47df26'));
   }
   for(const item of releases) assert.ok(html.includes(`/download/${item.filename}`));
-  assert.deepEqual(release,{version:'1.0.0',tag:'v1.0.0.20261105.2',edition:'正式安装版',date:'2026-11-05',filename:'WorkBox-1.0.0-Setup-x64-20261105-r2.exe',size:40620146,sha256:'b60fe41773d7781d79fb9ef06657240445f289837a461f30083fc8286f4af616'});
-  // 固定原19个目录项的完整字段，防止升级时误改旧包大小、摘要或路径。
-  assert.equal(releases.length,20);
-  assert.equal(createHash('sha256').update(JSON.stringify(releases.slice(1))).digest('hex'),'7ebbfa67ef879ced8e673608ca8be8fdf0ee2e075c1ce196a38b34acd832aa11');
+  assert.deepEqual(release,{version:'1.0.0',tag:'v1.0.0.20261105.3',edition:'正式安装版',date:'2026-11-05',filename:'WorkBox-1.0.0-Setup-x64-20261105-r3.exe',size:40609504,sha256:'533387b71a3ae6ddbb313a3c3a793d8a46d65ed3640cae624f7e40154af5059a'});
+  // 固定原20个目录项的完整字段，防止升级时误改旧包大小、摘要或路径。
+  assert.equal(releases.length,21);
+  assert.equal(createHash('sha256').update(JSON.stringify(releases.slice(1))).digest('hex'),'b14365f75280ddbae09349b0e3deff206f0886601fc0688cbcbdde4add4c1f29');
   assert.equal(new Set(releases.map(r=>r.tag)).size,releases.length);
-  assert.match(html,/截图来自 v1\.0\.0\.20261105\.2 匿名实机截图/);
+  assert.match(html,/截图来自 v1\.0\.0\.20261105\.3 匿名实机截图/);
   const metadata=await (await handleRequest(new Request('https://example.com/updates/stable.json'),{})).json();
   assert.equal(metadata.tag_name,release.tag);
-  assert.equal(metadata.assets[0].size,40620146);
+  assert.equal(metadata.assets[0].size,40609504);
   assert.equal(metadata.assets[0].digest,`sha256:${release.sha256}`);
   for(const text of [html,readme,siteReadme,metadata.body]){
-    for(const phrase of ['任务组','材料就绪','手动交接','四张工作表','归档分类'])assert.ok(text.includes(phrase),phrase);
+    for(const phrase of ['原项目状态','原排序','一项目一行','多个批次','全部交付表'])assert.ok(text.includes(phrase),phrase);
     assert.match(text,/平面双栏/);
     assert.match(text,/统一按钮、输入与状态筛选控件/);
     assert.match(text,/项目队列使用透明背景融入工作区/);
@@ -45,18 +45,18 @@ test('首页、两份README与稳定发布指向11月5日任务组版，保留�
   }
 });
 
-test('任务组图来自最终构建，44项旧媒体逐项保留原构建归属',async()=>{
+test('项目图来自最终构建，44项旧媒体逐项保留原构建归属',async()=>{
   const registry=JSON.parse(await readFile(new URL('./MEDIA.json',import.meta.url),'utf8'));
   const baseline=JSON.parse(await readFile(new URL('./fixtures/media-before-task-groups.json',import.meta.url),'utf8'));
   const oldFiles={};
   for(const [path,facts] of Object.entries(baseline)){
     assert.deepEqual(registry.files[path],facts,path);oldFiles[path]=registry.files[path];
   }
-  assert.equal(Object.keys(registry.files).length,48);
+  assert.equal(Object.keys(registry.files).length,50);
   assert.equal(Object.keys(oldFiles).length,44);
   assert.equal(createHash('sha256').update(JSON.stringify(oldFiles)).digest('hex'),'c9469b55de034b9e13117f0ebe8fa0ca636988bcc1d77fb0957b873169c3b2b3');
-  assert.equal(registry.latest_screenshot_exe_sha256,'4425eeaf1f1bce42034469951299de0026299eb0641a4edcac0d185c2224282b');
+  assert.equal(registry.latest_screenshot_exe_sha256,'3db86834172f225584338465ee245398c16c56a544902d10c200f4108a75bc1d');
   const html=await readFile(new URL('./public/index.html',import.meta.url),'utf8');
-  assert.match(html,/页面截图来自 v1\.0\.0\.20261105\.2/);
+  assert.match(html,/页面截图来自 v1\.0\.0\.20261105\.3/);
   assert.doesNotMatch(html,/截图来自 v1\.0\.0\.20261104\.3/);
 });
