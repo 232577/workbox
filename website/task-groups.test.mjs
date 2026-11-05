@@ -33,7 +33,7 @@ test('新发布保留全部十八项旧下载及四十四项原媒体来源，�
   const registry = JSON.parse(media);
   const before = JSON.parse(await readFile(new URL('./fixtures/media-before-task-groups.json', import.meta.url), 'utf8'));
   assert.equal(Object.keys(before).length, 44);
-  assert.equal(Object.keys(registry.files).length, 46);
+  assert.equal(Object.keys(registry.files).length, 48);
   const retained = {};
   for (const [path, facts] of Object.entries(before)) {
     assert.deepEqual(registry.files[path], facts, path);

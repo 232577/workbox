@@ -36,8 +36,10 @@ test('视频请求先经过Worker以应用范围逻辑',async()=>{
 test('11月4日r2匿名截图来自同一冻结构建，保留全部旧媒体来源',async()=>{
   const registry=JSON.parse(await readFile(new URL('./MEDIA.json',import.meta.url),'utf8'));
   const exe='021f59a84ee0a78a823a5eef54b5804803c12ec30f45714984d8bb4206d01352';
-  assert.equal(registry.latest_screenshot_exe_sha256,'1ed9cffe21ba9f366064224cf14f04b3b49c5983d8b6679e15d1b9c1fd6c05e1');
+  assert.equal(registry.latest_screenshot_exe_sha256,'4425eeaf1f1bce42034469951299de0026299eb0641a4edcac0d185c2224282b');
   const oldFiles={...registry.files};
+  delete oldFiles['public/media/workbox-task-groups-light-20261105-r2.png'];
+  delete oldFiles['public/media/workbox-task-groups-dark-20261105-r2.png'];
   delete oldFiles['public/media/workbox-task-groups-light-20261105-r1.png'];
   delete oldFiles['public/media/workbox-task-groups-dark-20261105-r1.png'];
   for(const [theme,size,sha256] of [
@@ -59,7 +61,7 @@ test('11月4日r2匿名截图来自同一冻结构建，保留全部旧媒体来
   assert.equal(registry.active_video,'public/media/workbox-official-20261030.mp4');
 });
 
-test('11月5日任务组浅深图来自同一最终EXE且只有中性隔离示例',async()=>{
+test('11月5日r1任务组浅深图保留原EXE来源与中性隔离示例',async()=>{
   const registryText=await readFile(new URL('./MEDIA.json',import.meta.url),'utf8');
   const registry=JSON.parse(registryText);
   const exe='1ed9cffe21ba9f366064224cf14f04b3b49c5983d8b6679e15d1b9c1fd6c05e1';
@@ -77,4 +79,30 @@ test('11月5日任务组浅深图来自同一最终EXE且只有中性隔离示�
     assert.equal(png.readUInt32BE(16),1186);assert.equal(png.readUInt32BE(20),843);
   }
   assert.doesNotMatch(registryText,/[A-Za-z]:[\\/]|\.local[\\/]|showcase-20261105/);
+});
+
+test('精简版新增两张同EXE截图，全部46项旧媒体事实和字节逐项保留',async()=>{
+  const registry=JSON.parse(await readFile(new URL('./MEDIA.json',import.meta.url),'utf8'));
+  const before=JSON.parse(await readFile(new URL('./fixtures/media-before-slim-workbench.json',import.meta.url),'utf8'));
+  assert.equal(Object.keys(before).length,46);
+  assert.equal(Object.keys(registry.files).length,48);
+  for(const [path,facts] of Object.entries(before)){
+    assert.deepEqual(registry.files[path],facts,path);
+    const bytes=await readFile(new URL(`./${path}`,import.meta.url));
+    assert.equal(bytes.length,facts.size,path);
+    assert.equal(createHash('sha256').update(bytes).digest('hex'),facts.sha256,path);
+  }
+  for(const [theme,size,sha256] of [
+    ['light',69921,'74ad79c7d6e83c766602d1515d209ee4c94c1a1db9e1553dc517876b88af8c5e'],
+    ['dark',69714,'c7feee8fc2be9653b45995ffc9369dbb45b6957676429f6b9f554bd720128dcc'],
+  ]){
+    const path=`public/media/workbox-task-groups-${theme}-20261105-r2.png`;
+    assert.deepEqual(registry.files[path],{size,sha256,
+      source_exe_sha256:'4425eeaf1f1bce42034469951299de0026299eb0641a4edcac0d185c2224282b',
+      source_commit:'b2724ec9073f3d78126d6fa0e049c5c000045cd5',
+      description:'匿名隔离三项目示例；精简日常导航，材料就绪2项、人工交接1项。'});
+    const bytes=await readFile(new URL(`./${path}`,import.meta.url));
+    assert.equal(bytes.length,size);assert.equal(createHash('sha256').update(bytes).digest('hex'),sha256);
+    assert.equal(bytes.readUInt32BE(16),1186);assert.equal(bytes.readUInt32BE(20),843);
+  }
 });

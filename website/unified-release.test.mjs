@@ -20,7 +20,7 @@ test('首页、两份README与稳定发布指向11月5日任务组版，保留�
   assert.equal(releases.length,20);
   assert.equal(createHash('sha256').update(JSON.stringify(releases.slice(1))).digest('hex'),'7ebbfa67ef879ced8e673608ca8be8fdf0ee2e075c1ce196a38b34acd832aa11');
   assert.equal(new Set(releases.map(r=>r.tag)).size,releases.length);
-  assert.match(html,/截图来自 v1\.0\.0\.20261105\.1 匿名实机截图/);
+  assert.match(html,/截图来自 v1\.0\.0\.20261105\.2 匿名实机截图/);
   const metadata=await (await handleRequest(new Request('https://example.com/updates/stable.json'),{})).json();
   assert.equal(metadata.tag_name,release.tag);
   assert.equal(metadata.assets[0].size,40620146);
@@ -52,11 +52,11 @@ test('任务组图来自最终构建，44项旧媒体逐项保留原构建归属
   for(const [path,facts] of Object.entries(baseline)){
     assert.deepEqual(registry.files[path],facts,path);oldFiles[path]=registry.files[path];
   }
-  assert.equal(Object.keys(registry.files).length,46);
+  assert.equal(Object.keys(registry.files).length,48);
   assert.equal(Object.keys(oldFiles).length,44);
   assert.equal(createHash('sha256').update(JSON.stringify(oldFiles)).digest('hex'),'c9469b55de034b9e13117f0ebe8fa0ca636988bcc1d77fb0957b873169c3b2b3');
-  assert.equal(registry.latest_screenshot_exe_sha256,'1ed9cffe21ba9f366064224cf14f04b3b49c5983d8b6679e15d1b9c1fd6c05e1');
+  assert.equal(registry.latest_screenshot_exe_sha256,'4425eeaf1f1bce42034469951299de0026299eb0641a4edcac0d185c2224282b');
   const html=await readFile(new URL('./public/index.html',import.meta.url),'utf8');
-  assert.match(html,/页面截图来自 v1\.0\.0\.20261105\.1/);
+  assert.match(html,/页面截图来自 v1\.0\.0\.20261105\.2/);
   assert.doesNotMatch(html,/截图来自 v1\.0\.0\.20261104\.3/);
 });

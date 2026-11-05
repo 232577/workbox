@@ -1,0 +1,238 @@
+{
+  "public/media/workbox-task-groups-light-20261105-r1.png": {
+    "size": 72436,
+    "sha256": "f81185be6f1d3e11c08fec3e78601793750ec496fc7ea857a39bf10ca82c1271",
+    "source_exe_sha256": "1ed9cffe21ba9f366064224cf14f04b3b49c5983d8b6679e15d1b9c1fd6c05e1",
+    "source_commit": "868ae5e17e1b286c2ade1e578721b71c8f77b757",
+    "description": "匿名隔离三项目示例；材料就绪2项、人工交接1项。"
+  },
+  "public/media/workbox-task-groups-dark-20261105-r1.png": {
+    "size": 72062,
+    "sha256": "436b2d3b7171f2f4c3792e464156af5e88ee66e6e740dfa6d305f2920b98456b",
+    "source_exe_sha256": "1ed9cffe21ba9f366064224cf14f04b3b49c5983d8b6679e15d1b9c1fd6c05e1",
+    "source_commit": "868ae5e17e1b286c2ade1e578721b71c8f77b757",
+    "description": "匿名隔离三项目示例；材料就绪2项、人工交接1项。"
+  },
+  "public/media/workbox-desktop-light-20261104-r2.png": {
+    "size": 72805,
+    "sha256": "e035b4754584c8524ed8d646616ca080bb1bc3530374f63cab4c2d7bb852beb9",
+    "source_exe_sha256": "021f59a84ee0a78a823a5eef54b5804803c12ec30f45714984d8bb4206d01352",
+    "source_commit": "34b4be852e7fc87825c8ac309b624e48422e3c3a"
+  },
+  "public/media/workbox-desktop-dark-20261104-r2.png": {
+    "size": 73582,
+    "sha256": "b8c34724ce9d1c0ffb9fe3bdf246835b3daa426bcbab19d7d0d968aa20e5342d",
+    "source_exe_sha256": "021f59a84ee0a78a823a5eef54b5804803c12ec30f45714984d8bb4206d01352",
+    "source_commit": "34b4be852e7fc87825c8ac309b624e48422e3c3a"
+  },
+  "public/media/workbox-desktop-light-ui-20261103.png": {
+    "size": 83100,
+    "sha256": "f3077338c3e5d5a198fbd4492d2ab5ed8e4b6172b284fa463c52af2d645082f5",
+    "source_exe_sha256": "c305d1160a336b78d52b32625a11c5f23379b7c92c8d1f926fcf98b73bc41d7b"
+  },
+  "public/media/workbox-desktop-dark-ui-20261103.png": {
+    "size": 83170,
+    "sha256": "2004870f9a72db8d6e0a282aed7a5da27801b8ce66661ec0dcd4a0c11ca201c6",
+    "source_exe_sha256": "c305d1160a336b78d52b32625a11c5f23379b7c92c8d1f926fcf98b73bc41d7b"
+  },
+  "public/media/workbox-desktop-light-official-20261102.png": {
+    "size": 76713,
+    "sha256": "d5743c44435c055d225b8993c3689597e9a0dd39ab661ab8a1567a43737c8bb3",
+    "source_exe_sha256": "8311e213b3e2eaefa512d1e7164ad046542a5b66bdd79276c0dcec6d6b241c40"
+  },
+  "public/media/workbox-desktop-dark-official-20261102.png": {
+    "size": 77091,
+    "sha256": "b867fe99ddeb013f7f5c2fa86b5bb748d0f26a2b8856ec254ba018081f170aa0",
+    "source_exe_sha256": "8311e213b3e2eaefa512d1e7164ad046542a5b66bdd79276c0dcec6d6b241c40"
+  },
+  "public/media/workbox-desktop-light-official-20261030.png": {
+    "size": 104471,
+    "sha256": "f7601a29508cfe03e8e44217fb07a197df02ba2bfe8baf374c5f5fa5804b35d6",
+    "source_exe_sha256": "ce9e986d53fd0129c905e4058f7a8bfe3b67df4b0e1d6a8310d42dcd8a114890"
+  },
+  "public/media/workbox-desktop-dark-official-20261030.png": {
+    "size": 110850,
+    "sha256": "ae3b44230a5d9dd03c9d3fc54c29f6ca1e9ee8577d5f7ce896845bdebbee9f50",
+    "source_exe_sha256": "ce9e986d53fd0129c905e4058f7a8bfe3b67df4b0e1d6a8310d42dcd8a114890"
+  },
+  "public/media/workbox-official-20261030.mp4": {
+    "size": 1231955,
+    "sha256": "35e4bce067fb2ee16e39abc71aa7ced62150910c87f5c3e2ea98669ed5943ed9",
+    "source_exe_sha256": "ce9e986d53fd0129c905e4058f7a8bfe3b67df4b0e1d6a8310d42dcd8a114890"
+  },
+  "public/media/workbox-official-20261030.poster.png": {
+    "size": 325840,
+    "sha256": "75774d0fce379f8e0548742e81ee89d5a24af09cac1dc3a8d2f22ebb4f6c3dab",
+    "source_exe_sha256": "ce9e986d53fd0129c905e4058f7a8bfe3b67df4b0e1d6a8310d42dcd8a114890"
+  },
+  "public/media/workbox-official-20261030.vtt": {
+    "size": 541,
+    "sha256": "ea830f4a8069052082706b537fb4988e40f3a6594867a7516f9c31f41b2a1bdc",
+    "source_exe_sha256": "ce9e986d53fd0129c905e4058f7a8bfe3b67df4b0e1d6a8310d42dcd8a114890"
+  },
+  "public/media/workbox-quickstart-20261028.mp4": {
+    "size": 1835029,
+    "sha256": "3790ad7382e4a309b9a5464edc65fd5b3ef0dd984530aa065baed40b7f1addf9",
+    "source_exe_sha256": "2fe529ad872e20c611671e3956b3ca07171e726065eb29589a98cc033f2f8dbc"
+  },
+  "public/media/workbox-quickstart-20261028.poster.png": {
+    "size": 229216,
+    "sha256": "76924b34478da7c886a471655162aa39535d738ad5c3d0dac2eb543504114b1a",
+    "source_exe_sha256": "2fe529ad872e20c611671e3956b3ca07171e726065eb29589a98cc033f2f8dbc"
+  },
+  "public/media/workbox-quickstart-20261028.vtt": {
+    "size": 996,
+    "sha256": "8b5f257eeceb3ab1848f424c214a510b8ca9b82ed782a867a814fce4f407f12f",
+    "source_exe_sha256": "2fe529ad872e20c611671e3956b3ca07171e726065eb29589a98cc033f2f8dbc"
+  },
+  "public/media/workbox-desktop-dark-20261028.png": {
+    "size": 77048,
+    "sha256": "5ed9ce83ae9f4ecb184cb41b49591c0d078f53e798d0f6888a4981029ce1a6f3",
+    "source_exe_sha256": "36de791b9eefc48772350d9977e747a2b7d8d7f07379a85ad62eaf7494ad4d0e"
+  },
+  "public/media/workbox-desktop-light-20261028.png": {
+    "size": 75925,
+    "sha256": "242f760529386fd702825d8664902ce7b66e27f849b51893c3e2af5836560220",
+    "source_exe_sha256": "36de791b9eefc48772350d9977e747a2b7d8d7f07379a85ad62eaf7494ad4d0e"
+  },
+  "public/media/workbox-floating-intake-20261028.mp4": {
+    "size": 1734491,
+    "sha256": "43ec704b4bde85d85c394a7f2f712bb2213d12c27ebbfa2c80e70e20d327ff28",
+    "source_exe_sha256": "36de791b9eefc48772350d9977e747a2b7d8d7f07379a85ad62eaf7494ad4d0e"
+  },
+  "public/media/workbox-floating-intake-20261028.poster.png": {
+    "size": 162019,
+    "sha256": "d76b04f1f24106aefb138623b32530cce65cf4c4b3b05d2730b1cdfc3763be58",
+    "source_exe_sha256": "36de791b9eefc48772350d9977e747a2b7d8d7f07379a85ad62eaf7494ad4d0e"
+  },
+  "public/media/workbox-floating-intake-20261028.vtt": {
+    "size": 950,
+    "sha256": "7625171d3900dbbbf5a99555eef81c7be2c9baded08e20f7705096050f30838d",
+    "source_exe_sha256": "36de791b9eefc48772350d9977e747a2b7d8d7f07379a85ad62eaf7494ad4d0e"
+  },
+  "public/media/workbox-desktop-light-fluent-20261028.png": {
+    "size": 95220,
+    "sha256": "38f1a1aff40116794f9ffb65af15d4fc9762ddda5884cbbd24e9bc8fef5b2788",
+    "source_exe_sha256": "c1eac5a870941f4a81146c66104e1c6e5f38ba88afc8d8a4ad4b02ac0af2e489"
+  },
+  "public/media/workbox-desktop-dark-fluent-20261028.png": {
+    "size": 95624,
+    "sha256": "420df5a8cc6a745080b33fb79f3106862dfbbab67adffce0d3e665340bf31f63",
+    "source_exe_sha256": "c1eac5a870941f4a81146c66104e1c6e5f38ba88afc8d8a4ad4b02ac0af2e489"
+  },
+  "public/media/workbox-floating-intake-fluent-20261028.mp4": {
+    "size": 1870350,
+    "sha256": "1545810378f7150c5a858fbd4a3395fe5865945c5a97c05b4ac504e3420fbc34",
+    "source_exe_sha256": "c1eac5a870941f4a81146c66104e1c6e5f38ba88afc8d8a4ad4b02ac0af2e489"
+  },
+  "public/media/workbox-floating-intake-fluent-20261028.poster.png": {
+    "size": 163000,
+    "sha256": "0fad69d2c0ae6df9310ea6567178b11a957ab589da3c5b09843e476bcb5a2973",
+    "source_exe_sha256": "c1eac5a870941f4a81146c66104e1c6e5f38ba88afc8d8a4ad4b02ac0af2e489"
+  },
+  "public/media/workbox-floating-intake-fluent-20261028.vtt": {
+    "size": 995,
+    "sha256": "22dd36a1bdae7038199d60e43e4299eb31f919d38daa63c89a677f3b1f48348e",
+    "source_exe_sha256": "c1eac5a870941f4a81146c66104e1c6e5f38ba88afc8d8a4ad4b02ac0af2e489"
+  },
+  "public/media/workbox-desktop-light-workbench-20261029.png": {
+    "size": 101504,
+    "sha256": "4d12296d9dced75bd4baa8269e860e13c1daaac2d9f6c7cb3fd13262b4c059ef",
+    "source_exe_sha256": "d74777c1b3e512c4b02b2932924bc8b92c61cd7e762220522c86ebf4d917c521"
+  },
+  "public/media/workbox-desktop-dark-workbench-20261029.png": {
+    "size": 100202,
+    "sha256": "a790082ebcc5a9bd51097ac91989e3d22498329722fb603de186e950cbb8c327",
+    "source_exe_sha256": "d74777c1b3e512c4b02b2932924bc8b92c61cd7e762220522c86ebf4d917c521"
+  },
+  "public/media/workbox-workbench-20261029.mp4": {
+    "size": 1568279,
+    "sha256": "5322d20602e3a5219ae3ad5d9b21a07c2c00b0bae2ba45090d93bbd206a6de55",
+    "source_exe_sha256": "d74777c1b3e512c4b02b2932924bc8b92c61cd7e762220522c86ebf4d917c521"
+  },
+  "public/media/workbox-workbench-20261029.poster.png": {
+    "size": 333405,
+    "sha256": "71b2727a58aefada66e3b0546ab1598223ce5b5a4ce9ea7bdc5530843fdd6f2c",
+    "source_exe_sha256": "d74777c1b3e512c4b02b2932924bc8b92c61cd7e762220522c86ebf4d917c521"
+  },
+  "public/media/workbox-workbench-20261029.vtt": {
+    "size": 1056,
+    "sha256": "7c12c907d60ccc2e53f9bcf27eefc108e3ea97a6197057069e4343d5f5f0748a",
+    "source_exe_sha256": "d74777c1b3e512c4b02b2932924bc8b92c61cd7e762220522c86ebf4d917c521"
+  },
+  "public/media/workbox-desktop-light-layout-20261029.png": {
+    "size": 100028,
+    "sha256": "ec87eb04e00436f96f62decea81cacf4e24500388bd85286812fba2a5fb82781",
+    "source_exe_sha256": "299e207983d562517d87c4f65f40086738350ca4cbd0ac165228daab3c3c22c5"
+  },
+  "public/media/workbox-desktop-dark-layout-20261029.png": {
+    "size": 99278,
+    "sha256": "e87621c04e5e79fdbe3e9f25d3d152b8611bb2326913638d25626a665708df19",
+    "source_exe_sha256": "299e207983d562517d87c4f65f40086738350ca4cbd0ac165228daab3c3c22c5"
+  },
+  "public/media/workbox-layout-20261029.mp4": {
+    "size": 1535060,
+    "sha256": "1990180f118edfa3a7b815de5258cb7ae8b9cd1fbc49ca3d4b72968b57c6d66f",
+    "source_exe_sha256": "299e207983d562517d87c4f65f40086738350ca4cbd0ac165228daab3c3c22c5"
+  },
+  "public/media/workbox-layout-20261029.poster.png": {
+    "size": 331571,
+    "sha256": "2bd5090ddd1bb00893518b428fab762328b9d40e55bb65c05f95574e075e9c2b",
+    "source_exe_sha256": "299e207983d562517d87c4f65f40086738350ca4cbd0ac165228daab3c3c22c5"
+  },
+  "public/media/workbox-layout-20261029.vtt": {
+    "size": 1059,
+    "sha256": "6453ccb784c033b6f573ac91d542f49beca4c75d21df2d8516d0e7ed861a7d51",
+    "source_exe_sha256": "299e207983d562517d87c4f65f40086738350ca4cbd0ac165228daab3c3c22c5"
+  },
+  "public/media/workbox-desktop-light-sidebar-20261029.png": {
+    "size": 100266,
+    "sha256": "4f66abe2e0b6d6e56c87e8de2deca6d798c68fce60036c30d2fb948a337d7a5a",
+    "source_exe_sha256": "b6b212008b085af272091bd05748533d70050e32070584808d972b80f8ee73a8"
+  },
+  "public/media/workbox-desktop-dark-sidebar-20261029.png": {
+    "size": 99452,
+    "sha256": "faf13486cc9f2e0bb93ef65e78d6131f4b977d1b938345b8bf3286a22650a9f4",
+    "source_exe_sha256": "b6b212008b085af272091bd05748533d70050e32070584808d972b80f8ee73a8"
+  },
+  "public/media/workbox-sidebar-20261029.mp4": {
+    "size": 1551857,
+    "sha256": "13ea6d31fd58ec15e307c756c286b7de5dc4f5a913527354c9bd5119f56c4fa8",
+    "source_exe_sha256": "b6b212008b085af272091bd05748533d70050e32070584808d972b80f8ee73a8"
+  },
+  "public/media/workbox-sidebar-20261029.poster.png": {
+    "size": 331483,
+    "sha256": "fb9e3ccc31bde730fc0c7557fc8cb877c55dc5f228b54ed99e8c85a8aa697e12",
+    "source_exe_sha256": "b6b212008b085af272091bd05748533d70050e32070584808d972b80f8ee73a8"
+  },
+  "public/media/workbox-sidebar-20261029.vtt": {
+    "size": 1077,
+    "sha256": "e4c0f55ab406c9bd74aa814a75bb2bb26a80d394a58b66c64489166fd008de1b",
+    "source_exe_sha256": "b6b212008b085af272091bd05748533d70050e32070584808d972b80f8ee73a8"
+  },
+  "public/media/workbox-desktop-light-types-20261029.png": {
+    "size": 101898,
+    "sha256": "2d7620ce9cb18a8b5d8687fc4a0954992d78d590f8b2af58b04c771056b09766",
+    "source_exe_sha256": "87022af8176c8a0ae591b8d4183d50e766ce077d39d1bd25563bfcd1f7579baf"
+  },
+  "public/media/workbox-desktop-dark-types-20261029.png": {
+    "size": 102052,
+    "sha256": "af1095cf4d5c5615b45b37fc7c1eba4e328c54031e2a966e8f620301a99d500d",
+    "source_exe_sha256": "87022af8176c8a0ae591b8d4183d50e766ce077d39d1bd25563bfcd1f7579baf"
+  },
+  "public/media/workbox-types-20261029.mp4": {
+    "size": 1562561,
+    "sha256": "9c7fdb185be1a093bc1f4994618d120e5cba180eb93868363cda5741d4f3708e",
+    "source_exe_sha256": "87022af8176c8a0ae591b8d4183d50e766ce077d39d1bd25563bfcd1f7579baf"
+  },
+  "public/media/workbox-types-20261029.poster.png": {
+    "size": 335871,
+    "sha256": "98ab12ff3701b44870af1c8df8da533ef70e0db6ab12eaab8291428c822a34eb",
+    "source_exe_sha256": "87022af8176c8a0ae591b8d4183d50e766ce077d39d1bd25563bfcd1f7579baf"
+  },
+  "public/media/workbox-types-20261029.vtt": {
+    "size": 1016,
+    "sha256": "004d4e58019402a36eb6a4cb32883135fa9177042451a5970cab67859aed9787",
+    "source_exe_sha256": "87022af8176c8a0ae591b8d4183d50e766ce077d39d1bd25563bfcd1f7579baf"
+  }
+}

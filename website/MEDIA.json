@@ -2,10 +2,24 @@
   "kind": "verified-screenshot-walkthrough",
   "source_exe_sha256": "ce9e986d53fd0129c905e4058f7a8bfe3b67df4b0e1d6a8310d42dcd8a114890",
   "privacy_reviewed": true,
-  "latest_screenshot_exe_sha256": "1ed9cffe21ba9f366064224cf14f04b3b49c5983d8b6679e15d1b9c1fd6c05e1",
+  "latest_screenshot_exe_sha256": "4425eeaf1f1bce42034469951299de0026299eb0641a4edcac0d185c2224282b",
   "description": "已验证冻结程序的匿名隔离截图，展示任务组、材料就绪与人工交接；历史截图和步骤演示保留各自构建来源。",
   "duration_seconds": 44,
   "files": {
+    "public/media/workbox-task-groups-light-20261105-r2.png": {
+      "size": 69921,
+      "sha256": "74ad79c7d6e83c766602d1515d209ee4c94c1a1db9e1553dc517876b88af8c5e",
+      "source_exe_sha256": "4425eeaf1f1bce42034469951299de0026299eb0641a4edcac0d185c2224282b",
+      "source_commit": "b2724ec9073f3d78126d6fa0e049c5c000045cd5",
+      "description": "匿名隔离三项目示例；精简日常导航，材料就绪2项、人工交接1项。"
+    },
+    "public/media/workbox-task-groups-dark-20261105-r2.png": {
+      "size": 69714,
+      "sha256": "c7feee8fc2be9653b45995ffc9369dbb45b6957676429f6b9f554bd720128dcc",
+      "source_exe_sha256": "4425eeaf1f1bce42034469951299de0026299eb0641a4edcac0d185c2224282b",
+      "source_commit": "b2724ec9073f3d78126d6fa0e049c5c000045cd5",
+      "description": "匿名隔离三项目示例；精简日常导航，材料就绪2项、人工交接1项。"
+    },
     "public/media/workbox-task-groups-light-20261105-r1.png": {
       "size": 72436,
       "sha256": "f81185be6f1d3e11c08fec3e78601793750ec496fc7ea857a39bf10ca82c1271",
