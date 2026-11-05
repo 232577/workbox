@@ -315,7 +315,12 @@ def test_mouse_selected_project_paints_metadata_on_last_line(panel, qapp, mode, 
     settle(qapp)
     assert item.isSelected() is (selection_state != 'unselected')
     assert view.hasFocus() is (selection_state == 'focused')
-    assert item.text().startswith(name + '\n') and '资料' in item.text()
+    from fluent_views import PROJECT_BATCH_MARKERS_ROLE
+    assert item.text().startswith(name + '\n') and '待开发' in item.text()
+    assert '资料完整批次元数据' in item.toolTip()
+    markers = item.data(PROJECT_BATCH_MARKERS_ROLE)
+    assert len(markers) == 1 and markers[0]['source_kind'] == 'creation_batch'
+    assert markers[0]['code'] in item.data(Qt.AccessibleDescriptionRole)
     assert_complete_item_text_fits(view, item)
     # 检查真实标准委托paint的像素：末行元数据应有字形，而不是只有居中的首行省略号。
     # Fluent行背景是透明的；在真实父窗口上合成后检查字形，不能把透明像素当黑底。
