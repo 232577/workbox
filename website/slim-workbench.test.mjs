@@ -5,6 +5,20 @@ import { readFile } from 'node:fs/promises';
 const html = await readFile(new URL('./public/index.html', import.meta.url), 'utf8');
 const section = html.match(/<section\b[^>]*id="daily-workbench"[^>]*>([\s\S]*?)<\/section>/)?.[1];
 
+test('全部十九项历史下载仅出现于历史折叠列表，HTML结束后没有孤立内容', async () => {
+  const { releases } = await import('./worker.mjs');
+  const history = html.match(/<details\b[^>]*id="release-history"[^>]*>([\s\S]*?)<\/details>/)?.[1];
+  assert.ok(history, '历史折叠容器存在');
+  const links = history.match(/<div\b[^>]*class="wb-release-links"[^>]*>([\s\S]*?)<\/div>/)?.[1];
+  assert.ok(links, '历史下载列表位于折叠容器内');
+  const hrefs = [...links.matchAll(/<a\b[^>]*href="([^"]+)"/g)].map(match => match[1]).filter(href => href.startsWith('/download/'));
+  assert.deepEqual(hrefs, releases.slice(1).map(item => `/download/${item.filename}`));
+  for (const href of hrefs) {
+    assert.equal([...html.matchAll(/<a\b[^>]*href="([^"]+)"/g)].filter(match => match[1] === href).length, 1, href);
+  }
+  assert.match(html, /<\/body>\s*<\/html>\s*$/);
+});
+
 test('精简工作台说明准确交代日常入口、条件提醒和高级工具去向', () => {
   assert.ok(section);
   for (const phrase of ['任务组、项目、今日工作量', '高级设置', '待核对数量大于零',
