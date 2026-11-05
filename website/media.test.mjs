@@ -36,8 +36,10 @@ test('视频请求先经过Worker以应用范围逻辑',async()=>{
 test('11月4日r2匿名截图来自同一冻结构建，保留全部旧媒体来源',async()=>{
   const registry=JSON.parse(await readFile(new URL('./MEDIA.json',import.meta.url),'utf8'));
   const exe='021f59a84ee0a78a823a5eef54b5804803c12ec30f45714984d8bb4206d01352';
-  assert.equal(registry.latest_screenshot_exe_sha256,'4425eeaf1f1bce42034469951299de0026299eb0641a4edcac0d185c2224282b');
+  assert.equal(registry.latest_screenshot_exe_sha256,'3db86834172f225584338465ee245398c16c56a544902d10c200f4108a75bc1d');
   const oldFiles={...registry.files};
+  delete oldFiles['public/media/workbox-project-batches-light-20261105-r3.png'];
+  delete oldFiles['public/media/workbox-project-batches-narrow-dark-20261105-r3.png'];
   delete oldFiles['public/media/workbox-task-groups-light-20261105-r2.png'];
   delete oldFiles['public/media/workbox-task-groups-dark-20261105-r2.png'];
   delete oldFiles['public/media/workbox-task-groups-light-20261105-r1.png'];
@@ -85,7 +87,7 @@ test('精简版新增两张同EXE截图，全部46项旧媒体事实和字节逐
   const registry=JSON.parse(await readFile(new URL('./MEDIA.json',import.meta.url),'utf8'));
   const before=JSON.parse(await readFile(new URL('./fixtures/media-before-slim-workbench.json',import.meta.url),'utf8'));
   assert.equal(Object.keys(before).length,46);
-  assert.equal(Object.keys(registry.files).length,48);
+  assert.equal(Object.keys(registry.files).length,50);
   for(const [path,facts] of Object.entries(before)){
     assert.deepEqual(registry.files[path],facts,path);
     const bytes=await readFile(new URL(`./${path}`,import.meta.url));

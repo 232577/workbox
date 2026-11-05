@@ -35,13 +35,13 @@ test('旧任务说明折叠保留为明确历史，原锚点继续可达', () =>
   assert.match(html, /任务数不计入首次交付项目数/);
 });
 
-test('文案准备期间保持已核验的20项下载目录与48项媒体字节', async () => {
-  assert.equal(release.tag, 'v1.0.0.20261105.2');
-  assert.equal(releases.length, 20);
-  assert.equal(createHash('sha256').update(JSON.stringify(releases)).digest('hex'),
+test('新增r3后保持已核验的20项旧下载目录与48项旧媒体字节', async () => {
+  assert.equal(release.tag, 'v1.0.0.20261105.3');
+  assert.equal(releases.length, 21);
+  assert.equal(createHash('sha256').update(JSON.stringify(releases.slice(1))).digest('hex'),
     'b14365f75280ddbae09349b0e3deff206f0886601fc0688cbcbdde4add4c1f29');
   const registry = JSON.parse(await readFile(new URL('./MEDIA.json', import.meta.url), 'utf8'));
-  assert.equal(Object.keys(registry.files).length, 48);
+  assert.equal(Object.keys(registry.files).length, 50);
   for (const [path, fact] of Object.entries(registry.files)) {
     const bytes = await readFile(new URL(`./${path}`, import.meta.url));
     assert.equal(bytes.length, fact.size, path);

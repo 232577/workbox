@@ -2,10 +2,24 @@
   "kind": "verified-screenshot-walkthrough",
   "source_exe_sha256": "ce9e986d53fd0129c905e4058f7a8bfe3b67df4b0e1d6a8310d42dcd8a114890",
   "privacy_reviewed": true,
-  "latest_screenshot_exe_sha256": "4425eeaf1f1bce42034469951299de0026299eb0641a4edcac0d185c2224282b",
-  "description": "已验证冻结程序的匿名隔离截图，展示任务组、材料就绪与人工交接；历史截图和步骤演示保留各自构建来源。",
+  "latest_screenshot_exe_sha256": "3db86834172f225584338465ee245398c16c56a544902d10c200f4108a75bc1d",
+  "description": "已验证冻结程序的中性隔离项目界面，分别展示宽窗浅色主图和窄窗深色对照；全部历史截图和步骤演示保留各自构建来源。",
   "duration_seconds": 44,
   "files": {
+    "public/media/workbox-project-batches-light-20261105-r3.png": {
+      "size": 69078,
+      "sha256": "a003caf665bfcf54fcd026f38572e0a42440aaf74d29ded9b201d0fdf616e30a",
+      "source_exe_sha256": "3db86834172f225584338465ee245398c16c56a544902d10c200f4108a75bc1d",
+      "source_commit": "6eb83f50ce3eba52df0da9439be3243afc47df26",
+      "description": "中性三项目隔离示例；1186×843浅色项目主窗口，保留原状态与批次色号。"
+    },
+    "public/media/workbox-project-batches-narrow-dark-20261105-r3.png": {
+      "size": 47661,
+      "sha256": "d99997d9741a85eff5e8bf41b4807e80b45fdff4227ef02a5f9ea51182532aaa",
+      "source_exe_sha256": "3db86834172f225584338465ee245398c16c56a544902d10c200f4108a75bc1d",
+      "source_commit": "6eb83f50ce3eba52df0da9439be3243afc47df26",
+      "description": "同一中性隔离实例；662×512窄窗深色对照，独立展示，不作为宽窗主题替换。"
+    },
     "public/media/workbox-task-groups-light-20261105-r2.png": {
       "size": 69921,
       "sha256": "74ad79c7d6e83c766602d1515d209ee4c94c1a1db9e1553dc517876b88af8c5e",
