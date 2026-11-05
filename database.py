@@ -533,7 +533,8 @@ class Database:
         current, _, _ = self._delivery_day_bounds(day)
         return self.delivery_history(date.fromisoformat(current), project_id=project_id)['events']
 
-    def delivery_history(self, day: date | None = None, keyword: str = '', project_id: int | None = None) -> dict:
+    def delivery_history(self, day: date | None = None, keyword: str = '', project_id: int | None = None,
+                         *, connection: sqlite3.Connection | None = None) -> dict:
         """day=None 查询全部历史。排序和首次认定始终在筛选之前按真实时间及 ID 计算。"""
         if not isinstance(keyword, str) or len(keyword) > 200:
             raise ValueError('交付历史关键词不能超过 200 个字符。')
@@ -552,9 +553,18 @@ class Database:
             conditions.append('(instr(lower(e.project_name),lower(?))>0 OR instr(lower(e.batch_name),lower(?))>0)')
             parameters.extend((keyword, keyword))
         where = ' WHERE ' + ' AND '.join(conditions) if conditions else ''
-        with self.connect() as connection:
-            # 字典与交付行使用同一读取快照，避免并发改名或停用导致统计口径不一致。
-            connection.execute('BEGIN')
+        supplied_connection = connection is not None
+        if supplied_connection:
+            if not isinstance(connection, sqlite3.Connection) or not connection.in_transaction:
+                raise ValueError('交付历史共用连接需要已开始的读取事务。')
+            main_path = next((row[2] for row in connection.execute('PRAGMA database_list')
+                              if row[1] == 'main'), '')
+            if not main_path or Path(main_path).resolve() != self.path:
+                raise ValueError('交付历史连接不是当前工作箱数据库。')
+        with (nullcontext(connection) if supplied_connection else self.connect()) as connection:
+            # 导出可共用调用方快照读取归档事实；不提交、回滚或关闭调用方的事务。
+            if not supplied_connection:
+                connection.execute('BEGIN')
             if project_id is not None:
                 # 旧交付入口仍可查看合并后的完整历史；只读归一不授权旧 ID 写入。
                 canonical = self._canonical_project_id(connection, project_id)
@@ -776,10 +786,16 @@ class Database:
             FROM projects p JOIN batches b ON b.id=p.batch_id WHERE p.id=?''', (project_id,)).fetchone()
         if project is None or project['delivered_at'] is None:
             raise ValueError('交付时间尚未保存，不能记录交付事实。')
-        return connection.execute('''INSERT INTO delivery_events(
+        event_id = connection.execute('''INSERT INTO delivery_events(
             project_id,project_name,batch_name,kind,zip_id,archive_path,archive_signature,occurred_at)
             VALUES (?,?,?,?,?,?,?,?)''', (project_id, project['name'], project['batch_name'], kind,
             zip_id, str(archive_path), archive_signature, project['delivered_at'])).lastrowid
+        # 新交付的派生类型与任务就绪关联共用原事务；不改旧交付事实。
+        from archive_classification import classify_new_delivery
+        from task_groups import observe_delivery_event
+        classify_new_delivery(connection, event_id)
+        observe_delivery_event(connection, event_id)
+        return event_id
 
     def _complete_file_delivery(self, connection, project_id: int, verified_archive: dict) -> int:
         """调用方复制归档后，复核清单及副本，再共用其事务保存人工交付事实。"""
@@ -1306,6 +1322,8 @@ class Database:
             marks = ','.join('?' for _ in selected)
             current = {row['project_id']: row['type_id'] for row in connection.execute(
                 f'SELECT project_id,type_id FROM project_type_links WHERE project_id IN ({marks})', selected)}
+            from archive_classification import record_manual_type_selection
+            record_manual_type_selection(connection, selected, current, type_id)
             for pid in selected:
                 if current.get(pid) == type_id:
                     continue

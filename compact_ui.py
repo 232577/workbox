@@ -260,6 +260,8 @@ class CompactPanel(DropSurface, QWidget):
     quit_requested = Signal()
     update_requested = Signal()
     background_requested = Signal()
+    task_text_requested = Signal(str, object, bool)
+    classification_requested = Signal()
 
     def __init__(self, service):
         super().__init__()
@@ -309,12 +311,14 @@ class CompactPanel(DropSurface, QWidget):
         self.nav_zip.setIcon(FluentIcon.ZIP_FOLDER)
         self.nav_review = button('待核对', 'nav')
         self.nav_review.setIcon(FluentIcon.EDIT)
+        self.nav_task_groups = button('任务组', 'nav')
+        self.nav_task_groups.setIcon(FluentIcon.TILES)
         self.today_button = button('今日工作量 0', 'nav')
         self.today_button.setIcon(FluentIcon.CALENDAR)
         self.today_button.setCheckable(True)
         self.today_button.setAccessibleName('今日工作量')
         self.today_button.clicked.connect(self.show_today_deliveries)
-        self.nav_controls = [(self.nav_projects, '项目'), (self.today_button, '今日工作量'),
+        self.nav_controls = [(self.nav_task_groups, '任务组'), (self.nav_projects, '项目'), (self.today_button, '今日工作量'),
                              (self.nav_zip, 'ZIP 归档'), (self.nav_review, '待核对')]
         for control, caption in self.nav_controls:
             control.setProperty('softSelection', True)
@@ -704,15 +708,72 @@ class CompactPanel(DropSurface, QWidget):
         for view in (self.project_list, self.zip_list, self.receipt_list):
             view.verticalScrollBar().sliderReleased.connect(self._finish_scroll)
         self.refresh()
+        self.task_groups_page = None
+        if hasattr(self.service, 'task_groups'):
+            from task_groups_ui import TaskGroupsPage
+            self.task_groups_page = TaskGroupsPage(self.service.task_groups, self)
+            self.tabs.addTab(self.task_groups_page, '任务组')
+            self.task_groups_page.task_text_requested.connect(self.task_text_requested)
+            self.task_groups_page.project_requested.connect(lambda project_id: self.focus_projects([project_id]))
+            self.task_groups_page.changed.connect(self.data_changed)
+            self.task_groups_page.classification_requested.connect(self.classification_requested)
+            self.task_groups_page.receipt_requested.connect(self.focus_receipt)
+            self.nav_task_groups.clicked.connect(lambda: self.show_task_groups())
+            self.task_groups_page.refresh()
+            try:
+                has_groups = bool(self.task_groups_page.rows or self.service.task_groups.snapshot(open_only=False))
+            except Exception:
+                has_groups = False
+            if has_groups:
+                self.tabs.setCurrentWidget(self.task_groups_page)
+        else:
+            self.nav_task_groups.hide()
         self.sync_navigation()
+
+    def show_task_groups(self, group_id=None, task_id=None):
+        if self.task_groups_page is not None:
+            self.task_groups_page.refresh()
+            self.tabs.setCurrentWidget(self.task_groups_page)
+            if group_id is not None:
+                return self.task_groups_page.select_ids(group_id, task_id)
+            return True
+        return False
+
+    def show_archive_classification(self):
+        page = getattr(self, 'archive_classification_page', None)
+        if page is None:
+            from archive_classification_ui import ArchiveClassificationPane
+            page = self.archive_classification_page = ArchiveClassificationPane(self.service, self)
+            page.return_requested.connect(self.show_task_groups)
+            page.statistics_changed.connect(self.refresh_today_count)
+            page.statistics_changed.connect(self.data_changed.emit)
+            self.tabs.addTab(page, '归档分类')
+        page.set_busy(self.busy)
+        self.tabs.setCurrentWidget(page)
+        self.sync_navigation()
+
+    def focus_receipt(self, receipt_id):
+        self.refresh()
+        self.tabs.setCurrentIndex(2)
+        for index in range(self.receipt_list.count()):
+            item = self.receipt_list.item(index)
+            if item.data(Qt.UserRole) == receipt_id:
+                self.receipt_list.setCurrentItem(item)
+                self.receipt_list.scrollToItem(item)
+                return True
+        self.show_notice('该消息已处理或不存在，请查看任务组来源记录。')
+        return False
 
     def sync_navigation(self, *_):
         index = self.tabs.currentIndex()
-        self.page_title.setText(('项目', 'ZIP 归档', '待核对', '交付记录管理')[max(0, index)])
+        is_groups = getattr(self, 'task_groups_page', None) is self.tabs.currentWidget()
+        is_classification = getattr(self, 'archive_classification_page', None) is self.tabs.currentWidget()
+        self.page_title.setText('归档分类' if is_classification else '任务组' if is_groups else ('项目', 'ZIP 归档', '待核对', '交付记录管理')[min(3, max(0, index))])
         for position, control in enumerate((self.nav_projects, self.nav_zip, self.nav_review, self.today_button)):
-            control.setChecked(position == index)
-        self.search.setVisible(index != 3)
-        self.summary.setVisible(index != 3 and self.height() >= 560 and self.width() >= 820)
+            control.setChecked(not is_groups and not is_classification and position == index)
+        self.nav_task_groups.setChecked(is_groups or is_classification)
+        self.search.setVisible(index != 3 and not is_groups and not is_classification)
+        self.summary.setVisible(index != 3 and not is_groups and not is_classification and self.height() >= 560 and self.width() >= 820)
 
     def refresh_type_controls(self):
         selected_type = self.type_filter.currentData()
@@ -830,7 +891,7 @@ class CompactPanel(DropSurface, QWidget):
             self.delivery_page_container.setWidgetResizable(True)
             self.delivery_page_container.setFrameShape(QFrame.NoFrame)
             self.delivery_page_container.setWidget(self.today_dialog)
-            self.tabs.addTab(self.delivery_page_container, '交付记录')
+            self.tabs.insertTab(3, self.delivery_page_container, '交付记录')
         self.today_dialog.refresh()
         self.tabs.setCurrentWidget(self.delivery_page_container)
         self.sync_navigation()
@@ -1384,6 +1445,7 @@ class CompactPanel(DropSurface, QWidget):
                 self.bundle_requested.emit(zid, batch.currentData())
 
     def edit_directories(self):
+        open_classification = False
         with transient_dialog(DirectorySettingsDialog(self.service, self)) as dialog:
             if dialog.exec() == QDialog.Accepted:
                 self.refresh()
@@ -1392,6 +1454,9 @@ class CompactPanel(DropSurface, QWidget):
                 self.refresh()
             if getattr(dialog, 'types_changed', False):
                 self.data_changed.emit()
+            open_classification = getattr(dialog, 'open_classification', False)
+        if open_classification:
+            self.show_archive_classification()
 
     def show_quick_start(self):
         from onboarding_ui import QuickStartDialog
@@ -1489,7 +1554,9 @@ class CompactPanel(DropSurface, QWidget):
         # The selected row already includes type; avoid a duplicate line taking
         # space from file rows in the supported 660x492 compact workspace.
         self.project_type_label.setVisible(self.current_project is not None and not compact)
-        self.summary.setVisible(not compact and self.width() >= 820 and self.tabs.currentIndex() != 3)
+        self.summary.setVisible(not compact and self.width() >= 820 and self.tabs.currentIndex() != 3
+                                and self.tabs.currentWidget() is not getattr(self, 'task_groups_page', None)
+                                and self.tabs.currentWidget() is not getattr(self, 'archive_classification_page', None))
         self.header_surface.layout().setContentsMargins(10 if compact else 18, 8 if compact else 10,
                                                        10 if compact else 18, 8 if compact else 10)
         self.search.setMinimumHeight(28 if compact else 32)
@@ -1731,6 +1798,7 @@ class DirectorySettingsDialog(QDialog):
         from dialog_chrome import add_header, add_actions, InlineError, FilterEdit
         self.service = service
         self.types_changed = False
+        self.open_classification = False
         self.setWindowTitle('工作目录与收录规则设置')
         apply_to(self)
         available = self.screen().availableGeometry()
@@ -1873,6 +1941,12 @@ class DirectorySettingsDialog(QDialog):
         self.project_types_button.clicked.connect(self.manage_project_types)
         types_body = body_card(types)
         types_body.addWidget(self.project_types_button, 0, Qt.AlignLeft)
+        self.archive_rule_button = button('归档分类规则…')
+        self.archive_rule_button.setEnabled(hasattr(service, 'archive_classification'))
+        self.archive_rule_button.setToolTip('在主窗口配置归档分类、预览已有类型调整及撤销批次。')
+        self.archive_rule_button.clicked.connect(self.request_archive_classification)
+        types_body.addWidget(self.archive_rule_button, 0, Qt.AlignLeft)
+        types_body.addWidget(label('归档分类独立保存；按最近有效交付的单项目文件数判断，不等于自动交付规则。', 'subtle', True))
         types_body.addWidget(label('项目类型和新项目默认类型单独保存。新增、改名、停用及默认类型选择立即生效，不受本设置窗口的取消影响。默认类型只用于以后创建的项目。', 'subtle', True))
         layout.addStretch()
         self.error = InlineError()
@@ -1924,7 +1998,17 @@ class DirectorySettingsDialog(QDialog):
                 self.zip_delivery_min_files.value())
 
     def _update_pending(self, *_):
-        self.pending_label.setText('有未保存的修改' if self._form_values() != self._initial_values else '设置已同步')
+        dirty = self._form_values() != self._initial_values
+        self.pending_label.setText('有未保存的修改' if dirty else '设置已同步')
+        self.archive_rule_button.setEnabled(not dirty and hasattr(self.service, 'archive_classification'))
+        self.archive_rule_button.setToolTip('请先保存或取消当前修改，再打开归档分类。' if dirty else
+                                          '在主窗口配置归档分类、预览已有类型调整及撤销批次。')
+
+    def request_archive_classification(self):
+        if self._form_values() != self._initial_values:
+            return
+        self.open_classification = True
+        self.reject()
 
     def _filter_settings(self, *_):
         terms = self.settings_search.text().casefold().split()

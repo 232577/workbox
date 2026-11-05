@@ -25,6 +25,10 @@ include personal data or development/verification directories.
 - pywin32 312: Python Software Foundation and component-specific notices.
   Its eight declared license files and additional MAPI attribution notice are
   retained as `licenses/PyWin32-*.txt`.
+- openpyxl 3.1.5: MIT License; used to write local Excel workbooks.
+  See `licenses/Openpyxl-LICENSE.txt`.
+- et_xmlfile 2.0.0: MIT License with included Python notices;
+  see `licenses/EtXmlfile-LICENSE.txt` and `licenses/EtXmlfile-LICENSE-PYTHON.txt`.
 
 - CPython 3.11.9: Python Software Foundation License and notices in `licenses/Python-LICENSE.txt`.
 - Qt / PySide6 / Shiboken6 6.8.3: Qt for Python Community Edition, LGPLv3/GPLv3 alternatives.
@@ -63,5 +67,7 @@ does not prohibit replacement of those libraries or debugging modifications to t
 - Qt Frameless Window source: https://github.com/zhiyiYo/PyQt-Frameless-Window
 - darkdetect source: https://github.com/albertosottile/darkdetect
 - pywin32 source: https://github.com/mhammond/pywin32/tree/b312
+- openpyxl source: https://foss.heptapod.net/openpyxl/openpyxl
+- et_xmlfile source: https://foss.heptapod.net/openpyxl/et_xmlfile
 
 开发交付包与干净安装包均保留上述说明、对应上游源代码链接及随包许可证。

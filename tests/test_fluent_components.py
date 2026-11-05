@@ -35,6 +35,10 @@ def qapp():
 
 @pytest.fixture
 def widgets(qapp):
+    from qfluentwidgets import qconfig, setTheme, setThemeColor
+    # 本模块直接调用组件库主题入口，结束后恢复，不能污染后续产品主题测试。
+    original_theme = qconfig.theme
+    original_color = qconfig.get(qconfig.themeColor)
     created = []
     yield created
     for widget in created:
@@ -44,6 +48,9 @@ def widgets(qapp):
     QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
     qapp.processEvents()
     assert all(not shiboken6.isValid(widget) for widget in created)
+    setTheme(original_theme, save=False)
+    setThemeColor(original_color, save=False)
+    qapp.processEvents()
 
 
 def test_qt_types_and_existing_button_roles(qapp, widgets):
