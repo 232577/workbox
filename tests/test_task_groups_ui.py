@@ -138,6 +138,74 @@ def test_long_task_name_is_visible_and_external_busy():
     page.close()
 
 
+def test_long_name_reflows_on_width_changes_without_losing_selection():
+    from PySide6.QtCore import QRect
+    from PySide6.QtGui import QFontMetrics
+    from PySide6.QtWidgets import QStyleOptionViewItem
+    from task_groups_ui import TaskGroupsPage
+    app = QApplication.instance() or QApplication([])
+    name = '匿名新项目长名称用于核验完整显示和自动换行' * 3
+    class Groups:
+        def snapshot(self, **kwargs):
+            return [{'id': 1, 'code': 'G20261105-001', 'tasks': [
+                {'id': 2, 'code': 'G20261105-001-01', 'project_name': name}]}]
+        def messages(self, group_id): return [{'raw_text': name}]
+    page = TaskGroupsPage(Groups()); page.resize(1050, 650); page.show(); page.refresh()
+    page.splitter.setSizes([850, 170])
+    group = page.tree.topLevelItem(0); group.setExpanded(True)
+    task = group.child(0); page.tree.setCurrentItem(task)
+    app.processEvents()
+    heights = []
+    for width in (1050, 580, 1050):
+        page.resize(width, 650)
+        for _ in range(3): app.processEvents()
+        index = page.tree.indexFromItem(task)
+        rect = page.tree.visualItemRect(task)
+        option = QStyleOptionViewItem()
+        page.tree.itemDelegate().initStyleOption(option, index)
+        # Actual text area lies inside the first column after the tree indentation.
+        text_width = max(1, rect.width() - 40)
+        required = QFontMetrics(option.font).boundingRect(QRect(0, 0, text_width, 100000),
+                                                           Qt.TextWordWrap, option.text).height()
+        heights.append(rect.height())
+        assert rect.height() >= required + 4, (width, rect.height(), required)
+        assert page.tree.currentItem() is task and task.isSelected()
+        assert task.data(0, Qt.DisplayRole).endswith(name)
+        assert name in page.details.toPlainText()
+    assert heights[1] > heights[0] and heights[2] < heights[1]
+    page.close()
+
+
+def test_reflow_keeps_reading_anchor_and_selected_task():
+    from PySide6.QtCore import QPoint
+    from PySide6.QtWidgets import QAbstractItemView
+    from task_groups_ui import TaskGroupsPage
+    app = QApplication.instance() or QApplication([])
+    class Groups:
+        def snapshot(self, **kwargs):
+            return [{'id': 1, 'code': 'G1', 'tasks': [
+                {'id': i, 'code': f'G1-{i:02}', 'project_name': ('匿名长项目' * 8) + str(i)}
+                for i in range(1, 19)]}]
+        def messages(self, group_id): return []
+    page = TaskGroupsPage(Groups()); page.resize(1050, 650); page.show(); page.refresh()
+    page.splitter.setSizes([850, 170]); app.processEvents()
+    group = page.tree.topLevelItem(0); group.setExpanded(True)
+    selected = group.child(9); page.tree.setCurrentItem(selected)
+    page.tree.scrollToItem(selected, QAbstractItemView.PositionAtTop)
+    app.processEvents()
+    top = page.tree.itemAt(QPoint(80, 2))
+    assert top is not None
+    page.resize(580, 650)
+    for _ in range(4): app.processEvents()
+    assert page.tree.currentItem() is selected and selected.isSelected()
+    assert page.tree.itemAt(QPoint(80, 2)) is top
+    page.resize(1050, 650)
+    for _ in range(4): app.processEvents()
+    assert page.tree.currentItem() is selected and selected.isSelected()
+    assert page.tree.itemAt(QPoint(80, 2)) is top
+    page.close()
+
+
 def test_moved_task_retains_its_original_message():
     from task_groups_ui import TaskGroupsPage
     app = QApplication.instance() or QApplication([])
