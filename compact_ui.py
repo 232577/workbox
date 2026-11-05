@@ -974,13 +974,15 @@ class CompactPanel(DropSurface, QWidget):
     def refresh_archive_status(self, *, versions=None):
         try:
             if versions is None:
-                versions = self.service.snapshots.list_versions()
+                review_count = self.service.snapshots.review_count()
+            else:
+                review_count = sum(v.get('bundle_state') == 'needs-review' for v in versions)
             sources = self.service.snapshots.list_sources()
         except (OSError, RuntimeError, sqlite3.Error) as error:
             self.zip_attention_failed(error)
             return
         errors = sum(s.get('state') == 'error' for s in sources)
-        self._zip_review_count = sum(v.get('bundle_state') == 'needs-review' for v in versions)
+        self._zip_review_count = review_count
         self._zip_error_count = errors
         self._zip_attention_unreadable = False
         self.sync_zip_navigation()

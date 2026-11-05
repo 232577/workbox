@@ -1,4 +1,5 @@
 from concurrent.futures import CancelledError
+from contextlib import contextmanager
 from pathlib import Path
 import threading
 from zipfile import ZipFile
@@ -416,3 +417,40 @@ def test_workspace_discovery_skips_dependencies_but_keeps_output_directories(tmp
     manager.scan(0)
     assert {row['source_path'] for row in manager.list_sources()} == {str(path) for path in expected}
     assert len(manager.scan(10)['archived']) == 4
+
+
+def test_review_count_reads_2000_snapshot_metadata_with_one_read_only_query(tmp_path, monkeypatch):
+    service, _, manager = setup_manager(tmp_path)
+    with service.db.connect() as connection:
+        connection.execute("INSERT INTO zip_sources(id,source_key,source_path) VALUES (1,'anonymous','anonymous/source.zip')")
+        connection.executemany('''INSERT INTO zips(id,path,filename,size,sha256,mtime_ns)
+            VALUES (?,?,?,?,?,0)''', [(index, f'anonymous/{index}.zip', f'{index}.zip', 1, f'{index:064x}')
+                                      for index in range(1, 2002)])
+        connection.executemany('INSERT INTO zip_snapshots(zip_id,source_id,source_path) VALUES (?,1,?)',
+                               [(index, f'anonymous/source-{index}.zip') for index in range(1, 2001)])
+        connection.executemany('INSERT INTO zip_bundles(zip_id,member_names,match_state) VALUES (?,\'[]\',?)',
+                               [(index, 'needs-review' if index % 4 == 0 else 'matched')
+                                for index in range(1, 2001) if index % 4 in (0, 1)])
+        # 旧登记 ZIP 没有快照，不能混入与 list_versions 不同的统计范围。
+        connection.execute("INSERT INTO zip_bundles(zip_id,member_names,match_state) VALUES (2001,'[]','needs-review')")
+    with service.db.connect() as connection:
+        before = list(connection.iterdump())
+    connections, statements = [], []
+    original_connect = service.db.connect
+    @contextmanager
+    def observed_connect():
+        connections.append(True)
+        with original_connect() as connection:
+            connection.set_trace_callback(statements.append)
+            yield connection
+    monkeypatch.setattr(service.db, 'connect', observed_connect)
+    monkeypatch.setattr(manager, 'list_versions', lambda *a, **k: pytest.fail('计数不得加载全部版本详情'))
+    monkeypatch.setattr(service.db, 'get_zip_file_counts', lambda *a, **k: pytest.fail('计数不得逐 ZIP 查询文件数'))
+    assert hasattr(manager, 'review_count'), '缺少轻量待核对快照计数入口'
+    assert manager.review_count() == 500
+    assert len(connections) == 1
+    selects = [sql for sql in statements if sql.lstrip().upper().startswith('SELECT')]
+    assert len(selects) == 1 and 'COUNT(' in selects[0].upper()
+    assert not any(sql.lstrip().upper().startswith(('INSERT', 'UPDATE', 'DELETE', 'REPLACE')) for sql in statements)
+    with original_connect() as connection:
+        assert list(connection.iterdump()) == before

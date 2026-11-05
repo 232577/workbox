@@ -23,12 +23,15 @@
 - 处理中旧按钮禁用必须同步到新菜单，关闭仍等待原工作线程。
 - 隐藏的原控件不能在窗口缩放/刷新后再次冒出。
 - 浅深色、660px窗口与键盘菜单都保留清晰名称和可见焦点。
+- 大量历史归档时的静默轮询只做轻量统计，不能在GUI线程新增全历史详情/N+1查询。
 
 ### Task1: CompactPanel高级设置与日常导航
 
 **Files:** `compact_ui.py`; new `tests/test_slim_workbench.py`; affected layout/navigation/settings tests.
 
 **Interface:** `CompactPanel.advanced_menu`提供原回调动作；`TaskGroupsPage.import_history()`供全局入口调用。`settings_button`稳定无障碍名称为“高级设置”。原ZIP/待核对/交付页索引保持。
+
+云端审查补充：`SnapshotManager.review_count()`提供与完整快照列表范围一致的只读合包待核对数量，供静默导航刷新使用；不修改存储或业务判断。
 
 - [ ] 写失败测试：主界面只常驻三页与高级设置、隐藏旧工具按钮；高级菜单可达原工作设置/ZIP/待核对/日志/监视/分类/历史/帮助/更新/外观。
 - [ ] 覆盖待核对0→1→0、正在核对时保留入口、准确receipt定位、忙碌禁用与缩放后隐藏状态。

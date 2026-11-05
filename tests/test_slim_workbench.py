@@ -175,6 +175,38 @@ def test_unreadable_zip_attention_preserves_count_and_reports_error(panel, tmp_p
     assert panel.notice.isVisible() and '匿名归档状态暂不可读' in panel.notice.text()
 
 
+def test_idle_archive_status_uses_lightweight_count_and_full_refresh_reuses_versions(panel, tmp_path, monkeypatch):
+    zip_attention_fixture(panel, tmp_path, 'bundle')
+    panel.refresh()
+    versions = panel.service.snapshots.list_versions()
+    assert panel._zip_review_count == 1
+    monkeypatch.setattr(panel.service.snapshots, 'list_versions',
+                        lambda: pytest.fail('后台状态刷新不得加载全量版本详情'))
+    monkeypatch.setattr(panel.service.db, 'get_zip_file_counts',
+                        lambda *a, **k: pytest.fail('后台状态刷新不得逐 ZIP 查询文件数'))
+    panel.refresh_archive_status()
+    assert panel._zip_review_count == 1 and '待核对包 1' in panel.nav_zip.toolTip()
+    monkeypatch.setattr(panel.service.snapshots, 'review_count',
+                        lambda: pytest.fail('已有版本数据时不得重复查询计数'), raising=False)
+    panel.refresh_archive_status(versions=versions)
+    assert panel._zip_review_count == 1
+
+
+def test_idle_review_count_error_keeps_last_attention_visible(panel, tmp_path, monkeypatch):
+    zip_attention_fixture(panel, tmp_path, 'bundle')
+    panel.resize(660, 480)
+    panel.refresh()
+    def unavailable():
+        raise OSError('匿名轻量统计读取失败')
+    monkeypatch.setattr(panel.service.snapshots, 'review_count', unavailable, raising=False)
+    panel.refresh_archive_status()
+    QApplication.processEvents()
+    badge = panel.nav_zip.findChild(QLabel, 'navigationCountBadge')
+    assert panel._zip_review_count == 1 and badge.isVisible() and badge.text() == '1'
+    assert '不可读' in panel.nav_zip.toolTip()
+    assert panel.notice.isVisible() and '匿名轻量统计读取失败' in panel.notice.text()
+
+
 def test_advanced_callbacks_reuse_existing_actions(panel, monkeypatch):
     calls = []
     monkeypatch.setattr(panel, 'edit_directories', lambda: calls.append('settings'))
