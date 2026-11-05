@@ -36,7 +36,7 @@
   </defs></svg>
   <header class="wb-header"><div class="wb-wrap wb-header-inner">
     <a class="wb-brand" href="#top" aria-label="WorkBox 工作箱首页"><img src="/favicon.svg?v=20261027-enhanced" width="38" height="38" alt=""><span>WorkBox <small>工作箱</small></span></a>
-    <nav class="wb-nav" aria-label="主要导航"><a href="#workflow">功能介绍</a><a href="#settings">工作规则</a><a href="#faq">常见问题</a><a href="https://github.com/232577/workbox" class="wb-source">GitHub ↗</a></nav>
+    <nav class="wb-nav" aria-label="主要导航"><a href="#workflow">功能介绍</a><a href="#task-groups">任务组</a><a href="#settings">工作规则</a><a href="#faq">常见问题</a><a href="https://github.com/232577/workbox" class="wb-source">GitHub ↗</a></nav>
     <div class="wb-theme-control" data-theme-control hidden><label for="site-theme">网站外观</label><select id="site-theme" data-theme-select aria-describedby="site-theme-note"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select><span id="site-theme-note" class="wb-sr-only">仅影响本站，与桌面软件的外观设置独立。</span></div>
     <a class="wb-nav-download" href="#download">免费下载 <svg class="wb-icon" aria-hidden="true"><use href="#i-download"/></svg></a>
   </div></header>
@@ -144,6 +144,15 @@
       <article><svg class="wb-feature-icon" aria-hidden="true"><use href="#i-return"/></svg><h3>收起来，也能找回来</h3><p>做完的项目可归档，误删项目可从“已删除”恢复。目录、文件和历史交付记录仍然保留。</p><span class="wb-feature-caption">项目归档 · 可恢复删除</span></article>
       <article><svg class="wb-feature-icon" aria-hidden="true"><use href="#i-folder"/></svg><h3>名字改对，材料不丢</h3><p>项目改名同步登记的工作目录。同名项目先预览，再明确确认合并，保留原资料与交付记录。</p><span class="wb-feature-caption">预览再确认 · 不自动合并</span></article>
     </div></div></section>
+    <section id="task-groups" class="wb-section wb-wrap wb-faq" aria-labelledby="task-groups-title" data-release-state="unreleased">
+      <div><p class="wb-kicker">下一版准备中</p><h2 id="task-groups-title">按任务核对，<br>材料做好再交接。</h2><p>以下功能随新安装包发布。当前正式安装版仍以下载区标注为准，现有截图保留各自的构建来源。</p><a class="wb-inline-link" href="#download">查看当前正式安装版 <svg class="wb-icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></div>
+      <div class="wb-faq-list">
+        <details><summary>原消息和每一轮任务，怎么对应？</summary><p>任务组保留原消息、固定组号和固定任务号，用“添加消息到本组”补充要求；明确选择“新一轮任务”才另建本次任务。同名项目沿用原身份，上一轮已交接不会替新一轮完成。未交清单只在主动点击时复制，任务号不改变项目名、文件名或工作目录。</p></details>
+        <details><summary>材料做好之后，怎样记录已经发出？</summary><p>任务关联到明确有效的交付归档后，显示“材料就绪”。同一项目有多轮未交任务时，需要核对关联版本。实际发出后，选中任务并点击“记录已交接”；这个操作不会代你发送文件。交付记录撤销或恢复后，旧任务结果不会自动恢复，需重新关联有效版本并核对交接。</p></details>
+        <details><summary>怎样核对本组还欠哪些项目？</summary><p>按未交任务、全部任务或今日收件查看，可回看原消息和对应归档。Excel 保留“交付项目”“类型汇总”，增加“任务组汇总”“任务明细”；“导出本组表格”只列当前组的任务及相关有效交付项目。项目表按项目去重，明细保留每轮任务，任务数不计入首次交付项目数。材料就绪与手工交接分别统计，撤回任务和待核对消息单独显示。</p></details>
+        <details><summary>归档文件数怎样用于项目分类？</summary><p>按最近一次有效交付对应的单项目归档文件数分类，建议 4 个及以上归为“可运行”、0—3 个归为“生成材料”，门槛和目标类型可以配置。规则默认关闭；先预览已有归档，确认后应用，也可启用后续新交付的规则。未知数量保持原分类，撤销分类调整会跳过后续手工选择。文件数分类不代表已经验证软件可运行，也不改变交付有效性或个人工作量资格。</p></details>
+      </div>
+    </section>
     <section id="settings" class="wb-section wb-wrap wb-settings" aria-labelledby="settings-title">
       <div class="wb-settings-copy"><p class="wb-kicker">你的习惯，你来设置</p><h2 id="settings-title">让工作规则，<br>跟上你的做事方式。</h2><p>想自动处理，或想每次亲自确认，都可以。在“工作设置”里调整收件、交付和归档规则，每台电脑独立保存。</p><a class="wb-inline-link" href="#download">下载后打开「工作设置」 <svg class="wb-icon" aria-hidden="true"><use href="#i-arrow"/></svg></a><p class="wb-boundary">修改规则不重算历史记录；更改目录只影响新分配的路径，不搬迁旧文件。</p></div>
       <div class="wb-settings-sheet"><div class="wb-settings-title"><svg class="wb-icon" aria-hidden="true"><use href="#i-sliders"/></svg><h3>工作规则</h3><span>推荐通用模式</span></div><dl><div><dt>无法匹配时自动建项<small>关闭后由你创建或选择项目</small></dt><dd>开启</dd></div><div><dt>按 ZIP 文件数自动交付<small>也可选择自动模式</small></dt><dd>关闭</dd></div><div><dt>每项目的交付门槛<small>自动模式适用，实际文件数</small></dt><dd>4 <span>个文件</span></dd></div><div><dt>归档前的稳定等待<small>等文件写入稳定后再复制</small></dt><dd>10 <span>秒</span></dd></div><div><dt>工作目录 / 归档目录<small>按你的磁盘安排分别选择</small></dt><dd>本机目录</dd></div></dl><p>新用户首次引导推荐通用模式：自动归档，人工确认交付。升级保留原有配置；可在工作设置中调整。</p></div>
