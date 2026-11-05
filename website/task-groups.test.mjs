@@ -7,10 +7,10 @@ import { releases } from './worker.mjs';
 const html = await readFile(new URL('./public/index.html', import.meta.url), 'utf8');
 const section = html.match(/<section\b[^>]*id="task-groups"[^>]*>([\s\S]*?)<\/section>/)?.[1];
 
-test('任务功能准备稿与当前正式安装版区分，不提前宣称已发布', () => {
+test('正式任务功能说明与下载区同步，不遗留下一版准备文案', () => {
   assert.ok(section, '应有独立任务组说明');
-  assert.match(section, /下一版准备中/);
-  assert.match(section, /当前正式安装版仍以下载区标注为准/);
+  assert.doesNotMatch(section, /下一版准备中|当前正式安装版仍以下载区标注为准/);
+  assert.match(html, /id="task-groups"[^>]*data-release-state="published"/);
   assert.match(html, /href="#task-groups"/);
   assert.doesNotMatch(section, /<(?:input|button|video|img)\b/);
 });
@@ -24,9 +24,9 @@ test('任务说明保留版本、人工交接和项目统计的区别，原生�
     '规则默认关闭', '不代表已经验证软件可运行']) assert.ok(section.includes(phrase), phrase);
 });
 
-test('准备文案保留全部十八项下载及四十四项媒体来源，不改变赞助配置', async () => {
-  assert.equal(releases.length, 18);
-  assert.equal(createHash('sha256').update(JSON.stringify(releases)).digest('hex'),
+test('新发布保留全部十八项旧下载及四十四项原媒体来源，不改变赞助配置', async () => {
+  assert.equal(releases.length, 19);
+  assert.equal(createHash('sha256').update(JSON.stringify(releases.slice(1))).digest('hex'),
     '1b5712f062ff03104c55336e4e194ae119845ed900f11c0be1b37e267ce64ce0');
   const media = await readFile(new URL('./MEDIA.json', import.meta.url));
   assert.equal(Object.keys(JSON.parse(media).files).length, 44);

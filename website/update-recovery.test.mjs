@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {handleRequest} from './worker.mjs';
 
-test('稳定清单发布11月4日r3包的实际摘要与大小', async () => {
+test('稳定清单发布11月5日任务组包的实际摘要与大小', async () => {
   const response=await handleRequest(new Request('https://workbox.ltxiangzi.dpdns.org/updates/stable.json'),{});
   const metadata=await response.json();
-  assert.equal(metadata.tag_name,'v1.0.0.20261104.3');
-  assert.equal(metadata.assets[0].name,'WorkBox-1.0.0-Setup-x64-20261104-r3.exe');
-  assert.equal(metadata.assets[0].size,39895769);
-  assert.equal(metadata.assets[0].digest,'sha256:b4ed8821dea9a07aefde37dd5967940b6aa35e9768bbedd3e488db237b569019');
+  assert.equal(metadata.tag_name,'v1.0.0.20261105.1');
+  assert.equal(metadata.assets[0].name,'WorkBox-1.0.0-Setup-x64-20261105-r1.exe');
+  assert.equal(metadata.assets[0].size,40611355);
+  assert.equal(metadata.assets[0].digest,'sha256:21ed65876e1ede6e3b2548b971823439c5095475f5fc581fa5a10620bc8e7485');
 });
 
 test('下载页明确说明只退出未升级的恢复办法和原目录数据保留', async () => {
@@ -19,7 +19,7 @@ test('下载页明确说明只退出未升级的恢复办法和原目录数据�
   assert.match(html,/原安装目录/);
   assert.match(html,/不要卸载/);
   assert.match(html,/不要删除 data/);
-  assert.match(html,/39,895,769/);
+  assert.match(html,/40,611,355/);
 });
 
 test('页面明确只修复悬浮球置顶，展开管理窗口不置顶', async () => {
