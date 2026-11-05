@@ -157,7 +157,7 @@ def test_refresh_error_is_visible_and_retry_recovers(qapp, service, monkeypatch)
 def test_panel_entry_opens_records_without_expanding_compact_header(qapp, service):
     panel = compact_ui.CompactPanel(service)
     try:
-        assert hasattr(panel, 'intake_log_button'), '筛选栏缺少收录记录入口'
+        assert 'intake_log' in panel.advanced_actions, '高级设置缺少收录记录入口'
         panel.resize(660, 492)
         panel.show()
         qapp.processEvents()
@@ -168,10 +168,10 @@ def test_panel_entry_opens_records_without_expanding_compact_header(qapp, servic
                     observed.append(widget.windowTitle())
                     widget.reject()
         QTimer.singleShot(40, close_records)
-        panel.intake_log_button.click()
+        panel.advanced_actions['intake_log'].trigger()
         assert observed == ['普通文件收录记录']
         assert panel.width() <= 660
-        assert panel.rect().contains(panel.intake_log_button.mapTo(panel, panel.intake_log_button.rect().bottomRight()))
-        assert panel.intake_log_button.mapTo(panel, panel.intake_log_button.rect().topLeft()).y() > panel.search.y()
+        assert panel.intake_log_button.isHidden()
+        assert panel.rect().contains(panel.settings_button.mapTo(panel, panel.settings_button.rect().bottomRight()))
     finally:
         panel.hide()

@@ -25,6 +25,8 @@ def test_compact_workload_number_belongs_to_its_button(app,tmp_path,monkeypatch,
         assert str(count) in panel.today_button.toolTip()
         assert not hasattr(panel,'today_count_badge'), '工作量数字不应使用越出按钮的浮动徽章'
         for control,_ in panel.nav_controls:
+            if control.isHidden():
+                continue
             rect=control.rect();rect.moveTopLeft(control.mapTo(panel.navigation,rect.topLeft()))
             assert panel.navigation.rect().contains(rect)
         panel.resize(1200,780);app.processEvents()

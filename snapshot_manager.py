@@ -161,6 +161,14 @@ class SnapshotManager:
                 source['state'] = 'pending'
         return sources
 
+    def review_count(self):
+        """只读统计待核对快照，不加载版本详情或逐包文件数量。"""
+        with self.db.connect() as connection:
+            return connection.execute('''SELECT COUNT(*) FROM zips z
+                JOIN zip_snapshots s ON s.zip_id=z.id
+                LEFT JOIN zip_bundles b ON b.zip_id=z.id
+                WHERE b.match_state='needs-review' ''').fetchone()[0]
+
     def list_versions(self, project_id=None):
         sql = '''SELECT z.*,s.source_path,s.source_id,
             CASE WHEN b.match_state='needs-review' THEN 0 ELSE EXISTS(

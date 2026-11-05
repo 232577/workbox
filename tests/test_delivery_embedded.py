@@ -46,10 +46,10 @@ def test_delivery_entry_embeds_one_page_and_keeps_navigation(panel):
     count = panel.tabs.count()
     panel.today_button.click()
     assert panel.today_dialog is page and panel.tabs.count() == count
-    for control, index, title in ((panel.nav_zip, 1, 'ZIP 归档'),
-                                  (panel.nav_review, 2, '待核对'),
-                                  (panel.nav_projects, 0, '项目')):
-        control.click()
+    for control, activate, index, title in ((panel.nav_zip, panel.advanced_actions['zip'].trigger, 1, 'ZIP 归档'),
+                                            (panel.nav_review, panel.advanced_actions['review'].trigger, 2, '待核对'),
+                                            (panel.nav_projects, panel.nav_projects.click, 0, '项目')):
+        activate()
         assert panel.tabs.currentIndex() == index
         assert panel.page_title.text() == title and control.isChecked()
         assert not page.timer.isActive()

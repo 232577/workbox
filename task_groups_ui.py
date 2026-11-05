@@ -110,24 +110,28 @@ class TaskGroupsPage(QWidget):
         self.add_button = button('添加消息')
         self.new_button = button('新建任务组')
         self.handoff_button = button('记录已交接', True)
+        self.export_button = button('导出本组表格')
         self.more_button = button('更多操作')
-        self.copy_button = button('复制本组未交')
-        for control in (self.new_button, self.add_button, self.handoff_button, self.more_button, self.copy_button):
+        for control in (self.new_button, self.add_button, self.handoff_button, self.export_button, self.more_button):
             actions.addWidget(control)
         layout.addLayout(actions)
         menu = QMenu(self.more_button)
         for caption, callback in [('新一轮任务', self.new_round), ('查看项目文件', self._open_project),
+                                  ('复制本组未交', self._copy),
                                   ('撤销交接', lambda: self._action('undo_handoff')),
+                                  ('关联交付记录', self._bind),
+                                  ('核对本组收件消息', self.review_message)]:
+            menu.addAction(caption, callback)
+        self.advanced_task_menu = QMenu('高级任务操作', menu)
+        advanced = self.advanced_task_menu
+        menu.addMenu(advanced)
+        for caption, callback in [
                                   ('撤回任务', lambda: self._action('withdraw')),
                                   ('重开任务', lambda: self._action('reopen')),
-                                  ('关联交付记录', self._bind), ('移动任务到其他组', self._move),
+                                  ('移动任务到其他组', self._move),
                                   ('重命名任务组', self._rename), ('设置组颜色', self._color),
-                                  ('预览并导入历史来源', self._history),
-                                  ('核对本组收件消息', self.review_message),
-                                  ('导出本组表格', self.export_group),
-                                  ('复制当前筛选的全部未交清单', lambda: self._copy(all_groups=True)),
-                                  ('归档分类', self.classification_requested.emit)]:
-            menu.addAction(caption, callback)
+                                  ('复制当前筛选的全部未交清单', lambda: self._copy(all_groups=True))]:
+            advanced.addAction(caption, callback)
         self.more_button.setMenu(menu)
         self.scope.currentIndexChanged.connect(self.refresh)
         self.only_unhanded.toggled.connect(self.refresh)
@@ -139,7 +143,7 @@ class TaskGroupsPage(QWidget):
         self.add_button.clicked.connect(lambda: self._text(False))
         self.new_button.clicked.connect(self.new_group)
         self.handoff_button.clicked.connect(lambda: self._action('handoff'))
-        self.copy_button.clicked.connect(self._copy)
+        self.export_button.clicked.connect(self.export_group)
 
     def refresh(self, *_):
         scope = self.scope.currentData()
@@ -423,6 +427,11 @@ class TaskGroupsPage(QWidget):
         if not group: self.note.setText('请先选择任务组。'); return
         color = QColorDialog.getColor(QColor(group.get('color') or '#48a99d'), self, '设置任务组颜色')
         if color.isValid(): self._run(lambda: self.groups.set_color(group['id'], color.name()))
+
+    def import_history(self):
+        if self.worker or self._external_busy or self._shutting_down:
+            return
+        self._history()
 
     def _history(self):
         try: preview = self.groups.history_candidates()

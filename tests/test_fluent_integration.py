@@ -5,7 +5,7 @@ from qfluentwidgets import PushButton, PrimaryPushButton, CheckBox, ListWidget, 
 from compact_ui import CompactPanel, DirectorySettingsDialog
 from desktop_service import DesktopService
 from theme import install_theme, set_theme
-from ui_components import LineEdit, SpinBox, NavigationButton
+from ui_components import LineEdit, SpinBox, NavigationMenuButton
 
 
 @pytest.fixture(scope='module')
@@ -21,7 +21,8 @@ def test_business_controls_are_fluent_with_native_data_and_scroll(qapp, tmp_path
     panel = CompactPanel(service)
     settings = DirectorySettingsDialog(service, panel)
     assert isinstance(panel.files_button, PrimaryPushButton)
-    assert isinstance(panel.settings_button, NavigationButton)
+    assert isinstance(panel.settings_button, NavigationMenuButton)
+    assert panel.settings_button.menu() is panel.advanced_menu
     assert isinstance(panel.search, LineEdit)
     assert isinstance(panel.urgent_filter, CheckBox)
     assert isinstance(settings.zip_delivery_min_files, SpinBox)
