@@ -22,7 +22,7 @@ from ui_components import ElidedLabel, StatusSegments
 from qfluentwidgets import FluentIcon, setCustomStyleSheet
 from control_styles import control_style
 from fluent_views import (WorkbenchListWidget, WorkbenchTableWidget, configure_native_scroll,
-                          ProjectListDelegate, PROJECT_NAME_ROLE, PROJECT_DETAIL_ROLE)
+                          ProjectListDelegate, PROJECT_NAME_ROLE, PROJECT_DETAIL_ROLE, PROJECT_BATCH_MARKERS_ROLE)
 from database import STATUSES
 from floating import DropSurface
 from parser import ParsedProject
@@ -166,6 +166,21 @@ def standard_list_scrolling(widget):
 
 def populate(widget, rows, caption, *, clear_selection=False):
     values = [(row['id'], caption(row)) for row in rows]
+    row_by_id = {row['id']: row for row in rows}
+
+    def project_metadata(item, pid, text):
+        row = row_by_id[pid]
+        markers = row.get('batch_markers') or []
+        details = [f"{marker.get('code', '')} ({marker.get('label', '')})" for marker in markers]
+        if row.get('batch_name'):
+            details.append('原建项目录批次：' + row['batch_name'])
+        description = text + ('\n批次：' + '；'.join(details) if details else '')
+        changed = item.data(PROJECT_BATCH_MARKERS_ROLE) != markers
+        if changed:
+            item.setData(PROJECT_BATCH_MARKERS_ROLE, markers)
+        item.setToolTip(description)
+        item.setData(Qt.AccessibleDescriptionRole, description)
+        return changed
     previous = selected(widget)
     selected_ids = {item.data(Qt.UserRole) for item in widget.selectedItems()}
     bar = widget.verticalScrollBar()
@@ -188,6 +203,7 @@ def populate(widget, rows, caption, *, clear_selection=False):
                     item.setToolTip(text)
                     changed = True
                 if isinstance(widget, ProjectList):
+                    changed = project_metadata(item, values[index][0], text) or changed
                     name, _, details = text.partition('\n')
                     for role,value in ((PROJECT_NAME_ROLE,name),(PROJECT_DETAIL_ROLE,details)):
                         if item.data(role) != value:
@@ -213,9 +229,11 @@ def populate(widget, rows, caption, *, clear_selection=False):
                 name, _, details = text.partition('\n')
                 item.setData(PROJECT_NAME_ROLE,name)
                 item.setData(PROJECT_DETAIL_ROLE,details)
+                project_metadata(item, pid, text)
             if not isinstance(widget, ProjectList):
                 item.setSizeHint(QSize(0, 68))
-            item.setToolTip(text)
+            if not isinstance(widget, ProjectList):
+                item.setToolTip(text)
             widget.addItem(item)
             if pid == previous:
                 widget.setCurrentItem(item)
@@ -273,7 +291,8 @@ class CompactPanel(DropSurface, QWidget):
         self._refresh_after_drag = False
         self.today_dialog = None
         self.setObjectName('manager')
-        self.setWindowTitle('WorkBox 工作箱 v1.0 · 项目管理')
+        from update_client import CURRENT_TAG
+        self.setWindowTitle(f'WorkBox 工作箱 {CURRENT_TAG} · 项目管理')
         self.setWindowIcon(app_icon())
         apply_to(self)
         self.setAcceptDrops(True)
@@ -311,14 +330,12 @@ class CompactPanel(DropSurface, QWidget):
         self.nav_zip.setIcon(FluentIcon.ZIP_FOLDER)
         self.nav_review = button('待核对', 'nav')
         self.nav_review.setIcon(FluentIcon.EDIT)
-        self.nav_task_groups = button('任务组', 'nav')
-        self.nav_task_groups.setIcon(FluentIcon.TILES)
         self.today_button = button('今日工作量 0', 'nav')
         self.today_button.setIcon(FluentIcon.CALENDAR)
         self.today_button.setCheckable(True)
         self.today_button.setAccessibleName('今日工作量')
         self.today_button.clicked.connect(self.show_today_deliveries)
-        self.nav_controls = [(self.nav_task_groups, '任务组'), (self.nav_projects, '项目'),
+        self.nav_controls = [(self.nav_projects, '项目'),
                              (self.today_button, '今日工作量'), (self.nav_zip, 'ZIP 归档'),
                              (self.nav_review, '待核对')]
         # 保留原页与按钮回调，ZIP 统一从高级设置进入。
@@ -720,25 +737,6 @@ class CompactPanel(DropSurface, QWidget):
             view.verticalScrollBar().sliderReleased.connect(self._finish_scroll)
         self.refresh()
         self.task_groups_page = None
-        if hasattr(self.service, 'task_groups'):
-            from task_groups_ui import TaskGroupsPage
-            self.task_groups_page = TaskGroupsPage(self.service.task_groups, self)
-            self.tabs.addTab(self.task_groups_page, '任务组')
-            self.task_groups_page.task_text_requested.connect(self.task_text_requested)
-            self.task_groups_page.project_requested.connect(lambda project_id: self.focus_projects([project_id]))
-            self.task_groups_page.changed.connect(self.data_changed)
-            self.task_groups_page.classification_requested.connect(self.classification_requested)
-            self.task_groups_page.receipt_requested.connect(self.focus_receipt)
-            self.nav_task_groups.clicked.connect(lambda: self.show_task_groups())
-            self.task_groups_page.refresh()
-            try:
-                has_groups = bool(self.task_groups_page.rows or self.service.task_groups.snapshot(open_only=False))
-            except Exception:
-                has_groups = False
-            if has_groups:
-                self.tabs.setCurrentWidget(self.task_groups_page)
-        else:
-            self.nav_task_groups.hide()
         self.build_advanced_menu(theme_menu)
         self.sync_navigation()
 
@@ -758,7 +756,6 @@ class CompactPanel(DropSurface, QWidget):
         add('review', '待核对', self.nav_review.click)
         add('intake_log', '收录记录', self.intake_log_button.click)
         add('sources', '监视详情', self.sources_button.click)
-        add('history', '历史消息补录', self.import_task_group_history)
         self.advanced_menu.addSeparator()
         theme_menu.setTitle('外观')
         self.advanced_menu.addMenu(theme_menu)
@@ -787,9 +784,9 @@ class CompactPanel(DropSurface, QWidget):
                 if worker.isFinished():
                     self.business_worker_finished()
         self.scan_button.setEnabled(not busy)
-        for key in ('settings', 'classification', 'history'):
+        for key in ('settings', 'classification'):
             if key in actions:
-                available = (key != 'history' or getattr(self, 'task_groups_page', None) is not None)
+                available = True
                 if key == 'classification':
                     available = hasattr(self.service, 'archive_classification')
                 actions[key].setEnabled(not busy and available)
@@ -803,22 +800,6 @@ class CompactPanel(DropSurface, QWidget):
         # 页面先消费结果并清空 worker，再恢复全局动作；只读导出不发业务 changed。
         QTimer.singleShot(0, self, self.update_actions)
 
-    def show_task_groups(self, group_id=None, task_id=None):
-        if self.task_groups_page is not None:
-            self.task_groups_page.refresh()
-            self.tabs.setCurrentWidget(self.task_groups_page)
-            if group_id is not None:
-                return self.task_groups_page.select_ids(group_id, task_id)
-            return True
-        return False
-
-    def import_task_group_history(self):
-        page = getattr(self, 'task_groups_page', None)
-        if page is None or self.business_page_busy():
-            return
-        self.show_task_groups()
-        page.import_history()
-
     def show_archive_classification(self):
         if self.business_page_busy():
             return
@@ -826,7 +807,7 @@ class CompactPanel(DropSurface, QWidget):
         if page is None:
             from archive_classification_ui import ArchiveClassificationPane
             page = self.archive_classification_page = ArchiveClassificationPane(self.service, self)
-            page.return_requested.connect(self.show_task_groups)
+            page.return_requested.connect(lambda: self.tabs.setCurrentIndex(0))
             page.statistics_changed.connect(self.refresh_today_count)
             page.statistics_changed.connect(self.data_changed.emit)
             self.tabs.addTab(page, '归档分类')
@@ -843,22 +824,20 @@ class CompactPanel(DropSurface, QWidget):
                 self.receipt_list.setCurrentItem(item)
                 self.receipt_list.scrollToItem(item)
                 return True
-        self.show_notice('该消息已处理或不存在，请查看任务组来源记录。')
+        self.show_notice('该消息已处理或不存在，请查看收录记录。')
         return False
 
     def sync_navigation(self, *_):
         index = self.tabs.currentIndex()
-        is_groups = getattr(self, 'task_groups_page', None) is self.tabs.currentWidget()
         is_classification = getattr(self, 'archive_classification_page', None) is self.tabs.currentWidget()
-        self.page_title.setText('归档分类' if is_classification else '任务组' if is_groups else ('项目', 'ZIP 归档', '待核对', '交付记录管理')[min(3, max(0, index))])
+        self.page_title.setText('归档分类' if is_classification else ('项目', 'ZIP 归档', '待核对', '交付记录管理')[min(3, max(0, index))])
         for position, control in enumerate((self.nav_projects, self.nav_zip, self.nav_review, self.today_button)):
-            control.setChecked(not is_groups and not is_classification and position == index)
-        self.nav_task_groups.setChecked(is_groups or is_classification)
+            control.setChecked(not is_classification and position == index)
         receipts = getattr(self, 'receipt_list', None)
         self.nav_review.setVisible((receipts is not None and receipts.count() > 0) or index == 2)
         self.sync_zip_navigation()
-        self.search.setVisible(index != 3 and not is_groups and not is_classification)
-        self.summary.setVisible(index != 3 and not is_groups and not is_classification and self.height() >= 560 and self.width() >= 820)
+        self.search.setVisible(index != 3 and not is_classification)
+        self.summary.setVisible(index != 3 and not is_classification and self.height() >= 560 and self.width() >= 820)
 
     def refresh_type_controls(self):
         selected_type = self.type_filter.currentData()
@@ -892,21 +871,36 @@ class CompactPanel(DropSurface, QWidget):
         try:
             self.refresh_type_controls()
             batch = self.batch_filter.currentData()
+            status = next((s for s, b in self.status_buttons.items() if b.isChecked()), None)
+            scope = (self.search.text(), status, batch, self.archive_filter.currentData(), self.due_filter.currentData(), self.urgent_filter.isChecked(), self.type_filter.currentData())
+            deleted_view = scope[3] == 'deleted'
+            snapshot = self.service.project_workbench_snapshot(
+                scope[0], scope[1], scope[2], scope[5],
+                archived=None if deleted_view else scope[3], due_filter=scope[4],
+                deleted=deleted_view, type_id=scope[6])
+            if batch is not None and not any(item['key'] == batch for item in snapshot['batch_options']):
+                batch = None
+                scope = (scope[0], scope[1], None, *scope[3:])
+                snapshot = self.service.project_workbench_snapshot(
+                    scope[0], scope[1], None, scope[5],
+                    archived=None if deleted_view else scope[3], due_filter=scope[4],
+                    deleted=deleted_view, type_id=scope[6])
             self.batch_filter.blockSignals(True)
             self.batch_filter.clear()
             self.batch_filter.addItem('所有批次', None)
-            for item in self.service.list_batches():
-                self.batch_filter.addItem(item['name'], item['id'])
+            for item in snapshot['batch_options']:
+                self.batch_filter.addItem(item['label'], item['key'])
+                self.batch_filter.setItemData(self.batch_filter.count() - 1, item['code'], Qt.ToolTipRole)
             self.batch_filter.setCurrentIndex(max(0, self.batch_filter.findData(batch)))
             self.batch_filter.blockSignals(False)
-            status = next((s for s, b in self.status_buttons.items() if b.isChecked()), None)
-            scope = (self.search.text(), status, self.batch_filter.currentData(), self.archive_filter.currentData(), self.due_filter.currentData(), self.urgent_filter.isChecked(), self.type_filter.currentData())
-            deleted_view = scope[3] == 'deleted'
             if deleted_view and self.bulk_mode.isChecked():
                 self.bulk_mode.setChecked(False)
-            type_options = {'type_id': scope[6]} if scope[6] is not None else {}
-            rows = self.service.list_projects(scope[0], scope[1], scope[2], scope[5],
-                archived=None if deleted_view else scope[3], due_filter=scope[4], deleted=deleted_view, **type_options)
+            rows = snapshot['projects']
+            self.batch_filter.setToolTip('\n'.join(snapshot['warnings']))
+            warnings = tuple(snapshot['warnings'])
+            if warnings and warnings != getattr(self, '_batch_warnings', ()):
+                self.show_notice('批次来源存在异常：\n' + '\n'.join(warnings))
+            self._batch_warnings = warnings
             populate(self.project_list, rows, self.project_caption, clear_selection=scope != self.project_scope)
             self.project_scope = scope
             self.empty.setVisible(not rows)
@@ -1044,11 +1038,7 @@ class CompactPanel(DropSurface, QWidget):
         self.type_filter.setCurrentIndex(0)
         self.urgent_filter.setChecked(False)
         self.archive_filter.setCurrentIndex(2 if any(all_projects[pid].get('archived_at') for pid in ids) else 0)
-        batches = {all_projects[pid]['batch_id'] for pid in ids}
-        batch_id = next(iter(batches)) if len(ids) > 1 and len(batches) == 1 else None
-        if batch_id is not None and self.batch_filter.findData(batch_id) < 0:
-            self.batch_filter.addItem(all_projects[ids[0]]['batch_name'], batch_id)
-        self.batch_filter.setCurrentIndex(max(0, self.batch_filter.findData(batch_id)))
+        self.batch_filter.setCurrentIndex(0)
         self.bulk_mode.setChecked(False)
         del blockers
         self.status_segments.setCurrentItem('all')
@@ -1306,7 +1296,7 @@ class CompactPanel(DropSurface, QWidget):
         # 将核心状态/类型和来源信息分行，避免批次挤散“生成材料”等短类型名。
         state = ' · '.join((project['status'], project.get('project_type_name') or '未分类',
                             f"ZIP {project['zip_count']}"))
-        parts = [project['batch_name']]
+        parts = []
         if project.get('due_date'):
             due = date.fromisoformat(project['due_date'])
             days = (date.today() - due).days
@@ -1320,7 +1310,7 @@ class CompactPanel(DropSurface, QWidget):
             parts.append('已删除')
         elif project.get('archived_at'):
             parts.append('已归档')
-        return f"{'加急  ' if project['urgent'] else ''}{project['name']}\n{state}\n" + ' · '.join(parts)
+        return f"{'加急  ' if project['urgent'] else ''}{project['name']}\n{state}" + ('\n' + ' · '.join(parts) if parts else '')
 
     def toggle_bulk(self, enabled):
         self.project_list.clearSelection()

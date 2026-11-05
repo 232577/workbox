@@ -1,4 +1,4 @@
-"""任务组入口、准确导航与后台退出使用匿名工作箱。"""
+"""项目收件入口、准确导航与现存业务页后台退出使用匿名工作箱。"""
 import threading
 import time
 
@@ -32,22 +32,22 @@ def wait(controller):
     assert not controller.busy
 
 
-def test_global_text_and_explicit_continuation_use_tasks(controller):
+def test_global_text_and_legacy_result_use_project_page(controller):
     controller.receive({'kind': 'text', 'text': '1. 匿名收件链路系统'})
     wait(controller)
     groups = controller.service.task_groups.snapshot(open_only=False)
-    assert len(groups) == 1 and len(groups[0]['tasks']) == 1
-    first = groups[0]
-    controller.panel.task_text_requested.emit('1. 匿名收件链路系统\n2. 匿名续入系统', first['id'], False)
+    assert groups == []
+    controller.receive({'kind': 'text', 'text': '1. 匿名收件链路系统\n2. 匿名续入系统'})
     wait(controller)
-    assert len(controller.service.task_groups.snapshot(open_only=False)) == 1
-    assert len(controller.service.task_groups.snapshot()[0]['tasks']) == 2
+    assert controller.service.task_groups.snapshot(open_only=False) == []
+    assert controller.service.db.counts()['projects'] == 2
     result = controller.service.task_groups.receive('1. 匿名定位系统')
     target = controller._result_target(result)
-    assert target[0] == 'task-group' and target[1] == result['group_id']
+    assert target == ('projects', tuple(result['project_ids']))
     controller.bubble.navigation_target = target
     controller.show_feedback()
-    assert controller.panel.tabs.currentWidget() is controller.panel.task_groups_page
+    assert controller.panel.tabs.currentIndex() == 0
+    assert getattr(controller.panel, 'task_groups_page', None) is None
 
 
 def test_task_intake_keeps_global_storage_recovery_guard(controller):
@@ -55,19 +55,21 @@ def test_task_intake_keeps_global_storage_recovery_guard(controller):
     service._project_changes_ready = True
     service.project_change_errors = [{'global_block': True}]
     with pytest.raises(RuntimeError, match='恢复'):
-        service.receive_task_text('1. 匿名恢复保护系统')
+        service.receive_text('1. 匿名恢复保护系统')
     assert service.db.counts()['projects'] == 0
     service.project_change_errors = []
 
 
 def test_business_page_worker_counts_as_busy_and_shutdown_drains(controller):
-    page = controller.panel.task_groups_page
+    controller.panel.show_archive_classification()
+    wait(controller)
+    page = controller.panel.archive_classification_page
     entered, release = threading.Event(), threading.Event()
     def operation(**_):
         entered.set()
         release.wait(4)
-        return {}
-    page._run(operation)
+        return page._read_state()
+    page._run('load', operation)
     assert entered.wait(2)
     try:
         assert controller.busy
@@ -86,8 +88,8 @@ def test_classification_stays_in_main_window(controller):
 
 
 def test_pending_feedback_selects_exact_receipt(controller):
-    controller.service.receive_task_text('第一条尚需核对的匿名需求')
-    result = controller.service.receive_task_text('第二条尚需核对的匿名需求')
+    controller.service.receive_text('第一条尚需核对的匿名需求')
+    result = controller.service.receive_text('第二条尚需核对的匿名需求')
     controller.refresh()
     target = controller._result_target(result)
     assert target == ('receipt', result['receipt_id'])
@@ -114,7 +116,8 @@ def test_late_page_wait_callback_never_replaces_active_file_worker(controller, m
     monkeypatch.setattr(desktop_controller, 'FileJob', Job)
     monkeypatch.setattr(desktop_controller, 'QTimer', SimpleNamespace(
         singleShot=lambda *args: callbacks.append(args[-1])))
-    page = controller.panel.task_groups_page
+    page = SimpleNamespace(worker=None)
+    monkeypatch.setattr(controller.panel, 'archive_classification_page', page, raising=False)
     page.worker = object()
     try:
         controller.enqueue('匿名A', lambda **_: {})
@@ -149,6 +152,7 @@ def test_update_backup_failure_restores_business_pages_and_unsaved_rules(control
     with pytest.raises(OSError, match='backup failure'):
         controller.prepare_update_install(object(), tmp_path / 'installer.exe')
     assert not controller.closed and controller.owns_lock
-    assert not page._shutting_down and not controller.panel.task_groups_page._shutting_down
+    assert not page._shutting_down
+    assert getattr(controller.panel, 'task_groups_page', None) is None
     assert page.minimum_files.value() == 5 and page._dirty
     assert page.save_button.isEnabled()

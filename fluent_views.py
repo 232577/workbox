@@ -18,6 +18,35 @@ from qfluentwidgets.components.widgets.table_view import TableItemDelegate
 
 PROJECT_NAME_ROLE = int(Qt.UserRole) + 10
 PROJECT_DETAIL_ROLE = int(Qt.UserRole) + 11
+PROJECT_BATCH_MARKERS_ROLE = int(Qt.UserRole) + 12
+
+
+def _batch_badge_background(color, mode):
+    from theme import tokens
+    base, accent = QColor(tokens(mode)['surface']), QColor(color)
+    if not accent.isValid():
+        accent = QColor('#777777')
+    weight = .30 if mode == 'dark' else .16
+    return QColor(*(round(base_channel * (1 - weight) + accent_channel * weight)
+                    for base_channel, accent_channel in zip(base.getRgb()[:3], accent.getRgb()[:3])))
+
+
+def _batch_badge_layout(markers, metrics, width):
+    """保留完整编号；放不下的编号归入明确的更多数量。"""
+    badges = []
+    available = max(0, width)
+    for marker in markers[:2]:
+        text = str(marker.get('label') or marker.get('code') or '')
+        badge_width = 24 + metrics.horizontalAdvance(text)
+        remaining = len(markers) - len(badges) - 1
+        summary = f'+{remaining}批' if remaining else ''
+        reserve = 5 + metrics.horizontalAdvance(summary) if summary else 0
+        if badge_width + reserve > available:
+            break
+        badges.append((marker, badge_width))
+        available -= badge_width + 5
+    extra = len(markers) - len(badges)
+    return badges, (f'+{extra}批' if badges and extra else f'{extra}批' if extra else '')
 
 
 def _fluent_item_styles(selector: str, horizontal_padding: int, mode: str) -> str:
@@ -236,6 +265,8 @@ class ProjectListDelegate(WrappedFluentListDelegate):
         name, detail = self._text_blocks(index, width - 2 * self.horizontalInset)
         spacing = self.blockSpacing if detail[1] else 0
         height = math.ceil(name[1] + spacing + detail[1])
+        if index.data(PROJECT_BATCH_MARKERS_ROLE):
+            height += self.blockSpacing + 18
         return QSize(width, height + 2 * (self.margin + self.verticalPadding))
 
     def paint(self, painter, option, index):
@@ -249,7 +280,7 @@ class ProjectListDelegate(WrappedFluentListDelegate):
         finally:
             self._painting_background = False
 
-        from theme import tokens
+        from theme import tokens, resolved_mode
         colors = tokens()
         enabled = bool(option.state & QStyle.State_Enabled and index.flags() & Qt.ItemIsEnabled)
         name_color = colors['ink'] if enabled else colors['disabled']
@@ -266,6 +297,33 @@ class ProjectListDelegate(WrappedFluentListDelegate):
                 position.setY(position.y() + name[1] + self.blockSpacing)
                 painter.setPen(QColor(detail_color))
                 detail[0].draw(painter, position)
+            markers = index.data(PROJECT_BATCH_MARKERS_ROLE) or []
+            if markers:
+                position.setY(position.y() + (detail[1] if detail[1] else name[1]) + self.blockSpacing)
+                font = QFont(self.parent().font())
+                font.setPixelSize(11)
+                painter.setFont(font)
+                metrics = QFontMetrics(font)
+                x = position.x()
+                right = option.rect.right() - self.horizontalInset
+                badges, summary = _batch_badge_layout(markers, metrics, right - x)
+                for marker, badge_width in badges:
+                    text = str(marker.get('label') or marker.get('code') or '')
+                    color = QColor(marker.get('color') or '#777777')
+                    if not color.isValid():
+                        color = QColor('#777777')
+                    painter.setBrush(_batch_badge_background(color, resolved_mode()))
+                    painter.setPen(QPen(color, 1))
+                    painter.drawRoundedRect(QRectF(x, position.y(), badge_width, 17), 4, 4)
+                    painter.setBrush(color)
+                    painter.setPen(Qt.NoPen)
+                    painter.drawEllipse(QPointF(x + 8, position.y() + 8.5), 3, 3)
+                    painter.setPen(QColor(name_color))
+                    painter.drawText(QPointF(x + 15, position.y() + 12), text)
+                    x += badge_width + 5
+                if summary:
+                    painter.setPen(QColor(detail_color))
+                    painter.drawText(QPointF(max(position.x(), min(x, right - metrics.horizontalAdvance(summary))), position.y() + 12), summary)
         finally:
             painter.restore()
 

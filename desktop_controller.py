@@ -4,7 +4,6 @@ from collections import deque
 import hashlib
 from pathlib import Path
 import weakref
-from uuid import uuid4
 
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, QLockFile, QPoint, QRect, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
@@ -109,7 +108,7 @@ class FloatingController(QObject):
         return self.choosing_intake or self.worker is not None or bool(self.queue) or self._page_busy()
 
     def _business_pages(self):
-        return [page for name in ('task_groups_page', 'archive_classification_page', 'today_dialog')
+        return [page for name in ('archive_classification_page', 'today_dialog')
                 if (page := getattr(self.panel, name, None)) is not None]
 
     def _page_busy(self):
@@ -163,8 +162,6 @@ class FloatingController(QObject):
             self.panel.show_notice('项目目录需要恢复，相关写操作已暂停。请保留文件并检查恢复记录。')
         self.orb.intake.connect(self.receive)
         self.panel.intake.connect(self.receive)
-        self.panel.task_text_requested.connect(lambda text, group_id, new_round: self.receive(
-            {'kind': 'text', 'text': text, 'group_id': group_id, 'new_round': new_round}))
         self.panel.classification_requested.connect(self.panel.show_archive_classification)
         self.orb.open_requested.connect(self.show_panel)
         self.bubble.open_requested.connect(self.show_feedback)
@@ -258,9 +255,6 @@ class FloatingController(QObject):
         if self.panel is None or self.closed:
             return
         self.panel.refresh()
-        page = getattr(self.panel, 'task_groups_page', None)
-        if page is not None:
-            page.refresh()
         pending = sum(p['status'] != '已交付' for p in self.service.list_projects())
         self.orb.set_summary(pending)
         self._sync_panel_busy()
@@ -309,11 +303,9 @@ class FloatingController(QObject):
         kind, value = target
         if kind == 'projects':
             self.panel.focus_projects(value)
-        elif kind == 'task-group':
-            self.panel.show_task_groups(value)
         elif kind == 'receipt':
             self.panel.focus_receipt(value)
-        else:
+        elif kind == 'tab':
             self.panel.tabs.setCurrentIndex(value)
 
     def run_in_background(self):
@@ -400,11 +392,10 @@ class FloatingController(QObject):
             self.errors.clear()
         if payload.get('kind') == 'text':
             text = payload.get('text', '')
-            group_id = payload.get('group_id')
-            new_round = payload.get('new_round', False)
-            request_id = payload.get('request_id') or uuid4().hex
-            self.enqueue('收录项目消息', lambda **_: self.service.receive_task_text(
-                text, group_id=group_id, new_round=new_round, request_id=request_id))
+            if payload.get('group_id') is not None or payload.get('new_round', False):
+                self.notify('现在按项目状态管理，请直接收录项目消息。')
+                return
+            self.enqueue('收录项目消息', lambda **_: self.service.receive_text(text))
         elif payload.get('kind') == 'files':
             paths = payload.get('paths', [])
             if not paths or len(paths) > 100 or len(self.queue)+len(paths) > 100:
@@ -528,10 +519,6 @@ class FloatingController(QObject):
         elif isinstance(worker.result, dict) and 'state' in worker.result:
             result = worker.result
             message = '已保留消息，请点击「待核对」检查项目名。' if result['state'] == 'needs-review' else f"{'已收录过，未重复创建' if result.get('duplicate') else '已收录'} {len(result['project_ids'])} 个项目。"
-            if result.get('group_code'):
-                message += '\n任务组：' + result['group_code']
-                if result.get('duplicate'):
-                    message += '；确为新要求时，请在任务组选择「新一轮任务」。'
             if result.get('reason'):
                 message += '\n' + result['reason']
             if result.get('workspace_error'):
@@ -701,8 +688,9 @@ class FloatingController(QObject):
             return None
         if result.get('state') == 'needs-review' and result.get('receipt_id'):
             return ('receipt', result['receipt_id'])
-        if result.get('group_id') and result.get('state') != 'needs-review':
-            return ('task-group', result['group_id'])
+        if result.get('state') == 'committed' and result.get('project_ids'):
+            # 同一条消息中的复用项目和新项目都属于本次收件结果。
+            return ('projects', tuple(dict.fromkeys(result['project_ids'])))
         if result.get('created_project_ids'):
             return ('projects', tuple(result['created_project_ids']))
         if isinstance(result.get('project'), dict) and result['project'].get('id'):
@@ -845,7 +833,7 @@ class FloatingController(QObject):
             material_dialog.shutdown()
         if self.panel is not None and getattr(self.panel, 'today_dialog', None) is not None:
             self.panel.today_dialog.shutdown()
-        for name in ('task_groups_page', 'archive_classification_page'):
+        for name in ('archive_classification_page',):
             page = getattr(self.panel, name, None)
             if page is not None:
                 page.shutdown()

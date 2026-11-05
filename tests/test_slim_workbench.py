@@ -32,13 +32,13 @@ def test_daily_navigation_and_advanced_tools_remain_reachable(panel):
     assert isinstance(panel.advanced_menu, QMenu)
     assert panel.settings_button.menu() is panel.advanced_menu
     assert [control.accessibleName() for control, _ in panel.nav_controls
-            if control.isVisible()] == ['任务组', '项目', '今日工作量', '高级设置']
+            if control.isVisible()] == ['项目', '今日工作量', '高级设置']
     for control in (panel.nav_zip, panel.appearance_button, panel.help_button,
                     panel.update_button, panel.material_check_button, panel.intake_log_button):
         assert control.isHidden()
     captions = {item.text() for item in panel.advanced_menu.actions() if not item.isSeparator()}
     assert captions == {'工作设置…', '归档分类', 'ZIP 归档库', '待核对', '收录记录',
-                        '监视详情', '历史消息补录', '外观', '使用指南', '检查更新'}
+                        '监视详情', '外观', '使用指南', '检查更新'}
     assert action(panel, '外观').menu() is panel.appearance_button.menu()
     assert set(panel.theme_actions.values()) == set(action(panel, '外观').menu().actions())
     action(panel, 'ZIP 归档库').trigger()
@@ -65,7 +65,7 @@ def test_pending_entry_tracks_count_current_page_and_exact_feedback(panel):
         service.dismiss_receipt(receipt['id'])
     panel.refresh()
     assert panel.receipt_list.count() == 0 and panel.nav_review.isVisible()
-    panel.nav_task_groups.click()
+    panel.nav_projects.click()
     assert panel.nav_review.isHidden()
     action(panel, '待核对').trigger()
     assert panel.nav_review.isVisible()
@@ -210,72 +210,45 @@ def test_idle_review_count_error_keeps_last_attention_visible(panel, tmp_path, m
 def test_advanced_callbacks_reuse_existing_actions(panel, monkeypatch):
     calls = []
     monkeypatch.setattr(panel, 'edit_directories', lambda: calls.append('settings'))
-    monkeypatch.setattr(panel.task_groups_page, 'import_history', lambda: calls.append('history'))
     classification = QSignalSpy(panel.classification_requested)
     update = QSignalSpy(panel.update_requested)
     action(panel, '工作设置…').trigger()
-    action(panel, '历史消息补录').trigger()
     action(panel, '归档分类').trigger()
     action(panel, '检查更新').trigger()
-    assert calls == ['settings', 'history']
+    assert calls == ['settings']
     assert classification.count() == update.count() == 1
 
 
-@pytest.mark.parametrize('failed', [False, True])
-def test_global_history_keeps_empty_or_error_feedback_visible(panel, monkeypatch, failed):
+@pytest.mark.parametrize('existing_history', [False, True])
+def test_workbench_has_no_retired_task_entries(panel, existing_history):
+    if existing_history:
+        panel.service.task_groups.receive('1. 匿名历史项目')
+    panel.refresh()
     panel.nav_projects.click()
-    if failed:
-        def unavailable():
-            raise RuntimeError('匿名读取失败')
-        monkeypatch.setattr(panel.service.task_groups, 'history_candidates', unavailable)
-    action(panel, '历史消息补录').trigger()
-    QApplication.processEvents()
-    page = panel.task_groups_page
-    expected = '历史来源读取失败：匿名读取失败' if failed else '没有可导入的历史来源。'
-    assert panel.tabs.currentWidget() is page
-    assert page.note.text() == expected and page.note.isVisible()
+    assert panel.tabs.currentIndex() == 0 and panel.task_groups_page is None
+    assert not hasattr(panel, 'nav_task_groups')
+    assert all(type(panel.tabs.widget(i)).__name__ != 'TaskGroupsPage'
+               for i in range(panel.tabs.count()))
+    captions = [item.text() for item in panel.advanced_menu.actions()]
+    assert not any(text in captions for text in ('历史消息补录', '手工交接', '本组导出'))
 
 
-def test_global_history_success_keeps_group_context_and_completion_visible(panel):
+def test_refresh_and_navigation_preserve_existing_task_history(panel):
     service = panel.service
-    service.db.create_capture('1. 匿名保留系统', '匿名原批次', [('匿名保留系统', False)])
-    group_id = service.task_groups.import_history(service.task_groups.history_candidates()['token'],
-                                                  confirmed=True)['group_ids'][0]
-    page = panel.task_groups_page
-    assert page.select_ids(group_id)
-    page.only_unhanded.setChecked(False)
-    page.search.setText(page._group()['code'])
-    page.refresh()
-    selected = page.tree.currentItem().data(0, Qt.UserRole)
-    scope = page.scope.currentData()
-    search = page.search.text()
-    service.db.create_capture('1. 匿名新增系统', '匿名待补录批次', [('匿名新增系统', False)])
+    service.task_groups.receive('1. 匿名保留系统')
+    tables = ('task_groups', 'task_items', 'task_group_messages', 'task_actions')
+    def history_rows():
+        with service.db.connect() as connection:
+            return {table: [tuple(row) for row in connection.execute(f'SELECT * FROM {table} ORDER BY id')]
+                    for table in tables}
+    before = history_rows()
+    panel.refresh()
+    action(panel, 'ZIP 归档库').trigger()
+    action(panel, '待核对').trigger()
     panel.nav_projects.click()
-    panel.search.setText('匿名保留')
-    observed = []
-    def accept_history():
-        dialog = QApplication.activeModalWidget()
-        assert isinstance(dialog, QDialog) and dialog.windowTitle() == '选择历史来源'
-        tree = dialog.findChild(QTreeWidget)
-        assert tree.topLevelItemCount() == 1
-        tree.topLevelItem(0).setCheckState(0, Qt.Checked)
-        observed.append(True)
-        dialog.accept()
-    QTimer.singleShot(0, accept_history)
-    action(panel, '历史消息补录').trigger()
-    for _ in range(200):
-        if page.worker is None:
-            break
-        QTest.qWait(20)
-    QApplication.processEvents()
-    assert observed == [True] and page.worker is None
-    assert len(service.task_groups.snapshot(open_only=False)) == 2
-    assert panel.tabs.currentWidget() is page and page.note.isVisible()
-    assert page.note.text() == '操作已完成。'
-    assert page.tree.currentItem().data(0, Qt.UserRole) == selected
-    assert page.scope.currentData() == scope and page.search.text() == search
-    assert not page.only_unhanded.isChecked()
-    assert panel.search.text() == '匿名保留'
+    panel.refresh()
+    assert history_rows() == before
+    assert panel.project_list.count() == 1
 
 
 def test_busy_and_resize_do_not_restore_hidden_tools(panel):
@@ -283,7 +256,6 @@ def test_busy_and_resize_do_not_restore_hidden_tools(panel):
         panel.set_busy(busy)
         assert panel.settings_button.isEnabled()
         assert action(panel, '工作设置…').isEnabled() is not busy
-        assert action(panel, '历史消息补录').isEnabled() is not busy
         assert panel.cancel_button.isVisible() is busy
         for width, height in ((660, 480), (1200, 780), (660, 492)):
             panel.resize(width, height)
@@ -306,24 +278,30 @@ def test_busy_keeps_native_advanced_menu_and_read_only_tools_openable(panel):
     panel.settings_button.click()
     QTest.qWait(30)
     assert observed == [True]
-    for caption in ('工作设置…', '归档分类', '历史消息补录'):
+    for caption in ('工作设置…', '归档分类'):
         assert not action(panel, caption).isEnabled()
     for caption in ('ZIP 归档库', '待核对', '收录记录', '监视详情', '使用指南', '检查更新', '外观'):
         assert action(panel, caption).isEnabled()
 
 
-def test_independent_export_completion_restores_scan_without_reopening_menu(panel):
-    page = panel.task_groups_page
+def test_all_delivery_export_completion_restores_scan_without_reopening_menu(panel, tmp_path, monkeypatch):
+    import export_ui
+    import delivery_export
+    panel.show_today_deliveries()
+    page = panel.today_dialog
     started, release = threading.Event(), threading.Event()
     with panel.service.db.connect() as connection:
         before = list(connection.iterdump())
-    changed = QSignalSpy(page.changed)
-    def operation(**_):
+    def operation(db, target, **_):
         started.set()
         if not release.wait(5):
             raise RuntimeError('匿名任务未及时释放')
-        return {'task_count': 0, 'path': '匿名只读结果'}
-    page._run(operation, kind='export')
+        return {'project_count': 0, 'path': str(target)}
+    monkeypatch.setattr(export_ui, 'choose_workbook_destination', lambda _: (tmp_path / '交付.xlsx', None))
+    monkeypatch.setattr(delivery_export, 'export_delivered_projects', operation)
+    assert page.export_button.isEnabled()
+    assert page.export_button.accessibleName() == '导出全部有效交付项目'
+    page.export_button.click()
     try:
         for _ in range(100):
             if started.is_set():
@@ -340,7 +318,8 @@ def test_independent_export_completion_restores_scan_without_reopening_menu(pane
                 break
         assert page.worker is None and not panel.business_page_busy()
         assert panel.scan_button.isEnabled()
-        assert panel.tabs.currentIndex() == 1 and changed.count() == 0
+        assert panel.tabs.currentIndex() == 1
+        assert '已导出 0 个项目' in page.status_note.text()
         with panel.service.db.connect() as connection:
             assert list(connection.iterdump()) == before
     finally:
@@ -351,33 +330,28 @@ def test_independent_export_completion_restores_scan_without_reopening_menu(pane
             QTest.qWait(10)
 
 
-@pytest.mark.parametrize('page_name', ['task_groups_page', 'archive_classification_page', 'today_dialog'])
+@pytest.mark.parametrize('page_name', ['archive_classification_page', 'today_dialog'])
 def test_advanced_mutations_recheck_independent_page_worker(panel, monkeypatch, page_name):
     calls = []
     monkeypatch.setattr(panel, 'edit_directories', lambda: calls.append('settings'))
-    monkeypatch.setattr(panel.task_groups_page, 'import_history', lambda: calls.append('history'))
     classification = QSignalSpy(panel.classification_requested)
     scans = QSignalSpy(panel.scan_requested)
     # 菜单已启用后，业务页可能自行启动 worker；触发时也必须重新检查。
-    if page_name == 'task_groups_page':
-        page = panel.task_groups_page
-    else:
-        page = SimpleNamespace(worker=None)
-        monkeypatch.setattr(panel, page_name, page, raising=False)
+    page = SimpleNamespace(worker=None)
+    monkeypatch.setattr(panel, page_name, page, raising=False)
     previous = page.worker
     original_page = panel.tabs.currentWidget()
     page.worker = object()
     try:
         assert not panel.busy
         panel.scan_button.click()
-        for caption in ('工作设置…', '归档分类', '历史消息补录'):
+        for caption in ('工作设置…', '归档分类'):
             action(panel, caption).trigger()
         assert calls == [] and classification.count() == 0 and scans.count() == 0
         assert panel.tabs.currentWidget() is original_page
         panel.advanced_menu.aboutToShow.emit()
         assert not action(panel, '工作设置…').isEnabled()
         assert not action(panel, '归档分类').isEnabled()
-        assert not action(panel, '历史消息补录').isEnabled()
         assert not panel.scan_button.isEnabled()
         assert action(panel, '使用指南').isEnabled()
         assert action(panel, '外观').menu().isEnabled()
