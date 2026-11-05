@@ -3,6 +3,14 @@ export { SiteMetrics } from './analytics.mjs';
 // 固定版本的公开下载入口；不读取、转发访问者的登录信息。
 export const releases = Object.freeze([Object.freeze({
   version: '1.0.0',
+  tag: 'v1.0.0.20261105.1',
+  edition: '正式安装版',
+  date: '2026-11-05',
+  filename: 'WorkBox-1.0.0-Setup-x64-20261105-r1.exe',
+  size: 40622040,
+  sha256: 'a468a966befb8863e132d3510991fc715f8aa6938d7e1115388a8c70ef1e4537',
+}), Object.freeze({
+  version: '1.0.0',
   tag: 'v1.0.0.20261104.3',
   edition: '正式安装版',
   date: '2026-11-04',
@@ -196,7 +204,7 @@ export async function handleRequest(request, env, fetcher = fetch, context = nul
     const metadata = {
       tag_name: release.tag, draft: false, prerelease: false,
       html_url: `https://github.com/232577/workbox/releases/tag/${release.tag}`,
-      body: `WorkBox ${release.version} 正式安装版 · ${release.date}。主工作台采用平面双栏，操作跟随项目；统一按钮、输入与状态筛选控件，项目队列使用透明背景融入工作区，文件与目录使用统一图标，深色外观采用中性炭灰层次；日期输入更清晰，交付明细可拖高及放大。普通文件先建项后，不同文字批次的唯一同名项目沿用原身份；多同名或受保护状态仍需核对。同名普通文档再次收录时，新稿保留标准名，旧稿加内容摘要后缀，后缀已占用时加序号。旧版（包括 v1.0.0.20261104.2）已给新稿添加后缀的情况，再次拖入该新稿即可按新规则收录；与当前标准名内容相同则直接复用，不增加版本。来源文件留在原处，ZIP 及历史材料归档规则不变，启动或安装不会批量改名旧文档。保留材料检查、项目状态、交付历史和文件。升级前请备份数据；安装时保存数据库恢复点。安装包尚无商业代码签名。`,
+      body: `WorkBox ${release.version} 正式安装版 · ${release.date}。来源提交 868ae5e17e1b286c2ade1e578721b71c8f77b757。任务组保留原消息和固定编号，材料就绪与手动交接分别记录；Excel 导出四张工作表，支持导出本组；归档分类按最近有效交付预览和配置。任务数不计入项目首交工作量。主工作台采用平面双栏，操作跟随项目；统一按钮、输入与状态筛选控件，项目队列使用透明背景融入工作区，文件与目录使用统一图标，深色外观采用中性炭灰层次；日期输入更清晰，交付明细可拖高及放大。普通文件先建项后，不同文字批次的唯一同名项目沿用原身份；多同名或受保护状态仍需核对。同名普通文档再次收录时，新稿保留标准名，旧稿加内容摘要后缀，后缀已占用时加序号。旧版（包括 v1.0.0.20261104.2）已给新稿添加后缀的情况，再次拖入该新稿即可按新规则收录；与当前标准名内容相同则直接复用，不增加版本。来源文件留在原处，ZIP 及历史材料归档规则不变，启动或安装不会批量改名旧文档。保留材料检查、项目状态、交付历史和文件。升级前请备份数据；安装时保存数据库恢复点。安装包尚无商业代码签名。`,
       assets: [{name: release.filename, size: release.size, state: 'uploaded',
         digest: `sha256:${release.sha256}`,
         browser_download_url: `https://github.com/232577/workbox/releases/download/${release.tag}/${release.filename}`}],
