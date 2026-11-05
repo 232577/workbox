@@ -8,8 +8,8 @@ test('稳定清单发布11月5日任务组包的实际摘要与大小', async ()
   const metadata=await response.json();
   assert.equal(metadata.tag_name,'v1.0.0.20261105.1');
   assert.equal(metadata.assets[0].name,'WorkBox-1.0.0-Setup-x64-20261105-r1.exe');
-  assert.equal(metadata.assets[0].size,40611355);
-  assert.equal(metadata.assets[0].digest,'sha256:21ed65876e1ede6e3b2548b971823439c5095475f5fc581fa5a10620bc8e7485');
+  assert.equal(metadata.assets[0].size,40622040);
+  assert.equal(metadata.assets[0].digest,'sha256:a468a966befb8863e132d3510991fc715f8aa6938d7e1115388a8c70ef1e4537');
 });
 
 test('下载页明确说明只退出未升级的恢复办法和原目录数据保留', async () => {
@@ -19,7 +19,7 @@ test('下载页明确说明只退出未升级的恢复办法和原目录数据�
   assert.match(html,/原安装目录/);
   assert.match(html,/不要卸载/);
   assert.match(html,/不要删除 data/);
-  assert.match(html,/40,611,355/);
+  assert.match(html,/40,622,040/);
 });
 
 test('页面明确只修复悬浮球置顶，展开管理窗口不置顶', async () => {

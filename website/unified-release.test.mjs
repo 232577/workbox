@@ -11,11 +11,11 @@ test('首页、两份README与稳定发布指向11月5日任务组版，保留�
   for(const text of [html,readme,siteReadme]){
     assert.ok(text.includes('v1.0.0.20261105.1'));
     assert.ok(text.includes('WorkBox-1.0.0-Setup-x64-20261105-r1.exe'));
-    assert.ok(text.includes('21ed65876e1ede6e3b2548b971823439c5095475f5fc581fa5a10620bc8e7485'));
-    assert.ok(text.includes('8240b1077673d62119b9a21130c48020a8d327bd'));
+    assert.ok(text.includes('a468a966befb8863e132d3510991fc715f8aa6938d7e1115388a8c70ef1e4537'));
+    assert.ok(text.includes('868ae5e17e1b286c2ade1e578721b71c8f77b757'));
   }
   for(const item of releases) assert.ok(html.includes(`/download/${item.filename}`));
-  assert.deepEqual(release,{version:'1.0.0',tag:'v1.0.0.20261105.1',edition:'正式安装版',date:'2026-11-05',filename:'WorkBox-1.0.0-Setup-x64-20261105-r1.exe',size:40611355,sha256:'21ed65876e1ede6e3b2548b971823439c5095475f5fc581fa5a10620bc8e7485'});
+  assert.deepEqual(release,{version:'1.0.0',tag:'v1.0.0.20261105.1',edition:'正式安装版',date:'2026-11-05',filename:'WorkBox-1.0.0-Setup-x64-20261105-r1.exe',size:40622040,sha256:'a468a966befb8863e132d3510991fc715f8aa6938d7e1115388a8c70ef1e4537'});
   // 固定原18个目录项的完整字段，防止升级时误改旧包大小、摘要或路径。
   assert.equal(releases.length,19);
   assert.equal(createHash('sha256').update(JSON.stringify(releases.slice(1))).digest('hex'),'1b5712f062ff03104c55336e4e194ae119845ed900f11c0be1b37e267ce64ce0');
@@ -23,7 +23,7 @@ test('首页、两份README与稳定发布指向11月5日任务组版，保留�
   assert.match(html,/截图来自 v1\.0\.0\.20261104\.2 匿名实机截图/);
   const metadata=await (await handleRequest(new Request('https://example.com/updates/stable.json'),{})).json();
   assert.equal(metadata.tag_name,release.tag);
-  assert.equal(metadata.assets[0].size,40611355);
+  assert.equal(metadata.assets[0].size,40622040);
   assert.equal(metadata.assets[0].digest,`sha256:${release.sha256}`);
   for(const text of [html,readme,siteReadme,metadata.body]){
     for(const phrase of ['任务组','材料就绪','手动交接','四张工作表','归档分类'])assert.ok(text.includes(phrase),phrase);
