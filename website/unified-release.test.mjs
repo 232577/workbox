@@ -9,21 +9,21 @@ test('首页、两份README与稳定发布指向11月5日任务组版，保留�
   const readme=await readFile(new URL('../README.md',import.meta.url),'utf8');
   const siteReadme=await readFile(new URL('./README.md',import.meta.url),'utf8');
   for(const text of [html,readme,siteReadme]){
-    assert.ok(text.includes('v1.0.0.20261105.1'));
-    assert.ok(text.includes('WorkBox-1.0.0-Setup-x64-20261105-r1.exe'));
-    assert.ok(text.includes('a468a966befb8863e132d3510991fc715f8aa6938d7e1115388a8c70ef1e4537'));
-    assert.ok(text.includes('868ae5e17e1b286c2ade1e578721b71c8f77b757'));
+    assert.ok(text.includes('v1.0.0.20261105.2'));
+    assert.ok(text.includes('WorkBox-1.0.0-Setup-x64-20261105-r2.exe'));
+    assert.ok(text.includes('b60fe41773d7781d79fb9ef06657240445f289837a461f30083fc8286f4af616'));
+    assert.ok(text.includes('b2724ec9073f3d78126d6fa0e049c5c000045cd5'));
   }
   for(const item of releases) assert.ok(html.includes(`/download/${item.filename}`));
-  assert.deepEqual(release,{version:'1.0.0',tag:'v1.0.0.20261105.1',edition:'正式安装版',date:'2026-11-05',filename:'WorkBox-1.0.0-Setup-x64-20261105-r1.exe',size:40622040,sha256:'a468a966befb8863e132d3510991fc715f8aa6938d7e1115388a8c70ef1e4537'});
-  // 固定原18个目录项的完整字段，防止升级时误改旧包大小、摘要或路径。
-  assert.equal(releases.length,19);
-  assert.equal(createHash('sha256').update(JSON.stringify(releases.slice(1))).digest('hex'),'1b5712f062ff03104c55336e4e194ae119845ed900f11c0be1b37e267ce64ce0');
+  assert.deepEqual(release,{version:'1.0.0',tag:'v1.0.0.20261105.2',edition:'正式安装版',date:'2026-11-05',filename:'WorkBox-1.0.0-Setup-x64-20261105-r2.exe',size:40620146,sha256:'b60fe41773d7781d79fb9ef06657240445f289837a461f30083fc8286f4af616'});
+  // 固定原19个目录项的完整字段，防止升级时误改旧包大小、摘要或路径。
+  assert.equal(releases.length,20);
+  assert.equal(createHash('sha256').update(JSON.stringify(releases.slice(1))).digest('hex'),'7ebbfa67ef879ced8e673608ca8be8fdf0ee2e075c1ce196a38b34acd832aa11');
   assert.equal(new Set(releases.map(r=>r.tag)).size,releases.length);
   assert.match(html,/截图来自 v1\.0\.0\.20261105\.1 匿名实机截图/);
   const metadata=await (await handleRequest(new Request('https://example.com/updates/stable.json'),{})).json();
   assert.equal(metadata.tag_name,release.tag);
-  assert.equal(metadata.assets[0].size,40622040);
+  assert.equal(metadata.assets[0].size,40620146);
   assert.equal(metadata.assets[0].digest,`sha256:${release.sha256}`);
   for(const text of [html,readme,siteReadme,metadata.body]){
     for(const phrase of ['任务组','材料就绪','手动交接','四张工作表','归档分类'])assert.ok(text.includes(phrase),phrase);

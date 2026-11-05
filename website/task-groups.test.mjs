@@ -26,8 +26,8 @@ test('任务说明保留版本、人工交接和项目统计的区别，原生�
 });
 
 test('新发布保留全部十八项旧下载及四十四项原媒体来源，不改变赞助配置', async () => {
-  assert.equal(releases.length, 19);
-  assert.equal(createHash('sha256').update(JSON.stringify(releases.slice(1))).digest('hex'),
+  assert.equal(releases.length, 20);
+  assert.equal(createHash('sha256').update(JSON.stringify(releases.slice(2))).digest('hex'),
     '1b5712f062ff03104c55336e4e194ae119845ed900f11c0be1b37e267ce64ce0');
   const media = await readFile(new URL('./MEDIA.json', import.meta.url));
   const registry = JSON.parse(media);
