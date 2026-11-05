@@ -64,9 +64,88 @@ def test_narrow_layout_keeps_actions_visible():
     page.resize(580, 480)
     page.show()
     app.processEvents()
-    for control in (page.add_button, page.new_button, page.handoff_button, page.more_button, page.copy_button):
+    for control in (page.add_button, page.new_button, page.handoff_button, page.more_button, page.export_button):
         assert control.width() >= control.fontMetrics().horizontalAdvance(control.text()) + 12
         assert control.geometry().right() <= page.width()
+    page.close()
+
+
+def test_slim_actions_and_context_menus(monkeypatch):
+    from task_groups_ui import TaskGroupsPage
+    app = QApplication.instance() or QApplication([])
+    class Groups:
+        def snapshot(self, **kwargs):
+            return [{'id': 1, 'code': 'G1', 'tasks': [{'id': 2, 'project_name': '甲'}]}]
+        def messages(self, group_id): return []
+    page = TaskGroupsPage(Groups())
+    page.select_ids(1, 2)
+    menu = page.more_button.menu()
+    captions = [action.text() for action in menu.actions()]
+    assert captions == ['新一轮任务', '查看项目文件', '复制本组未交', '撤销交接',
+                        '关联交付记录', '核对本组收件消息', '高级任务操作']
+    advanced = menu.actions()[-1].menu()
+    assert [action.text() for action in advanced.actions()] == [
+        '撤回任务', '重开任务', '移动任务到其他组', '重命名任务组', '设置组颜色', '复制当前筛选的全部未交清单']
+    calls = []
+    monkeypatch.setattr(page, '_run', lambda operation, **kwargs: calls.append(operation))
+    monkeypatch.setattr('PySide6.QtWidgets.QMessageBox.question', lambda *args: 16384)
+    advanced.actions()[0].trigger()
+    assert calls and page._selected()[0]['id'] == 2
+    assert page.export_button.text() == '导出本组表格'
+    page.close()
+
+
+def test_public_history_entry_respects_busy_and_shutdown(monkeypatch):
+    from task_groups_ui import TaskGroupsPage
+    app = QApplication.instance() or QApplication([])
+    page = TaskGroupsPage(object())
+    calls = []
+    monkeypatch.setattr(page, '_history', lambda: calls.append('open'))
+    page.import_history()
+    page.set_busy(True)
+    page.import_history()
+    page.set_busy(False)
+    page.worker = object()
+    page.import_history()
+    page.worker = None
+    page._shutting_down = True
+    page.import_history()
+    assert calls == ['open']
+    page.close()
+
+
+def test_export_button_uses_current_group_and_honors_cancel_and_busy(monkeypatch, tmp_path):
+    from task_groups_ui import TaskGroupsPage
+    import export_ui
+    import delivery_export
+    app = QApplication.instance() or QApplication([])
+    class Groups:
+        db = object()
+        def snapshot(self, **kwargs):
+            return [{'id': 1, 'code': 'G1', 'tasks': []}, {'id': 4, 'code': 'G4', 'tasks': []}]
+        def messages(self, group_id): return []
+    page = TaskGroupsPage(Groups())
+    page.refresh()
+    page.export_button.click()
+    assert '选择' in page.note.text()
+    page.select_ids(4)
+    chosen = []
+    monkeypatch.setattr(export_ui, 'choose_workbook_destination', lambda *args: chosen.append(args) or None)
+    page.export_button.click()
+    assert '取消' in page.note.text()
+    assert chosen[-1][1].endswith('G4')
+    page.set_busy(True)
+    page.export_group()
+    assert len(chosen) == 1
+    page.set_busy(False)
+    target = tmp_path / 'out.xlsx'
+    monkeypatch.setattr(export_ui, 'choose_workbook_destination', lambda *args: (target, None))
+    calls = []
+    monkeypatch.setattr(delivery_export, 'export_delivered_projects', lambda *args, **kwargs: calls.append((args, kwargs)))
+    monkeypatch.setattr(page, '_run', lambda operation, **kwargs: operation())
+    page.export_button.click()
+    assert calls[0][0] == (page.groups.db, target)
+    assert calls[0][1]['group_id'] == 4
     page.close()
 
 

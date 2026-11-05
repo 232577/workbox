@@ -177,6 +177,6 @@ def test_panel_help_opens_real_read_only_guide(qapp, service):
         seen.append(guide.windowTitle())
         guide.close_button.click()
     QTimer.singleShot(0, close_guide)
-    panel.help_button.click()
+    panel.advanced_actions['help'].trigger()
     assert seen and service.workspaces.settings() == before
     panel.close()

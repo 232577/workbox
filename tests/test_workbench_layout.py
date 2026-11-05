@@ -20,7 +20,7 @@ def test_left_navigation_keeps_tab_contract_and_actions(qapp, tmp_path):
         assert not panel.tabs.tabBar().isVisible()
         assert panel.tabs.count() == 4
         assert panel.tabs.widget(3) is panel.task_groups_page
-        panel.nav_zip.click()
+        panel.advanced_actions['zip'].trigger()
         assert panel.tabs.currentIndex() == 1
         assert panel.page_title.text() == 'ZIP 归档'
         panel.tabs.setCurrentIndex(2)
@@ -56,7 +56,7 @@ def test_narrow_workbench_collapses_navigation_and_keeps_controls_inside(qapp, t
     try:
         assert panel.size().width() == 660
         assert panel.navigation.width() <= 72
-        assert panel.settings_button.accessibleName()=='设置'
+        assert panel.settings_button.accessibleName()=='高级设置'
         assert panel.today_button.isVisible() and panel.today_button.text()==''
         badge=panel.today_button.findChild(QLabel,'navigationCountBadge')
         assert badge.isVisible() and badge.text()=='0'
