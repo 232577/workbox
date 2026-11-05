@@ -18,6 +18,8 @@ For ordinary document intake, a different revision at the same managed destinati
 
 Delivery-table export is read-only and uses one database snapshot. Export one row per canonical project with effective delivery history, including workload-excluded deliveries; do not infer zero from missing archive-count facts. Export never applies project types or changes delivery validity. Recheck current managed-path boundaries before publishing the output file.
 
+Task groups and task items are independent of the original project/batch/directory identity. Numbers and original messages are immutable; new rounds never inherit old completion automatically. Material readiness pins a valid delivery event and its correction version; manual handoff pins the displayed binding and never implies a network send. Group/task totals must not inflate lifetime-first project workload. Archive classification is separately configurable, uses the latest effective delivery per project, and keeps append-only undo-protected audit; unknown facts never mean zero.
+
 Rename/merge needs an explicit current preview and separate confirmation. Preserve original materials and historical delivery identities; do not merge automatically at startup. New default type never backfills old projects. Archive/deletion are reversible project visibility actions, not file deletion.
 
 Use mature Qt controls, native menus and scrolling. Keep QFluentWidgets pinned and preserve selection, scroll and worker shutdown safety. Test Windows through `python -m scripts.run_tests`, not by disabling system-wide crash reporting. Fixtures must be isolated and anonymous. Do not open or modify a person's actual database for tests.

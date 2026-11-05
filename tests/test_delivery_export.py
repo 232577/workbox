@@ -85,7 +85,7 @@ def test_xlsx_is_readable_has_summary_and_literal_user_text(db, tmp_path):
     target = tmp_path / 'report.xlsx'
     result = backend().export_delivered_projects(db, target)
     book = load_workbook(target)
-    assert book.sheetnames == ['交付项目', '类型汇总']
+    assert book.sheetnames == ['交付项目', '类型汇总', '任务组汇总', '任务明细']
     sheet = book['交付项目']
     assert sheet.freeze_panes == 'A2' and sheet.auto_filter.ref
     headers = {cell.value: cell.column for cell in sheet[1]}

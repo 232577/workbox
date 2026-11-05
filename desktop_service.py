@@ -103,6 +103,10 @@ class DesktopService(WorkBox):
         # 应用还未取得单实例锁；此处不能恢复另一个运行实例的目录变更。
         self.project_change_errors = []
         self._project_changes_ready = False
+        from task_groups import TaskGroups
+        self.task_groups = TaskGroups(self)
+        from archive_classification import ArchiveClassification
+        self.archive_classification = ArchiveClassification(self.db)
 
     def recover_project_changes(self):
         with self.archive._lock:
@@ -194,6 +198,11 @@ class DesktopService(WorkBox):
         result.update(changes)
         return self._attach_workspaces(result)
 
+    @_serialized_storage
+    def receive_task_text(self, text, *, group_id=None, new_round=False, request_id=None):
+        return self.task_groups.receive(text, group_id=group_id, new_round=new_round,
+                                        request_id=request_id)
+
     def _attach_workspaces(self, result):
         # 消息先提交；目录失败不能回滚或丢失已收录的需求。
         if result.get('project_ids'):
@@ -251,6 +260,7 @@ class DesktopService(WorkBox):
                 raise ValueError('这条收件已处理，请刷新。')
             changes = self._commit_text(connection, receipt, projects)
             result = self._receipt(connection.execute('SELECT * FROM intake_receipts WHERE id=?', (receipt_id,)).fetchone())
+            result.update(self.task_groups.receipt_resolved(connection, receipt_id, result['project_ids']))
         result.update(changes)
         return self._attach_workspaces(result)
 

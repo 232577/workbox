@@ -622,39 +622,18 @@ class TodayDeliveryDialog(QDialog):
     def export_projects(self):
         if self.worker or self._choosing_type:
             return
-        documents = QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation)
-        name = 'WorkBox交付项目_' + datetime.now(DELIVERY_TIMEZONE).strftime('%Y%m%d_%H%M%S') + '.xlsx'
-        selected, _ = QFileDialog.getSaveFileName(
-            self, '导出全部有效交付项目', str(Path(documents or str(Path.home())) / name),
-            'Excel 工作簿 (*.xlsx)', options=QFileDialog.DontConfirmOverwrite)
-        if not selected:
-            self.status_note.setText('已取消导出。')
-            self.status_note.show()
-            return
-        target = Path(selected)
-        appended = not target.suffix
-        if appended:
-            target = target.with_suffix('.xlsx')
-        if target.suffix.casefold() != '.xlsx':
-            self.status_note.setText('导出未完成：请选择 .xlsx 文件。')
-            self.status_note.show()
-            return
         try:
-            try:
-                target_id = identity(target.stat())
-            except FileNotFoundError:
-                target_id = None
-            # 在最终路径上确认，并把确认时的身份交给后台检查。
-            if target_id is not None and QMessageBox.question(
-                    self, '替换文件', f'文件已存在，是否替换？\n\n{target}',
-                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
-                self.status_note.setText('已取消导出。')
-                self.status_note.show()
-                return
-        except OSError as error:
+            from export_ui import choose_workbook_destination
+            chosen = choose_workbook_destination(self)
+        except (OSError, ValueError) as error:
             self.status_note.setText('导出未完成：' + str(error))
             self.status_note.show()
             return
+        if chosen is None:
+            self.status_note.setText('已取消导出。')
+            self.status_note.show()
+            return
+        target, target_id = chosen
         def run_export(**kwargs):
             from delivery_export import export_delivered_projects
             return export_delivered_projects(self.service.db, target,

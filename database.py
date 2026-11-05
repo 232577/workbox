@@ -786,10 +786,16 @@ class Database:
             FROM projects p JOIN batches b ON b.id=p.batch_id WHERE p.id=?''', (project_id,)).fetchone()
         if project is None or project['delivered_at'] is None:
             raise ValueError('交付时间尚未保存，不能记录交付事实。')
-        return connection.execute('''INSERT INTO delivery_events(
+        event_id = connection.execute('''INSERT INTO delivery_events(
             project_id,project_name,batch_name,kind,zip_id,archive_path,archive_signature,occurred_at)
             VALUES (?,?,?,?,?,?,?,?)''', (project_id, project['name'], project['batch_name'], kind,
             zip_id, str(archive_path), archive_signature, project['delivered_at'])).lastrowid
+        # 新交付的派生类型与任务就绪关联共用原事务；不改旧交付事实。
+        from archive_classification import classify_new_delivery
+        from task_groups import observe_delivery_event
+        classify_new_delivery(connection, event_id)
+        observe_delivery_event(connection, event_id)
+        return event_id
 
     def _complete_file_delivery(self, connection, project_id: int, verified_archive: dict) -> int:
         """调用方复制归档后，复核清单及副本，再共用其事务保存人工交付事实。"""
@@ -1316,6 +1322,8 @@ class Database:
             marks = ','.join('?' for _ in selected)
             current = {row['project_id']: row['type_id'] for row in connection.execute(
                 f'SELECT project_id,type_id FROM project_type_links WHERE project_id IN ({marks})', selected)}
+            from archive_classification import record_manual_type_selection
+            record_manual_type_selection(connection, selected, current, type_id)
             for pid in selected:
                 if current.get(pid) == type_id:
                     continue
