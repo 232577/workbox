@@ -7,11 +7,14 @@ import { releases } from './worker.mjs';
 const html = await readFile(new URL('./public/index.html', import.meta.url), 'utf8');
 const section = html.match(/<section\b[^>]*id="task-groups"[^>]*>([\s\S]*?)<\/section>/)?.[1];
 
-test('正式任务功能说明与下载区同步，不遗留下一版准备文案', () => {
-  assert.ok(section, '应有独立任务组说明');
+test('旧任务功能说明折叠保留并标明历史构建，不作为主要导航', () => {
+  assert.ok(section, '原任务组说明锚点保留');
   assert.doesNotMatch(section, /下一版准备中|当前正式安装版仍以下载区标注为准/);
-  assert.match(html, /id="task-groups"[^>]*data-release-state="published"/);
-  assert.match(html, /href="#task-groups"/);
+  assert.match(html, /id="task-groups"[^>]*data-release-state="historical"/);
+  assert.match(html, /id="legacy-task-groups"/);
+  assert.match(section, /v1\.0\.0\.20261105\.2/);
+  const nav = html.match(/<nav\b[^>]*class="wb-nav"[^>]*>([\s\S]*?)<\/nav>/)?.[1];
+  assert.doesNotMatch(nav, /href="#task-groups"/);
   assert.doesNotMatch(section, /<(?:input|button|video|img)\b/);
 });
 

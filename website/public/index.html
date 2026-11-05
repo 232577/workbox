@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="下载 WorkBox 工作箱 1.0.0 正式安装版，按任务组核对原消息、材料就绪与手动交接，导出项目和任务四张表；归档分类可配置，项目与文件留在本机。">
+  <meta name="description" content="下载 WorkBox 工作箱 1.0.0 正式安装版，沿用原项目状态与排序，用同批颜色和编号查找收件，支持一项目多批与全部交付表导出；项目与文件留在本机。">
   <meta name="theme-color" content="#102d40">
   <meta name="color-scheme" content="light dark">
   <script src="/theme.js?v=20261028-fluent"></script>
@@ -36,7 +36,7 @@
   </defs></svg>
   <header class="wb-header"><div class="wb-wrap wb-header-inner">
     <a class="wb-brand" href="#top" aria-label="WorkBox 工作箱首页"><img src="/favicon.svg?v=20261027-enhanced" width="38" height="38" alt=""><span>WorkBox <small>工作箱</small></span></a>
-    <nav class="wb-nav" aria-label="主要导航"><a href="#workflow">功能介绍</a><a href="#task-groups">任务组</a><a href="#settings">工作规则</a><a href="#faq">常见问题</a><a href="https://github.com/232577/workbox" class="wb-source">GitHub ↗</a></nav>
+    <nav class="wb-nav" aria-label="主要导航"><a href="#workflow">功能介绍</a><a href="#project-batches">项目批次</a><a href="#settings">工作规则</a><a href="#faq">常见问题</a><a href="https://github.com/232577/workbox" class="wb-source">GitHub ↗</a></nav>
     <div class="wb-theme-control" data-theme-control hidden><label for="site-theme">网站外观</label><select id="site-theme" data-theme-select aria-describedby="site-theme-note"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select><span id="site-theme-note" class="wb-sr-only">仅影响本站，与桌面软件的外观设置独立。</span></div>
     <a class="wb-nav-download" href="#download">免费下载 <svg class="wb-icon" aria-hidden="true"><use href="#i-download"/></svg></a>
   </div></header>
@@ -71,7 +71,7 @@
     </section>
     <div class="wb-hero-bottom wb-wrap"><span>原件保留 · 版本留档 · 数据在本机</span><a href="#actual-ui">看看实际工作台 <span aria-hidden="true">↓</span></a></div>
     <section id="actual-ui" class="wb-wrap wb-actual-ui" aria-labelledby="actual-ui-title">
-      <div class="wb-centered-heading"><p class="wb-kicker">原消息、材料和交接，一起核对</p><h2 id="actual-ui-title">这次任务，还差哪一步？</h2><p>固定任务号对应原消息，材料就绪和人工交接分开显示。以下浅深界面来自同一正式构建的匿名隔离示例。</p></div>
+      <div class="wb-centered-heading"><p class="wb-kicker">真实软件，保留构建来源</p><h2 id="actual-ui-title">看清项目，继续手上的工作。</h2><p>以下保留 v1.0.0.20261105.2 的浅深界面，来自同一程序的匿名隔离示例；旧版任务组流程仅作历史参考。</p></div>
       <figure class="wb-desktop-showcase" aria-label="WorkBox 项目与文档管理界面及流程说明">
         <div class="wb-preview-stage" data-desktop-stage>
         <div class="wb-scene wb-preview-fallback" aria-label="工作箱将项目消息、工作文件和 ZIP 整理到项目与归档中的流程图">
@@ -145,20 +145,20 @@
       <article><svg class="wb-feature-icon" aria-hidden="true"><use href="#i-folder"/></svg><h3>名字改对，材料不丢</h3><p>项目改名同步登记的工作目录。同名项目先预览，再明确确认合并，保留原资料与交付记录。</p><span class="wb-feature-caption">预览再确认 · 不自动合并</span></article>
     </div></div></section>
     <section id="daily-workbench" class="wb-section wb-wrap wb-faq" aria-labelledby="daily-workbench-title">
-      <div><p class="wb-kicker">常用入口，放在眼前</p><h2 id="daily-workbench-title">日常操作更集中，<br>低频工具仍找得到。</h2><p>侧栏常驻任务组、项目、今日工作量，底部集中到“高级设置”。项目、文件、交付、任务及配置的业务规则保持原有逻辑。</p><a class="wb-inline-link" href="#task-groups">查看任务组用法 <svg class="wb-icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></div>
+      <div><p class="wb-kicker">常用入口，放在眼前</p><h2 id="daily-workbench-title">日常操作更集中，<br>低频工具仍找得到。</h2><p>打开先看项目，沿用待开发、开发中、待交付、已交付四种状态，今日工作量单独查看。项目、文件与交付记录的业务规则保持原有逻辑，低频工具集中到“高级设置”。</p><a class="wb-inline-link" href="#project-batches">查看项目批次用法 <svg class="wb-icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></div>
       <div class="wb-faq-list">
         <details><summary>待核对和 ZIP 提醒，会不会被收起来？</summary><p>待核对数量大于零时，侧栏显示入口和数量；正在查看待核对页时也保留，清空后离开才收起。ZIP归档库通常从高级设置进入；有待核对合包或归档错误时，侧栏恢复入口和数量，正在查看 ZIP 页时也保留。ZIP 异常提醒不受项目搜索或筛选影响。高级设置中始终可以打开这两个页面。</p></details>
-        <details><summary>设置、检查和维护工具，在哪里打开？</summary><p>“高级设置”集中提供工作设置（含项目类型词典）、归档分类、ZIP归档库、待核对、收录记录、监视详情、历史消息补录、外观、使用指南和检查更新。材料检查仍在所选项目的操作菜单。顶部保留粘贴消息、收进文件；底部保留后台运行、退出，处理中可取消。</p></details>
-        <details><summary>任务组工具栏，保留了哪些动作？</summary><p>四个主要动作是新建任务组、添加消息、记录已交接、导出本组表格。其余操作从“更多”进入：复制本组未交、查看项目文件、新一轮、撤销交接、关联交付记录和核对本组消息仍对应当前任务组；撤回、重开、移动、改组名或颜色及跨组复制放在“高级任务操作”。历史消息补录和归档分类从全局高级设置进入。导出仍按所选组，交接仍需核对所选任务和确切关联版本。</p></details>
+        <details><summary>设置、检查和维护工具，在哪里打开？</summary><p>“高级设置”集中提供工作设置（含项目类型词典）、归档分类、ZIP归档库、待核对、收录记录、监视详情、外观、使用指南和检查更新。材料检查仍在所选项目的操作菜单。顶部保留粘贴消息、收进文件；底部保留后台运行、退出，处理中可取消。</p></details>
+        <details><summary>状态、收件和导出，怎样衔接？</summary><p>粘贴消息后回到项目列表查看本次项目，包括沿用的同名项目；已有项目保留原状态和目录。继续从项目操作确认交付，通过全部交付表核对完整记录，无需另外维护任务或手工交接步骤。</p></details>
       </div>
     </section>
-    <section id="task-groups" class="wb-section wb-wrap wb-faq" aria-labelledby="task-groups-title" data-release-state="published">
-      <div><p class="wb-kicker">从原消息到本次交接</p><h2 id="task-groups-title">按任务核对，<br>材料做好再交接。</h2><p>同一个项目可以有多轮任务。把原消息、材料版本和交接记录对应起来，逐项核对本次还欠什么。</p><a class="wb-inline-link" href="#download">下载正式安装版 <svg class="wb-icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></div>
+    <section id="project-batches" class="wb-section wb-wrap wb-faq" aria-labelledby="project-batches-title">
+      <div><p class="wb-kicker">同一批，认得出</p><h2 id="project-batches-title">项目照常排，<br>批次看色号。</h2><p>在原项目列表里查看同批颜色与编号，沿用待开发、开发中、待交付、已交付四种状态。收件关系更清楚，继续按熟悉的项目流程做事。</p><a class="wb-inline-link" href="#download">查看安装与校验 <svg class="wb-icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></div>
       <div class="wb-faq-list">
-        <details><summary>原消息和每一轮任务，怎么对应？</summary><p>任务组保留原消息、固定组号和固定任务号。组号包含最初收件日期和当日序号，任务号再加组内序号；排序或改名不改变编号。选中任务组后点击“添加消息”，把补充要求续入所选任务组；明确选择“新一轮任务”才另建本次任务。同名项目沿用原身份，上一轮已交接不会替新一轮完成。未交清单只在主动点击时复制，任务号不改变项目名、文件名或工作目录。</p></details>
-        <details><summary>材料做好之后，怎样记录已经发出？</summary><p>任务关联到明确有效的交付归档后，显示“材料就绪”。同一项目有多轮未交任务时，需要核对关联版本。实际发出后，选中任务并点击“记录已交接”；这个操作不会代你发送文件。交付记录撤销或恢复后，旧任务结果不会自动恢复，需重新关联有效版本并核对交接。</p></details>
-        <details><summary>怎样核对本组还欠哪些项目？</summary><p>按未交任务、全部任务或今日收件查看，可回看原消息和对应归档。Excel 保留“交付项目”“类型汇总”，增加“任务组汇总”“任务明细”；“导出本组表格”只列当前组的任务及相关有效交付项目。项目表按项目去重，明细保留每轮任务，任务数不计入首次交付项目数。材料就绪与手工交接分别统计，撤回任务和待核对消息单独显示。</p></details>
-        <details><summary>归档文件数怎样用于项目分类？</summary><p>按最近一次有效交付对应的单项目归档文件数分类，建议 4 个及以上归为“可运行”、0—3 个归为“生成材料”，门槛和目标类型可以配置。规则默认关闭；先预览已有归档，确认后应用，也可启用后续新交付的规则。未知数量保持原分类，撤销分类调整会跳过后续手工选择。文件数分类不代表已经验证软件可运行，也不改变交付有效性或个人工作量资格。</p></details>
+        <details><summary>同批标记，会改变项目顺序吗？</summary><p>保留原排序，一项目一行，不按颜色重排，也不增加分组标题。相同批次使用相同编号和颜色；编号可直接识别，颜色只作辅助。原建项批次、项目身份和工作目录保持。</p></details>
+        <details><summary>一个项目又收到新要求，怎样查看归属？</summary><p>一个项目可以属于多个批次，同名项目沿用原身份与当前状态。每行最多显示两个编号，更多归属显示“+N批”；通过提示查看完整批次。文件先建项、后来整批粘贴时，已有项目和同次新项目共享这次收件标记。</p></details>
+        <details><summary>怎样找到同一批项目？</summary><p>使用编号搜索或批次筛选，查看同一收件关系中的项目，也可结合原状态筛选。标记只帮助定位，不移动目录、不改项目状态；选择、右键、双击和批量项目操作沿用原入口。</p></details>
+        <details><summary>交付记录还能全部导出吗？</summary><p>保留全部交付表，交付项目按项目去重，补充与界面一致的收件批次编号。首次有效交付、补交、排除个人工作量及撤销的口径保持，原有交付历史和既有历史附表保留。</p></details>
       </div>
     </section>
     <section id="settings" class="wb-section wb-wrap wb-settings" aria-labelledby="settings-title">
@@ -191,6 +191,18 @@
         </div></details></div>
       <div class="wb-download-details"><h3>安装前，确认这几件事</h3><ul><li>安装包不包含已有项目，首次使用自动建立数据目录。</li><li>升级前备份 data 及另外设置的工作、归档目录。已有“检查更新”入口可检查并下载；遇到只退出未安装，请按上方恢复说明在原位置安装一次。</li><li>安装包未做商业代码签名，Windows 可能提示未知发布者。请核对来源与校验值，不确定时先不要运行。</li></ul><details class="wb-checksum-details"><summary>查看 SHA-256 校验值</summary><div class="wb-hash-content"><code id="checksum">b60fe41773d7781d79fb9ef06657240445f289837a461f30083fc8286f4af616</code><button id="copy-checksum" class="copy-button" type="button">复制校验值</button><p id="copy-status" class="copy-status" role="status" aria-live="polite"></p></div></details></div></div>
     </div></section>
+
+    <details id="legacy-task-groups" class="wb-section wb-wrap wb-release-history"><summary>查看11月5日 r2历史任务组说明</summary>
+    <section id="task-groups" class="wb-faq" aria-labelledby="task-groups-title" data-release-state="historical">
+      <div><p class="wb-kicker">历史版本使用说明</p><h2 id="task-groups-title">11月5日 r2<br>任务组流程。</h2><p>以下保留 v1.0.0.20261105.2 的任务组、材料版本与人工交接说明，供旧版本使用者回查。</p></div>
+      <div class="wb-faq-list">
+        <details><summary>原消息和每一轮任务，怎么对应？</summary><p>任务组保留原消息、固定组号和固定任务号。组号包含最初收件日期和当日序号，任务号再加组内序号；排序或改名不改变编号。选中任务组后点击“添加消息”，把补充要求续入所选任务组；明确选择“新一轮任务”才另建本次任务。同名项目沿用原身份，上一轮已交接不会替新一轮完成。未交清单只在主动点击时复制，任务号不改变项目名、文件名或工作目录。</p></details>
+        <details><summary>材料做好之后，怎样记录已经发出？</summary><p>任务关联到明确有效的交付归档后，显示“材料就绪”。同一项目有多轮未交任务时，需要核对关联版本。实际发出后，选中任务并点击“记录已交接”；这个操作不会代你发送文件。交付记录撤销或恢复后，旧任务结果不会自动恢复，需重新关联有效版本并核对交接。</p></details>
+        <details><summary>怎样核对本组还欠哪些项目？</summary><p>按未交任务、全部任务或今日收件查看，可回看原消息和对应归档。Excel 保留“交付项目”“类型汇总”，增加“任务组汇总”“任务明细”；“导出本组表格”只列当前组的任务及相关有效交付项目。项目表按项目去重，明细保留每轮任务，任务数不计入首次交付项目数。材料就绪与手工交接分别统计，撤回任务和待核对消息单独显示。</p></details>
+        <details><summary>归档文件数怎样用于项目分类？</summary><p>按最近一次有效交付对应的单项目归档文件数分类，建议 4 个及以上归为“可运行”、0—3 个归为“生成材料”，门槛和目标类型可以配置。规则默认关闭；先预览已有归档，确认后应用，也可启用后续新交付的规则。未知数量保持原分类，撤销分类调整会跳过后续手工选择。文件数分类不代表已经验证软件可运行，也不改变交付有效性或个人工作量资格。</p></details>
+      </div>
+    </section>
+    </details>
 
     <section id="faq" class="wb-section wb-wrap wb-faq" aria-labelledby="faq-title"><div><p class="wb-kicker">使用前了解</p><h2 id="faq-title">你可能还想知道。</h2><p>从收件到交付，<br>这些边界说清楚。</p><a class="wb-inline-link" href="https://github.com/232577/workbox/issues">反馈使用问题 ↗</a></div><div class="wb-faq-list">
       <details><summary>工作箱适合什么样的工作？</summary><p>适合在 Windows 上反复接收项目、整理文档或代码、打包交付的个人工作。它把项目、工作目录、文件版本和交付记录放在一起，方便继续修改与回查。</p></details>
