@@ -25,6 +25,8 @@ Cloudflare Worker 使用固定 GitHub Release 地址流式提供同域名下载�
 
 ## 本地检查
 
+本轮网站草稿补充日常工作台入口说明：任务组、项目、今日工作量常驻，低频工具集中到高级设置；待核对和 ZIP 异常按实际状态保留直接提醒。任务组保留四个主要动作及当前组的“更多”操作。正式发布前须绑定本轮准确安装包、源提交及同包截图；当前下载目录和历史媒体在核验前保持原事实。
+
 ```powershell
 node --test website/*.test.mjs
 npx wrangler@4.127.1 dev --config website/wrangler.jsonc
