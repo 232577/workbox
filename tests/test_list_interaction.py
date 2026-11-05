@@ -128,7 +128,7 @@ def test_focus_receipt_clears_hidden_filters_selects_first_and_scrolls(panel, qa
     qapp.processEvents()
     assert panel.tabs.currentIndex() == 0
     assert panel.current_project['id'] == 90
-    assert panel.batch_filter.currentData() == panel.service.get_project(90)['batch_id']
+    assert panel.batch_filter.currentData() is None
     assert not panel.bulk_mode.isChecked()
     item = panel.project_list.currentItem()
     assert panel.project_list.viewport().rect().intersects(panel.project_list.visualItemRect(item))
@@ -146,8 +146,8 @@ def test_focusing_archived_receipt_shows_it_without_restoring(panel):
 def test_focus_new_batch_not_present_in_previous_filter_options(panel):
     result = panel.service.db.create_capture('新收件', '刚刚收到', [('新甲系统', False), ('新乙系统', False)])
     assert panel.focus_projects(result['project_ids'])
-    assert panel.batch_filter.currentData() == result['batch_id']
-    assert panel.project_list.count() == 2
+    assert panel.batch_filter.currentData() is None
+    assert panel.current_project['id'] == result['project_ids'][0]
 
 
 def test_compact_panel_keeps_selected_row_fully_readable(panel, qapp):

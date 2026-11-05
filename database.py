@@ -1342,6 +1342,7 @@ class Database:
         batch_id: int | None = None, urgent_only: bool = False,
         *, archived: bool | None = False, due_filter: str | None = None,
         today: date | None = None, deleted: bool | None = False, type_id: int | None = None,
+        connection: sqlite3.Connection | None = None,
     ) -> list[dict]:
         clauses = ["NOT EXISTS (SELECT 1 FROM project_merges pm WHERE pm.source_id=p.id)"]
         parameters: list = []
@@ -1407,7 +1408,15 @@ class Database:
             LEFT JOIN project_type_links tl ON tl.project_id=p.id
             LEFT JOIN project_types pt ON pt.id=tl.type_id WHERE """
         sql += " AND ".join(clauses) + " ORDER BY p.urgent DESC, d.due_date IS NULL, d.due_date ASC, p.id DESC"
-        with self.connect() as connection:
+        supplied_connection = connection is not None
+        if supplied_connection:
+            if not isinstance(connection, sqlite3.Connection) or not connection.in_transaction:
+                raise ValueError('项目列表共用连接需要已开始的读取事务。')
+            main_path = next((row[2] for row in connection.execute('PRAGMA database_list')
+                              if row[1] == 'main'), '')
+            if not main_path or Path(main_path).resolve() != self.path:
+                raise ValueError('项目列表连接不是当前工作箱数据库。')
+        with (nullcontext(connection) if supplied_connection else self.connect()) as connection:
             return [dict(row) for row in connection.execute(sql, parameters)]
 
     def list_batches(self) -> list[dict]:

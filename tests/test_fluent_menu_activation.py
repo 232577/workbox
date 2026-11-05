@@ -67,7 +67,8 @@ def test_advanced_button_opens_native_menu_through_its_activation(qapp, tmp_path
             QTest.qWait(20)
         assert shown.count() == 1
         assert observed == [(True, True, ['工作设置…', '归档分类', '', 'ZIP 归档库', '待核对',
-                                        '收录记录', '监视详情', '历史消息补录', '', '外观', '使用指南', '检查更新'])]
+                                        '收录记录', '监视详情', '', '外观', '使用指南', '检查更新'])]
+        assert 'history' not in panel.advanced_actions
         theme_menu = next(action.menu() for action in menu.actions() if action.text() == '外观')
         assert theme_menu is panel.appearance_button.menu()
         assert [action.text() for action in theme_menu.actions()] == ['浅色', '深色', '跟随系统']
