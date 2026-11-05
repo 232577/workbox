@@ -76,7 +76,7 @@ def test_rearranged_search_keeps_scope_when_switching_pages(panel):
     expected = [panel.project_list.item(i).data(Qt.UserRole)
                 for i in range(panel.project_list.count())]
     assert 1 in expected and len(expected) < 12
-    panel.nav_zip.click()
+    panel.advanced_actions['zip'].trigger()
     assert panel.search.isVisible()
     panel.nav_projects.click()
     assert panel.search.text() == '工作台项目1'

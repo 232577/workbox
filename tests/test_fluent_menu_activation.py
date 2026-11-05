@@ -1,4 +1,4 @@
-"""通过按钮真实入口展开原生外观菜单，不直接调用 menu.popup。"""
+"""通过高级设置真实入口展开原生菜单，保留外观子菜单。"""
 import ctypes
 import sys
 
@@ -26,7 +26,7 @@ def qapp():
 
 @pytest.mark.parametrize('mode', ['light', 'dark', 'system'])
 @pytest.mark.parametrize('activation', ['mouse', 'space', 'click', 'accessible_show_menu'])
-def test_appearance_button_opens_native_menu_through_its_activation(qapp, tmp_path, mode, activation):
+def test_advanced_button_opens_native_menu_through_its_activation(qapp, tmp_path, mode, activation):
     service = DesktopService(tmp_path / 'data/workbox.db')
     before = service.get_setting('appearance_theme', 'light')
     install_theme(service)
@@ -34,7 +34,7 @@ def test_appearance_button_opens_native_menu_through_its_activation(qapp, tmp_pa
     panel = CompactPanel(service)
     panel.show()
     qapp.processEvents()
-    button = panel.appearance_button
+    button = panel.settings_button
     menu = button.menu()
     shown = QSignalSpy(menu.aboutToShow)
     observed = []
@@ -66,7 +66,11 @@ def test_appearance_button_opens_native_menu_through_its_activation(qapp, tmp_pa
                 break
             QTest.qWait(20)
         assert shown.count() == 1
-        assert observed == [(True, True, ['浅色', '深色', '跟随系统'])]
+        assert observed == [(True, True, ['工作设置…', '归档分类', '', 'ZIP 归档库', '待核对',
+                                        '收录记录', '监视详情', '历史消息补录', '', '外观', '使用指南', '检查更新'])]
+        theme_menu = next(action.menu() for action in menu.actions() if action.text() == '外观')
+        assert theme_menu is panel.appearance_button.menu()
+        assert [action.text() for action in theme_menu.actions()] == ['浅色', '深色', '跟随系统']
         assert service.get_setting('appearance_theme', 'light') == before
     finally:
         observer.stop()

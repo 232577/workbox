@@ -99,7 +99,7 @@ def test_panel_count_icon_is_complete_across_resize_and_theme(app, mode, height,
     count_icon = QIcon(pixmap)
     count_icon.addPixmap(pixmap, QIcon.Disabled)
     panel.today_button.setIcon(count_icon)
-    panel.nav_zip.setIcon(QIcon(pixmap))
+    panel.nav_projects.setIcon(QIcon(pixmap))
     try:
         for value in ('0', '17', '99+'):
             panel._today_compact_caption = value
@@ -111,7 +111,7 @@ def test_panel_count_icon_is_complete_across_resize_and_theme(app, mode, height,
             img = control.grab().toImage()
             img.save(str(tmp_path / f'{mode}-{height}-{value}.png'))
             left, top, right, bottom = icon_bounds(img)
-            normal = icon_bounds(panel.nav_zip.grab().toImage())
+            normal = icon_bounds(panel.nav_projects.grab().toImage())
             ratio = img.devicePixelRatio()
             assert (right - left + 1, bottom - top + 1) == (16 * ratio, 16 * ratio)
             assert abs((left + right - normal[0] - normal[2]) / 2) <= ratio
@@ -162,6 +162,8 @@ def test_all_sidebar_icons_share_horizontal_center(app, mode, width, height, tmp
     try:
         centers = []
         for control, caption in panel.nav_controls:
+            if control.isHidden():
+                continue
             image = control.grab().toImage()
             left, top, right, bottom = icon_bounds(image)
             ratio = image.devicePixelRatio()
@@ -185,7 +187,7 @@ def test_real_menu_navigation_keeps_label_arrow_and_native_contract(app, mode, h
     panel.resize(1200, height)
     panel.show()
     app.processEvents()
-    control = panel.appearance_button
+    control = panel.settings_button
     pixmap = QPixmap(16, 16)
     pixmap.fill(QColor('red'))
     control.setIcon(QIcon(pixmap))

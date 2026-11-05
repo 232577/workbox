@@ -81,20 +81,24 @@ def test_danger_button_keeps_semantic_color_with_local_fluent_styles(qapp):
     finally:w.close();w.deleteLater();set_theme('light',persist=False)
 
 
-def test_contextual_material_button_is_visible_and_safe(qapp,service,monkeypatch):
+def test_contextual_material_menu_is_reachable_and_safe(qapp,service,monkeypatch):
     from compact_ui import CompactPanel
     p=CompactPanel(service)
     try:
         p.show();QApplication.processEvents()
-        assert hasattr(p,'material_check_button'), 'material check is hidden behind context menu'
         p.project_list.setCurrentRow(0);p.select_project()
-        assert p.material_check_button.isVisible() and p.material_check_button.isEnabled()
+        assert p.material_check_button.isHidden()
+        assert p.project_actions_button.isVisible() and p.project_actions_button.isEnabled()
         calls=[]
         monkeypatch.setattr(p,'open_material_check',calls.append)
-        p.material_check_button.click()
+        menu=p.project_context_menu(1)
+        material=next(action for action in menu.actions() if action.text()=='材料检查…')
+        assert material.isEnabled()
+        material.trigger()
         assert calls==[1]
         p.set_busy(True)
-        assert not p.material_check_button.isEnabled()
+        menu=p.project_context_menu(1)
+        assert not next(action for action in menu.actions() if action.text()=='材料检查…').isEnabled()
     finally:
         p.document_pane.shutdown();p.hide();p.deleteLater()
 
@@ -137,7 +141,8 @@ def test_workbench_wide_to_compact_resize_keeps_native_minimum(qapp,service):
             for _ in range(6):QApplication.processEvents()
             assert (p.width(),p.height())==(width,height)
             assert p.document_pane.table.viewport().height()>=40
-            for control in (p.material_check_button,p.background_button,p.exit_button,p.document_pane.open_button):
+            assert p.material_check_button.isHidden()
+            for control in (p.project_actions_button,p.background_button,p.exit_button,p.document_pane.open_button):
                 assert p.rect().contains(control.mapTo(p,control.rect().bottomRight()))
                 assert control.isVisible()
     finally:

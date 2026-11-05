@@ -318,8 +318,14 @@ class CompactPanel(DropSurface, QWidget):
         self.today_button.setCheckable(True)
         self.today_button.setAccessibleName('今日工作量')
         self.today_button.clicked.connect(self.show_today_deliveries)
-        self.nav_controls = [(self.nav_task_groups, '任务组'), (self.nav_projects, '项目'), (self.today_button, '今日工作量'),
-                             (self.nav_zip, 'ZIP 归档'), (self.nav_review, '待核对')]
+        self.nav_controls = [(self.nav_task_groups, '任务组'), (self.nav_projects, '项目'),
+                             (self.today_button, '今日工作量'), (self.nav_zip, 'ZIP 归档'),
+                             (self.nav_review, '待核对')]
+        # 保留原页与按钮回调，ZIP 统一从高级设置进入。
+        self.nav_zip.setParent(self.navigation)
+        self.nav_zip.setToolTip('ZIP 归档')
+        self.nav_zip.setAccessibleName('ZIP 归档')
+        self.nav_zip.hide()
         for control, caption in self.nav_controls:
             control.setProperty('softSelection', True)
             control.setMinimumWidth(0)
@@ -363,8 +369,8 @@ class CompactPanel(DropSurface, QWidget):
         self.files_button = button('收进文件', True)
         self.files_button.setIcon(FluentIcon.ADD)
         self.root_button = button('归档目录')
-        self.settings_button = button('设置', 'nav')
-        self.settings_button.setAccessibleName('设置')
+        self.settings_button = button('高级设置', 'nav-menu')
+        self.settings_button.setAccessibleName('高级设置')
         self.settings_button.setCheckable(False)
         self.settings_button.setIcon(FluentIcon.SETTING)
         self.appearance_button = button('外观', 'nav-menu')
@@ -388,9 +394,11 @@ class CompactPanel(DropSurface, QWidget):
         self.sync_theme_menu()
         top.addWidget(self.paste_button)
         top.addWidget(self.files_button)
-        self.nav_controls.extend([(self.settings_button, '设置'), (self.appearance_button, '外观')])
+        self.nav_controls.append((self.settings_button, '高级设置'))
         self.appearance_button.setIcon(FluentIcon.PALETTE)
-        for control, caption in self.nav_controls[-2:]:
+        self.appearance_button.setParent(self.navigation)
+        self.appearance_button.hide()
+        for control, caption in self.nav_controls[-1:]:
             control.setToolTip(caption)
             control.setMinimumWidth(0)
             nav.addWidget(control)
@@ -515,6 +523,7 @@ class CompactPanel(DropSurface, QWidget):
         project_heading = QHBoxLayout()
         project_heading.addWidget(self.project_list_heading, 1)
         project_heading.addWidget(self.intake_log_button)
+        self.intake_log_button.hide()
         project_layout.addLayout(project_heading)
         self.empty.setWordWrap(True)
         project_layout.addWidget(self.empty)
@@ -547,6 +556,7 @@ class CompactPanel(DropSurface, QWidget):
         project_actions = self.project_actions_layout = QHBoxLayout()
         project_actions.setSpacing(6)
         project_actions.addWidget(self.material_check_button)
+        self.material_check_button.hide()
         project_actions.addWidget(self.change_type_button)
         project_actions.addStretch()
         project_actions.addWidget(self.project_actions_button)
@@ -660,6 +670,8 @@ class CompactPanel(DropSurface, QWidget):
         self.help_button.setToolTip('查看当前模式、保存位置和操作方法，不改变设置。')
         self.help_button.clicked.connect(self.show_quick_start)
         footer.addWidget(self.help_button)
+        self.update_button.hide()
+        self.help_button.hide()
         self.cancel_button = button('取消处理')
         self.cancel_button.hide()
         self.exit_button = button('退出')
@@ -675,8 +687,7 @@ class CompactPanel(DropSurface, QWidget):
         self.paste_button.clicked.connect(self.paste_requested)
         self.files_button.clicked.connect(self.files_requested)
         self.root_button.clicked.connect(lambda: self.folder_requested.emit(service.workspaces.settings()['archive_root']))
-        self.settings_button.clicked.connect(self.edit_directories)
-        self.scan_button.clicked.connect(self.scan_requested)
+        self.scan_button.clicked.connect(lambda: self.scan_requested.emit() if not self.business_page_busy() else None)
         self.sources_button.clicked.connect(self.show_sources)
         self.approve_button.clicked.connect(self.approve_package)
         self.recognize_button.clicked.connect(self.recognize_package)
@@ -728,7 +739,69 @@ class CompactPanel(DropSurface, QWidget):
                 self.tabs.setCurrentWidget(self.task_groups_page)
         else:
             self.nav_task_groups.hide()
+        self.build_advanced_menu(theme_menu)
         self.sync_navigation()
+
+    def build_advanced_menu(self, theme_menu):
+        self.advanced_menu = QMenu(self.settings_button)
+        self.advanced_actions = {}
+
+        def add(key, caption, callback):
+            action = self.advanced_menu.addAction(caption)
+            action.triggered.connect(lambda _checked=False: callback())
+            self.advanced_actions[key] = action
+
+        add('settings', '工作设置…', lambda: self.edit_directories() if not self.business_page_busy() else None)
+        add('classification', '归档分类', lambda: self.classification_requested.emit() if not self.business_page_busy() else None)
+        self.advanced_menu.addSeparator()
+        add('zip', 'ZIP 归档库', self.nav_zip.click)
+        add('review', '待核对', self.nav_review.click)
+        add('intake_log', '收录记录', self.intake_log_button.click)
+        add('sources', '监视详情', self.sources_button.click)
+        add('history', '历史消息补录', self.import_task_group_history)
+        self.advanced_menu.addSeparator()
+        theme_menu.setTitle('外观')
+        self.advanced_menu.addMenu(theme_menu)
+        add('help', '使用指南', self.help_button.click)
+        add('update', '检查更新', self.update_button.click)
+        self.settings_button.setMenu(self.advanced_menu)
+        self.advanced_menu.aboutToShow.connect(self.sync_advanced_actions)
+        self.sync_advanced_actions()
+
+    def business_page_busy(self):
+        # 任务组、分类和交付页会自行运行任务，不一定设置面板的 busy。
+        return self.busy or any(
+            getattr(page, 'worker', None) is not None or getattr(page, '_shutting_down', False)
+            for name in ('task_groups_page', 'archive_classification_page', 'today_dialog')
+            if (page := getattr(self, name, None)) is not None)
+
+    def sync_advanced_actions(self):
+        # refresh/update_actions 在构造菜单前已会执行。
+        actions = getattr(self, 'advanced_actions', {})
+        busy = self.business_page_busy()
+        for name in ('task_groups_page', 'archive_classification_page', 'today_dialog'):
+            worker = getattr(getattr(self, name, None), 'worker', None)
+            if hasattr(worker, 'finished') and not worker.property('workboxCompactBusyObserved'):
+                worker.setProperty('workboxCompactBusyObserved', True)
+                worker.finished.connect(self.business_worker_finished)
+                if worker.isFinished():
+                    self.business_worker_finished()
+        self.scan_button.setEnabled(not busy)
+        for key in ('settings', 'classification', 'history'):
+            if key in actions:
+                available = (key != 'history' or getattr(self, 'task_groups_page', None) is not None)
+                if key == 'classification':
+                    available = hasattr(self.service, 'archive_classification')
+                actions[key].setEnabled(not busy and available)
+        for key, control in (('zip', self.nav_zip), ('review', self.nav_review),
+                             ('intake_log', self.intake_log_button), ('sources', self.sources_button),
+                             ('help', self.help_button), ('update', self.update_button)):
+            if key in actions:
+                actions[key].setEnabled(control.isEnabled())
+
+    def business_worker_finished(self):
+        # 页面先消费结果并清空 worker，再恢复全局动作；只读导出不发业务 changed。
+        QTimer.singleShot(0, self, self.update_actions)
 
     def show_task_groups(self, group_id=None, task_id=None):
         if self.task_groups_page is not None:
@@ -739,7 +812,16 @@ class CompactPanel(DropSurface, QWidget):
             return True
         return False
 
+    def import_task_group_history(self):
+        page = getattr(self, 'task_groups_page', None)
+        if page is None or self.business_page_busy():
+            return
+        self.show_task_groups()
+        page.import_history()
+
     def show_archive_classification(self):
+        if self.business_page_busy():
+            return
         page = getattr(self, 'archive_classification_page', None)
         if page is None:
             from archive_classification_ui import ArchiveClassificationPane
@@ -772,6 +854,9 @@ class CompactPanel(DropSurface, QWidget):
         for position, control in enumerate((self.nav_projects, self.nav_zip, self.nav_review, self.today_button)):
             control.setChecked(not is_groups and not is_classification and position == index)
         self.nav_task_groups.setChecked(is_groups or is_classification)
+        receipts = getattr(self, 'receipt_list', None)
+        self.nav_review.setVisible((receipts is not None and receipts.count() > 0) or index == 2)
+        self.sync_zip_navigation()
         self.search.setVisible(index != 3 and not is_groups and not is_classification)
         self.summary.setVisible(index != 3 and not is_groups and not is_classification and self.height() >= 560 and self.width() >= 820)
 
@@ -827,7 +912,12 @@ class CompactPanel(DropSurface, QWidget):
             self.empty.setVisible(not rows)
             self.empty.setText('没有匹配的项目，可调整日期、归档或状态筛选。' if self.service.db.counts()['projects'] else '还没有项目。把消息拖到悬浮球，或点击「粘贴消息」。')
             zips = self.service.list_zips(self.search.text(), self.unmatched.isChecked())
-            versions = {v['zip_id']: v for v in self.service.snapshots.list_versions()}
+            try:
+                snapshot_versions = self.service.snapshots.list_versions()
+            except (OSError, RuntimeError, sqlite3.Error) as error:
+                self.zip_attention_failed(error)
+                return
+            versions = {v['zip_id']: v for v in snapshot_versions}
             ordinal, totals = {}, {}
             for version in sorted(versions.values(), key=lambda v: v['zip_id']):
                 key = version['project_id']
@@ -840,7 +930,7 @@ class CompactPanel(DropSurface, QWidget):
                 if version:
                     details = self.zip_count_details(version)
                     item.setToolTip('来源：' + version['source_path'] + '\n归档：' + version['path'] + ('\n合包核对：' + version['bundle_reason'] if version.get('bundle_reason') else '') + ('\n' + details if details else ''))
-            self.refresh_archive_status()
+            self.refresh_archive_status(versions=snapshot_versions)
             receipts = self.service.pending_receipts()
             populate(self.receipt_list, receipts, lambda r: r['raw_text'][:70].replace('\n', ' ') + '\n' + r['reason'])
             self.tabs.setTabText(2, f'待核对 {len(receipts)}' if receipts else '待核对')
@@ -848,6 +938,8 @@ class CompactPanel(DropSurface, QWidget):
             counts = self.service.db.counts()
             self.project_list_heading.setText(f'项目清单 · {len(rows)}')
             self._review_caption = f'待核对 {len(receipts)}' if receipts else '待核对'
+            self._review_count = len(receipts)
+            self.nav_review.setVisible(bool(receipts) or self.tabs.currentIndex() == 2)
             self.resize_navigation()
             self.summary.setText(f"共 {counts['projects']} 个项目 · 当前 {len(rows)} 项 · {counts['zips']} 个交付包")
             if deleted_view:
@@ -856,9 +948,42 @@ class CompactPanel(DropSurface, QWidget):
             self.refreshing = False
         self.select_project()
 
-    def refresh_archive_status(self):
-        sources = self.service.snapshots.list_sources()
+    def sync_zip_navigation(self):
+        review_count = getattr(self, '_zip_review_count', 0)
+        error_count = getattr(self, '_zip_error_count', 0)
+        unreadable = getattr(self, '_zip_attention_unreadable', False)
+        details = []
+        if review_count:
+            details.append(f'待核对包 {review_count}')
+        if error_count:
+            details.append(f'归档异常 {error_count}')
+        if unreadable:
+            details.append('状态不可读')
+        self._zip_caption = ' · '.join(details) if details else 'ZIP 归档'
+        self.nav_zip.setToolTip('ZIP 归档 · ' + ' · '.join(details) if details else 'ZIP 归档')
+        self.nav_zip.setAccessibleDescription(self.nav_zip.toolTip())
+        self.nav_zip.setVisible(bool(details) or self.tabs.currentIndex() == 1)
+        self.resize_navigation()
+
+    def zip_attention_failed(self, error):
+        # 不将读取失败当作异常已清空；保留上次计数并提供可见入口。
+        self._zip_attention_unreadable = True
+        self.sync_zip_navigation()
+        self.show_notice('ZIP 归档状态读取失败：' + str(error))
+
+    def refresh_archive_status(self, *, versions=None):
+        try:
+            if versions is None:
+                versions = self.service.snapshots.list_versions()
+            sources = self.service.snapshots.list_sources()
+        except (OSError, RuntimeError, sqlite3.Error) as error:
+            self.zip_attention_failed(error)
+            return
         errors = sum(s.get('state') == 'error' for s in sources)
+        self._zip_review_count = sum(v.get('bundle_state') == 'needs-review' for v in versions)
+        self._zip_error_count = errors
+        self._zip_attention_unreadable = False
+        self.sync_zip_navigation()
         pending_count = sum(s.get('state') == 'pending' for s in sources)
         settings = self.service.workspaces.settings()
         delay = settings['stable_seconds']
@@ -985,8 +1110,7 @@ class CompactPanel(DropSurface, QWidget):
             except KeyError:
                 type_editable = False
         self.change_type_button.setEnabled(type_editable)
-        self.settings_button.setEnabled(not self.busy)
-        self.scan_button.setEnabled(not self.busy)
+        self.sync_advanced_actions()
         zid = selected(self.zip_list)
         bundle = self.service.db.get_zip_bundle(zid) if zid is not None else None
         self.approve_button.setEnabled(not self.busy and zid is not None and self.service.snapshots.is_snapshot(zid) and not (bundle and bundle['state'] == 'needs-review'))
@@ -1445,6 +1569,8 @@ class CompactPanel(DropSurface, QWidget):
                 self.bundle_requested.emit(zid, batch.currentData())
 
     def edit_directories(self):
+        if self.business_page_busy():
+            return
         open_classification = False
         with transient_dialog(DirectorySettingsDialog(self.service, self)) as dialog:
             if dialog.exec() == QDialog.Accepted:
@@ -1523,6 +1649,9 @@ class CompactPanel(DropSurface, QWidget):
         narrow = self.width() < 900
         caption = getattr(self, '_today_caption', '今日工作量 0')
         control_width = max(152, self.today_button.fontMetrics().horizontalAdvance(caption) + 52)
+        if not self.nav_zip.isHidden():
+            control_width = max(control_width, self.nav_zip.fontMetrics().horizontalAdvance(
+                getattr(self, '_zip_caption', 'ZIP 归档')) + 52)
         self.navigation.setFixedWidth(72 if narrow else control_width + 24)
         self.navigation.layout().setContentsMargins(8 if narrow else 12, 14, 8 if narrow else 12, 14)
         self.brand_label.setVisible(not narrow)
@@ -1533,10 +1662,18 @@ class CompactPanel(DropSurface, QWidget):
             text = getattr(self, '_today_caption', caption) if control is self.today_button else caption
             if control is self.nav_review:
                 text = getattr(self, '_review_caption', caption)
+            elif control is self.nav_zip:
+                text = getattr(self, '_zip_caption', caption)
             if narrow:
                 text = ''
             if control is self.today_button:
                 control.setCompactCount(getattr(self, '_today_compact_caption', '0') if narrow else None)
+            elif control is self.nav_review:
+                count = getattr(self, '_review_count', 0)
+                control.setCompactCount(('99+' if count > 99 else str(count)) if narrow and count else None)
+            elif control is self.nav_zip:
+                count = getattr(self, '_zip_review_count', 0) + getattr(self, '_zip_error_count', 0)
+                control.setCompactCount(('99+' if count > 99 else str(count)) if narrow and count else None)
             control.setText(text)
             control.setFixedWidth(56 if narrow else control_width)
             control.style().unpolish(control)
