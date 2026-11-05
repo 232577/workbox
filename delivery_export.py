@@ -18,6 +18,7 @@ from archive_facts import delivery_archive_facts
 from database import DELIVERY_TIMEZONE
 from native_files import cancelled, identity, path_is_within, plain_path
 from task_groups import read_task_snapshot
+from project_batches import read_project_batch_index
 
 
 PROJECT_COLUMNS = (
@@ -28,6 +29,7 @@ PROJECT_COLUMNS = (
     ('batch_name', '批次', 28), ('archive_path', '归档位置', 58),
     ('visibility', '项目可见性', 18), ('project_id', '项目编号', 14),
     ('counted', '首交计数', 18), ('archive_reason', '归档数量说明', 48),
+    ('intake_batch_codes', '收件批次编号', 36),
 )
 SUMMARY_COLUMNS = (
     ('type_name', '当前类型', 28), ('project_count', '交付项目数（去重）', 25),
@@ -66,6 +68,7 @@ def collect_delivery_report(db, *, cancel_event=None, progress=None, group_id=No
         history = db.delivery_history(connection=connection)
         facts = delivery_archive_facts(connection, history['events'])
         current = {row['id']: dict(row) for row in connection.execute('SELECT id,name,status FROM projects')}
+        batch_index = read_project_batch_index(connection)
         task_groups_snapshot = read_task_snapshot(connection, open_only=False)
         if group_id is not None:
             task_groups_snapshot = [g for g in task_groups_snapshot if g['id'] == group_id]
@@ -96,6 +99,7 @@ def collect_delivery_report(db, *, cancel_event=None, progress=None, group_id=No
                 valid_delivery_count=0, included_in_workload=event['included_in_workload'], counted=False,
                 prior_delivery=event['prior_delivery'], status=current[pid]['status'],
                 batch_name=event['batch_name'], archive_path=event['archive_path'],
+                intake_batch_codes='；'.join(marker['code'] for marker in batch_index['by_project'].get(pid, [])),
                 project_archived=event['project_archived'], project_deleted=event['project_deleted'],
                 visibility='已删除' if event['project_deleted'] else '已归档' if event['project_archived'] else '日常项目',
             )
@@ -122,6 +126,7 @@ def collect_delivery_report(db, *, cancel_event=None, progress=None, group_id=No
                 task_groups_snapshot=task_groups_snapshot, task_group_rows=task_group_rows, task_rows=task_rows,
                 task_count=len(task_rows), handed_task_count=sum(row['counts']['handed'] for row in task_groups_snapshot),
                 group_id=group_id, group_code=task_groups_snapshot[0]['code'] if group_id is not None else None,
+                batch_warnings=batch_index['warnings'],
                 protected_roots=protected_roots, protected_files=protected_files)
 
 
@@ -310,7 +315,15 @@ def export_delivered_projects(db, destination, *, cancel_event=None, progress=No
     book.remove(book.active)
     temporary = None
     try:
-        _sheet(book, '交付项目', PROJECT_COLUMNS, report['projects'], cancel_event=cancel_event)
+        project_sheet = _sheet(book, '交付项目', PROJECT_COLUMNS, report['projects'], cancel_event=cancel_event)
+        batch_note = ('与项目列表的收件批次编号一致，同一项目可有多个编号。'
+                      '原“批次”列保留建项批次，编号不改变项目目录或状态。')
+        if report['batch_warnings']:
+            warnings = report['batch_warnings']
+            batch_note += '\n部分批次来源需核对：\n' + '\n'.join(warnings[:20])
+            if len(warnings) > 20:
+                batch_note += f'\n另有 {len(warnings) - 20} 条来源提示，请在项目工作台查看。'
+        project_sheet.cell(1, len(PROJECT_COLUMNS)).comment = Comment(batch_note, 'WorkBox')
         summary = _sheet(book, '类型汇总', SUMMARY_COLUMNS, report['type_counts'], cancel_event=cancel_event)
         # 汇总总计在筛选范围之外，避免被当成一个项目类型或随筛选隐藏。
         total_row = summary.max_row + 2

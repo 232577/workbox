@@ -41,6 +41,8 @@ def classify_text(raw: str) -> tuple[list[ParsedProject], str]:
     """Only unambiguous title lists enter the project list without a review form."""
     if not isinstance(raw, str) or not raw.strip() or len(raw) > MAX_MESSAGE_LENGTH:
         raise ValueError('请拖入非空项目消息，单条最多 200,000 字符。')
+    if re.search(r'(?<![A-Za-z0-9])G\d{8}-\d{3,}(?:-\d{2,})?(?!\d)', raw, re.IGNORECASE):
+        return [], '消息含已有任务编号，请核对项目名称；不会将编号作为新项目名。'
     cleaned = re.sub(r'[,，]\s*加急\s*$', '（加急）', raw, flags=re.MULTILINE)
     try:
         candidates = parse_message(cleaned)
@@ -130,6 +132,50 @@ class DesktopService(WorkBox):
             if project['id'] in merged_ids:
                 project['merged_project_ids'] = merged_ids[project['id']]
         return projects
+
+    def project_workbench_snapshot(self, query='', status=None, batch_key=None, urgent_only=False,
+                                   *, archived=False, due_filter=None, today=None, deleted=False,
+                                   type_id=None):
+        """项目、批次和别名取自同一读取事务，沿用项目列表原排序与筛选。"""
+        from project_batches import read_project_batch_index
+        if not isinstance(query, str) or len(query) > 1000:
+            raise ValueError('搜索文字过长。')
+        if batch_key is not None and not isinstance(batch_key, str):
+            raise ValueError('批次筛选编号无效。')
+        filters = dict(status=status, urgent_only=urgent_only, archived=archived,
+                       due_filter=due_filter, today=today, deleted=deleted, type_id=type_id)
+        with self.db.connect() as connection:
+            connection.execute('BEGIN')
+            projects = self.db.list_projects(connection=connection, **filters)
+            index = read_project_batch_index(connection)
+            aliases, merged_ids = {}, {}
+            for row in connection.execute('''SELECT DISTINCT c.canonical_id AS project_id,a.name AS alias_name
+                    FROM project_name_aliases a JOIN project_canonical c ON c.project_id=a.project_id
+                    ORDER BY project_id,alias_name'''):
+                aliases.setdefault(row['project_id'], []).append(row['alias_name'])
+            for row in connection.execute('SELECT project_id,canonical_id FROM project_canonical WHERE project_id!=canonical_id ORDER BY project_id'):
+                merged_ids.setdefault(row['canonical_id'], []).append(row['project_id'])
+            # 继续交由原SQL搜索名称、原目录批次、备注以及所有ZIP文件名。
+            query = query.strip()
+            matching_ids = ({row['id'] for row in self.db.list_projects(query=query, connection=connection, **filters)}
+                            if query else None)
+            result = []
+            for project in projects:
+                pid = project['id']
+                markers = index['by_project'].get(pid, [])
+                if batch_key is not None and not any(m['key'] == batch_key for m in markers):
+                    continue
+                if matching_ids is not None and pid not in matching_ids and not any(
+                        query.casefold() in str(m[field]).casefold()
+                        for m in markers for field in ('key', 'code', 'label')):
+                    continue
+                project['batch_markers'] = markers
+                if pid in aliases:
+                    project['name_aliases'] = aliases[pid]
+                if pid in merged_ids:
+                    project['merged_project_ids'] = merged_ids[pid]
+                result.append(project)
+        return dict(projects=result, batch_options=index['options'], warnings=index['warnings'])
 
     @staticmethod
     def _receipt(row, *, duplicate=False):
