@@ -6,7 +6,7 @@ import types
 
 import pytest
 from PySide6.QtTest import QSignalSpy
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
 from desktop_service import DesktopService
 from delivery_ui import TodayDeliveryDialog
@@ -35,7 +35,6 @@ def wait(page):
 
 
 def test_cancel_does_not_start_worker(page, monkeypatch):
-    from delivery_ui import QFileDialog, QMessageBox
     monkeypatch.setattr(QFileDialog, 'getSaveFileName', lambda *a, **k: ('', ''))
     assert '全部有效交付项目' in page.export_button.accessibleName()
     page.export_button.click()
@@ -44,7 +43,6 @@ def test_cancel_does_not_start_worker(page, monkeypatch):
 
 
 def test_export_ignores_filters_and_reports_success_without_mutation(page, tmp_path, monkeypatch):
-    from delivery_ui import QFileDialog, QMessageBox
     target = tmp_path / 'table.xlsx'
     target.write_bytes(b'old')
     old = identity(target.stat())
@@ -68,7 +66,6 @@ def test_export_ignores_filters_and_reports_success_without_mutation(page, tmp_p
 
 def test_export_error_and_cancelled_worker_are_safe(page, tmp_path, monkeypatch):
     from concurrent.futures import CancelledError
-    from delivery_ui import QFileDialog
     monkeypatch.setattr(QFileDialog, 'getSaveFileName', lambda *a, **k: (str(tmp_path / 'out.xlsx'), ''))
     def fail(*a, **k):
         raise ValueError('隔离错误')
@@ -85,7 +82,6 @@ def test_export_error_and_cancelled_worker_are_safe(page, tmp_path, monkeypatch)
 
 
 def test_existing_file_rejected_without_starting_worker(page, tmp_path, monkeypatch):
-    from delivery_ui import QFileDialog, QMessageBox
     target = tmp_path / 'existing.xlsx'
     target.write_bytes(b'original')
     monkeypatch.setattr(QFileDialog, 'getSaveFileName', lambda *a, **k: (str(target), ''))
@@ -95,7 +91,6 @@ def test_existing_file_rejected_without_starting_worker(page, tmp_path, monkeypa
 
 
 def test_busy_cannot_start_twice_and_shutdown_waits(page, tmp_path, monkeypatch):
-    from delivery_ui import QFileDialog
     entered, release = threading.Event(), threading.Event()
     calls = []
     def export(db, path, **kwargs):
@@ -115,14 +110,14 @@ def test_busy_cannot_start_twice_and_shutdown_waits(page, tmp_path, monkeypatch)
     assert page.worker is None and '已导出' in page.status_note.text()
 
 
-def test_export_button_moves_with_controls_and_keeps_natural_width(page):
-    for width, height, expected in ((1000, 700, 'date'), (680, 460, 'search'), (1000, 700, 'date')):
+def test_export_button_stays_on_search_row_and_keeps_natural_width(page):
+    for width, height in ((1000, 700), (680, 460), (1000, 700)):
         page.resize(width, height)
         page._sync_embedded_layout()
         QApplication.processEvents()
-        target = page.date_controls if expected == 'date' else page.search_controls
-        other = page.search_controls if expected == 'date' else page.date_controls
-        assert target.indexOf(page.export_button) >= 0
-        assert other.indexOf(page.export_button) == -1
+        assert page.export_button.isVisible()
+        assert abs(page.date_edit.geometry().center().y() - page.search.geometry().center().y()) <= 1
+        assert abs(page.search.geometry().center().y() - page.export_button.geometry().center().y()) <= 1
+        assert page.search.geometry().right() < page.export_button.geometry().left()
         assert page.export_button.width() >= page.export_button.minimumSizeHint().width()
         assert page.export_button.width() < width // 2

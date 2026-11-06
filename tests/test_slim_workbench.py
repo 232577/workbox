@@ -309,15 +309,15 @@ def test_all_delivery_export_completion_restores_scan_without_reopening_menu(pan
             QTest.qWait(10)
         assert started.is_set() and page.worker is not None
         panel.advanced_menu.aboutToShow.emit()
-        assert not panel.scan_button.isEnabled()
+        assert not panel.scan_action.isEnabled()
         action(panel, 'ZIP 归档库').trigger()
         release.set()
         for _ in range(200):
             QTest.qWait(10)
-            if page.worker is None and panel.scan_button.isEnabled():
+            if page.worker is None and panel.scan_action.isEnabled():
                 break
         assert page.worker is None and not panel.business_page_busy()
-        assert panel.scan_button.isEnabled()
+        assert panel.scan_action.isEnabled()
         assert panel.tabs.currentIndex() == 1
         assert '已导出 0 个项目' in page.status_note.text()
         with panel.service.db.connect() as connection:
@@ -344,7 +344,7 @@ def test_advanced_mutations_recheck_independent_page_worker(panel, monkeypatch, 
     page.worker = object()
     try:
         assert not panel.busy
-        panel.scan_button.click()
+        panel.scan_action.trigger()
         for caption in ('工作设置…', '归档分类'):
             action(panel, caption).trigger()
         assert calls == [] and classification.count() == 0 and scans.count() == 0
@@ -352,10 +352,10 @@ def test_advanced_mutations_recheck_independent_page_worker(panel, monkeypatch, 
         panel.advanced_menu.aboutToShow.emit()
         assert not action(panel, '工作设置…').isEnabled()
         assert not action(panel, '归档分类').isEnabled()
-        assert not panel.scan_button.isEnabled()
+        assert not panel.scan_action.isEnabled()
         assert action(panel, '使用指南').isEnabled()
         assert action(panel, '外观').menu().isEnabled()
     finally:
         page.worker = previous
     panel.advanced_menu.aboutToShow.emit()
-    assert action(panel, '工作设置…').isEnabled() and panel.scan_button.isEnabled()
+    assert action(panel, '工作设置…').isEnabled() and panel.scan_action.isEnabled()

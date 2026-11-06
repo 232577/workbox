@@ -6,12 +6,13 @@ import pytest
 from PySide6.QtCore import Qt, QItemSelectionModel, QPointF
 from PySide6.QtGui import QTextLayout, QTextOption
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QTextEdit, QStyle, QStyleOptionViewItem, QAbstractItemView
+from PySide6.QtWidgets import QApplication, QDialogButtonBox, QTextEdit, QStyle, QStyleOptionViewItem, QAbstractItemView
 
 import database
 import delivery_ui
 from desktop_service import DesktopService
 from theme import install_theme, set_theme
+from test_delivery_cleanup_ui import answer_correction
 
 
 @pytest.fixture(scope='module')
@@ -93,7 +94,7 @@ def test_total_accessibility_tracks_actual_count_and_read_failure(dialog, monkey
 
 
 def test_type_change_counts_current_type_without_recounting_delivery(dialog, monkeypatch):
-    assert hasattr(dialog, 'change_type_button')
+    assert hasattr(dialog, 'change_type_action')
     kind = dialog.service.create_project_type('独立业务')
     before = facts(dialog.service)
     file = next(dialog.service.db.path.parent.parent.rglob('说明.txt'))
@@ -107,7 +108,7 @@ def test_type_change_counts_current_type_without_recounting_delivery(dialog, mon
     changed, completed = [], []
     dialog.statistics_changed.connect(lambda: changed.append(True))
     dialog.operation_completed.connect(completed.append)
-    dialog.change_type_button.click()
+    dialog.change_type_action.trigger()
     finish(dialog)
     assert {row['id'] for row in received[0]} == {1, 2}
     assert all('workspace' in row and 'zips' in row for row in received[0])
@@ -120,23 +121,23 @@ def test_type_change_counts_current_type_without_recounting_delivery(dialog, mon
     assert '合计 2 个项目' in dialog.type_total.text()
     assert len(changed) == len(completed) == 1
     assert facts(dialog.service) == before and file.read_bytes() == source
-    dialog.change_type_button.click()
+    dialog.change_type_action.trigger()
     finish(dialog)
     assert facts(dialog.service) == before
     assert dialog.service.db.delivery_history(date(2026, 10, 29))['project_count'] == 2
 
 
 def test_cancel_no_selection_and_failure_preserve_selection_and_note(dialog, monkeypatch):
-    assert hasattr(dialog, 'change_type_button')
+    assert hasattr(dialog, 'change_type_action')
     calls = []
     monkeypatch.setattr(delivery_ui, 'choose_project_type', lambda *args: calls.append(args) or (False, None))
-    assert not dialog.change_type_button.isEnabled()
+    assert not dialog.change_type_action.isEnabled()
     dialog.manage_project_types()
     assert not calls
     select(dialog, 1)
-    dialog.reason.setText('保留说明')
+    answer_correction(dialog.void_action, QDialogButtonBox.Cancel, draft='保留说明')
     before = facts(dialog.service)
-    dialog.change_type_button.click()
+    dialog.change_type_action.trigger()
     assert len(calls) == 1 and facts(dialog.service) == before
     assert dialog._selected_projects()[0]['project_id'] == 1
     kind = dialog.service.create_project_type('失败隔离类型')
@@ -144,17 +145,17 @@ def test_cancel_no_selection_and_failure_preserve_selection_and_note(dialog, mon
     def fail(*args):
         raise OSError('隔离写入失败')
     monkeypatch.setattr(dialog.service, 'set_project_types', fail)
-    dialog.change_type_button.click()
+    dialog.change_type_action.trigger()
     finish(dialog)
     assert '隔离写入失败' in dialog.status_note.text()
-    assert dialog.reason.text() == '保留说明'
+    assert answer_correction(dialog.void_action, QDialogButtonBox.Cancel) == '保留说明'
     assert dialog._selected_projects()[0]['project_id'] == 1
-    assert dialog.change_type_button.isEnabled() and facts(dialog.service) == before
+    assert dialog.change_type_action.isEnabled() and facts(dialog.service) == before
 
 
 @pytest.mark.parametrize('protected', ['archived', 'deleted'])
 def test_mixed_selection_with_protected_project_cannot_change(dialog, monkeypatch, protected):
-    assert hasattr(dialog, 'change_type_button')
+    assert hasattr(dialog, 'change_type_action')
     with dialog.service.db.connect() as connection:
         if protected == 'archived':
             connection.execute("INSERT INTO project_details(project_id,archived_at) VALUES(1,'2026-10-29') ON CONFLICT(project_id) DO UPDATE SET archived_at='2026-10-29'")
@@ -164,11 +165,11 @@ def test_mixed_selection_with_protected_project_cannot_change(dialog, monkeypatc
     calls = []
     monkeypatch.setattr(delivery_ui, 'choose_project_type', lambda *args: calls.append(args) or (True, None))
     select(dialog, 1, 2)
-    assert not dialog.change_type_button.isEnabled()
+    assert not dialog.change_type_action.isEnabled()
     dialog.manage_project_types()
     assert not calls
     select(dialog, 2)
-    assert dialog.change_type_button.isEnabled()
+    assert dialog.change_type_action.isEnabled()
 
 
 def test_type_refresh_updates_rename_disable_and_keeps_existing_items(dialog):
@@ -230,8 +231,9 @@ def test_empty_and_many_long_types_wrap_scroll_at_minimum_size(dialog, qapp):
     position = dialog.type_counts.verticalScrollBar().value()
     dialog.refresh()
     assert dialog.type_counts.verticalScrollBar().value() == position
-    for widget in (dialog.change_type_button, dialog.close_button, dialog.void_button,
-                   dialog.restore_button, dialog.type_total, dialog.table, dialog.details):
+    assert not dialog.project_actions_button.isVisible() and not dialog.record_actions_button.isVisible()
+    assert not dialog.details.isVisible()
+    for widget in (dialog.close_button, dialog.type_total, dialog.table):
         assert dialog.rect().contains(widget.mapTo(dialog, widget.rect().topLeft()))
         assert dialog.rect().contains(widget.mapTo(dialog, widget.rect().bottomRight()))
     dialog.resize(980, 680)
@@ -240,16 +242,16 @@ def test_empty_and_many_long_types_wrap_scroll_at_minimum_size(dialog, qapp):
 
 
 def test_busy_blocks_type_work_and_open_archive_action(dialog, monkeypatch):
-    assert hasattr(dialog, 'change_type_button')
+    assert hasattr(dialog, 'change_type_action')
     select(dialog, 1)
-    assert dialog.open_folder_button.isEnabled()
+    assert dialog.open_folder_action.isEnabled()
     calls = []
     monkeypatch.setattr(delivery_ui, 'choose_project_type', lambda *args: calls.append(args) or (False, None))
     dialog.worker = object()
     try:
         dialog._update_open_action()
-        assert not dialog.change_type_button.isEnabled()
-        assert not dialog.open_folder_button.isEnabled()
+        assert not dialog.change_type_action.isEnabled()
+        assert not dialog.open_folder_action.isEnabled()
         dialog.manage_project_types()
         assert not calls
     finally:
@@ -263,13 +265,14 @@ def test_success_feedback_and_old_actions_fit_minimum_window(dialog, qapp, monke
     dialog.resize(680, 460)
     qapp.processEvents()
     select(dialog, 1)
-    dialog.change_type_button.click()
+    dialog.change_type_action.trigger()
     finish(dialog)
     assert dialog.width() == 680 and dialog.height() == 460
     assert dialog.status_note.isVisible()
-    assert dialog.void_button.isEnabled()
-    assert dialog.exclude_count_button.isEnabled()
-    for widget in (dialog.change_type_button, dialog.close_button, dialog.status_note, dialog.details):
+    assert dialog.void_action.isEnabled()
+    assert dialog.exclude_count_action.isEnabled()
+    for widget in (dialog.project_actions_button, dialog.record_actions_button, dialog.close_button, dialog.status_note, dialog.details):
+        assert widget.isVisible()
         assert dialog.rect().contains(widget.mapTo(dialog, widget.rect().bottomRight()))
 
 
@@ -282,7 +285,7 @@ def test_cancelling_picker_still_refreshes_immediate_dictionary_edits(dialog, mo
         service.rename_project_type(kind['id'], '取消选择也保留改名')
         return False, None
     monkeypatch.setattr(delivery_ui, 'choose_project_type', edit_dictionary)
-    dialog.change_type_button.click()
+    dialog.change_type_action.trigger()
     assert '取消选择也保留改名：1' in dialog.type_counts.toPlainText()
     assert dialog.service.get_project(1)['project_type_id'] == kind['id']
     assert dialog._selected_projects()[0]['project_id'] == 1
@@ -358,7 +361,10 @@ def test_long_project_and_type_names_wrap_completely(dialog, qapp, width, height
     assert dialog.table.rowHeight(row) <= dialog.table.viewport().height()
     assert '完整批次说明' in dialog.table.item(row, 0).toolTip()
     assert dialog.width() == width and dialog.height() == height
-    for widget in (dialog.change_type_button, dialog.close_button, dialog.details):
+    assert dialog.details.isVisible() is selected
+    assert dialog.project_actions_button.isVisible() is selected
+    widgets = (dialog.close_button, dialog.project_actions_button, dialog.details) if selected else (dialog.close_button,)
+    for widget in widgets:
         assert dialog.rect().contains(widget.mapTo(dialog, widget.rect().bottomRight()))
 
 

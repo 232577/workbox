@@ -65,16 +65,18 @@ def test_policy_defaults_off_and_does_not_reenable_inactive_types(db):
     db.set_project_type_active(high, False)
     classifier = backend().ArchiveClassification(db)
     assert classifier.policy()['enabled'] is False
-    assert classifier.policy()['minimum_files'] == 4
+    assert classifier.policy()['minimum_files'] == 16
+    assert classifier.policy()['comparison'] == 'exact'
     assert classifier.policy()['high_type_id'] is None
     assert classifier.policy()['low_type_id'] == type_id(db, '生成材料')
     assert next(row for row in db.list_project_types(include_inactive=True) if row['id'] == high)['active'] is False
 
 
 @pytest.mark.parametrize('count,expected', [(0, '生成材料'), (3, '生成材料'), (4, '可运行')])
-def test_preview_and_apply_use_exact_threshold_without_business_mutations(db, count, expected):
+def test_legacy_threshold_preview_and_apply_without_business_mutations(db, count, expected):
     zip_event(db, count)
     classifier = backend().ArchiveClassification(db)
+    classifier.set_policy(False, 4)
     manual(db, 1, None)
     before = db.delivery_history()
     states = [(p['id'], p['status']) for p in db.list_projects()]
@@ -139,8 +141,8 @@ def test_preview_rejects_stale_sources_or_intent(db, mutation):
 
 
 def test_apply_noop_and_undo_are_idempotent_and_preserve_same_value_manual_intent(db):
-    zip_event(db, 4)
-    zip_event(db, 4, project_id=2)
+    zip_event(db, 16)
+    zip_event(db, 16, project_id=2)
     classifier = backend().ArchiveClassification(db)
     result = classifier.apply(classifier.preview()['token'], confirmed=True)
     assert result['changed_count'] == 2
@@ -223,7 +225,7 @@ def test_preview_reads_one_snapshot_without_changing_any_business_or_audit_rows(
 
 @pytest.mark.parametrize('state', ['archived', 'deleted', 'inactive-target'])
 def test_visibility_and_target_catalog_protection(db, state):
-    zip_event(db, 4)
+    zip_event(db, 16)
     classifier = backend().ArchiveClassification(db)
     if state == 'inactive-target':
         db.set_project_type_active(type_id(db, '可运行'), False)
@@ -240,7 +242,7 @@ def test_visibility_and_target_catalog_protection(db, state):
 
 
 def test_undo_does_not_overwrite_different_current_type_or_restore_inactive_type(db):
-    zip_event(db, 4)
+    zip_event(db, 16)
     classifier = backend().ArchiveClassification(db)
     result = classifier.apply(classifier.preview()['token'], confirmed=True)
     db.set_project_type_active(type_id(db, '生成材料'), False)
@@ -297,11 +299,11 @@ def test_hooks_before_module_installation_do_not_create_schema(db):
 
 
 def test_undo_does_not_overwrite_later_automatic_aba_result(db):
-    zip_event(db, 4)
+    zip_event(db, 16)
     classifier = backend().ArchiveClassification(db)
     initial = classifier.apply(classifier.preview()['token'], confirmed=True)
     zip_event(db, 3, hook=True, path='Z:/anonymous/later-low.zip')
-    zip_event(db, 4, hook=True, path='Z:/anonymous/later-high.zip')
+    zip_event(db, 16, hook=True, path='Z:/anonymous/later-high.zip')
     undone = classifier.undo(initial['operation_id'], confirmed=True)
     assert undone['changed_count'] == 0
     assert current(db) == type_id(db, '可运行')

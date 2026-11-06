@@ -4,11 +4,12 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import Qt,QDate
-from PySide6.QtWidgets import QApplication,QMessageBox
+from PySide6.QtWidgets import QApplication,QDialogButtonBox
 
 import database
 from desktop_service import DesktopService
 from delivery_ui import TodayDeliveryDialog
+from test_delivery_cleanup_ui import answer_correction
 
 
 @pytest.fixture(scope='module')
@@ -57,8 +58,8 @@ def select_project(dialog,pid):
 
 
 def test_today_separates_first_deliveries_from_repeats(dialog):
-    assert '首次交付 1 个项目' in dialog.summary.text()
-    assert '补交 1 条' in dialog.summary.text()
+    assert '首次交付 1 个项目' in dialog.scope_stats_action.text()
+    assert '补交 1 条' in dialog.scope_stats_action.text()
     select_project(dialog,1)
     assert any('不计' in dialog.details.item(0,col).text() for col in range(dialog.details.columnCount()))
 
@@ -68,7 +69,7 @@ def test_prior_delivery_marker_shows_unknown_historical_date_as_repeat(dialog):
     dialog.service.db.set_prior_delivery_projects([2],effective_day=date(2026,10,26),
         confirmed=True,reason='用户确认原先已交付，本次为修正补交')
     dialog.refresh()
-    assert '首次交付 0 个项目' in dialog.summary.text()
+    assert '首次交付 0 个项目' in dialog.scope_stats_action.text()
     select_project(dialog,2)
     row=next(i for i in range(dialog.table.rowCount()) if dialog.table.item(i,0).data(Qt.UserRole)==2)
     assert dialog.table.item(row,2).text()=='历史已交付，日期未记录'
@@ -95,40 +96,33 @@ def test_history_date_and_search_can_find_earlier_first_delivery(dialog,qapp):
     assert dialog.table.rowCount()==1
     select_project(dialog,1)
     assert dialog.details.rowCount()==2
-    assert '首次交付 1 个项目' in dialog.summary.text()
+    assert '首次交付 1 个项目' in dialog.scope_stats_action.text()
     dialog.all_dates.setChecked(False)
     dialog.date_edit.setDate(QDate(2026,10,23))
     assert dialog.details.rowCount()==1
 
 
-def test_void_restore_are_confirmed_and_do_not_delete_history(dialog,monkeypatch):
-    assert hasattr(dialog,'void_button'), '缺少误记撤销'
+def test_void_restore_are_confirmed_and_do_not_delete_history(dialog):
     dialog.all_dates.setChecked(True)
     select_project(dialog,1)
     row=next(i for i in range(dialog.details.rowCount()) if dialog.details.item(i,0).data(Qt.UserRole)==1)
     dialog.details.selectRow(row)
     before=dialog.service.db.delivery_history()
-    monkeypatch.setattr(QMessageBox,'question',lambda *args:QMessageBox.No)
-    dialog.void_button.click()
+    answer_correction(dialog.void_action, QDialogButtonBox.Cancel)
     wait(dialog)
     assert dialog.service.db.delivery_history()==before
-    questions=[]
-    monkeypatch.setattr(QMessageBox,'question',lambda *args:questions.append(args) or QMessageBox.Yes)
-    dialog.reason.setText('误记日期')
-    dialog.void_button.click()
+    answer_correction(dialog.void_action, QDialogButtonBox.Ok, draft='误记日期',
+                      contains=('对应项目将退回待交付','原始记录和归档文件保留'))
     wait(dialog)
-    assert questions[-1][-1]==QMessageBox.No
-    assert '对应项目将退回待交付' in questions[-1][2]
-    assert '原始记录和归档文件保留' in questions[-1][2]
     history=dialog.service.db.delivery_history()
     assert history['event_count']==3 and history['voided_count']==1
     assert dialog.service.db.today_delivery_summary()['project_count']==2
-    assert not dialog.void_button.isEnabled(), '处理后需重新选记录，避免连续误点其他记录'
+    assert not dialog.void_action.isEnabled(), '处理后需重新选记录，避免连续误点其他记录'
     dialog.show_voided.setChecked(True)
     select_project(dialog,1)
     row=next(i for i in range(dialog.details.rowCount()) if dialog.details.item(i,0).data(Qt.UserRole)==1)
     dialog.details.selectRow(row)
-    dialog.restore_button.click()
+    answer_correction(dialog.restore_action, QDialogButtonBox.Ok, contains=('项目当前状态保持不变',))
     wait(dialog)
     assert dialog.service.db.today_delivery_summary()['project_count']==1
     with dialog.service.db.connect() as c:
@@ -146,24 +140,22 @@ def test_unchanged_refresh_keeps_selection_and_stable_items(dialog):
 
 def test_management_failure_keeps_note_and_allows_retry(dialog,monkeypatch):
     select_project(dialog,2)
-    dialog.reason.setText('填写的误记说明')
-    monkeypatch.setattr(QMessageBox,'question',lambda *args:QMessageBox.Yes)
     original=dialog.service.db.set_delivery_events_voided
     def fail(*args,**kwargs): raise OSError('隔离写入失败')
     monkeypatch.setattr(dialog.service.db,'set_delivery_events_voided',fail)
-    dialog.void_button.click()
+    answer_correction(dialog.void_action, QDialogButtonBox.Ok, draft='填写的误记说明')
     wait(dialog)
     assert '操作未完成' in dialog.status_note.text()
-    assert dialog.reason.text()=='填写的误记说明' and dialog.void_button.isEnabled()
+    assert dialog.void_action.isEnabled()
     assert dialog.service.db.delivery_history()['voided_count']==0
     monkeypatch.setattr(dialog.service.db,'set_delivery_events_voided',original)
-    dialog.void_button.click()
+    assert answer_correction(dialog.void_action, QDialogButtonBox.Ok) == '填写的误记说明'
     wait(dialog)
     assert dialog.service.db.delivery_history()['voided_count']==1
 
 
 @pytest.mark.parametrize('delivered_filter',[False,True])
-def test_management_updates_status_list_and_orb_without_waiting_for_timer(dialog,monkeypatch,delivered_filter):
+def test_management_updates_status_list_and_orb_without_waiting_for_timer(dialog,delivered_filter):
     from desktop_controller import FloatingController
     dialog.close()
     with dialog.service.db.connect() as connection:
@@ -183,8 +175,7 @@ def test_management_updates_status_list_and_orb_without_waiting_for_timer(dialog
         manager=controller.panel.today_dialog
         assert controller.panel._today_caption=='今日工作量 1'
         select_project(manager,2)
-        monkeypatch.setattr(QMessageBox,'question',lambda *args:QMessageBox.Yes)
-        manager.void_button.click()
+        answer_correction(manager.void_action, QDialogButtonBox.Ok)
         wait(manager)
         assert controller.panel._today_caption=='今日工作量 0'
         assert dialog.service.db.get_project(2)['status']=='待交付'
@@ -197,7 +188,7 @@ def test_management_updates_status_list_and_orb_without_waiting_for_timer(dialog
         assert '1 个项目已退回待交付' in controller.panel.notice.text()
         manager.show_voided.setChecked(True)
         select_project(manager,2)
-        manager.restore_button.click()
+        answer_correction(manager.restore_action, QDialogButtonBox.Ok)
         wait(manager)
         assert dialog.service.db.get_project(2)['status']=='待交付'
         assert controller.panel._today_caption=='今日工作量 1'
@@ -214,9 +205,8 @@ def test_shutdown_waits_for_confirmed_management_write(dialog,monkeypatch):
         selected.wait(2)
         return original(*args,**kwargs)
     monkeypatch.setattr(dialog.service.db,'set_delivery_events_voided',delayed)
-    monkeypatch.setattr(QMessageBox,'question',lambda *args:QMessageBox.Yes)
     select_project(dialog,2)
-    dialog.void_button.click()
+    answer_correction(dialog.void_action, QDialogButtonBox.Ok)
     release=Timer(.1,selected.set)
     release.start()
     dialog.shutdown()

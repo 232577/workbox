@@ -23,7 +23,10 @@ def service(tmp_path):
         zip_id = connection.execute("INSERT INTO zips(project_id,path,filename,size,sha256,mtime_ns) VALUES (1,'Z:/anonymous/archive.zip','archive.zip',1,?,0)", ('a' * 64,)).lastrowid
         connection.execute("INSERT INTO zip_project_file_counts(zip_id,project_id,file_count,decided_status,rule) VALUES (?,1,4,'已交付','zip-file-count-v1')", (zip_id,))
         connection.execute("INSERT INTO delivery_events(project_id,project_name,batch_name,kind,zip_id,archive_path) VALUES (1,'匿名项目','匿名批次','manual-zip',?,'Z:/anonymous/archive.zip')", (zip_id,))
-    return SimpleNamespace(db=db, archive_classification=ArchiveClassification(db))
+    classifier = ArchiveClassification(db)
+    # 这组用例验证既有四件规则的操作流程；新默认规则由exact UI用例覆盖。
+    classifier.set_policy(False, 4)
+    return SimpleNamespace(db=db, archive_classification=classifier)
 
 
 def pane(service):

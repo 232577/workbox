@@ -41,14 +41,17 @@ def panel(tmp_path):
     install_theme()
 
 
-def test_common_window_gives_files_six_complete_rows_without_hiding_filters(panel):
+def test_common_window_gives_files_six_complete_rows_and_keeps_filters_reachable(panel):
     files = panel.document_pane.table
     assert files.rowCount() == 12
     assert files.viewport().height() >= 6 * files.rowHeight(0)
     assert panel.project_list.viewport().height() >= 350
-    for control in (panel.archive_filter, panel.due_filter, panel.type_filter,
-                    panel.batch_filter, panel.bulk_mode, panel.urgent_filter):
+    for control in (panel.batch_filter, panel.bulk_mode, panel.project_filter_button):
         assert control.isVisible()
+    panel.project_filter_button.click()
+    for control in (panel.archive_filter, panel.due_filter, panel.type_filter, panel.urgent_filter):
+        assert control.isVisible()
+    panel.project_filter_button.click()
     before = panel.current_project['id']
     panel.resize(660, 480)
     QTest.qWait(120)
@@ -117,6 +120,8 @@ def test_bulk_type_action_stays_visible_and_targets_all_selected_projects(panel,
     panel.change_type_button.click()
     assert calls == [expected]
     panel.bulk_mode.setChecked(False)
+    assert not panel.change_type_button.isVisible()
+    panel.project_list.setCurrentItem(items[0])
     assert panel.change_type_button.isVisible()
     assert panel.document_side.isAncestorOf(panel.change_type_button)
 
