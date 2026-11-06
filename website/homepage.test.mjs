@@ -13,6 +13,31 @@ const tags = [...html.matchAll(/<([a-z][\w-]*)\b([^>]*)>/gi)].map(([, name, raw]
   return { name: name.toLowerCase(), attrs };
 });
 const has = (tag, name) => Object.hasOwn(tag.attrs, name);
+const mainImage = tags.find(tag => tag.name === 'img' && tag.attrs['data-desktop-image'] === 'light');
+const narrowImagePath = html.match(/<figure\b[^>]*id="narrow-project-preview"[^>]*>[\s\S]*?<img\b[^>]*src="([^"]+)"/)?.[1];
+
+function imageDimensions(path, bytes) {
+  if (path.endsWith('.png')) {
+    assert.equal(bytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    return [bytes.readUInt32BE(16), bytes.readUInt32BE(20)];
+  }
+  assert.match(path, /\.jpe?g$/i);
+  assert.equal(bytes.readUInt16BE(0), 0xffd8);
+  for (let offset = 2; offset < bytes.length;) {
+    assert.equal(bytes[offset], 0xff);
+    while (bytes[offset] === 0xff) offset++;
+    const marker = bytes[offset++];
+    if (marker === 0xda || marker === 0xd9) break;
+    const length = bytes.readUInt16BE(offset);
+    assert.ok(length >= 2 && offset + length <= bytes.length);
+    if ([0xc0, 0xc1, 0xc2].includes(marker)) {
+      assert.ok(length >= 8);
+      return [bytes.readUInt16BE(offset + 5), bytes.readUInt16BE(offset + 3)];
+    }
+    offset += length;
+  }
+  assert.fail(`JPEG缺少图像尺寸 ${path}`);
+}
 
 test('悬浮入口教程独立可定位，说明拖入材料、操作反馈和运行边界', () => {
   const section = html.match(/<section\b[^>]*id="floating-inbox"[^>]*>([\s\S]*?)<\/section>/)?.[1];
@@ -59,15 +84,19 @@ test('首次使用推荐通用模式，自动交付门槛只适用于自动模�
   assert.doesNotMatch(html, /ZIP 默认按/);
 });
 
-test('十一月发布分别展示当前构建宽浅与窄深截图，明确旧教程和合并边界', async () => {
+test('宽浅与窄深截图显示共同构建来源，明确旧教程和合并边界', async () => {
   const registry = JSON.parse(await readFile(new URL('./MEDIA.json', import.meta.url), 'utf8'));
-  for (const name of ['workbox-project-batches-light-20261105-r3.png', 'workbox-project-batches-narrow-dark-20261105-r3.png']) {
-    const path = `/media/${name}`;
+  const sourceCommits = new Set();
+  for (const path of [mainImage?.attrs.src, narrowImagePath]) {
+    assert.match(path, /^\/media\//);
     assert.ok(tags.some(tag => tag.name === 'img' && tag.attrs.src === path));
     const record = registry.files[`public${path}`];
-    assert.equal(record?.source_exe_sha256, '3db86834172f225584338465ee245398c16c56a544902d10c200f4108a75bc1d');
-    assert.equal(record?.source_commit, '6eb83f50ce3eba52df0da9439be3243afc47df26');
+    assert.equal(record?.source_exe_sha256, registry.latest_screenshot_exe_sha256);
+    assert.match(record?.source_commit, /^[a-f0-9]{40}$/);
+    assert.ok(html.includes(record.source_commit));
+    sourceCommits.add(record.source_commit);
   }
+  assert.equal(sourceCommits.size, 1);
   for (const phrase of ['2026-10-30 构建的历史步骤演示', '交付记录管理并入主窗口',
     '同名项目先预览再确认合并', '原材料和历史交付记录保留', '不会在启动时自动合并']) assert.ok(html.includes(phrase), phrase);
 });
@@ -302,11 +331,12 @@ test('所有者统计接入同一外观选择，保留私密登录与空数据�
 });
 
 test('主宽图与窄窗对照原图尺寸准确，主图保留文件夹流程图后备', async () => {
-  for (const name of ['workbox-project-batches-light-20261105-r3.png', 'workbox-project-batches-narrow-dark-20261105-r3.png']) {
-    const path=`/media/${name}`;
-    const png=await readFile(new URL(`./public${path}`,import.meta.url));
-    assert.equal(png.toString('ascii',1,4),'PNG');
-    assert.ok(tags.some(tag=>tag.name==='img'&&tag.attrs.src===path&&Number(tag.attrs.width)===png.readUInt32BE(16)&&Number(tag.attrs.height)===png.readUInt32BE(20)));
+  assert.notEqual(mainImage?.attrs.src, narrowImagePath);
+  for (const path of [mainImage?.attrs.src, narrowImagePath]) {
+    assert.match(path, /^\/media\//);
+    const bytes=await readFile(new URL(`./public${path}`,import.meta.url));
+    const [width,height]=imageDimensions(path,bytes);
+    assert.ok(tags.some(tag=>tag.name==='img'&&tag.attrs.src===path&&Number(tag.attrs.width)===width&&Number(tag.attrs.height)===height));
     assert.ok(tags.some(tag=>tag.name==='a'&&tag.attrs.href===path));
   }
   assert.ok(tags.some(tag=>has(tag,'data-desktop-stage')));

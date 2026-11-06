@@ -2,10 +2,24 @@
   "kind": "verified-screenshot-walkthrough",
   "source_exe_sha256": "ce9e986d53fd0129c905e4058f7a8bfe3b67df4b0e1d6a8310d42dcd8a114890",
   "privacy_reviewed": true,
-  "latest_screenshot_exe_sha256": "3db86834172f225584338465ee245398c16c56a544902d10c200f4108a75bc1d",
-  "description": "已验证冻结程序的中性隔离项目界面，分别展示宽窗浅色主图和窄窗深色对照；全部历史截图和步骤演示保留各自构建来源。",
+  "latest_screenshot_exe_sha256": "5fdbba35a02d00d716ce00ae4a8289802a7d8163e8fea30955469831249c2c1c",
+  "description": "11月6日r1已验证冻结程序的中性隔离项目界面，分别展示浅色主窗口和窄窗深色对照。历史媒体保留各自构建来源。",
   "duration_seconds": 44,
   "files": {
+    "public/media/workbox-ui-cleanup-light-20261106-r1.png": {
+      "size": 67409,
+      "sha256": "4420d21a048b869d932296017e5b8f0f6c0d9742d68b1c55a55bce88607b3afc",
+      "source_exe_sha256": "5fdbba35a02d00d716ce00ae4a8289802a7d8163e8fea30955469831249c2c1c",
+      "source_commit": "9901f92db9d8794a4cb29d78947400c78a773e46",
+      "description": "1102×792浅色项目窗口的原始PNG，隔离示例显示项目状态、批次色号与归档分类结果。"
+    },
+    "public/media/workbox-ui-cleanup-narrow-dark-20261106-r1.png": {
+      "size": 52355,
+      "sha256": "7001673ebc9489563bde345fce0f15601558593c4d537cb66e3c4fe377b4ef99",
+      "source_exe_sha256": "5fdbba35a02d00d716ce00ae4a8289802a7d8163e8fea30955469831249c2c1c",
+      "source_commit": "9901f92db9d8794a4cb29d78947400c78a773e46",
+      "description": "同一隔离实例的662×512窄窗深色原始PNG，独立展示项目和对应文件。"
+    },
     "public/media/workbox-project-batches-light-20261105-r3.png": {
       "size": 69078,
       "sha256": "a003caf665bfcf54fcd026f38572e0a42440aaf74d29ded9b201d0fdf616e30a",
