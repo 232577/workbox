@@ -3,6 +3,14 @@ export { SiteMetrics } from './analytics.mjs';
 // 固定版本的公开下载入口；不读取、转发访问者的登录信息。
 export const releases = Object.freeze([Object.freeze({
   version: '1.0.0',
+  tag: 'v1.0.0.20261106.1',
+  edition: '正式安装版',
+  date: '2026-11-06',
+  filename: 'WorkBox-1.0.0-Setup-x64-20261106-r1.exe',
+  size: 40613745,
+  sha256: 'bbdf096bb8929f5129b05df81387cb7a947fb5af15ec96badcbad7edd5f06969',
+}), Object.freeze({
+  version: '1.0.0',
   tag: 'v1.0.0.20261105.3',
   edition: '正式安装版',
   date: '2026-11-05',
@@ -220,7 +228,7 @@ export async function handleRequest(request, env, fetcher = fetch, context = nul
     const metadata = {
       tag_name: release.tag, draft: false, prerelease: false,
       html_url: `https://github.com/232577/workbox/releases/tag/${release.tag}`,
-      body: `WorkBox ${release.version} 正式安装版 · ${release.date}。来源提交 6eb83f50ce3eba52df0da9439be3243afc47df26。沿用待开发、开发中、待交付、已交付四种原项目状态，保持原排序、一项目一行。同批项目显示稳定颜色与编号，一个项目可属于多个批次，编号搜索和批次筛选对应同一收件关系。保留全部交付表，项目按合并后的身份去重并补充收件批次编号；原有交付历史、首次工作量、状态和目录保持。日常从项目工作台开始，低频工具集中到高级设置；待核对和 ZIP 异常仍按状态显示入口，不再另设任务页和手工发送步骤。主工作台采用平面双栏，操作跟随项目；统一按钮、输入与状态筛选控件，项目队列使用透明背景融入工作区，文件与目录使用统一图标，深色外观采用中性炭灰层次；日期输入更清晰，交付明细可拖高及放大。普通文件先建项后，不同文字批次的唯一同名项目沿用原身份；多同名或受保护状态仍需核对。同名普通文档再次收录时，新稿保留标准名，旧稿加内容摘要后缀，后缀已占用时加序号。旧版（包括 v1.0.0.20261104.2）已给新稿添加后缀的情况，再次拖入该新稿即可按新规则收录；与当前标准名内容相同则直接复用，不增加版本。来源文件留在原处，ZIP 及历史材料归档规则不变，启动或安装不会批量改名旧文档。保留材料检查、项目状态、交付历史和文件。升级前请备份数据；安装时保存数据库恢复点。安装包尚无商业代码签名。`,
+      body: `WorkBox ${release.version} 正式安装版 · ${release.date}。来源提交 9901f92db9d8794a4cb29d78947400c78a773e46。项目沿用四种原项目状态、原排序和一项目一行，保留同批色号，一个项目可属于多个批次。状态和批次直接筛选，归档范围、截止日期、类型和加急按需展开，项目与记录操作随选择显示。交付页直接显示工作量合计和各类型数量，日期、搜索与全部交付表可直接使用。归档分类按最近有效交付的单项目文件数判断，新安装预设恰好 16 个文件归为“可运行”，其他已知数量归为“生成材料”，数量未知时保留原类型。新安装的自动分类默认关闭，升级沿用原配置，旧规则仍按“至少”比较。ZIP 自动交付的独立初始门槛为每项目 4 个实际文件。升级前请备份数据，安装时保存数据库恢复点。安装包尚无商业代码签名。`,
       assets: [{name: release.filename, size: release.size, state: 'uploaded',
         digest: `sha256:${release.sha256}`,
         browser_download_url: `https://github.com/232577/workbox/releases/download/${release.tag}/${release.filename}`}],

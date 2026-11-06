@@ -57,6 +57,20 @@ test('首页、安装说明和自动更新指向同一当前安装包与构建',
   assert.ok(rootReadme.includes(source));
 });
 
+test('11月6日r1目录使用已核验候选的标签、字节数、安装包摘要和来源', async () => {
+  assert.deepEqual(release, { version: '1.0.0', tag: 'v1.0.0.20261106.1', edition: '正式安装版',
+    date: '2026-11-06', filename: 'WorkBox-1.0.0-Setup-x64-20261106-r1.exe', size: 40613745,
+    sha256: 'bbdf096bb8929f5129b05df81387cb7a947fb5af15ec96badcbad7edd5f06969' });
+  assert.equal(releases.length, 22);
+  const metadata = await (await handleRequest(new Request('https://workbox.ltxiangzi.dpdns.org/updates/stable.json'), {})).json();
+  assert.match(metadata.body, /来源提交 9901f92db9d8794a4cb29d78947400c78a773e46。/);
+  for (const fact of ['原项目状态', '原排序', '多个批次', '全部交付表', '恰好 16 个文件',
+    '数量未知', '自动分类默认关闭', '旧规则仍按“至少”', '每项目 4 个实际文件']) {
+    assert.ok(metadata.body.includes(fact), fact);
+  }
+  assert.doesNotMatch(metadata.body, /新建任务组|记录已交接|导出本组表格|手动交接/);
+});
+
 test('保留截至11月5日r3全部21项目录和50项媒体事实及原字节', async () => {
   const previous = releases.slice(releases.findIndex(item => item.tag === 'v1.0.0.20261105.3'));
   assert.equal(previous.length, 21);

@@ -84,7 +84,7 @@ test('首次使用推荐通用模式，自动交付门槛只适用于自动模�
   assert.doesNotMatch(html, /ZIP 默认按/);
 });
 
-test('十一月发布分别展示当前构建宽浅与窄深截图，明确旧教程和合并边界', async () => {
+test('宽浅与窄深截图显示共同构建来源，明确旧教程和合并边界', async () => {
   const registry = JSON.parse(await readFile(new URL('./MEDIA.json', import.meta.url), 'utf8'));
   const sourceCommits = new Set();
   for (const path of [mainImage?.attrs.src, narrowImagePath]) {

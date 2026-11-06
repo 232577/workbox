@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 const html = await readFile(new URL('./public/index.html', import.meta.url), 'utf8');
 const section = html.match(/<section\b[^>]*id="daily-workbench"[^>]*>([\s\S]*?)<\/section>/)?.[1];
 
-test('全部二十项历史下载仅出现于历史折叠列表，HTML结束后没有孤立内容', async () => {
+test('全部历史下载仅出现于历史折叠列表，HTML结束后没有孤立内容', async () => {
   const { releases } = await import('./worker.mjs');
   const history = html.match(/<details\b[^>]*id="release-history"[^>]*>([\s\S]*?)<\/details>/)?.[1];
   assert.ok(history, '历史折叠容器存在');
