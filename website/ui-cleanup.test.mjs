@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { releases } from './worker.mjs';
+import { handleRequest, release, releases } from './worker.mjs';
 
 const html = await readFile(new URL('./public/index.html', import.meta.url), 'utf8');
 const registry = JSON.parse(await readFile(new URL('./MEDIA.json', import.meta.url), 'utf8'));
@@ -27,6 +27,34 @@ test('当前归档分类说明区分恰好16、未知、旧配置与ZIP自动交
   assert.match(classification, /预览.*确认/);
   assert.match(classification, /ZIP 自动交付.*每项目 4 个实际文件/);
   assert.match(html, /id="task-groups"[^>]*data-release-state="historical"[\s\S]*?4 个及以上/);
+});
+
+test('首页、安装说明和自动更新指向同一当前安装包与构建', async () => {
+  const { filename, tag, sha256, size } = release;
+  const downloadPath = `/download/${filename}`;
+  const githubRelease = `https://github.com/232577/workbox/releases/tag/${tag}`;
+  const githubAsset = `https://github.com/232577/workbox/releases/download/${tag}/${filename}`;
+  const displaySize = size.toLocaleString('en-US');
+  const stable = await handleRequest(new Request('https://workbox.ltxiangzi.dpdns.org/updates/stable.json'), {});
+  assert.equal(stable.status, 200);
+  const metadata = await stable.json();
+  assert.equal(metadata.tag_name, tag);
+  assert.equal(metadata.html_url, githubRelease);
+  assert.deepEqual(metadata.assets, [{ name: filename, size, state: 'uploaded', digest: `sha256:${sha256}`,
+    browser_download_url: githubAsset }]);
+  const source = metadata.body.match(/来源提交 ([a-f0-9]{40})。/)?.[1];
+  assert.match(source, /^[a-f0-9]{40}$/);
+
+  assert.ok(html.includes(`href="${downloadPath}"`) && html.includes(`href="${githubAsset}"`));
+  assert.ok(html.includes(`${displaySize} 字节`) && html.includes(sha256) && html.includes(source));
+  const rootReadme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
+  const install = rootReadme.match(/\n## Windows 安装包\n([\s\S]*?)\n## /)?.[1];
+  assert.ok(install?.includes(`[官网下载](https://workbox.ltxiangzi.dpdns.org${downloadPath})`));
+  assert.ok(install.includes(`[GitHub Release](${githubRelease})`));
+  for (const fact of [filename, displaySize, sha256]) assert.ok(install.includes(fact), fact);
+  const siteReadme = await readFile(new URL('./README.md', import.meta.url), 'utf8');
+  for (const fact of [filename, tag, displaySize, sha256, source]) assert.ok(siteReadme.includes(fact), fact);
+  assert.ok(rootReadme.includes(source));
 });
 
 test('保留截至11月5日r3全部21项目录和50项媒体事实及原字节', async () => {

@@ -34,16 +34,17 @@ python scripts/dev.py start feat/my-task
 
 安装版提供“检查更新”入口，点击后才连接官网更新清单（GitHub为备用源），支持下载、取消、长度与SHA-256校验，以及确认后安全退出再安装。安装前保存数据库恢复点，不删除项目文件；源码模式不允许替换开发目录。更早没有更新入口的安装版仍需一次引导安装。设计及安全边界见 [在线升级](docs/ONLINE-UPDATES.md)。
 
-- [官网下载](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261105-r2.exe)
-- [GitHub Release](https://github.com/232577/workbox/releases/tag/v1.0.0.20261105.2)
+- [官网下载](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261105-r3.exe)
+- [GitHub Release](https://github.com/232577/workbox/releases/tag/v1.0.0.20261105.3)
+- [历史正式安装版 · 11月5日 r2](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261105-r2.exe)
 - [历史正式安装版 · 11月4日 r3](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261104-r3.exe)
 - [历史正式安装版 · 11月3日 r5](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261103-r5.exe)
 - [历史正式安装版 · 11月4日 r2](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261104-r2.exe)
 - [源码](https://github.com/232577/workbox)
 
-文件：`WorkBox-1.0.0-Setup-x64-20261105-r2.exe`，40,620,146字节。
+文件：`WorkBox-1.0.0-Setup-x64-20261105-r3.exe`，40,609,504字节。
 
-SHA-256：`b60fe41773d7781d79fb9ef06657240445f289837a461f30083fc8286f4af616`。
+SHA-256：`533387b71a3ae6ddbb313a3c3a793d8a46d65ed3640cae624f7e40154af5059a`。
 
 目标平台为 Windows 10 1809+ / Windows 11 x64；实际验收范围以对应发布记录为准，不代表已在其他物理设备或所有Windows版本实测。安装包尚无商业代码签名。按当前用户安装，带独立运行时，不含用户数据库、工作文件、归档或私有凭据。升级前请备份自己的数据，卸载保留运行时生成的data目录。
 
