@@ -29,8 +29,10 @@ test('页面明确只修复悬浮球置顶，展开管理窗口不置顶', async
   assert.match(html,/不抢输入焦点/);
 });
 
-test('中性实机项目截图标记11月5日最终构建', async () => {
+test('中性实机项目截图标记当前最终构建', async () => {
   const html=await readFile(new URL('./public/index.html',import.meta.url),'utf8');
-  assert.match(html,/截图来自 v1\.0\.0\.20261105\.3 匿名实机截图/);
+  const actualUi=html.match(/<section\b[^>]*id="actual-ui"[^>]*>([\s\S]*?)<\/section>/)?.[1];
+  assert.ok(actualUi?.includes(`来自 ${release.tag} 的同一隔离实例`));
+  assert.match(actualUi,/来源提交 9901f92db9d8794a4cb29d78947400c78a773e46/);
   assert.doesNotMatch(html,/来自当前安装包的匿名隔离示例/);
 });

@@ -71,6 +71,31 @@ test('11月6日r1目录使用已核验候选的标签、字节数、安装包摘
   assert.doesNotMatch(metadata.body, /新建任务组|记录已交接|导出本组表格|手动交接/);
 });
 
+test('新增两张11月6日r1实拍保留最终EXE原始PNG及构建来源', async () => {
+  const executable = '5fdbba35a02d00d716ce00ae4a8289802a7d8163e8fea30955469831249c2c1c';
+  const source = '9901f92db9d8794a4cb29d78947400c78a773e46';
+  assert.equal(registry.latest_screenshot_exe_sha256, executable);
+  assert.equal(Object.keys(registry.files).length, 52);
+  for (const [name, width, height, size, hash] of [
+    ['workbox-ui-cleanup-light-20261106-r1.png', 1102, 792, 67409, '4420d21a048b869d932296017e5b8f0f6c0d9742d68b1c55a55bce88607b3afc'],
+    ['workbox-ui-cleanup-narrow-dark-20261106-r1.png', 662, 512, 52355, '7001673ebc9489563bde345fce0f15601558593c4d537cb66e3c4fe377b4ef99'],
+  ]) {
+    const key = `public/media/${name}`;
+    const bytes = await readFile(new URL(`./${key}`, import.meta.url));
+    assert.equal(bytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    assert.equal(bytes.readUInt32BE(16), width);
+    assert.equal(bytes.readUInt32BE(20), height);
+    assert.equal(bytes.length, size);
+    assert.equal(digest(bytes), hash);
+    assert.equal(registry.files[key].size, size);
+    assert.equal(registry.files[key].sha256, hash);
+    assert.equal(registry.files[key].source_commit, source);
+    assert.equal(registry.files[key].source_exe_sha256, executable);
+    assert.ok(html.includes(`href="/media/${name}"`));
+    assert.ok(html.includes(`src="/media/${name}" width="${width}" height="${height}"`));
+  }
+});
+
 test('保留截至11月5日r3全部21项目录和50项媒体事实及原字节', async () => {
   const previous = releases.slice(releases.findIndex(item => item.tag === 'v1.0.0.20261105.3'));
   assert.equal(previous.length, 21);
