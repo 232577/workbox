@@ -771,9 +771,10 @@ class CompactPanel(DropSurface, QWidget):
         self.sync_advanced_actions()
 
     def business_page_busy(self):
-        # 任务组、分类和交付页会自行运行任务，不一定设置面板的 busy。
+        # 分类和交付页可占用工作槽，不一定设置面板的 busy。
         return self.busy or any(
-            getattr(page, 'worker', None) is not None or getattr(page, '_shutting_down', False)
+            getattr(page, 'business_busy', getattr(page, 'worker', None) is not None)
+            or getattr(page, '_shutting_down', False)
             for name in ('task_groups_page', 'archive_classification_page', 'today_dialog')
             if (page := getattr(self, name, None)) is not None)
 
@@ -1059,6 +1060,7 @@ class CompactPanel(DropSurface, QWidget):
             self.delivery_page_container.setFrameShape(QFrame.NoFrame)
             self.delivery_page_container.setWidget(self.today_dialog)
             self.tabs.insertTab(3, self.delivery_page_container, '交付记录')
+        self.today_dialog.set_busy(self.busy)
         self.today_dialog.refresh()
         self.tabs.setCurrentWidget(self.delivery_page_container)
         self.sync_navigation()

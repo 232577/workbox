@@ -67,6 +67,7 @@ class TodayDeliveryDialog(QDialog):
         self._summary_signature = self._details_signature = None
         self._history,self._day = None,None
         self._following_today = True
+        self._external_busy = False
         self._choosing_type = False
         self._correction_dialog = None
         self._reason_drafts = {}
@@ -668,8 +669,18 @@ class TodayDeliveryDialog(QDialog):
         if self._actions_available():
             menu.exec(table.viewport().mapToGlobal(point))
 
+    @property
+    def business_busy(self):
+        # 只反映本页占用的工作槽，外部排队任务不能让自己一直等待。
+        return self.worker is not None or self._choosing_type or self._correction_dialog is not None
+
+    def set_busy(self, busy):
+        if self._external_busy != busy:
+            self._external_busy = busy
+            self._update_open_action()
+
     def _actions_available(self):
-        return self.worker is None and not self._choosing_type and self._correction_dialog is None
+        return not (self._external_busy or self.business_busy)
 
     def manage_project_types(self):
         if not self._actions_available():

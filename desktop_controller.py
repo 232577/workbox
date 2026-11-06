@@ -112,7 +112,8 @@ class FloatingController(QObject):
                 if (page := getattr(self.panel, name, None)) is not None]
 
     def _page_busy(self):
-        return any(getattr(page, 'worker', None) is not None for page in self._business_pages())
+        return any(getattr(page, 'business_busy', getattr(page, 'worker', None) is not None)
+                   for page in self._business_pages())
 
     @property
     def foreground_busy(self):
