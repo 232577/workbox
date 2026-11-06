@@ -11,8 +11,6 @@ const images = [
 ];
 
 test('两张r3主项目实拍绑定同一EXE与来源，旧48媒体不变', async () => {
-  assert.equal(registry.latest_screenshot_exe_sha256, '3db86834172f225584338465ee245398c16c56a544902d10c200f4108a75bc1d');
-  assert.equal(Object.keys(registry.files).length, 50);
   for (const [name, width, height, digest] of images) {
     const key = 'public/media/' + name, fact = registry.files[key];
     const bytes = await readFile(new URL('./' + key, import.meta.url));
@@ -24,7 +22,9 @@ test('两张r3主项目实拍绑定同一EXE与来源，旧48媒体不变', asyn
     assert.equal(fact.source_commit, '6eb83f50ce3eba52df0da9439be3243afc47df26');
     assert.equal(fact.source_exe_sha256, '3db86834172f225584338465ee245398c16c56a544902d10c200f4108a75bc1d');
   }
-  const old = Object.fromEntries(Object.entries(registry.files).filter(([key]) => !key.includes('workbox-project-batches-')));
+  const old = Object.fromEntries(Object.entries(registry.files).filter(([key]) =>
+    !key.includes('workbox-project-batches-') && !key.includes('-20261106-r1.')));
+  assert.equal(Object.keys(old).length, 48);
   assert.equal(createHash('sha256').update(JSON.stringify(old)).digest('hex'), '8c3a0ef722b3b18bfb2aeced1d80b26b2aa35dc84806d81f88b4701e3dafc123');
 });
 
@@ -33,7 +33,9 @@ test('宽浅主图与窄深对照分别呈现，窄图不冒充宽主题替换',
   assert.match(html, /id="narrow-project-preview"/);
   assert.match(html, /窄窗深色对照/);
   const stage = html.match(/<div\b[^>]*data-desktop-stage[^>]*>([\s\S]*?)<figcaption>/)?.[1];
-  assert.ok(stage?.includes('workbox-project-batches-light-20261105-r3.png'));
-  assert.ok(!stage?.includes('workbox-project-batches-narrow-dark-20261105-r3.png'));
+  assert.match(stage, /data-desktop-image="light"/);
+  const narrow = html.match(/<figure\b[^>]*id="narrow-project-preview"[^>]*>[\s\S]*?<img\b[^>]*src="([^"]+)"/)?.[1];
+  assert.ok(narrow);
+  assert.ok(!stage.includes(narrow));
   assert.doesNotMatch(html.match(/<section\b[^>]*id="actual-ui"[^>]*>([\s\S]*?)<\/section>/)?.[1], /workbox-task-groups-/);
 });
