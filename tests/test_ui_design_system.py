@@ -142,7 +142,7 @@ def test_workbench_wide_to_compact_resize_keeps_native_minimum(qapp,service):
             assert (p.width(),p.height())==(width,height)
             assert p.document_pane.table.viewport().height()>=40
             assert p.material_check_button.isHidden()
-            for control in (p.project_actions_button,p.background_button,p.exit_button,p.document_pane.open_button):
+            for control in (p.project_actions_button,p.background_button,p.exit_button,p.document_pane.file_menu_button):
                 assert p.rect().contains(control.mapTo(p,control.rect().bottomRight()))
                 assert control.isVisible()
     finally:

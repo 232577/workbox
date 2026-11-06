@@ -33,21 +33,27 @@ class ArchiveClassificationPane(QWidget):
         header = QHBoxLayout()
         header.addWidget(label('归档分类', 'sectionTitle'))
         header.addStretch()
-        self.return_button = button('返回任务组')
+        self.return_button = button('返回项目')
         header.addWidget(self.return_button)
         layout.addLayout(header)
         self.future_enabled = CheckBox('以后交付按本规则分类')
         self.future_enabled.setAccessibleName('以后交付按本规则分类')
+        self.comparison = ComboBox()
+        self.comparison.addItem('恰好等于', 'exact')
+        self.comparison.addItem('至少', 'at_least')
+        self.comparison.setAccessibleName('归档文件数比较方式')
+        self.comparison.setMinimumWidth(110)
+        self.comparison.setMaximumWidth(145)
         self.minimum_files = SpinBox()
         self.minimum_files.setRange(1, 10000)
-        self.minimum_files.setValue(4)
-        self.minimum_files.setAccessibleName('可运行归档文件数下限')
-        self.minimum_files.setMinimumWidth(145)
-        self.minimum_files.setMaximumWidth(170)
+        self.minimum_files.setValue(16)
+        self.minimum_files.setAccessibleName('归档分类文件数')
+        self.minimum_files.setMinimumWidth(100)
+        self.minimum_files.setMaximumWidth(135)
         self.high_type = ComboBox()
-        self.high_type.setAccessibleName('达到文件数下限的目标类型')
+        self.high_type.setAccessibleName('符合文件数条件的目标类型')
         self.low_type = ComboBox()
-        self.low_type.setAccessibleName('低于文件数下限的目标类型')
+        self.low_type.setAccessibleName('其他已知文件数量的目标类型')
         for control in (self.high_type, self.low_type):
             control.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
             control.setMinimumWidth(90)
@@ -58,14 +64,15 @@ class ArchiveClassificationPane(QWidget):
         policy_header.addWidget(self.save_button)
         layout.addLayout(policy_header)
         form = QGridLayout()
-        self.high_label = label('文件数 ≥')
-        self.low_label = label('文件数 0—3')
+        self.high_label = label('文件数')
+        self.low_label = label('其他已知数量')
         form.addWidget(self.high_label, 0, 0)
-        form.addWidget(self.minimum_files, 0, 1)
-        form.addWidget(self.high_type, 0, 2)
-        form.addWidget(self.low_label, 1, 0, 1, 2)
-        form.addWidget(self.low_type, 1, 2)
-        form.setColumnStretch(2, 1)
+        form.addWidget(self.comparison, 0, 1)
+        form.addWidget(self.minimum_files, 0, 2)
+        form.addWidget(self.high_type, 0, 3)
+        form.addWidget(self.low_label, 1, 0, 1, 3)
+        form.addWidget(self.low_type, 1, 3)
+        form.setColumnStretch(3, 1)
         layout.addLayout(form)
         self.rule_note = label('数量取最近有效交付的单项目归档；未知数量保持原类型。', 'subtle', True)
         layout.addWidget(self.rule_note)
@@ -107,6 +114,7 @@ class ArchiveClassificationPane(QWidget):
         undo_row.addWidget(self.undo_button)
         layout.addLayout(undo_row)
         self.future_enabled.toggled.connect(self._mark_dirty)
+        self.comparison.currentIndexChanged.connect(self._mark_dirty)
         self.minimum_files.valueChanged.connect(self._mark_dirty)
         self.high_type.currentIndexChanged.connect(self._mark_dirty)
         self.low_type.currentIndexChanged.connect(self._mark_dirty)
@@ -197,6 +205,7 @@ class ArchiveClassificationPane(QWidget):
         try:
             policy = self._saved_policy = state['policy']
             self.future_enabled.setChecked(policy['enabled'])
+            self.comparison.setCurrentIndex(self.comparison.findData(policy.get('comparison', 'at_least')))
             self.minimum_files.setValue(policy['minimum_files'])
             for control, key in ((self.high_type, 'high_type_id'), (self.low_type, 'low_type_id')):
                 with QSignalBlocker(control):
@@ -225,7 +234,8 @@ class ArchiveClassificationPane(QWidget):
             self._loading_controls = False
 
     def _update_rule_labels(self):
-        self.low_label.setText(f'文件数 0—{self.minimum_files.value() - 1}')
+        self.low_label.setText('其他已知数量' if self.comparison.currentData() == 'exact'
+                               else f'文件数 0—{self.minimum_files.value() - 1}')
 
     def _mark_dirty(self, *_):
         if self._loading_controls:
@@ -240,7 +250,7 @@ class ArchiveClassificationPane(QWidget):
         busy = self.worker is not None or self._external_busy or self._shutting_down
         self.return_button.setEnabled(not busy)
         valid_targets = self.high_type.currentData() is not None and self.low_type.currentData() is not None
-        for control in (self.future_enabled, self.minimum_files, self.high_type, self.low_type):
+        for control in (self.future_enabled, self.comparison, self.minimum_files, self.high_type, self.low_type):
             control.setEnabled(self._loaded and not busy)
         self.save_button.setEnabled(self._loaded and not busy and valid_targets)
         self.preview_button.setEnabled(self._loaded and not busy and not self._dirty)
@@ -258,11 +268,12 @@ class ArchiveClassificationPane(QWidget):
         if not self.save_button.isEnabled():
             return
         enabled, minimum = self.future_enabled.isChecked(), self.minimum_files.value()
+        comparison = self.comparison.currentData()
         high, low = self.high_type.currentData(), self.low_type.currentData()
         self._pending_load = False
         self._pending_notice = ''
         def save():
-            self.backend.set_policy(enabled, minimum, high, low)
+            self.backend.set_policy(enabled, minimum, high, low, comparison=comparison)
             return self._read_state()
         self._run('save', save)
 

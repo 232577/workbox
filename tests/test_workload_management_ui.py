@@ -3,10 +3,11 @@ from datetime import datetime, timezone
 import time
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QMessageBox, QAbstractItemView
+from PySide6.QtWidgets import QApplication, QDialogButtonBox, QAbstractItemView
 import database
 from desktop_service import DesktopService
 from delivery_ui import TodayDeliveryDialog
+from test_delivery_cleanup_ui import answer_correction
 
 @pytest.fixture(scope='module')
 def qapp():
@@ -45,21 +46,19 @@ def finish(dialog):
     QApplication.processEvents()
     assert dialog.worker is None
 
-def test_exclude_and_restore_keep_delivered_state_and_files(dialog,monkeypatch):
-    assert hasattr(dialog,'exclude_count_button')
+def test_exclude_and_restore_keep_delivered_state_and_files(dialog):
     select(dialog,2)
     before=dialog.service.get_project(2)
-    seen=[]
-    monkeypatch.setattr(QMessageBox,'question',lambda *args:seen.append(args) or QMessageBox.Yes)
-    dialog.reason.setText('替同事交付')
-    dialog.exclude_count_button.click();finish(dialog)
-    assert seen[-1][-1]==QMessageBox.No and '状态保持不变' in seen[-1][2]
+    answer_correction(dialog.exclude_count_action, QDialogButtonBox.Ok, draft='替同事交付',
+                      contains=('状态保持不变',))
+    finish(dialog)
     assert dialog.service.db.today_delivery_summary()['project_count']==0
     assert dialog.service.get_project(2)==before
     assert '不计工作量' in dialog.table.item(dialog.table.currentRow(),3).text()
     assert '不计工作量' in dialog.details.item(0,1).text()
-    assert dialog.include_count_button.isEnabled() and not dialog.exclude_count_button.isEnabled()
-    dialog.include_count_button.click();finish(dialog)
+    assert dialog.include_count_action.isEnabled() and not dialog.exclude_count_action.isEnabled()
+    answer_correction(dialog.include_count_action, QDialogButtonBox.Ok)
+    finish(dialog)
     assert dialog.service.db.today_delivery_summary()['project_count']==1
     assert dialog.service.get_project(2)==before
     with dialog.service.db.connect() as c:
@@ -67,36 +66,35 @@ def test_exclude_and_restore_keep_delivered_state_and_files(dialog,monkeypatch):
         assert c.execute('SELECT COUNT(*) FROM delivery_event_actions').fetchone()[0]==0
         assert c.execute('SELECT COUNT(*) FROM project_delivery_count_actions').fetchone()[0]==2
 
-def test_restoring_prior_project_does_not_make_it_todays_work(dialog,monkeypatch):
-    assert hasattr(dialog,'exclude_count_button')
+def test_restoring_prior_project_does_not_make_it_todays_work(dialog):
     select(dialog,1)
-    monkeypatch.setattr(QMessageBox,'question',lambda *args:QMessageBox.Yes)
-    dialog.exclude_count_button.click();finish(dialog)
-    dialog.include_count_button.click();finish(dialog)
+    answer_correction(dialog.exclude_count_action, QDialogButtonBox.Ok)
+    finish(dialog)
+    answer_correction(dialog.include_count_action, QDialogButtonBox.Ok)
+    finish(dialog)
     assert dialog.service.db.today_delivery_summary()['project_count']==1
     assert '2026-10-28' in dialog.table.item(dialog.table.currentRow(),2).text()
     assert '原首次有效交付日期' in dialog.status_note.text()
 
 def test_cancel_and_failure_do_not_change_count_or_note(dialog,monkeypatch):
-    assert hasattr(dialog,'exclude_count_button')
-    select(dialog,2);dialog.reason.setText('填写的说明')
-    monkeypatch.setattr(QMessageBox,'question',lambda *args:QMessageBox.No)
-    dialog.exclude_count_button.click();finish(dialog)
+    select(dialog,2)
+    answer_correction(dialog.exclude_count_action, QDialogButtonBox.Cancel, draft='填写的说明')
+    finish(dialog)
     assert dialog.service.db.today_delivery_summary()['project_count']==1
-    monkeypatch.setattr(QMessageBox,'question',lambda *args:QMessageBox.Yes)
     def fail(*args,**kwargs):raise OSError('隔离写入失败')
     monkeypatch.setattr(dialog.service,'set_project_delivery_counting',fail)
-    dialog.exclude_count_button.click();finish(dialog)
-    assert dialog.reason.text()=='填写的说明' and '操作未完成' in dialog.status_note.text()
-    assert dialog.exclude_count_button.isEnabled()
+    assert answer_correction(dialog.exclude_count_action, QDialogButtonBox.Ok) == '填写的说明'
+    finish(dialog)
+    assert '操作未完成' in dialog.status_note.text()
+    assert dialog.exclude_count_action.isEnabled()
+    assert answer_correction(dialog.exclude_count_action, QDialogButtonBox.Cancel) == '填写的说明'
 
-def test_multiple_projects_use_project_ids_not_event_ids(dialog,monkeypatch):
-    assert hasattr(dialog,'exclude_count_button')
+def test_multiple_projects_use_project_ids_not_event_ids(dialog):
     assert dialog.table.selectionMode()==QAbstractItemView.ExtendedSelection
     dialog.table.selectAll()
     assert dialog.details.rowCount()==0
-    monkeypatch.setattr(QMessageBox,'question',lambda *args:QMessageBox.Yes)
-    dialog.exclude_count_button.click();finish(dialog)
+    answer_correction(dialog.exclude_count_action, QDialogButtonBox.Ok)
+    finish(dialog)
     assert dialog.service.db.today_delivery_summary()['project_count']==0
     assert all(p['status']=='已交付' for p in dialog.service.list_projects())
     with dialog.service.db.connect() as c:

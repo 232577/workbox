@@ -56,10 +56,10 @@ def test_empty_dialog_is_read_only_and_explains_beijing_day(qapp, service):
     dialog = make_dialog(service)
     try:
         assert dialog.table.rowCount() == dialog.details.rowCount() == 0
-        assert '首次交付 0 个项目' in dialog.summary.text() and '补交 0 条' in dialog.summary.text()
-        assert '暂无交付记录' in dialog.summary.text() and '北京时间' in dialog.scope_note.text()
+        assert '首次交付 0 个项目' in dialog.scope_stats_action.text() and '补交 0 条' in dialog.scope_stats_action.text()
+        assert '暂无交付记录' in dialog.summary.text() and '北京时间' in dialog.compact_filter_button.toolTip()
         assert dialog.table.editTriggers() == dialog.details.editTriggers() == QAbstractItemView.NoEditTriggers
-        assert not dialog.open_folder_button.isEnabled()
+        assert not dialog.open_folder_action.isEnabled()
         assert dialog.table.accessibleName() and dialog.details.accessibleName()
         assert not dialog.isModal()
     finally:
@@ -72,7 +72,7 @@ def test_summary_lists_unique_projects_and_selected_project_all_events(qapp, ser
     event(service, 2, at='2026-10-23T02:00:00.000Z', kind='auto-zip')
     dialog = make_dialog(service)
     try:
-        assert '首次交付 2 个项目' in dialog.summary.text() and '补交 1 条' in dialog.summary.text()
+        assert '首次交付 2 个项目' in dialog.scope_stats_action.text() and '补交 1 条' in dialog.scope_stats_action.text()
         assert dialog.table.rowCount() == 2
         assert [dialog.table.item(0, column).text() for column in range(4)] == ['甲系统', '本批', '2026-10-23 11:04:05', '计数 1 项']
         dialog.table.selectRow(0)
@@ -113,9 +113,9 @@ def test_open_archive_action_emits_folder_for_selected_event_without_opening_fil
     try:
         dialog.table.selectRow(0)
         dialog.details.selectRow(0)
-        dialog.open_folder_button.click()
+        dialog.open_folder_action.trigger()
         dialog.details.selectRow(1)
-        dialog.open_folder_button.click()
+        dialog.open_folder_action.trigger()
         assert received == [str(folder), str(zipped.parent)]
     finally:
         dialog.close()
@@ -144,7 +144,7 @@ def test_new_event_refresh_preserves_selected_project_and_detail_selection(qapp,
         dialog.details.selectRow(0)
         event(service, at='2026-10-23T05:00:00.000Z')
         dialog.timer.timeout.emit()
-        assert '首次交付 1 个项目' in dialog.summary.text() and '补交 1 条' in dialog.summary.text()
+        assert '首次交付 1 个项目' in dialog.scope_stats_action.text() and '补交 1 条' in dialog.scope_stats_action.text()
         assert selected_pid(dialog) == 1
         assert dialog.details.rowCount() == 2
         assert dialog.details.item(dialog.details.currentRow(), 0).data(Qt.UserRole) == first_id
@@ -190,10 +190,12 @@ def test_changed_project_table_keeps_selection_and_scroll_position(qapp, service
 
 
 def test_delivery_tables_keep_adjusted_column_widths(qapp, service):
+    event(service)
     dialog = make_dialog(service)
     try:
         dialog.resize(700, 460)
         dialog.show()
+        dialog.table.selectRow(0)
         qapp.processEvents()
         assert not dialog.table.isColumnHidden(1), '窄窗也应能横向查看批次'
         assert not dialog.table.isColumnHidden(2), '窄窗也应能横向查看交付时间'
@@ -237,11 +239,11 @@ def test_main_read_error_clears_stale_actions_and_retry_recovers(qapp, service, 
         def fail(*args, **kwargs):
             raise OSError('隔离统计暂时不可读')
         monkeypatch.setattr(service.db, 'today_delivery_summary', fail)
-        dialog.refresh_button.click()
+        dialog.refresh_action.trigger()
         assert '读取交付记录失败' in dialog.summary.text()
         assert '暂时不可读' in dialog.summary.text()
         assert dialog.table.rowCount() == dialog.details.rowCount() == 0
-        assert not dialog.open_folder_button.isEnabled() and dialog.refresh_button.isEnabled()
+        assert not dialog.open_folder_action.isEnabled() and dialog.refresh_button.isEnabled()
         monkeypatch.setattr(service.db, 'today_delivery_summary', original)
         dialog.refresh_button.click()
         assert dialog.table.rowCount() == 1
@@ -260,7 +262,7 @@ def test_history_read_error_can_retry_without_stale_actions(qapp, service, monke
         monkeypatch.setattr(service.db, 'delivery_history', fail)
         dialog.refresh()
         assert '暂时不可读' in dialog.summary.text()
-        assert dialog.details.rowCount() == 0 and not dialog.open_folder_button.isEnabled()
+        assert dialog.details.rowCount() == 0 and not dialog.open_folder_action.isEnabled()
         monkeypatch.setattr(service.db, 'delivery_history', original)
         dialog.refresh_button.click()
         dialog.table.selectRow(0)

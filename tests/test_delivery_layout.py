@@ -49,7 +49,7 @@ def drag_up(page):
 def test_detail_height_can_be_dragged_and_survives_refresh_and_reopen(service):
     page = opened(service)
     assert page.details.viewport().height() >= 140
-    assert page.type_summary_card.height() <= 84
+    assert page.type_summary.height() <= 84
     before = page.details.height()
     visible_rows = page.details.viewport().height() // page.details.rowHeight(0)
     split = drag_up(page)
@@ -113,27 +113,27 @@ def test_real_shell_allows_more_detail_rows_and_full_detail_view(service):
     sizes = split.sizes()
     selected = page.details.currentItem().data(Qt.UserRole)
     before_focus = page.details.height()
-    summary_height = page.type_summary_card.height()
-    page.expand_details_button.click()
+    summary_height = page.type_summary.height()
+    page.expand_details_action.trigger()
     QTest.qWait(80)
     assert not page.table.isVisible() and page.details.isVisible()
     assert page.details.height() >= before_focus + 90
     page.refresh()
     assert page.details.currentItem().data(Qt.UserRole) == selected
-    page.expand_details_button.click()
+    page.expand_details_action.trigger()
     QTest.qWait(80)
-    assert page.type_summary_card.height() == summary_height
+    assert page.type_summary.height() == summary_height
     assert all(abs(actual - expected) <= 1 for actual, expected in zip(split.sizes(), sizes))
-    page.expand_details_button.click()
+    page.expand_details_action.trigger()
     QTest.qWait(80)
     panel.resize(660, 480)
     QTest.qWait(80)
     assert page.details.isVisible() and not page.table.isVisible()
-    assert not page.expand_details_button.isVisible()
+    assert not page.expand_details_action.isVisible()
     panel.resize(1000, 700)
     QTest.qWait(80)
     assert page.details.isVisible() and not page.table.isVisible()
-    page.expand_details_button.click()
+    page.expand_details_action.trigger()
     QTest.qWait(80)
     restored = split.sizes()
     assert page.table.isVisible()
