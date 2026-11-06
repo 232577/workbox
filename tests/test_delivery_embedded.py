@@ -3,10 +3,11 @@ import time
 import pytest
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtTest import QTest, QSignalSpy
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication, QDialogButtonBox
 
 from compact_ui import CompactPanel
 from desktop_service import DesktopService
+from test_delivery_cleanup_ui import answer_correction
 
 
 @pytest.fixture
@@ -64,7 +65,7 @@ def test_delivery_switch_preserves_filters_selection_and_timer(panel):
     page.all_dates.setChecked(True)
     page.search.setText('页面验证')
     page.table.selectRow(0)
-    page.reason.setText('尚未提交的说明')
+    answer_correction(page.exclude_count_action, QDialogButtonBox.Cancel, draft='尚未提交的说明')
     QTest.qWait(80)
     first = page.table.item(0, 0)
     assert page.timer.isActive()
@@ -77,7 +78,7 @@ def test_delivery_switch_preserves_filters_selection_and_timer(panel):
     assert page.search.text() == '页面验证' and page.all_dates.isChecked()
     assert page.table.item(0, 0) is first
     assert page.table.currentRow() == 0
-    assert page.reason.text() == '尚未提交的说明'
+    assert answer_correction(page.exclude_count_action, QDialogButtonBox.Cancel) == '尚未提交的说明'
     QTest.keyClick(page.search, Qt.Key_Escape)
     assert page.isVisible() and panel.isVisible()
     panel.hide()
@@ -98,30 +99,32 @@ def test_embedded_page_fits_minimum_shell_and_actions_remain_reachable(panel):
     assert scroller.verticalScrollBar().maximum() == 0
     assert page.table.viewport().height() >= 110
     assert page.table.isVisible() and not page.details.isVisible()
-    for control in (page.compact_filter_button, page.compact_actions_button, page.close_button):
+    for control in (page.compact_filter_button, page.close_button):
         rect = control.rect()
         assert control.width() >= control.minimumSizeHint().width()
         assert scroller.viewport().rect().contains(control.mapTo(scroller.viewport(), rect.center()))
     page.all_dates.setChecked(True)
     page.table.selectRow(0)
+    assert page.project_actions_button.isVisible()
     page.compact_tabs.setCurrentIndex(1)
     QTest.qWait(100)
     assert page.details.isVisible() and not page.table.isVisible()
     assert page.details.viewport().height() >= 80
     assert page.details.rowCount() == 1
     assert scroller.verticalScrollBar().maximum() == 0
-    page._populate_compact_actions()
-    actions = {a.text(): a for a in page.compact_action_menu.actions()}
+    assert page.record_actions_button.isVisible()
+    actions = {a.text(): a for a in page.record_action_menu.actions()}
     assert actions['撤销误记'].isEnabled()
     assert not actions['恢复记录'].isEnabled()
-    page.reason.setText('保留说明')
+    answer_correction(actions['撤销误记'], QDialogButtonBox.Cancel, draft='保留说明')
     panel.resize(1200, 780)
     QTest.qWait(150)
     # 高缩放时 Windows 可把请求的大窗口限制到物理屏幕；按实际可用尺寸验收。
     compact = panel.width()<820 or panel.height()<620
     assert page.details.isVisible()
     assert page.table.isVisible() is not compact
-    assert page.reason.text() == '保留说明' and page.table.currentRow() == 0
+    assert answer_correction(actions['撤销误记'], QDialogButtonBox.Cancel) == '保留说明'
+    assert page.table.currentRow() == 0
     assert page.compact_tabs.isVisible() is compact
 
 
@@ -148,7 +151,7 @@ def test_normal_window_shows_delivery_actions_without_outer_scroll(panel):
     assert scroller.verticalScrollBar().maximum()==0
 
 
-def test_compact_menus_use_existing_actions_and_keep_confirmation(panel,monkeypatch):
+def test_compact_menus_use_existing_actions_and_keep_confirmation(panel):
     panel.resize(660,480)
     panel.today_button.click()
     page = panel.today_dialog
@@ -157,14 +160,12 @@ def test_compact_menus_use_existing_actions_and_keep_confirmation(panel,monkeypa
     filters['全部日期'].trigger()
     assert page.all_dates.isChecked() and page.table.rowCount()==1
     page.table.selectRow(0)
-    page._populate_compact_actions()
-    actions = {action.text():action for action in page.compact_action_menu.actions()}
-    monkeypatch.setattr(QMessageBox,'question',lambda *args:QMessageBox.No)
-    actions['不计工作量'].trigger()
+    assert page.project_actions_button.isVisible()
+    actions = {action.text():action for action in page.project_action_menu.actions()}
+    answer_correction(actions['不计工作量'], QDialogButtonBox.Cancel)
     assert page.worker is None
     assert page.rows[0]['included_in_workload']
-    monkeypatch.setattr(QMessageBox,'question',lambda *args:QMessageBox.Yes)
-    actions['不计工作量'].trigger()
+    answer_correction(actions['不计工作量'], QDialogButtonBox.Ok)
     for _ in range(100):
         if page.worker is None:
             break
@@ -172,9 +173,9 @@ def test_compact_menus_use_existing_actions_and_keep_confirmation(panel,monkeypa
     assert page.worker is None and not page.rows[0]['included_in_workload']
     assert panel.delivery_page_container.verticalScrollBar().maximum()==0
     page.compact_tabs.setCurrentIndex(1)
-    page._populate_compact_actions()
-    actions = {action.text():action for action in page.compact_action_menu.actions()}
-    actions['撤销误记'].trigger()
+    assert page.record_actions_button.isVisible()
+    actions = {action.text():action for action in page.record_action_menu.actions()}
+    answer_correction(actions['撤销误记'], QDialogButtonBox.Ok)
     for _ in range(100):
         if page.worker is None:
             break

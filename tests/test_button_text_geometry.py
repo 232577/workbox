@@ -121,13 +121,31 @@ def test_archive_and_delivery_button_text_fits_after_enabling(qapp, tmp_path, mo
     install_theme(service)
     set_theme(mode, persist=False)
     panel = CompactPanel(service)
-    delivery = TodayDeliveryDialog(service)
+    delivery = TodayDeliveryDialog(service) if target == 'delivery' else None
     panel.show()
-    delivery.show()
+    if delivery is not None:
+        delivery.show()
     qapp.processEvents()
     try:
-        for button in ((panel.approve_button,) if target == 'archive' else (delivery.void_button,)):
-            assert not button.isEnabled()
+        if target == 'archive':
+            panel.nav_zip.click()
+            assert not panel.approve_action.isEnabled()
+            menu = panel.zip_menu_button.menu()
+            menu.popup(panel.zip_menu_button.mapToGlobal(panel.zip_menu_button.rect().bottomLeft()))
+            try:
+                for enabled in (True, False):
+                    panel.approve_action.setEnabled(enabled)
+                    qapp.processEvents()
+                    width = menu.fontMetrics().horizontalAdvance(panel.approve_action.text())
+                    assert menu.actionGeometry(panel.approve_action).width() >= width
+            finally:
+                menu.close()
+        else:
+            button = delivery.compact_filter_button
+            assert button.isVisible()
+            assert delivery.void_action.text() == '撤销误记'
+            assert not delivery.void_action.isEnabled()
+            button.setEnabled(False)
             # 先取得布局在禁用时缓存的真实建议宽度，再模拟选中可操作记录后的启用。
             button.sizeHint()
             button.setEnabled(True)
@@ -140,8 +158,9 @@ def test_archive_and_delivery_button_text_fits_after_enabling(qapp, tmp_path, mo
             qapp.processEvents()
             assert_text_fits(button)
     finally:
-        delivery.shutdown()
-        delivery.close()
+        if delivery is not None:
+            delivery.shutdown()
+            delivery.close()
         panel.document_pane.shutdown()
         panel.close()
         install_theme()

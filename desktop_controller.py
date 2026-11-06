@@ -112,7 +112,8 @@ class FloatingController(QObject):
                 if (page := getattr(self.panel, name, None)) is not None]
 
     def _page_busy(self):
-        return any(getattr(page, 'worker', None) is not None for page in self._business_pages())
+        return any(getattr(page, 'business_busy', getattr(page, 'worker', None) is not None)
+                   for page in self._business_pages())
 
     @property
     def foreground_busy(self):
@@ -333,10 +334,13 @@ class FloatingController(QObject):
         elif not self.busy:
             self.bubble.hide()
 
-    def notify(self, text, *, busy=False, target=None):
+    def notify(self, text, *, busy=False, target=None, kind='persistent'):
         # 目标属于当前这条反馈；忙碌、错误和普通提示不得沿用上一条成功结果。
         self.bubble.navigation_target = target
-        self.panel.show_notice(text)
+        if busy or kind == 'persistent':
+            self.panel.show_notice(text)
+        else:
+            self.panel.show_notice(text, kind=kind)
         if not self.panel.isVisible() and not self.background_mode:
             self.bubble.show_message(text, self.orb, busy, target=target)
 
@@ -495,6 +499,7 @@ class FloatingController(QObject):
             self._next()
             return
         target = None if worker.cancelled or worker.error else self._result_target(worker.result)
+        notice_kind = 'persistent'
         if worker.cancelled:
             message = '已取消未完成的处理；已成功入库的文件保留。'
         elif worker.error:
@@ -516,15 +521,24 @@ class FloatingController(QObject):
                 message += '\n' + '\n'.join(details[:20])
             if result['failed']:
                 self.errors.append(message)
+            if (not result.get('cancelled') and not result['failed'] and not result['needs_choice']
+                    and not result['watching'] and result['copied'] + result['duplicate'] > 0):
+                notice_kind = 'intake-success'
         elif isinstance(worker.result, dict) and 'state' in worker.result:
             result = worker.result
             message = '已保留消息，请点击「待核对」检查项目名。' if result['state'] == 'needs-review' else f"{'已收录过，未重复创建' if result.get('duplicate') else '已收录'} {len(result['project_ids'])} 个项目。"
             if result.get('reason'):
                 message += '\n' + result['reason']
             if result.get('workspace_error'):
-                message += '\n工作目录创建失败：' + result['workspace_error'] + '。选择项目后点击「工作目录」可重试。'
+                message = (f"工作目录创建失败；已收录 {len(result['project_ids'])} 个项目，"
+                           '选择项目后点击「工作目录」可重试。\n' + result['workspace_error'])
+                if result.get('reason'):
+                    message += '\n' + result['reason']
             elif result.get('workspaces'):
                 message += ' 工作目录已就绪。'
+            if (result['state'] == 'committed' and result.get('project_ids')
+                    and not result.get('workspace_error') and not result.get('reason')):
+                notice_kind = 'intake-success'
         elif isinstance(worker.result, dict) and worker.result.get('watching'):
             message = '已开始观察 ZIP，原件保留。文件稳定后自动复制归档，保留原名。'
             if worker.result.get('working_zip_path'):
@@ -538,6 +552,7 @@ class FloatingController(QObject):
             project = self.service.db.get_project(worker.result['file']['project_id'])
             status = '已设为待交付' if project['status'] == '待交付' else '项目当前' + project['status']
             message = '文件已收进项目，' + status + '，原件保留。\n' + worker.result['file']['path']
+            notice_kind = 'intake-success'
         elif isinstance(worker.result, dict) and 'open_folder' in worker.result:
             self.open_folder(worker.result['open_folder'])
             message = '工作目录已打开。'
@@ -591,7 +606,8 @@ class FloatingController(QObject):
                 item.get('error', '') + '\n来源：' + item['source'] + '\n目标：' + item['destination'] for item in worker.result)
         else:
             message = self.caption
-        if isinstance(worker.result, dict) and worker.result.get('created_project_ids') and not worker.error and not worker.cancelled:
+        if (isinstance(worker.result, dict) and worker.result.get('created_project_ids')
+                and not worker.result.get('workspace_error') and not worker.error and not worker.cancelled):
             message = f"已新建 {len(worker.result['created_project_ids'])} 个项目及工作目录。" + message
         worker.deleteLater()
         if (self.silent_current and isinstance(worker.result, dict) and 'archived' in worker.result
@@ -607,8 +623,9 @@ class FloatingController(QObject):
         if not self.queue and self.errors:
             message = f'本次有 {len(self.errors)} 项失败，其余文件独立处理。\n' + '\n'.join(self.errors)
             target = None
+            notice_kind = 'persistent'
         if message:
-            self.notify(message, target=target)
+            self.notify(message, target=target, kind=notice_kind)
         if not worker.cancelled and not worker.error and isinstance(worker.result, dict):
             self._resolve_intake_choices(worker.result)
         self._next()

@@ -107,6 +107,6 @@ def test_workflow_controller_has_background_monitor_and_new_controls(tmp_path):
         assert hasattr(controller.panel, 'project_context_menu')
         assert not hasattr(controller.panel, 'project_operations')
         assert hasattr(controller.panel, 'settings_button')
-        assert hasattr(controller.panel, 'approve_button')
+        assert controller.panel.approve_action in controller.panel.zip_menu_button.menu().actions()
     finally:
         controller.shutdown()

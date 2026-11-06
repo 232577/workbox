@@ -111,7 +111,7 @@ def test_today_explicitly_discards_invalid_pending_date(delivery_page):
     QTest.keyClicks(edit, '2027-02-29')
     page.search.setFocus()
     QApplication.processEvents()
-    page.today_button.click()
+    page.today_action.trigger()
     assert edit.text() == today.toString('yyyy-MM-dd')
     assert page._day == today.toPython()
 
@@ -283,7 +283,7 @@ def test_date_scope_switches_return_matching_delivery_rows(delivery_page):
     assert not edit.isEnabled()
     page.all_dates.setChecked(False)
     assert [row['project_id'] for row in page.rows] == [1]
-    page.today_button.click()
+    page.today_action.trigger()
     assert edit.isEnabled() and not page.all_dates.isChecked()
     assert edit.text() == today
     assert [row['project_id'] for row in page.rows] == [3]

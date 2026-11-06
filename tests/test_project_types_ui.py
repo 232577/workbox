@@ -132,7 +132,7 @@ def test_visible_type_entry_uses_selected_ids_and_preserves_project_state(qapp, 
         assert after['project_type_id'] == kind['id']
         for key in ('status', 'urgent', 'delivered_at', 'archived_at', 'deleted_at', 'notes', 'due_date'):
             assert before.get(key) == after.get(key)
-        assert '入口分类' in panel.project_type_label.text()
+        assert '入口分类' in panel.project_title.toolTip()
         panel.bulk_mode.setChecked(True)
         panel.project_list.selectAll()
         panel.change_type_button.click()

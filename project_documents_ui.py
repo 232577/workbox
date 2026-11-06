@@ -3,7 +3,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QSignalBlocker, QUrl, QSize, Signal
 from PySide6.QtGui import QColor, QDesktopServices
-from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QHeaderView, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QSizePolicy, QMessageBox
+from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QHeaderView, QMenu, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QSizePolicy, QMessageBox
 from qfluentwidgets import FluentIcon
 
 from compact_ui import button, label, local_timestamp
@@ -52,7 +52,7 @@ class ProjectDocumentsPane(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 6, 0, 0)
         layout.setSpacing(6)
-        self.hint = label('选择左侧项目，查看对应的文件。', 'subtle')
+        self.hint = label('选择项目以查看文件。', 'subtle')
         self.hint.setMinimumWidth(0)
         self.hint.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Fixed)
         layout.addWidget(self.hint)
@@ -93,22 +93,26 @@ class ProjectDocumentsPane(QWidget):
         actions = QHBoxLayout()
         actions.setSpacing(8)
         self.open_button = button('打开文件')
-        self.folder_button = button('所在目录')
-        self.refresh_button = button('刷新文档')
-        for control in (self.open_button, self.folder_button, self.refresh_button):
+        self.file_menu_button = button('文件操作')
+        self.file_menu_button.setObjectName('documentActionsButton')
+        self.file_menu = QMenu(self.file_menu_button)
+        self.file_menu_button.setMenu(self.file_menu)
+        self.folder_action = self.file_menu.addAction('所在目录', self.open_selected_folder)
+        self.file_menu.addAction('刷新文档', self.request_refresh)
+        self.refresh_button = button('重试')
+        self.refresh_button.setObjectName('retryDocumentsButton')
+        self.refresh_button.setAccessibleName('重试读取项目文件')
+        for control in (self.open_button, self.file_menu_button, self.refresh_button):
             control.setProperty('workboxRole', 'secondary')
         self.open_button.setEnabled(False)
-        self.folder_button.setEnabled(False)
-        self.refresh_button.setEnabled(False)
         actions.addWidget(self.open_button)
-        actions.addWidget(self.folder_button)
         actions.addStretch()
+        actions.addWidget(self.file_menu_button)
         actions.addWidget(self.refresh_button)
         layout.addLayout(actions)
         self.table.itemSelectionChanged.connect(self.update_actions)
         self.table.itemDoubleClicked.connect(lambda _: self.open_selected())
         self.open_button.clicked.connect(self.open_selected)
-        self.folder_button.clicked.connect(self.open_selected_folder)
         self.refresh_button.clicked.connect(self.request_refresh)
         for bar in (self.table.verticalScrollBar(), self.table.horizontalScrollBar()):
             bar.sliderReleased.connect(self._apply_deferred)
@@ -116,6 +120,7 @@ class ProjectDocumentsPane(QWidget):
         self.timer.setInterval(3000)
         self.timer.timeout.connect(self.request_refresh)
         theme_signal().connect(self._refresh_document_icons)
+        self._sync_layout()
 
     def _document_icons(self):
         color = QColor(tokens()['muted'])
@@ -162,8 +167,7 @@ class ProjectDocumentsPane(QWidget):
         self.table.horizontalHeaderItem(0).setText('文件名称')
         self.table.horizontalHeaderItem(0).setToolTip('')
         self.table.setAccessibleDescription('')
-        self.refresh_button.setEnabled(project_id is not None)
-        self.hint.setText('正在读取项目文件…' if project_id is not None else '选择左侧一个项目，查看对应的文件。')
+        self.hint.setText('正在读取项目文件…' if project_id is not None else '选择项目以查看文件。')
         self.hint.setToolTip('')
         self.update_actions()
         self._sync_layout()
@@ -194,7 +198,7 @@ class ProjectDocumentsPane(QWidget):
         if not self._closed and worker._document_context == (self.project_id, self._generation) and not worker.cancelled:
             if worker.error:
                 self._read_error = True
-                self.hint.setText('文件列表读取失败，点击“刷新文档”重试。')
+                self.hint.setText('文件列表读取失败。')
                 self.hint.setToolTip(worker.error)
                 self._sync_layout()
             else:
@@ -307,6 +311,12 @@ class ProjectDocumentsPane(QWidget):
         show=not self.documents or self._read_error or self._result_errors
         if self.hint.isHidden()==show:
             self.hint.setVisible(show)
+        has_project = self.project_id is not None
+        retry = self._read_error or self._result_errors
+        self.table.setVisible(bool(self.documents))
+        self.open_button.setVisible(bool(self.documents))
+        self.file_menu_button.setVisible(has_project and (bool(self.documents) or not retry))
+        self.refresh_button.setVisible(has_project and retry)
         minimum=64 if self._compact and show else 90
         # Fluent 表头叠加产品字体后可能高于原 Qt 表头；至少保留一行文档的视口。
         header = self.table.horizontalHeader()
@@ -358,7 +368,7 @@ class ProjectDocumentsPane(QWidget):
     def update_actions(self):
         record = self.current_document()
         self.open_button.setEnabled(bool(record and record['exists']))
-        self.folder_button.setEnabled(bool(record))
+        self.folder_action.setEnabled(bool(record))
         if record and record.get('is_directory'):
             text = '打开归档目录'
         elif record and Path(record['path']).suffix.casefold() not in DOCUMENT_EXTENSIONS:

@@ -15,12 +15,13 @@ from uuid import uuid4
 from archive_facts import delivery_archive_facts
 
 
+_COMPARISON_COLUMN = "comparison TEXT NOT NULL DEFAULT 'at_least' CHECK(comparison IN ('at_least','exact'))"
 _TABLES = (
-    '''CREATE TABLE IF NOT EXISTS archive_classification_policy (
+    f'''CREATE TABLE IF NOT EXISTS archive_classification_policy (
         id INTEGER PRIMARY KEY CHECK(id=1), enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
         minimum_files INTEGER NOT NULL CHECK(minimum_files BETWEEN 1 AND 10000),
         high_type_id INTEGER REFERENCES project_types(id), low_type_id INTEGER REFERENCES project_types(id),
-        initial_event_id INTEGER NOT NULL, revision INTEGER NOT NULL DEFAULT 0)''',
+        initial_event_id INTEGER NOT NULL, revision INTEGER NOT NULL DEFAULT 0, {_COMPARISON_COLUMN})''',
     '''CREATE TABLE IF NOT EXISTS archive_classification_operations (
         operation_id TEXT PRIMARY KEY, kind TEXT NOT NULL, token TEXT NOT NULL DEFAULT '',
         undo_of TEXT UNIQUE REFERENCES archive_classification_operations(operation_id),
@@ -57,6 +58,7 @@ def _suggest(connection, name):
 def _policy(connection):
     row = dict(connection.execute('SELECT * FROM archive_classification_policy WHERE id=1').fetchone())
     row['enabled'] = bool(row['enabled'])
+    row.setdefault('comparison', 'at_least')
     return row
 
 
@@ -67,11 +69,14 @@ def _operation(connection, kind, *, token='', undo_of=None):
     return operation_id
 
 
-def _audit(connection, operation_id, kind, row, *, outcome='changed', reason=''):
+def _audit(connection, operation_id, kind, row, *, outcome='changed', reason='', policy=None):
+    facts = row.get('fact', {})
+    if policy is not None:
+        facts = dict(facts, policy=policy)
     connection.execute('''INSERT INTO archive_classification_actions
         (operation_id,project_id,kind,old_type_id,new_type_id,event_id,outcome,reason,facts_json)
         VALUES (?,?,?,?,?,?,?,?,?)''', (operation_id, row['project_id'], kind, row.get('old_type_id'),
-        row.get('new_type_id'), row.get('event_id'), outcome, reason, _json(row.get('fact', {}))))
+        row.get('new_type_id'), row.get('event_id'), outcome, reason, _json(facts)))
 
 
 def _write_type(connection, project_id, type_id):
@@ -103,6 +108,7 @@ def _protected(connection, project_id):
 
 def _snapshot(connection, db):
     policy = _policy(connection)
+    threshold = policy['minimum_files']
     catalog = [dict(row) for row in connection.execute('SELECT * FROM project_types ORDER BY id')]
     types = {row['id']: row for row in catalog}
     events = db.delivery_history(connection=connection)['events']
@@ -119,7 +125,10 @@ def _snapshot(connection, db):
         event = latest.get(project_id)
         fact = facts[event['id']] if event else dict(known=False, count=None, reason='项目没有有效交付。')
         count = fact['count']
-        target_id = (policy['high_type_id'] if count >= policy['minimum_files'] else policy['low_type_id']) if fact['known'] else None
+        target_id = None
+        if fact['known']:
+            matches = count == threshold if policy['comparison'] == 'exact' else count >= threshold
+            target_id = policy['high_type_id'] if matches else policy['low_type_id']
         old = types.get(project['type_id'], {})
         target = types.get(target_id, {})
         reason = _protected(connection, project_id)
@@ -160,13 +169,16 @@ class ArchiveClassification:
             connection.execute('BEGIN IMMEDIATE')
             for statement in _TABLES:
                 connection.execute(statement)
+            columns = connection.execute('PRAGMA table_info(archive_classification_policy)')
+            if not any(column['name'] == 'comparison' for column in columns.fetchall()):
+                connection.execute(f'ALTER TABLE archive_classification_policy ADD COLUMN {_COMPARISON_COLUMN}')
             for table in ('archive_classification_operations', 'archive_classification_actions', 'archive_classification_observed_events'):
                 for action in ('UPDATE', 'DELETE'):
                     connection.execute(f'''CREATE TRIGGER IF NOT EXISTS {table}_no_{action.lower()}
                         BEFORE {action} ON {table} BEGIN SELECT RAISE(ABORT,'归档分类审计仅允许追加。'); END''')
             connection.execute('''INSERT OR IGNORE INTO archive_classification_policy
-                (id,enabled,minimum_files,high_type_id,low_type_id,initial_event_id)
-                VALUES (1,0,4,?,?,(SELECT COALESCE(MAX(id),0) FROM delivery_events))''',
+                (id,enabled,minimum_files,high_type_id,low_type_id,initial_event_id,comparison)
+                VALUES (1,0,16,?,?,(SELECT COALESCE(MAX(id),0) FROM delivery_events),'exact')''',
                 (_suggest(connection, '可运行'), _suggest(connection, '生成材料')))
 
     def policy(self):
@@ -190,9 +202,11 @@ class ArchiveClassification:
                 ORDER BY o.rowid DESC LIMIT ?''', (limit,)).fetchall()
             return [dict(dict(row), undone=row['undo_operation_id'] is not None) for row in rows]
 
-    def set_policy(self, enabled, minimum_files=4, high_type_id=None, low_type_id=None):
+    def set_policy(self, enabled, minimum_files=4, high_type_id=None, low_type_id=None, *, comparison='at_least'):
         if type(enabled) is not bool or type(minimum_files) is not int or not 1 <= minimum_files <= 10000:
             raise ValueError('分类开关或文件数阈值无效。')
+        if type(comparison) is not str or comparison not in ('at_least', 'exact'):
+            raise ValueError('归档文件数比较方式无效。')
         with self._lock, self.db.connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
             values = [high_type_id, low_type_id]
@@ -203,7 +217,8 @@ class ArchiveClassification:
                         'SELECT 1 FROM project_types WHERE id=?', (values[index],)).fetchone():
                     raise ValueError('目标项目类型不存在。')
             connection.execute('''UPDATE archive_classification_policy SET enabled=?,minimum_files=?,
-                high_type_id=?,low_type_id=?,revision=revision+1 WHERE id=1''', (int(enabled), minimum_files, *values))
+                high_type_id=?,low_type_id=?,comparison=?,revision=revision+1 WHERE id=1''',
+                (int(enabled), minimum_files, *values, comparison))
             return _policy(connection)
 
     def preview(self):
@@ -226,7 +241,7 @@ class ArchiveClassification:
             for row in preview['rows']:
                 if row['changed']:
                     _write_type(connection, row['project_id'], row['new_type_id'])
-                    _audit(connection, operation_id, 'batch', row)
+                    _audit(connection, operation_id, 'batch', row, policy=preview['policy'])
                     changed.append(row['project_id'])
             if enable_future and not preview['policy']['enabled']:
                 connection.execute('UPDATE archive_classification_policy SET enabled=1,revision=revision+1 WHERE id=1')
@@ -311,10 +326,11 @@ def classify_new_delivery(connection, event_id):
     changed = []
     if not reason and row['changed']:
         _write_type(connection, canonical, row['new_type_id'])
-        _audit(connection, operation_id, 'auto', row)
+        _audit(connection, operation_id, 'auto', row, policy=policy)
         changed.append(canonical)
     else:
-        _audit(connection, operation_id, 'auto', row, outcome='skipped' if reason else 'unchanged', reason=reason)
+        _audit(connection, operation_id, 'auto', row, outcome='skipped' if reason else 'unchanged',
+               reason=reason, policy=policy)
     connection.execute('INSERT INTO archive_classification_observed_events(event_id,outcome,reason,operation_id) VALUES (?,?,?,?)',
                        (event_id, 'changed' if changed else 'skipped' if reason else 'unchanged', reason, operation_id))
     return _result(operation_id, changed, [dict(project_id=canonical, event_id=event_id, skip_reason=reason)] if reason else [])
