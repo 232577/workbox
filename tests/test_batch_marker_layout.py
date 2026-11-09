@@ -18,7 +18,7 @@ def test_batch_metadata_shares_a_line_when_it_fits_and_wraps_when_needed():
             {'id': 1, 'name': '匿名项目一'},
             {'id': 2, 'name': '匿名项目二', 'batch_markers': [
                 {'label': 'B261109-1', 'code': 'B20261109-1', 'color': '#507080',
-                 'total_count': 4, 'delivered_count': 2, 'remaining_count': 2},
+                 'total_count': 4, 'delivered_count': 2, 'remaining_count': 2, 'pending_delivery_count': 1},
             ]},
             {'id': 3, 'name': '设备设施定期巡查和维护计划补充文件项目记录' * 2},
         ]
@@ -27,7 +27,7 @@ def test_batch_metadata_shares_a_line_when_it_fits_and_wraps_when_needed():
         plain, batch, long_name = (view.visualItemRect(view.item(index)).height() for index in range(3))
         assert batch <= plain + 4
         assert long_name > batch
-        assert 'B20261109-1 (B261109-1) 已交付2/4，剩余2' in view.item(1).toolTip()
+        assert 'B20261109-1 (B261109-1) 已交付2/4，待交付1，剩余1' in view.item(1).toolTip()
 
         view.resize(200, 260)
         qapp.processEvents()

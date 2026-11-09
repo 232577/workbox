@@ -46,6 +46,49 @@ def test_batch_progress_tracks_none_partial_and_all_delivered(service):
     assert_batch_counts(service.project_workbench_snapshot(), key, (2, 2, 0))
 
 
+def test_pending_delivery_is_separate_from_remaining_work_without_writes(service):
+    receipt = service.receive_text('1. 匿名待开发\n2. 匿名开发中\n3. 匿名待交付\n4. 匿名已交付')
+    new, working, pending, delivered = receipt['project_ids']
+    service.set_status(working, '开发中')
+    service.set_status(pending, '待交付')
+    deliver(service, delivered)
+    with service.db.connect() as connection:
+        before = list(connection.iterdump())
+    for filters in ({}, {'status': '待交付'}, {'status': '待开发'},
+                    {'query': '匿名开发中'}, {'query': '没有匹配'}):
+        snapshot = service.project_workbench_snapshot(**filters)
+        marker, = snapshot['batch_options']
+        assert marker['total_count'] == 4
+        assert marker['delivered_count'] == 1
+        assert marker['pending_delivery_count'] == 1
+        # Keep the original unreadied-or-undelivered count for existing readers.
+        assert marker['remaining_count'] == 3
+        assert marker['remaining_count'] - marker['pending_delivery_count'] == 2
+    with service.db.connect() as connection:
+        assert list(connection.iterdump()) == before
+
+
+def test_pending_delivery_counts_follow_current_state_and_deleted_members(service):
+    receipt = service.receive_text('1. 匿名甲\n2. 匿名乙')
+    first, second = receipt['project_ids']
+    service.set_status(first, '待交付')
+    service.set_status(second, '待交付')
+    service.bulk_update_projects([first], archived=True)
+
+    def counts():
+        marker, = service.project_workbench_snapshot()['batch_options']
+        return (marker['total_count'], marker['delivered_count'],
+                marker['pending_delivery_count'], marker['remaining_count'])
+
+    assert counts() == (2, 0, 2, 2)
+    service.set_status(second, '开发中')
+    assert counts() == (2, 0, 1, 2)
+    service.delete_project(second, confirmed=True)
+    assert counts() == (1, 0, 1, 1)
+    service.restore_deleted_project(second)
+    assert counts() == (2, 0, 1, 2)
+
+
 def test_batch_progress_ignores_workload_and_counts_current_state_after_void(service):
     receipt = service.receive_text('1. 匿名代交系统')
     key = receipt_key(receipt)
