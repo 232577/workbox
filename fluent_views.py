@@ -35,17 +35,47 @@ def _batch_badge_background(color, mode):
                     for base_channel, accent_channel in zip(base.getRgb()[:3], accent.getRgb()[:3])))
 
 
+def _batch_progress_counts(marker):
+    counts = tuple(marker.get(field) for field in ('total_count', 'delivered_count', 'remaining_count'))
+    if all(type(value) is int and value >= 0 for value in counts) and counts[0] == counts[1] + counts[2]:
+        return counts
+    return None
+
+
+def batch_progress_summary(marker):
+    counts = _batch_progress_counts(marker)
+    if counts is None:
+        return ''
+    total, delivered, remaining = counts
+    if total == 0:
+        return '本批无有效项目'
+    return f'已交付{delivered}/{total}，剩余{remaining}'
+
+
+def _batch_badge_parts(marker):
+    code = str(marker.get('label') or marker.get('code') or '')
+    counts = _batch_progress_counts(marker)
+    if counts is None:
+        return code, ''
+    total, _, remaining = counts
+    if total == 0:
+        return code, ' 无项目'
+    return code, f' 余{remaining}' if remaining else ' 已齐'
+
+
 def _batch_badge_layout(markers, metrics, width):
-    """保留完整编号；放不下的编号归入明确的更多数量。"""
+    """优先保留完整编号；极窄时仍保留第一枚标记和更多数量。"""
     badges = []
     available = max(0, width)
     for marker in markers[:2]:
-        text = str(marker.get('label') or marker.get('code') or '')
-        badge_width = 24 + metrics.horizontalAdvance(text)
+        code, progress = _batch_badge_parts(marker)
+        badge_width = 24 + metrics.horizontalAdvance(code + progress)
         remaining = len(markers) - len(badges) - 1
         summary = f'+{remaining}批' if remaining else ''
         reserve = 5 + metrics.horizontalAdvance(summary) if summary else 0
         if badge_width + reserve > available:
+            if not badges and available - reserve > 24:
+                badges.append((marker, available - reserve))
             break
         badges.append((marker, badge_width))
         available -= badge_width + 5
@@ -341,7 +371,15 @@ class ProjectListDelegate(WrappedFluentListDelegate):
                 center = position.y() + self.batchHeight / 2
                 baseline = center + (metrics.ascent() - metrics.descent()) / 2
                 for marker, badge_width in badges:
-                    text = str(marker.get('label') or marker.get('code') or '')
+                    code, progress = _batch_badge_parts(marker)
+                    text = code + progress
+                    text_width = int(badge_width) - 24
+                    if metrics.horizontalAdvance(text) > text_width:
+                        code_width = text_width - metrics.horizontalAdvance(progress)
+                        if code_width > metrics.horizontalAdvance('…'):
+                            text = metrics.elidedText(code, Qt.ElideMiddle, code_width) + progress
+                        else:
+                            text = metrics.elidedText(text, Qt.ElideRight, text_width)
                     color = QColor(marker.get('color') or '#777777')
                     if not color.isValid():
                         color = QColor('#777777')
