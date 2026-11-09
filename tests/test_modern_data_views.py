@@ -52,7 +52,7 @@ def test_selected_and_hovered_rows_use_distinct_theme_surfaces(qapp, mode, kind)
     rects = [view.visualRect(view.model().index(row, 0)) for row in range(2)]
     samples = [frame.pixelColor(round(min(rect.right() - 24, view.viewport().width() - 24) * scale),
                                round((rect.top() + 10) * scale)) for rect in rects]
-    assert samples[0].name() == QColor(tokens()['notice_bg']).name()
+    assert samples[0].name() == QColor(tokens()['row_selected']).name()
     assert samples[1] != samples[0]
     assert view.delegate.selectedRows == {0}
     view.hide()

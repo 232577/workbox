@@ -1,0 +1,92 @@
+{
+  "platform": "windows",
+  "source_start": {
+    "compact_ui.py": "3746bfafe2be83f799a69878368363baea9ab8f9c4642a34ffb73a16c0c968b7",
+    "theme.py": "71a3023777a17e7427a6e4b5efae485bda275ea9b5f8c1c5ad27b9a42e5b6eb7",
+    "control_styles.py": "26e3948aa3113a80b97f692cc65714cb170782c998b686e70c88c610a518ce41",
+    "ui_components.py": "63bdb99757231459f2e8cb229e5b779e1374da262d214eb79015058071b2724d",
+    "fluent_views.py": "7df92bab89ec671965be6ebf96a96ad68b03e155172ca4ab9df18a8c77b7aa9a",
+    "project_documents_ui.py": "7086c87e92584dde5768f2eed32348f3b333cb89111706b2e513ebdafd31fcd9",
+    "delivery_ui.py": "710dac241171fb3fdf54453e3bc4340beaaf98c7fd556a1eb43b38e1c20ea02b",
+    "desktop_controller.py": "90a7ad2ff7a961bb2b2d600247cd2efc65b55e1db825dd88f764222d59958e1d",
+    "delivery_export.py": "4a7c2e2a9bf16bba72e6680f88af4d69a97b59b25a2bf2a57ce4b69eaa5a5a68",
+    "export_ui.py": "8b00ff3f76a752757ac6dfa05075fc73bc590bdb014dc8623cf571515e84db8c",
+    "update_client.py": "201fe2b3e848782b4fd08d093dc6bce74f0544ebf4ec7742aa628f852bacc470"
+  },
+  "captures": [
+    {
+      "file": "light-1200-projects.png",
+      "sha256": "aace81c71a2ebad587b3be1893ab781b0601ae28627b69b91293a816bd737149"
+    },
+    {
+      "file": "light-1200-delivery.png",
+      "sha256": "343edbd15651c4af9eafd94782ce0aa8827a4319225af0baa4f729794e874c1a"
+    },
+    {
+      "file": "light-660-projects.png",
+      "sha256": "ca2292bad7cbb1a369b9e309aeb8c917ac3c7765b24edb04658bc2755e276099"
+    },
+    {
+      "file": "light-660-queue.png",
+      "sha256": "a985322945b4c6b73dc30422844b7e14ea8db02e8261499159e68613577030ea"
+    },
+    {
+      "file": "light-660-delivery.png",
+      "sha256": "4b6f379ac1b0b18ede05190b272008f724286f04485f9ce5c5260b01d85b7a9b"
+    },
+    {
+      "file": "dark-1200-projects.png",
+      "sha256": "93e82fabc3f1fc790a5f4e7a6faa4148478faf1d4eb33c575e2084004c6f3441"
+    },
+    {
+      "file": "dark-1200-delivery.png",
+      "sha256": "4c967ee504865d99d010cfdb6216c5b47a457a35bfee840f4924c1b7d65c8d1e"
+    },
+    {
+      "file": "dark-660-projects.png",
+      "sha256": "ad8ecfd5dec068836a052be808fbb4b3bcf8088696327271e5cf8f37d845111f"
+    },
+    {
+      "file": "dark-660-queue.png",
+      "sha256": "350eff06d13824f5b7820af1e4f58ca1f35c74bffeec9a2870e0896673577934"
+    },
+    {
+      "file": "dark-660-delivery.png",
+      "sha256": "6ac3c9b2bf8d9f3a0c0e538d59046c198882104b4d2dc1f82ea0995d142ddcdc"
+    },
+    {
+      "file": "light-1200-pending-export.png",
+      "sha256": "bdae3cbc86e4c596256913d40eb1cbcf2b3a9513217db5e8a85c4727ceeacf9a"
+    },
+    {
+      "file": "dark-660-pending-export.png",
+      "sha256": "4d80375f65e02e22dc0ca95a7db13deec5d9e4a4c7ed7069bd9cf01c974d9975"
+    },
+    {
+      "file": "light-calendar.png",
+      "sha256": "8b97435327bf56da5479957225540c5158be08659eec7e9dd15aa1511dc120ba"
+    },
+    {
+      "file": "dark-calendar.png",
+      "sha256": "f156e3e707816dc243170a4afaf20424d388fed393223d46f6cdeb55683cf274"
+    }
+  ],
+  "checks": {
+    "anonymous_project_count": 110
+  },
+  "source_end": {
+    "compact_ui.py": "3746bfafe2be83f799a69878368363baea9ab8f9c4642a34ffb73a16c0c968b7",
+    "theme.py": "71a3023777a17e7427a6e4b5efae485bda275ea9b5f8c1c5ad27b9a42e5b6eb7",
+    "control_styles.py": "26e3948aa3113a80b97f692cc65714cb170782c998b686e70c88c610a518ce41",
+    "ui_components.py": "63bdb99757231459f2e8cb229e5b779e1374da262d214eb79015058071b2724d",
+    "fluent_views.py": "7df92bab89ec671965be6ebf96a96ad68b03e155172ca4ab9df18a8c77b7aa9a",
+    "project_documents_ui.py": "7086c87e92584dde5768f2eed32348f3b333cb89111706b2e513ebdafd31fcd9",
+    "delivery_ui.py": "710dac241171fb3fdf54453e3bc4340beaaf98c7fd556a1eb43b38e1c20ea02b",
+    "desktop_controller.py": "90a7ad2ff7a961bb2b2d600247cd2efc65b55e1db825dd88f764222d59958e1d",
+    "delivery_export.py": "4a7c2e2a9bf16bba72e6680f88af4d69a97b59b25a2bf2a57ce4b69eaa5a5a68",
+    "export_ui.py": "8b00ff3f76a752757ac6dfa05075fc73bc590bdb014dc8623cf571515e84db8c",
+    "update_client.py": "201fe2b3e848782b4fd08d093dc6bce74f0544ebf4ec7742aa628f852bacc470"
+  },
+  "source_unchanged_during_capture": true,
+  "scope": "Anonymous source-window captures; not installed executable validation."
+}

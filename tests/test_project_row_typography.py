@@ -100,13 +100,14 @@ def test_narrow_rows_cover_both_text_blocks_without_elision(qapp, name):
     narrow = view.delegate.sizeHint(option_for(view, 180), index)
     name_font = QFont(view.font())
     name_font.setPixelSize(14)
-    name_font.setWeight(QFont.DemiBold)
+    name_font.setWeight(QFont.Medium)
     detail_font = QFont(view.font())
     detail_font.setPixelSize(12)
     detail_font.setWeight(QFont.Normal)
-    required = measured_height(name, name_font, 180 - 28)
-    required += 4 + measured_height(detail, detail_font, 180 - 28)
-    required += 2 * (view.delegate.margin + 4)
+    width = 180 - 2 * view.delegate.horizontalInset
+    required = measured_height(name, name_font, width)
+    required += view.delegate.blockSpacing + measured_height(detail, detail_font, width)
+    required += 2 * (view.delegate.margin + view.delegate.verticalPadding)
     assert narrow.height() >= math.ceil(required)
     assert narrow.height() > wide.height()
     assert item.text() == name + '\n' + detail
@@ -155,7 +156,7 @@ def test_offscreen_paint_uses_distinct_fonts_theme_colors_and_library_background
     fonts = {text: font for text, font in captured}
     name_font = fonts[item.data(fluent_views.PROJECT_NAME_ROLE)]
     detail_font = fonts[item.data(fluent_views.PROJECT_DETAIL_ROLE)]
-    assert (name_font.pixelSize(), name_font.weight()) == (14, QFont.DemiBold)
+    assert (name_font.pixelSize(), name_font.weight()) == (14, QFont.Medium)
     assert (detail_font.pixelSize(), detail_font.weight()) == (12, QFont.Normal)
     assert name_font.family() == detail_font.family() == view.font().family()
     assert background_calls == ([{0}] if enabled else [set()])

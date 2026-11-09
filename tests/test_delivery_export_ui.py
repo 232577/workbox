@@ -64,6 +64,23 @@ def test_export_ignores_filters_and_reports_success_without_mutation(page, tmp_p
     assert changed.count() == 0
 
 
+def test_export_reports_retained_original_until_next_action(page, tmp_path, monkeypatch):
+    target = tmp_path / 'table.xlsx'
+    recovery = tmp_path / '.workbox-export-recovery-table.xlsx'
+
+    def export(db, path, **kwargs):
+        return {'project_count': 2, 'path': str(path), 'recovery_path': str(recovery)}
+
+    monkeypatch.setitem(sys.modules, 'delivery_export', types.SimpleNamespace(export_delivered_projects=export))
+    monkeypatch.setattr(QFileDialog, 'getSaveFileName', lambda *a, **k: (str(target), ''))
+    page.export_button.click()
+    wait(page)
+
+    assert '已导出 2 个项目，旧文件仍保留' in page.status_note.text()
+    assert str(recovery) in page.status_note.toolTip() and str(target) in page.status_note.toolTip()
+    assert page.status_note.isVisible() and not page._status_timer.isActive()
+
+
 def test_export_error_and_cancelled_worker_are_safe(page, tmp_path, monkeypatch):
     from concurrent.futures import CancelledError
     monkeypatch.setattr(QFileDialog, 'getSaveFileName', lambda *a, **k: (str(tmp_path / 'out.xlsx'), ''))

@@ -26,40 +26,42 @@ _UI_FONT_FAMILIES = (
 )
 _TOKENS = {
     'light': {
-        'bg': '#F5F5F2', 'surface': '#FFFFFF', 'raised': '#E9ECE7',
-        'ink': '#222825', 'muted': '#48554E', 'placeholder': '#606B63',
-        'border': '#DDE2DC', 'control_border': '#90968F', 'button_border': '#CCD3CD',
-        'accent': '#0F7064', 'accent_hover': '#0B6258', 'accent_pressed': '#094F48', 'accent_text': '#FFFFFF',
-        'hover': '#EDF1EC', 'selection': '#0F7064', 'selection_text': '#FFFFFF',
-        'disabled': '#606C63', 'disabled_bg': '#EDF0EB', 'disabled_check': '#536258',
-        'scroll_handle': '#858D85', 'scroll_hover': '#59655D',
-        'state_new': '#526258', 'state_pending': '#8A4A0C',
-        'state_working': '#175EA8', 'state_delivered': '#0F7064',
-        'error': '#AF303B', 'notice_bg': '#E6F1EC',
-        'subtle_surface': '#FAFBF8', 'info_bg': '#EDF4FB',
+        'bg': '#F1F3F5', 'surface': '#FCFDFE', 'raised': '#E7EBEF',
+        'ink': '#222B35', 'muted': '#46515E', 'placeholder': '#5C6773',
+        'border': '#D7DEE5', 'control_border': '#88939E', 'button_border': '#C5CED7',
+        'accent': '#096C65', 'accent_hover': '#075D57', 'accent_pressed': '#054B47', 'accent_text': '#FFFFFF',
+        'hover': '#EDF1F5', 'selection': '#086E68', 'selection_text': '#FFFFFF',
+        'row_selected': '#E5EBF1', 'row_selected_border': '#BECBD7',
+        'disabled': '#64707C', 'disabled_bg': '#EDF0F3', 'disabled_check': '#536170',
+        'scroll_handle': '#87939F', 'scroll_hover': '#5B6976',
+        'state_new': '#536170', 'state_pending': '#8A4A0C',
+        'state_working': '#195BA3', 'state_delivered': '#096C65',
+        'error': '#AF303B', 'notice_bg': '#E4F0EF',
+        'subtle_surface': '#F6F8FA', 'info_bg': '#EDF4FB',
         'success_bg': '#E8F5EF', 'warning_bg': '#FFF4E3', 'error_bg': '#FDEDF0',
         'orb_bg': '#FFFFFF', 'orb_border': '#CBD5DF', 'orb_ink': '#172B3A',
         'orb_accent': '#0F766E', 'orb_glow': '#D2EAE4', 'orb_shadow': '#526575',
-        'nav_bg': '#EEEFEA', 'nav_ink': '#303B35', 'nav_muted': '#48554E',
-        'nav_hover': '#E4E8E2', 'nav_selected': '#DDE8E0', 'nav_accent': '#0A6055',
+        'nav_bg': '#E7EBEF', 'nav_ink': '#27323E', 'nav_muted': '#46515E',
+        'nav_hover': '#DCE3EA', 'nav_selected': '#F8FAFB', 'nav_accent': '#085E58',
     },
     'dark': {
-        'bg': '#181A1C', 'surface': '#222528', 'raised': '#2E3331',
-        'ink': '#F0F2EF', 'muted': '#BBC3BD', 'placeholder': '#A0ACA4',
-        'border': '#393F3C', 'control_border': '#6D7771', 'button_border': '#49524D',
-        'accent': '#72CBB6', 'accent_hover': '#8DD9C7', 'accent_pressed': '#59B29E', 'accent_text': '#142723',
-        'hover': '#2B312E', 'selection': '#2B7D71', 'selection_text': '#FFFFFF',
-        'disabled': '#A0ACA4', 'disabled_bg': '#2B312E', 'disabled_check': '#A0ACA4',
-        'scroll_handle': '#738079', 'scroll_hover': '#A0ACA4',
-        'state_new': '#BBC3BD', 'state_pending': '#F2BD73',
-        'state_working': '#93C5FD', 'state_delivered': '#72CBB6',
-        'error': '#FFACB4', 'notice_bg': '#29423A',
-        'subtle_surface': '#1E2220', 'info_bg': '#223449',
+        'bg': '#181A1C', 'surface': '#23292F', 'raised': '#303941',
+        'ink': '#EEF1F5', 'muted': '#C4CCD5', 'placeholder': '#A7B2BE',
+        'border': '#38424D', 'control_border': '#737F8D', 'button_border': '#4A5663',
+        'accent': '#76CFC1', 'accent_hover': '#91DACE', 'accent_pressed': '#62B9AD', 'accent_text': '#17282B',
+        'hover': '#2C343D', 'selection': '#307D78', 'selection_text': '#FFFFFF',
+        'row_selected': '#323D47', 'row_selected_border': '#4E606F',
+        'disabled': '#A0ACB9', 'disabled_bg': '#2B333B', 'disabled_check': '#A0ACB9',
+        'scroll_handle': '#778592', 'scroll_hover': '#A0ACB9',
+        'state_new': '#C4CCD5', 'state_pending': '#F2BD73',
+        'state_working': '#9BC9FA', 'state_delivered': '#76CFC1',
+        'error': '#FFACB4', 'notice_bg': '#28413F',
+        'subtle_surface': '#20262D', 'info_bg': '#263748',
         'success_bg': '#203D36', 'warning_bg': '#433424', 'error_bg': '#442B35',
         'orb_bg': '#222833', 'orb_border': '#465365', 'orb_ink': '#F0F4F8',
         'orb_accent': '#69D5BE', 'orb_glow': '#2D4645', 'orb_shadow': '#000000',
-        'nav_bg': '#1D211F', 'nav_ink': '#D6DDD7', 'nav_muted': '#BBC3BD',
-        'nav_hover': '#2E3331', 'nav_selected': '#2B3D35', 'nav_accent': '#9ADDCB',
+        'nav_bg': '#1C2229', 'nav_ink': '#E3E9EF', 'nav_muted': '#C4CCD5',
+        'nav_hover': '#2C343D', 'nav_selected': '#303941', 'nav_accent': '#91DACF',
     },
 }
 _manager = None
@@ -200,12 +202,13 @@ QPushButton#filter:hover, QPushButton#nav:hover { background: %(hover)s; }
 QPushButton#filter:checked, QPushButton#nav:checked { background: %(selection)s; color: %(selection_text)s; font-weight: 600; }
 QPushButton#filter:focus, QPushButton#nav:focus { border: 2px solid %(accent)s; }
 QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateTimeEdit, QDateEdit, QTimeEdit {
-    color: %(ink)s; background: %(surface)s; border: 1px solid %(control_border)s; border-radius: 6px;
+    color: %(ink)s; background: %(surface)s; border: 1px solid %(button_border)s; border-radius: 6px;
+    border-bottom-color: %(control_border)s;
     padding: 6px 9px; min-height: 18px; selection-background-color: %(selection)s; selection-color: %(selection_text)s;
 }
 QLineEdit, QTextEdit, QPlainTextEdit { placeholder-text-color: %(placeholder)s; }
 QLineEdit:read-only, QTextEdit:read-only, QPlainTextEdit:read-only { background: %(subtle_surface)s; }
-QLineEdit:hover, QComboBox:hover, QAbstractSpinBox:hover { border-color: %(muted)s; }
+QLineEdit:hover, QComboBox:hover, QAbstractSpinBox:hover { border-color: %(control_border)s; }
 QLineEdit:disabled, QTextEdit:disabled, QPlainTextEdit:disabled { placeholder-text-color: %(disabled)s; }
 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QAbstractSpinBox:focus {
     border-color: %(accent)s;
@@ -305,8 +308,8 @@ QTabBar::tab:top:!selected:disabled, QDockWidget QTabBar::tab:top:!selected:disa
 QMenu, QMenuBar { color: %(ink)s; background: %(surface)s; border: 1px solid %(border)s; }
 QMenu { background: %(surface)s; border-color: %(button_border)s; border-radius: 8px; padding: 4px; }
 QMenu::item { background: %(surface)s; padding: 6px 28px 6px 10px; margin: 1px; border: none; border-radius: 4px; }
-QMenu::item:selected, QMenuBar::item:selected { color: %(ink)s; background: %(notice_bg)s; }
-QMenu::item:pressed { color: %(ink)s; background: %(nav_selected)s; }
+QMenu::item:selected, QMenuBar::item:selected { color: %(ink)s; background: %(row_selected)s; }
+QMenu::item:pressed { color: %(ink)s; background: %(raised)s; }
 QMenu::item:disabled { color: %(disabled)s; background: %(surface)s; }
 QMenu::separator { height: 1px; background: %(border)s; margin: 3px 7px; }
 QToolTip { color: %(ink)s; background: %(surface)s; border: 1px solid %(button_border)s; padding: 5px 8px; }
@@ -404,9 +407,35 @@ QWidget#manager[dense="true"] QLabel#notice { padding: 5px 8px; font-size: 12px;
                   'border: 1px solid %(border)s; border-radius: 8px; }\n') % c
     # Shared presentation primitives; no model refresh or business-setting writes.
     rules += """
-QWidget#workbenchCanvas { background: %(bg)s; }
-QFrame#workbenchHeader { background: %(bg)s; border: none; border-radius: 0px; }
-QFrame#workbenchHeader QLabel#pageTitle { font-size: 21px; }
+QFrame#topWorkspaceBar { background: %(nav_bg)s; border: none; border-radius: 0; border-bottom: 1px solid %(border)s; }
+QFrame#topWorkspaceBar QLabel#brandName { color: %(nav_ink)s; font-size: 15px; font-weight: 600; }
+QWidget#workbenchCanvas { background: %(surface)s; }
+QFrame#workbenchHeader, QWidget#deliveryCommandBar {
+    background: %(subtle_surface)s; border: none; border-radius: 0; border-bottom: 1px solid %(border)s;
+}
+QFrame#workbenchHeader QLabel#pageTitle { font-size: 17px; }
+QFrame#workbenchHeader QLineEdit { padding: 4px 10px; min-height: 22px; }
+QDialog#deliveryWorkspace { background: %(surface)s; border: none; border-radius: 0; }
+QDialog#deliveryWorkspace QLabel#deliveryTypeTotal { color: %(ink)s; font-size: 13px; font-weight: 600; padding: 0; }
+QDialog#deliveryWorkspace QTextBrowser#deliveryTypeCounts { color: %(muted)s; font-size: 12px; }
+QLabel#deliverySectionTitle { color: %(ink)s; font-size: 14px; font-weight: 600; padding: 0; }
+QWidget#deliveryViewBar { background: transparent; border: none; border-radius: 0; border-bottom: 1px solid %(border)s; }
+QTabBar#deliveryViewTabs::tab:top, QTabBar#deliveryViewTabs::tab:top:!selected {
+    color: %(muted)s; background: transparent; border: 1px solid transparent; border-radius: 0;
+    padding: 4px 12px; min-height: 20px; font-size: 13px;
+}
+QTabBar#deliveryViewTabs::tab:top:selected {
+    color: %(accent)s; background: %(row_selected)s; border: 1px solid transparent;
+    border-bottom-color: %(accent)s; padding: 4px 12px; font-size: 13px; font-weight: 600;
+}
+QTabBar#deliveryViewTabs::tab:top:!selected:hover { color: %(ink)s; background: %(hover)s; }
+QTabBar#deliveryViewTabs::tab:top:focus { border-color: %(accent)s; }
+QTabBar#deliveryViewTabs::tab:top:disabled { color: %(disabled)s; }
+QTableWidget#deliveryProjects, QTableWidget#deliveryRecords { border: none; border-radius: 0; }
+QSplitter#deliveryPanels::handle { background: transparent; border: none; border-top: 1px solid %(border)s; }
+QSplitter#deliveryPanels::handle:hover { border-top-color: %(control_border)s; }
+QWidget#documentSurface QLabel#selectedProjectName, QWidget#documentSurface QLabel#projectMetadata,
+QWidget#documentSurface QLabel#sectionTitle, QWidget#projectSurface QLabel#queueHeader { padding: 0; }
 QLabel#selectedProjectName { font-size: 18px; font-weight: 600; }
 QLabel#queueHeader { color: %(ink)s; font-size: 15px; font-weight: 600; }
 QLabel#projectMetadata { color: %(muted)s; font-size: 12px; }
@@ -440,19 +469,19 @@ QPushButton#subtle:hover { background: %(hover)s; border-color: %(border)s; }
 QPushButton#danger { color: %(error)s; background: transparent; border-color: %(border)s; }
 QPushButton#danger:hover { background: %(error_bg)s; }
 QPushButton#danger:disabled { color: %(disabled)s; background: %(disabled_bg)s; }
-QWidget#projectSurface, QFrame#projectQueueHeader, QWidget#projectQueueTools { background: transparent; border: none; }
+QWidget#projectSurface { background: %(subtle_surface)s; border: none; border-radius: 0; }
+QFrame#projectQueueHeader, QWidget#projectQueueTools { background: transparent; border: none; }
 QWidget#documentSurface { background: %(surface)s; border: none; border-radius: 0; }
 QListWidget#projectList { background: transparent; border: none; }
-QSplitter#projectWorkspaceSplit::handle { background: transparent; border: none; margin: 0px 3px; }
-QSplitter#projectWorkspaceSplit::handle:hover { background: %(accent)s; border-radius: 1px; }
-QFrame#workbenchFooter { background: %(bg)s; border: none; }
+QSplitter#projectWorkspaceSplit::handle { background: transparent; border: none; border-left: 1px solid %(border)s; }
+QSplitter#projectWorkspaceSplit::handle:hover { border-left-color: %(control_border)s; }
+QFrame#workbenchFooter { background: %(nav_bg)s; border: none; border-radius: 0; border-top: 1px solid %(border)s; }
 QAbstractSpinBox QLineEdit { border: none; padding: 0px; min-height: 0px; background: transparent; }
 QPlainTextEdit#releaseNotes { background: %(surface)s; border-color: %(border)s; padding: 12px; min-height: 96px; }
 QTableWidget#materialRules, QTableWidget#materialResults, QTableWidget#materialChoices {
     background: %(surface)s; alternate-background-color: %(subtle_surface)s; border: 1px solid %(border)s;
     border-radius: 8px; gridline-color: transparent; }
-QWidget#manager[dense="true"] QFrame#workbenchHeader QLabel#pageTitle { font-size: 18px; }
-QWidget#manager[dense="true"] QLabel#selectedProjectName { font-size: 16px; }
+QWidget#manager[dense="true"] QFrame#workbenchHeader QLabel#pageTitle { font-size: 16px; }
 """ % c
     base = _base_stylesheet(actual) if QApplication.instance() is not None else ''
     return base + '\n/* WorkBox semantic appearance */\n' + rules

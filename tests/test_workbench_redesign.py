@@ -91,7 +91,7 @@ def test_wide_default_leaves_room_for_files_and_manual_split_still_wins(panel):
     panel.resize(1920, 1000)
     QTest.qWait(150)
     split = panel.project_splitter
-    assert 380 <= split.sizes()[0] <= 440
+    assert 340 <= split.sizes()[0] <= 380
     handle = split.handle(1)
     start = handle.rect().center()
     QTest.mousePress(handle, Qt.LeftButton, pos=start)
