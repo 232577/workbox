@@ -328,14 +328,16 @@ class ProjectListDelegate(WrappedFluentListDelegate):
             metrics = QFontMetrics(font)
             x = math.ceil(detail[0].lineAt(0).naturalTextWidth()) + 8 if detail[1] else 0
             badges, summary = _batch_badge_layout(markers, metrics, width - x)
+            full_badges, full_summary = _batch_badge_layout(markers, metrics, width)
             code, progress = _batch_badge_parts(markers[0])
             if (detail[0].lineCount() <= 1 and badges
+                    and len(badges) == len(full_badges)
                     and badges[0][1] >= 24 + metrics.horizontalAdvance(code + progress)):
                 y = detail_top + max(0, (detail[1] - self.batchHeight) / 2)
             else:
                 x = 0
                 y = height + self.batchSpacing
-                badges, summary = _batch_badge_layout(markers, metrics, width)
+                badges, summary = full_badges, full_summary
             height = max(height, y + self.batchHeight)
             badge_line = (QPointF(x, y), font, metrics, badges, summary)
         return name[0], detail[0], detail_top, badge_line, height

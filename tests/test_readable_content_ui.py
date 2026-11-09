@@ -140,6 +140,8 @@ def test_document_names_wrap_and_reflow_without_replacing_items(
                   exists=True, size=4096, modified_at=None, zip_id=None, is_directory=False)
     result = dict(project_id=1, workspace_path='', errors=[], documents=[record])
     pane.apply_result(result)
+    # 先完成窗口默认分栏，避免排队的初始布局覆盖随后模拟的调宽。
+    settle(qapp)
     panel.project_splitter.setSizes([650, 350])
     if single_pane:
         pane.table.setColumnWidth(0, 160)

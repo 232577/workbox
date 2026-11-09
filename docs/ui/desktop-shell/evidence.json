@@ -5,7 +5,7 @@
     "theme.py": "71a3023777a17e7427a6e4b5efae485bda275ea9b5f8c1c5ad27b9a42e5b6eb7",
     "control_styles.py": "26e3948aa3113a80b97f692cc65714cb170782c998b686e70c88c610a518ce41",
     "ui_components.py": "63bdb99757231459f2e8cb229e5b779e1374da262d214eb79015058071b2724d",
-    "fluent_views.py": "10e2aec0e7de5c223a26534a1e36bfd143551ac8c7c8b179290f723ca286d40d",
+    "fluent_views.py": "7df92bab89ec671965be6ebf96a96ad68b03e155172ca4ab9df18a8c77b7aa9a",
     "project_documents_ui.py": "7086c87e92584dde5768f2eed32348f3b333cb89111706b2e513ebdafd31fcd9",
     "delivery_ui.py": "710dac241171fb3fdf54453e3bc4340beaaf98c7fd556a1eb43b38e1c20ea02b",
     "desktop_controller.py": "90a7ad2ff7a961bb2b2d600247cd2efc65b55e1db825dd88f764222d59958e1d",
@@ -24,7 +24,7 @@
     },
     {
       "file": "light-660-projects.png",
-      "sha256": "994215e88942830e1e9ff7d17436a8f001e8162d16145a09c5f373884e347308"
+      "sha256": "ca2292bad7cbb1a369b9e309aeb8c917ac3c7765b24edb04658bc2755e276099"
     },
     {
       "file": "light-660-queue.png",
@@ -79,7 +79,7 @@
     "theme.py": "71a3023777a17e7427a6e4b5efae485bda275ea9b5f8c1c5ad27b9a42e5b6eb7",
     "control_styles.py": "26e3948aa3113a80b97f692cc65714cb170782c998b686e70c88c610a518ce41",
     "ui_components.py": "63bdb99757231459f2e8cb229e5b779e1374da262d214eb79015058071b2724d",
-    "fluent_views.py": "10e2aec0e7de5c223a26534a1e36bfd143551ac8c7c8b179290f723ca286d40d",
+    "fluent_views.py": "7df92bab89ec671965be6ebf96a96ad68b03e155172ca4ab9df18a8c77b7aa9a",
     "project_documents_ui.py": "7086c87e92584dde5768f2eed32348f3b333cb89111706b2e513ebdafd31fcd9",
     "delivery_ui.py": "710dac241171fb3fdf54453e3bc4340beaaf98c7fd556a1eb43b38e1c20ea02b",
     "desktop_controller.py": "90a7ad2ff7a961bb2b2d600247cd2efc65b55e1db825dd88f764222d59958e1d",
