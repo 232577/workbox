@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const css = await readFile(new URL('./public/release-page.css', import.meta.url), 'utf8');
+const homepageCss = await readFile(new URL('./public/homepage.css', import.meta.url), 'utf8');
 
 function contrast(first, second) {
   const luminance = color => {
@@ -15,7 +16,7 @@ function contrast(first, second) {
 }
 
 function declarations(selector) {
-  const match = [...css.matchAll(/([^{}]+)\{([^{}]+)\}/g)]
+  const match = [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]+)\}/g)]
     .find(value => value[1].trim() === selector);
   assert.ok(match, `Missing style: ${selector}`);
   return Object.fromEntries(match[2].split(';').filter(value => value.includes(':'))
@@ -27,6 +28,17 @@ test('示例ZIP标签及免责声明的小字对比度达到4.5而非按大字�
   const disclaimer = declarations('.wb-demo-disclaimer');
   assert.ok(contrast('#ffffff', zip.background) >= 4.5);
   assert.ok(contrast(disclaimer.color, disclaimer.background) >= 4.5);
+});
+
+test('跳到主要内容链接在深色和悬停时保持白底可读，焦点层高于粘性导航', () => {
+  const normal = declarations('.home-page .skip');
+  const hover = declarations('.home-page .skip:hover');
+  const headerZ = Number(homepageCss.match(/\.wb-header\{[^}]*z-index:(\d+)/)?.[1]);
+  assert.ok(Number.isFinite(headerZ));
+  assert.equal(normal.background, '#ffffff');
+  assert.ok(contrast(normal.color, normal.background) >= 4.5);
+  assert.ok(contrast(hover.color, normal.background) >= 4.5);
+  assert.ok(Number(normal['z-index']) > headerZ);
 });
 
 test('无脚本系统深色完整复用显式深色规则，不在浅色或明确选择浅色时启用', () => {

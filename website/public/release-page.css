@@ -1,4 +1,6 @@
 /* Original WorkBox release-page composition. Shared admin/theme code is unchanged. */
+.home-page .skip{background:#ffffff;color:#08695e;z-index:30}
+.home-page .skip:hover{color:#044d43}
 .home-page{--wb-navy:#202c2c;--wb-green:#087d70;--wb-muted:#586664;--wb-paper:#f1f4f1;--wb-line:#dce5df;--release-surface:#fff;--release-bg:#f8f8f4;background:var(--release-bg);color:var(--wb-navy);isolation:isolate}
 .home-page::before{content:"";position:absolute;inset:0 0 auto;z-index:-1;height:1100px;pointer-events:none;background:radial-gradient(ellipse at 5% 22%,#d3def8b0,transparent 46%),radial-gradient(ellipse at 100% 48%,#bcebdcba,transparent 46%),radial-gradient(ellipse at 46% 83%,#f5dce26b,transparent 37%)}
 .home-page .wb-wrap{width:min(1160px,calc(100% - 64px))}
