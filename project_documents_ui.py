@@ -296,8 +296,8 @@ class ProjectDocumentsPane(QWidget):
     def apply_result(self, result):
         if result['project_id'] != self.project_id:
             return
-        result = dict(result, documents=[row for row in result['documents']
-            if (row['kind'] == '历史文稿') == self._show_history])
+        if self._show_history and any(row['kind'] != '历史文稿' for row in result['documents']):
+            result = dict(result, documents=[row for row in result['documents'] if row['kind'] == '历史文稿'])
         signature = (result['workspace_path'], tuple(result['errors']),
                      tuple(tuple(sorted(row.items())) for row in result['documents']))
         if signature == self._signature:
