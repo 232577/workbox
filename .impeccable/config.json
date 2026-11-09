@@ -1,0 +1,35 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "gradient-text",
+        "value": "*",
+        "files": [
+          ".local/release-r5/skip-only.html"
+        ],
+        "createdAt": "2026-11-09T07:48:31.423Z",
+        "reason": "Agent: isolated skip-link regression fixture deliberately imports the full existing stylesheet; no heading or gradient text is present and this file is not published."
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          ".local/release-r5/skip-only.html"
+        ],
+        "createdAt": "2026-11-09T07:48:31.464Z",
+        "reason": "Agent: isolated skip-link regression fixture retains production theme CSS solely to reproduce a prior contrast failure; this fixture is not published."
+      },
+      {
+        "rule": "radial-halo",
+        "value": "*",
+        "files": [
+          ".local/release-r5/skip-only.html"
+        ],
+        "createdAt": "2026-11-09T07:48:31.503Z",
+        "reason": "Agent: isolated skip-link regression fixture intentionally inherits full theme CSS for a contrast regression check, not a user-facing design surface."
+      }
+    ]
+  }
+}
