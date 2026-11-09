@@ -44,6 +44,7 @@ def test_progress_percentage_uses_readable_foreground_on_filled_track(mode):
     bar=QProgressBar();bar.setValue(65);bar.ensurePolished()
     try:
         color=bar.palette().color(QPalette.HighlightedText).name().upper()
-        assert color==tokens(mode)['accent_text']
-        assert contrast(color,tokens(mode)['accent'])>=4.5
+        assert color==tokens(mode)['ink']
+        assert contrast(color,tokens(mode)['progress_fill'])>=4.5
+        assert contrast(color,tokens(mode)['raised'])>=4.5
     finally:bar.close();bar.deleteLater();app.processEvents();install_theme()

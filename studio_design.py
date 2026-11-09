@@ -20,7 +20,7 @@ PALETTES = {
         'warning_bg': '#FFF2DE', 'error_bg': '#FCECF0',
         'nav_bg': '#F8F7F5', 'nav_ink': '#2B2A39', 'nav_muted': '#565767',
         'nav_hover': '#EFEDF8', 'nav_selected': '#EAE7FB', 'nav_accent': '#473BB7',
-        'orb_accent': '#4F46C8', 'orb_glow': '#E3DFF9',
+        'orb_accent': '#4F46C8', 'orb_glow': '#E3DFF9', 'progress_fill': '#C9C4F5',
     },
     'dark': {
         'bg': '#19191F', 'surface': '#24242D', 'raised': '#30303B',
@@ -38,7 +38,7 @@ PALETTES = {
         'warning_bg': '#443525', 'error_bg': '#492E3B',
         'nav_bg': '#202027', 'nav_ink': '#F0EFF7', 'nav_muted': '#C2BFCE',
         'nav_hover': '#34313F', 'nav_selected': '#393249', 'nav_accent': '#C4BDFF',
-        'orb_accent': '#B4AEFF', 'orb_glow': '#393249',
+        'orb_accent': '#B4AEFF', 'orb_glow': '#393249', 'progress_fill': '#554878',
     },
 }
 
@@ -73,8 +73,8 @@ QMenu { border-radius: 10px; padding: 5px; }
 QMenu::item { border-radius: 6px; padding: 7px 28px 7px 10px; }
 QMenu::item:selected { color: %(ink)s; background: %(row_selected)s; }
 QToolTip { background: %(surface)s; color: %(ink)s; border: 1px solid %(button_border)s; padding: 7px 10px; }
-QProgressBar { background: %(raised)s; color: %(ink)s; selection-color: %(accent_text)s; border-radius: 4px; }
-QProgressBar::chunk { background: %(accent)s; border-radius: 4px; }
+QProgressBar { background: %(raised)s; color: %(ink)s; selection-color: %(ink)s; border-radius: 4px; }
+QProgressBar::chunk { background: %(progress_fill)s; border-radius: 4px; }
 QTableWidget#checklistTable { background: %(surface)s; alternate-background-color: %(subtle_surface)s;
     border: 1px solid %(border)s; border-radius: 10px; gridline-color: %(border)s; }
 QFrame#checklistMapping { background: %(surface)s; border: 1px solid %(border)s; border-radius: 10px; }
