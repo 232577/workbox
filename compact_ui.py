@@ -400,6 +400,7 @@ class CompactPanel(DropSurface, QWidget):
         theme_menu.aboutToShow.connect(self.sync_theme_menu)
         theme_signal().connect(self.sync_theme_menu)
         self.sync_theme_menu()
+        top.addStretch()
         top.addWidget(self.paste_button)
         top.addWidget(self.files_button)
         self.nav_controls.append((self.settings_button, '高级设置'))
@@ -619,7 +620,7 @@ class CompactPanel(DropSurface, QWidget):
         self.project_back_button.setIcon(FluentIcon.RETURN)
         self.project_back_button.clicked.connect(self.show_project_queue)
         self.project_back_button.hide()
-        document_layout.addWidget(self.project_back_button, 0, Qt.AlignLeft)
+        self.header_surface.layout().insertWidget(1, self.project_back_button)
         self.project_title = label('', 'selectedProjectName', True)
         self.project_title.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.document_heading = QWidget()
@@ -931,6 +932,8 @@ class CompactPanel(DropSurface, QWidget):
     def sync_navigation(self, *_):
         index = self.tabs.currentIndex()
         is_classification = getattr(self, 'archive_classification_page', None) is self.tabs.currentWidget()
+        self.header_surface.setVisible(
+            self.tabs.currentWidget() is not getattr(self, 'delivery_page_container', None))
         self.page_title.setText('归档分类' if is_classification else ('项目', 'ZIP 归档', '待核对', '交付记录管理')[min(3, max(0, index))])
         for position, control in enumerate((self.nav_projects, self.nav_zip, self.nav_review, self.today_button)):
             control.setChecked(not is_classification and position == index)
@@ -1078,6 +1081,7 @@ class CompactPanel(DropSurface, QWidget):
             self.review_empty.setVisible(not receipts)
             self.tabs.setTabText(2, f'待核对 {len(receipts)}' if receipts else '待核对')
             self.nav_review.setToolTip(f'待核对 {len(receipts)}' if receipts else '待核对')
+            self.nav_review.setAccessibleDescription(self.nav_review.toolTip())
             self._review_caption = f'待核对 {len(receipts)}' if receipts else '待核对'
             self._review_count = len(receipts)
             self.nav_review.setVisible(bool(receipts) or self.tabs.currentIndex() == 2)
@@ -1896,6 +1900,13 @@ class CompactPanel(DropSurface, QWidget):
                 text = ''
             elif narrow and control is self.today_button:
                 text = '今日工作量 ' + getattr(self, '_today_compact_caption', '0')
+            elif narrow and control is self.nav_review and getattr(self, '_review_count', 0) > 99:
+                text = '待核对 99+'
+            elif narrow and control is self.nav_zip:
+                if getattr(self, '_zip_attention_unreadable', False):
+                    text = 'ZIP 状态不可读'
+                elif getattr(self, '_zip_review_count', 0) and getattr(self, '_zip_error_count', 0):
+                    text = 'ZIP 核对/异常'
             if hasattr(control, 'setCompactCount'):
                 control.setCompactCount(None)
             control.setText(text)
@@ -1977,7 +1988,7 @@ class CompactPanel(DropSurface, QWidget):
         self.project_side.setMinimumWidth(
             max(self.status_segments.sizeHint().width(), filter_width)
             + margins.left() + margins.right())
-        narrow = self.workbench.width() < 800
+        narrow = self.workbench.width() < 900
         changed = narrow != self._project_narrow
         if changed and narrow and not self.bulk_mode.isChecked() and not self._project_wide_sizes:
             sizes = self.project_splitter.sizes()
@@ -1987,7 +1998,17 @@ class CompactPanel(DropSurface, QWidget):
         detail = self._project_detail_open and self.current_project is not None and not self.bulk_mode.isChecked()
         self.project_side.setVisible(not narrow or not detail)
         self.document_side.setVisible(not self.bulk_mode.isChecked() and (not narrow or detail))
-        self.project_back_button.setVisible(narrow and detail)
+        detail_command = self.tabs.currentIndex() == 0 and narrow and detail
+        self.project_back_button.setVisible(detail_command)
+        if self.tabs.currentIndex() in (0, 1):
+            self.search.setVisible(not detail_command)
+        self.project_filter_button.setVisible(self.tabs.currentIndex() == 0 and not detail_command)
+        self.clear_project_filters.setVisible(self.tabs.currentIndex() == 0 and not detail_command
+            and any(not chip.isHidden() for chip in self.project_filter_chips.values()))
+        if self.files_button.property('contextSecondary') != detail_command:
+            self.files_button.setProperty('contextSecondary', detail_command)
+            self.files_button.style().unpolish(self.files_button)
+            self.files_button.style().polish(self.files_button)
         inline_scope = narrow and (self.status_segments.minimumSizeHint().width()
                                    + self.batch_filter.minimumSizeHint().width() + 12
                                    <= self.workbench.width() - 40)

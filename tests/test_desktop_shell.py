@@ -61,5 +61,35 @@ def test_wide_workspace_allocates_more_space_to_files_and_keeps_search_scope(pan
     panel.show_project_detail()
     QApplication.processEvents()
     assert panel.project_back_button.isVisible()
+    assert panel.header_surface.isAncestorOf(panel.project_back_button)
+    assert not panel.search.isVisible() and not panel.project_filter_button.isVisible()
     panel.project_back_button.click()
+    assert panel.search.isVisible() and panel.search.text() == '匿名'
     assert panel.current_project['id'] == selected
+
+
+@pytest.mark.parametrize('review_count,error_count,unreadable', [(1, 1, False), (100, 20, True)])
+def test_all_attention_entries_fit_without_losing_full_status(panel, review_count, error_count, unreadable):
+    panel.resize(660, 480)
+    panel._review_count = 100
+    panel._review_caption = '待核对 100'
+    panel.nav_review.setToolTip('待核对 100')
+    panel.nav_review.show()
+    panel._zip_review_count = review_count
+    panel._zip_error_count = error_count
+    panel._zip_attention_unreadable = unreadable
+    panel.sync_zip_navigation()
+    QApplication.processEvents()
+    controls = [control for control, _ in panel.nav_controls if control.isVisible()]
+    rectangles = []
+    for control in controls:
+        rectangle = control.rect().translated(control.mapTo(panel.navigation, QPoint()))
+        assert panel.navigation.rect().contains(rectangle)
+        assert all(not rectangle.intersects(other) for other in rectangles)
+        assert control.width() >= control.minimumSizeHint().width()
+        rectangles.append(rectangle)
+    details = panel.nav_zip.accessibleDescription()
+    assert f'待核对包 {review_count}' in details and f'归档异常 {error_count}' in details
+    assert details == panel.nav_zip.toolTip()
+    if unreadable:
+        assert '不可读' in panel.nav_zip.text()

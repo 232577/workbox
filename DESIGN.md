@@ -1,39 +1,203 @@
-# WorkBox 界面规范索引
+---
+version: alpha
+name: WorkBox 工作箱
+description: Windows 原生项目、文件与交付工作台
+colors:
+  primary: "#096C65"
+  primary-hover: "#075D57"
+  primary-pressed: "#054B47"
+  on-primary: "#FFFFFF"
+  window: "#F1F3F5"
+  surface: "#FCFDFE"
+  subtle-surface: "#F6F8FA"
+  raised: "#E7EBEF"
+  ink: "#222B35"
+  muted: "#46515E"
+  border: "#D7DEE5"
+  control-border: "#88939E"
+  button-border: "#C5CED7"
+  hover: "#EDF1F5"
+  row-selected: "#E5EBF1"
+  row-selected-border: "#BECBD7"
+  notice-background: "#E4F0EF"
+  navigation-background: "#E7EBEF"
+  navigation-selected: "#F8FAFB"
+  navigation-accent: "#085E58"
+  working: "#195BA3"
+  pending-delivery: "#8A4A0C"
+  error: "#AF303B"
+  primary-dark: "#76CFC1"
+  primary-hover-dark: "#91DACE"
+  primary-pressed-dark: "#62B9AD"
+  on-primary-dark: "#17282B"
+  window-dark: "#181A1C"
+  surface-dark: "#23292F"
+  subtle-surface-dark: "#20262D"
+  raised-dark: "#303941"
+  ink-dark: "#EEF1F5"
+  muted-dark: "#C4CCD5"
+  border-dark: "#38424D"
+  control-border-dark: "#737F8D"
+  button-border-dark: "#4A5663"
+  hover-dark: "#2C343D"
+  row-selected-dark: "#323D47"
+  row-selected-border-dark: "#4E606F"
+  notice-background-dark: "#28413F"
+  navigation-background-dark: "#1C2229"
+  navigation-selected-dark: "#303941"
+  navigation-accent-dark: "#91DACF"
+  working-dark: "#9BC9FA"
+  pending-delivery-dark: "#F2BD73"
+  error-dark: "#FFACB4"
+typography:
+  shell-title:
+    fontSize: "17px"
+    fontWeight: 600
+  shell-title-compact:
+    fontSize: "16px"
+    fontWeight: 600
+  brand:
+    fontSize: "15px"
+    fontWeight: 600
+  object-title:
+    fontSize: "18px"
+    fontWeight: 600
+  queue-title:
+    fontSize: "15px"
+    fontWeight: 600
+  body:
+    fontFamily: "Microsoft YaHei UI, Microsoft YaHei, PingFang SC, Noto Sans SC, Noto Sans CJK SC, Source Han Sans SC, SimHei, WenQuanYi Micro Hei, Segoe UI, Noto Sans, DejaVu Sans"
+    fontSize: "14px"
+  primary-action:
+    fontSize: "14px"
+    fontWeight: 600
+  row-title:
+    fontSize: "14px"
+    fontWeight: 500
+  metadata:
+    fontSize: "12px"
+  batch-mark:
+    fontSize: "11px"
+rounded:
+  row: "4px"
+  compact-control: "5px"
+  control: "6px"
+  utility-surface: "8px"
+spacing:
+  navigation-gap: "4px"
+  navigation-inset: "14px"
+  navigation-inset-narrow: "10px"
+  command-gap: "12px"
+  split-handle: "8px"
+components:
+  button-primary:
+    backgroundColor: "{colors.primary}"
+    textColor: "{colors.on-primary}"
+    typography: "{typography.primary-action}"
+    rounded: "{rounded.control}"
+    padding: "6px 12px"
+  button-primary-dark:
+    backgroundColor: "{colors.primary-dark}"
+    textColor: "{colors.on-primary-dark}"
+    typography: "{typography.primary-action}"
+    rounded: "{rounded.control}"
+    padding: "6px 12px"
+  button-standard:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    typography: "{typography.body}"
+    rounded: "{rounded.control}"
+    padding: "6px 12px"
+  text-field:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    typography: "{typography.body}"
+    rounded: "{rounded.control}"
+    padding: "0px 10px"
+    height: "32px"
+  top-navigation-item-selected:
+    backgroundColor: "{colors.navigation-selected}"
+    textColor: "{colors.navigation-accent}"
+    rounded: "{rounded.compact-control}"
+    padding: "5px 10px"
+  project-row-selected:
+    backgroundColor: "{colors.row-selected}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.row}"
+  filter-chip:
+    backgroundColor: "{colors.notice-background}"
+    textColor: "{colors.navigation-accent}"
+    typography: "{typography.metadata}"
+    rounded: "{rounded.compact-control}"
+    padding: "3px 7px"
+---
 
-当前项目工作台与控件以[成熟工作台改版](docs/UI-MATURE-WORKSPACE.md)为准：清单内筛选、直接项目动作、窄窗完整详情、表上文件操作和强化的公共控件。本文下方带日期的段落保留历史决策，涉及控件位置和窄窗布局时以当前规范优先。
+# WorkBox 桌面设计系统
 
-桌面设计的主规范是 [桌面设计系统](docs/UI-DESIGN-SYSTEM.md)，网站另使用 [网站设计记录](website/DESIGN.md)。本文件记录本轮新增交互的归属，不另建配色或字体系统。
+## Overview
 
-- 桌面使用 PySide6、锁定的 QFluentWidgets 与原生窗口；浅深色、字号和控件外观由 `theme.py`、`control_styles.py`、`ui_components.py` 负责。
-- 交付页保持在主窗口，表格和选择由 `fluent_views.py`、`delivery_ui.py` 负责；继续使用原生像素滚动、手动列宽和已有窄窗切页。
-- 新增“导出表格”复用 `compact_ui.button`，无障碍名称为“导出全部有效交付项目”。保存位置使用 Qt 原生文件对话框；只在最终路径存在文件时确认替换。
-- 后台任务沿用 `ui.FileJob`。导出期间禁用重复操作，完成后留在原页面并显示项目数和位置；失败与取消不显示成功，也不发出统计变更信号。
-- 只读报表归属 `delivery_export.py`；归档数量事实归属 `archive_facts.py`，交付有效性与合并关系归属 `Database.delivery_history`。报表和数量使用同一读取事务。
-- 核对保存取消、覆盖确认、成功、失败、忙碌关闭、无结果仍导出全部、窄窗口、长名称及真实保存对话框。测试使用匿名数据，Qt自动回归使用offscreen，不操作系统剪贴板。
-- 选择「待开发」时，项目清单标题行提供「导出名单」。沿用现有 Excel 保存对话框和文件任务队列，完成后显示项目数和文件路径。导出范围包括所有未归档、未删除的待开发项目，搜索和筛选仅影响当前清单。
+**Creative North Star: "原生横向工作台"**
 
-## 项目与收件批次
+WorkBox 是 Windows 原生桌面工作区。原生标题栏显示完整构建号，横向导航带着 WorkBox 图标连接项目、交付记录和异常入口。内容从当前项目、文件和操作展开，常用命令与操作对象就近摆放。
 
-- 用户选择原项目状态工作流，独立任务组及手工交接入口退役。项目为默认工作台，收件查看仍定位项目及其文件；旧记录继续保存。
-- 原生窗口标题显示当前完整构建号，方便直接确认正在运行的版本；内容区字号和布局不随版本字符串改变。
-- 保持原项目排序及一项目一行。项目名称和状态下的批次小标签显示编号及“余N”，全部交付时显示“已齐”。同批跨状态同色同号，最多并列两个编号。放不下的批次用“+N批”表示，极长的首枚编号可在中间省略。提示和无障碍说明保留完整编号及数量，颜色不能替代编号或选择、焦点状态。
-- 不引入分组标题、重复项目、强制批次排序或新布局模式。项目名14px、详情12px、批次标签11px；沿用真实Fluent列表、原生滚动和现有委托。系统主题按实际浅深色绘制。
-- 收件批次关联由同一只读索引提供给项目列表、筛选、编号搜索和交付导出；不写原物理批次或目录，不按名称猜归属。
-- 归档分类仍从高级设置进入主窗口；预览、应用和撤销、忙碌/退出及更新恢复保护保持。
-- 当前交互和数据边界见[项目批次标记](docs/PROJECT-BATCH-MARKERS.md)，旧数据解释见[历史任务记录](docs/TASK-GROUPS.md)。
+冷灰构成窗口和工作平面，青绿用于主操作、焦点与选中导航。界面以项目与文件的可读性为先，沿用 Qt Widgets 和锁定的 QFluentWidgets。具体页面与验证范围见[横向工作台改版记录](docs/UI-DESKTOP-SHELL.md)。
 
-## 日常入口精简
+## Colors
 
-侧栏常驻项目、今日工作量与高级设置；待核对有事项或正在查看时显示，ZIP出现未核对合包或归档错误时也恢复直接入口与数量。高级设置复用原生菜单，集中规则、归档、记录、监视、外观、帮助和更新。材料检查仍从所选项目菜单进入，项目文件和类型修改保持原位置。底部保留后台运行、退出与处理中的取消。先前的[精简方案](docs/WORKBENCH-SIMPLIFICATION.md)记录历史阶段，当前采用项目批次标记方案。
+浅色、深色及跟随系统共用同一组语义。主按钮使用青绿填色并反转文字色，普通按钮使用内容面色。导航用独立的底色、选中面与底部强调线，清单选中行使用中性色面和轮廓，键盘焦点换成青绿轮廓。
 
-静默轮询的异常计数使用轻量只读统计，不为更新导航加载全部归档版本或逐项读取文件数量；完整版本详情只在实际列表需要时读取。
+正文和元数据各用独立的前景色。开发中、待交付、已交付和错误提示有相应语义色，状态文字始终可读。批次颜色是批次关联的辅助线索，批次编号及数量提供完整语义。颜色与状态源见 [theme.py](theme.py) 和 [control_styles.py](control_styles.py)。
 
-## 界面减负与数量分类（2026-11-06）
+## Typography
 
-沿用现有字体、颜色和成熟Qt控件做信息减法。项目只显示一处结果数量，名称、状态、类型和同批色号保留，ZIP为零不显示。批次在项目清单旁直接选择，下方显示该批的交付摘要。选择“所有批次”时收起摘要。归档范围、日期、类型与加急折叠进筛选，活动条件始终有标识并可清除。折叠不清除条件，也不改变项目排序。
+正文为 14px。Qt 与 Fluent 共用本机已安装的字体序列，以微软雅黑 UI 及中文无衬线回退优先。项目清单名称为 14px 中等字重，下一层是 12px 状态和元数据，批次标记用 11px。长名称按字词换行，行高随实际内容变化。
 
-没有选择项目或文件时收起不适用的操作和空表头；读取失败保留直接重试。项目操作和文件操作由各自原生菜单承担，目录打开与所在目录的语义不能混同。交付页保留日期、搜索、全量导出和精简类型统计，项目/记录操作按选择出现；更正原因在一次确认中填写，取消或失败保留草稿。
+所选项目名称为 18px 半粗，项目清单标题和品牌文字为 15px 半粗。常规壳标题 17px，窗口高度不足 560px 时切为 16px。字号以 Qt 逻辑像素计。
 
-主壳收件按钮只出现在项目及ZIP页。普通收件成功提示仅在收件页面短暂显示，持久错误、待核对与忙碌提示仍跨页可见，不按文案猜测提示类型。旧成功提示的定时器不能隐藏后来错误。返回入口使用“返回项目”，不恢复任务组页。
+## Layout
 
-归档分类以比较方式和数量表达：新配置为恰好16件，其他已知数量对应另一类型；旧配置保留至少数量语义。配置控件、预览、未来分类和审计使用同一规则，导出仅反映当前类型且不写库。完整行为与验收见[本轮界面及分类说明](docs/UI-CLEANUP-EXACT16.md)。
+- 原生标题栏下依次为横向工作区导航、当前页命令区、工作平面和底部操作区。项目和今日工作量常驻。待核对有事项或正在查看时出现，ZIP 有待核对、错误、状态不可读或正在查看时可直接到达。高级设置在导航末端，继续使用原生菜单。
+- 窄窗口的 ZIP 多状态入口使用短标题，不可读状态优先显示；完整计数仍保留在悬停和辅助阅读说明中。超过 99 条的待核对显示 99+，不改变实际数量。
+- 项目和 ZIP 页共享搜索与收件命令。项目页附加筛选可展开、逐项清除或一起清除，折叠后仍能看见活动条件。批次选择与摘要靠近项目清单。
+- 主窗默认 1200×780，最小 660×480。工作区宽度达到 900px 时，项目清单默认 360px 并尊重控件最小宽度，文件区使用剩余空间。分隔条可拖动，来回切换窗口宽度时保留手动比例。
+- 工作区不足 900px 时，清单与项目详情各占全宽。点击项目或用键盘激活进入详情，使用「返回项目清单」恢复滚动锚点和列表焦点。批量选择保持清单操作。窄窗导航保留品牌图标和可访问的设置名称。
+- 嵌入交付页在宿主高度不足 620px 或宽度不足 820px 时，使用「项目记录」和「交付明细」两页，窄窗明细显示所属项目全名。宽窗保留分栏及明细展开，表格沿用原生像素滚动和手动列宽。
+
+## Elevation & Depth
+
+主壳、清单与文件面采用平整的色面。导航和底栏用细分隔线收边，命令区与清单使用次级表面，文档区使用内容表面。分隔条在悬停时提高线条对比。选中与焦点由行面色和边线区分，信息无需依赖阴影。
+
+## Shapes
+
+主壳和分栏采用直角边界。通用按钮和输入框使用 6px 圆角，顶栏项及筛选标记用 5px，列表轮廓和批次标记用 4px。状态横幅和指标带使用 8px 圆角。保留真实 Qt 滚动条、菜单和窗体边界。
+
+## Components
+
+### 命令与字段
+
+常用控件约 32px，公共 Fluent 单行输入框固定为 32px，命令区搜索在紧凑模式下最小高度为 28px。按钮和字段使用不同的悬停、按下、禁用与焦点样式，主按钮以高对比边线表达焦点。项目详情中仍可收进文件，该入口采用普通按钮样式，为所选项目动作让出视觉优先级。
+
+### 项目列表与文件区
+
+一个项目对应一个列表项，名称与状态、类型等元数据通常分两行。批次标记能放下时与元数据同排，否则换行。最多并列两个编号，余量显示「余N」或「已齐」，额外批次用「+N批」。极窄时可省略编号中段，工具提示及无障碍说明保留完整编号与进度。批次关联只读，保持项目排序、原始批次和目录。
+
+所选项目的完整名称、状态与项目动作集中在文件面上方。常用的工作目录与交付动作靠近对象，项目及文件的其他操作走各自的原生菜单。空选择收起不适用的操作，文件读取错误提供重试。未知、部分和上次读取分别显示。
+
+### 反馈与导出
+
+普通收件成功提示只在收件页面短暂显示，异常、待核对和忙碌提示持续可见。后台任务提供取消入口，状态由结构化结果决定。
+
+「待开发」清单提供「导出名单」，只读导出全部未归档、未删除的待开发项目，合并后按保留项目计一行。搜索、批次和筛选只影响界面清单。工作簿只有「待开发项目」工作表与「项目名称」一列，独立项目重名时各占一行，空名单仍包含表头。交付页另保留全量有效交付项目导出与交付历史。
+
+两种导出复用原生保存对话框和后台任务，最终路径已有文件时显式确认。发布前核对文件身份和当前受管路径。Windows 使用已核对的文件句柄发布，新文件和恢复文件使用不覆盖改名。成功反馈显示数量与保存位置，旧件保留时同时告知恢复位置。取消或失败保留业务数据与既有文件。两次改名之间若进程异常退出，旧件留在恢复名下。
+
+## Do's and Don'ts
+
+- **Do** 让命令靠近当前对象，保留键盘可达、清晰焦点及完整的无障碍文本。
+- **Do** 保留手动分栏与列宽、选中项和阅读位置，按窗口空间调整同一工作流程。
+- **Do** 用文字保留批次、状态、已知数量和错误的完整含义。
+- **Don't** 用装饰性卡片、图表或渐变替代真实工作内容。
+- **Don't** 用颜色替代批次编号或状态文字，也不要把未知数据写成零。
+- **Don't** 通过筛选、导出、改版或目录显示改变项目身份、原件、原始批次、交付历史和工作量规则。
+
+早期布局和业务决策保留于[原桌面设计记录](docs/UI-DESIGN-SYSTEM.md)、[成熟工作台改版](docs/UI-MATURE-WORKSPACE.md)、[批次标记](docs/PROJECT-BATCH-MARKERS.md)、[历史任务记录](docs/TASK-GROUPS.md)及[数量分类](docs/UI-CLEANUP-EXACT16.md)。站点设计单独记录于[网站设计记录](website/DESIGN.md)。

@@ -36,6 +36,15 @@ PrimaryPushButton:focus, PrimaryPushButton#primary:focus { border: 2px solid %(i
 PrimaryPushButton:disabled, PrimaryPushButton#primary:disabled {
     color: %(disabled)s; background: %(disabled_bg)s; border-color: transparent;
 }
+PrimaryPushButton#primary[contextSecondary="true"] {
+    color: %(ink)s; background: %(surface)s; border-color: %(button_border)s; font-weight: 400;
+}
+PrimaryPushButton#primary[contextSecondary="true"]:hover { background: %(hover)s; }
+PrimaryPushButton#primary[contextSecondary="true"]:pressed { background: %(raised)s; }
+PrimaryPushButton#primary[contextSecondary="true"]:focus { border-color: %(accent)s; }
+PrimaryPushButton#primary[contextSecondary="true"]:disabled {
+    color: %(disabled)s; background: %(disabled_bg)s; border-color: %(border)s;
+}
 PushButton#filterChip {
     color: %(nav_accent)s; background: %(notice_bg)s; border-color: transparent;
     border-radius: 5px; padding: 3px 7px; min-height: 16px; font-size: 12px;

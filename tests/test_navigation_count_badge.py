@@ -1,9 +1,9 @@
-"""折叠导航计数不改变图标水平中心，且整块按钮可操作。"""
+"""紧凑控件保留兼容性，横向主窗使用内联计数和完整图标。"""
 import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtTest import QSignalSpy, QTest
-from PySide6.QtWidgets import QApplication, QLabel, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QStyle, QStyleOptionButton, QWidget
 
 from theme import install_theme, set_theme
 from ui_components import button
@@ -86,7 +86,7 @@ def test_count_below_icon_preserves_center_and_button_contract(app, mode, tmp_pa
 
 @pytest.mark.parametrize('mode', ['light', 'dark'])
 @pytest.mark.parametrize('height', [480, 780])
-def test_panel_count_icon_is_complete_across_resize_and_theme(app, mode, height, tmp_path):
+def test_panel_inline_count_icon_is_complete_across_resize_and_theme(app, mode, height, tmp_path, monkeypatch):
     service = DesktopService(tmp_path / 'data' / 'workbox.db')
     install_theme(service)
     set_theme(mode, persist=False)
@@ -100,43 +100,45 @@ def test_panel_count_icon_is_complete_across_resize_and_theme(app, mode, height,
     count_icon.addPixmap(pixmap, QIcon.Disabled)
     panel.today_button.setIcon(count_icon)
     panel.nav_projects.setIcon(QIcon(pixmap))
+
+    def assert_inline_count(caption):
+        control = panel.today_button
+        assert control.text() == caption
+        assert control.accessibleName() == '今日工作量'
+        option = QStyleOptionButton()
+        control.initStyleOption(option)
+        content = control.style().subElementRect(QStyle.SE_PushButtonContents, option, control)
+        assert content.width() >= control.fontMetrics().horizontalAdvance(caption) + 20
+        image = control.grab().toImage()
+        left, top, right, bottom = icon_bounds(image)
+        ratio = image.devicePixelRatio()
+        assert (right - left + 1, bottom - top + 1) == (16 * ratio, 16 * ratio)
+        assert abs((top + bottom) / 2 - (image.height() - 1) / 2) <= 2 * ratio
+        return image
+
     try:
-        for value in ('0', '17', '99+'):
-            panel._today_compact_caption = value
-            panel.resize_navigation()
+        for count, value in ((0, '0'), (17, '17'), (107, '99+')):
+            monkeypatch.setattr(service.db, 'today_delivery_summary', lambda: {
+                'day': '2026-10-29', 'project_count': count, 'event_count': count})
+            panel.refresh_today_count()
             app.processEvents()
-            control = panel.today_button
-            assert control.width() == 56
-            badge = control.findChild(QLabel, 'navigationCountBadge')
-            img = control.grab().toImage()
+            img = assert_inline_count(f'今日工作量 {value}')
+            assert panel.today_button.accessibleDescription() == f'今日工作量 {count}'
             img.save(str(tmp_path / f'{mode}-{height}-{value}.png'))
-            left, top, right, bottom = icon_bounds(img)
-            normal = icon_bounds(panel.nav_projects.grab().toImage())
-            ratio = img.devicePixelRatio()
-            assert (right - left + 1, bottom - top + 1) == (16 * ratio, 16 * ratio)
-            assert abs((left + right - normal[0] - normal[2]) / 2) <= ratio
-            assert bottom < badge.y() * ratio
-            assert control.rect().contains(badge.geometry()) and badge.text() == value
         for enabled in (True, False):
-            control.setEnabled(enabled)
-            control.setFocus()
+            panel.today_button.setEnabled(enabled)
+            panel.today_button.setFocus()
             app.processEvents()
-            img = control.grab().toImage()
-            left, top, right, bottom = icon_bounds(img)
-            assert bottom - top + 1 == 16 * img.devicePixelRatio()
-            assert bottom < badge.y() * img.devicePixelRatio()
-        control.setEnabled(True)
+            assert_inline_count('今日工作量 99+')
+        panel.today_button.setEnabled(True)
         for _ in range(2):
             panel.resize(1100, height)
             app.processEvents()
-            assert badge.isHidden() and panel.today_button.text()
+            assert_inline_count('今日工作量 107')
             set_theme('dark' if mode == 'light' else 'light', persist=False)
             panel.resize(660, height)
             app.processEvents()
-            img = panel.today_button.grab().toImage()
-            left, top, right, bottom = icon_bounds(img)
-            assert bottom - top + 1 == 16 * img.devicePixelRatio()
-            assert bottom < badge.y() * img.devicePixelRatio()
+            assert_inline_count('今日工作量 99+')
             set_theme(mode, persist=False)
     finally:
         panel.document_pane.shutdown()
@@ -146,7 +148,7 @@ def test_panel_count_icon_is_complete_across_resize_and_theme(app, mode, height,
 
 @pytest.mark.parametrize('mode', ['light', 'dark'])
 @pytest.mark.parametrize('width,height', [(660, 480), (660, 780), (1200, 480), (1200, 780)])
-def test_all_sidebar_icons_share_horizontal_center(app, mode, width, height, tmp_path):
+def test_workspace_icons_share_vertical_center_without_overlapping_buttons(app, mode, width, height, tmp_path):
     service = DesktopService(tmp_path / 'data' / 'workbox.db')
     install_theme(service)
     set_theme(mode, persist=False)
@@ -160,7 +162,7 @@ def test_all_sidebar_icons_share_horizontal_center(app, mode, width, height, tmp
         control.setIcon(QIcon(pixmap))
     app.processEvents()
     try:
-        centers = []
+        centers, rectangles = [], []
         for control, caption in panel.nav_controls:
             if control.isHidden():
                 continue
@@ -168,9 +170,13 @@ def test_all_sidebar_icons_share_horizontal_center(app, mode, width, height, tmp
             left, top, right, bottom = icon_bounds(image)
             ratio = image.devicePixelRatio()
             assert (right - left + 1, bottom - top + 1) == (16 * ratio, 16 * ratio), caption
-            origin = control.mapTo(panel.navigation, QPoint(0, 0)).x()
-            centers.append((caption, origin + (left + right) / (2 * ratio)))
-        assert max(x for _, x in centers) - min(x for _, x in centers) <= 1, centers
+            origin = control.mapTo(panel.navigation, QPoint(0, 0))
+            centers.append((caption, origin.y() + (top + bottom) / (2 * ratio)))
+            rect = control.rect().translated(origin)
+            assert panel.navigation.rect().contains(rect)
+            assert all(not rect.intersects(other) for other in rectangles)
+            rectangles.append(rect)
+        assert max(y for _, y in centers) - min(y for _, y in centers) <= 1, centers
     finally:
         panel.document_pane.shutdown()
         panel.close()

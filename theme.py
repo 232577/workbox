@@ -410,9 +410,32 @@ QWidget#manager[dense="true"] QLabel#notice { padding: 5px 8px; font-size: 12px;
 QFrame#topWorkspaceBar { background: %(nav_bg)s; border: none; border-radius: 0; border-bottom: 1px solid %(border)s; }
 QFrame#topWorkspaceBar QLabel#brandName { color: %(nav_ink)s; font-size: 15px; font-weight: 600; }
 QWidget#workbenchCanvas { background: %(surface)s; }
-QFrame#workbenchHeader { background: %(subtle_surface)s; border: none; border-radius: 0; border-bottom: 1px solid %(border)s; }
+QFrame#workbenchHeader, QWidget#deliveryCommandBar {
+    background: %(subtle_surface)s; border: none; border-radius: 0; border-bottom: 1px solid %(border)s;
+}
 QFrame#workbenchHeader QLabel#pageTitle { font-size: 17px; }
 QFrame#workbenchHeader QLineEdit { padding: 4px 10px; min-height: 22px; }
+QDialog#deliveryWorkspace { background: %(surface)s; border: none; border-radius: 0; }
+QDialog#deliveryWorkspace QLabel#deliveryTypeTotal { color: %(ink)s; font-size: 13px; font-weight: 600; padding: 0; }
+QDialog#deliveryWorkspace QTextBrowser#deliveryTypeCounts { color: %(muted)s; font-size: 12px; }
+QLabel#deliverySectionTitle { color: %(ink)s; font-size: 14px; font-weight: 600; padding: 0; }
+QWidget#deliveryViewBar { background: transparent; border: none; border-radius: 0; border-bottom: 1px solid %(border)s; }
+QTabBar#deliveryViewTabs::tab:top, QTabBar#deliveryViewTabs::tab:top:!selected {
+    color: %(muted)s; background: transparent; border: 1px solid transparent; border-radius: 0;
+    padding: 4px 12px; min-height: 20px; font-size: 13px;
+}
+QTabBar#deliveryViewTabs::tab:top:selected {
+    color: %(accent)s; background: %(row_selected)s; border: 1px solid transparent;
+    border-bottom-color: %(accent)s; padding: 4px 12px; font-size: 13px; font-weight: 600;
+}
+QTabBar#deliveryViewTabs::tab:top:!selected:hover { color: %(ink)s; background: %(hover)s; }
+QTabBar#deliveryViewTabs::tab:top:focus { border-color: %(accent)s; }
+QTabBar#deliveryViewTabs::tab:top:disabled { color: %(disabled)s; }
+QTableWidget#deliveryProjects, QTableWidget#deliveryRecords { border: none; border-radius: 0; }
+QSplitter#deliveryPanels::handle { background: transparent; border: none; border-top: 1px solid %(border)s; }
+QSplitter#deliveryPanels::handle:hover { border-top-color: %(control_border)s; }
+QWidget#documentSurface QLabel#selectedProjectName, QWidget#documentSurface QLabel#projectMetadata,
+QWidget#documentSurface QLabel#sectionTitle, QWidget#projectSurface QLabel#queueHeader { padding: 0; }
 QLabel#selectedProjectName { font-size: 18px; font-weight: 600; }
 QLabel#queueHeader { color: %(ink)s; font-size: 15px; font-weight: 600; }
 QLabel#projectMetadata { color: %(muted)s; font-size: 12px; }

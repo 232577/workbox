@@ -91,7 +91,7 @@ def test_detail_can_be_closed_and_reopened_without_losing_the_selected_event(pag
     assert page.record_splitter.sizes() == [project_height, detail_height]
 
 
-def test_delivery_sections_follow_the_shell_title_alignment(page):
+def test_delivery_sections_follow_the_shell_command_alignment(page):
     page.hide()
     panel = CompactPanel(page.service)
     panel.resize(1200, 780)
@@ -103,10 +103,12 @@ def test_delivery_sections_follow_the_shell_title_alignment(page):
         for width, height in ((1200, 780), (660, 480)):
             panel.resize(width, height)
             QTest.qWait(80)
-            title_left = panel.page_title.mapTo(panel, QPoint()).x()
-            assert delivery.date_scope_button.mapTo(panel, QPoint()).x() == title_left
+            header = panel.header_surface
+            assert not header.isVisible()
+            command_left = header.mapTo(panel, QPoint(header.layout().contentsMargins().left(), 0)).x()
+            assert delivery.date_scope_button.mapTo(panel, QPoint()).x() == command_left
             if delivery.project_heading.isVisible():
-                assert delivery.project_heading.mapTo(panel, QPoint()).x() == title_left
+                assert delivery.project_heading.mapTo(panel, QPoint()).x() == command_left
     finally:
         panel.today_dialog.shutdown()
         panel.document_pane.shutdown()

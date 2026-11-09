@@ -1,0 +1,151 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-09T04:17:55.265Z",
+  "title": "WorkBox 桌面设计系统",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "深青绿",
+        "tonalRamp": [
+          "#054B47",
+          "#075D57",
+          "#096C65"
+        ]
+      },
+      "primary-dark": {
+        "role": "primary",
+        "displayName": "浅青绿",
+        "tonalRamp": [
+          "#62B9AD",
+          "#76CFC1",
+          "#91DACE"
+        ]
+      },
+      "window": {
+        "role": "neutral",
+        "displayName": "冷灰窗口"
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "浅色内容面"
+      },
+      "subtle-surface": {
+        "role": "neutral",
+        "displayName": "浅灰清单面"
+      },
+      "row-selected": {
+        "role": "neutral",
+        "displayName": "中性选中行"
+      }
+    },
+    "typographyMeta": {
+      "shell-title": {
+        "displayName": "壳标题",
+        "purpose": "命令区需要标题的页面。"
+      },
+      "object-title": {
+        "displayName": "所选项目名称",
+        "purpose": "文件面顶部的当前对象，完整名称可换行。"
+      },
+      "row-title": {
+        "displayName": "清单项目名",
+        "purpose": "列表项的第一层文字。"
+      },
+      "metadata": {
+        "displayName": "项目元数据",
+        "purpose": "列表项第二层的状态与类型等文字。"
+      },
+      "batch-mark": {
+        "displayName": "批次标记",
+        "purpose": "批次编号及交付余量。"
+      }
+    },
+    "breakpoints": [
+      {
+        "name": "project-single-pane",
+        "value": "900px",
+        "purpose": "工作区宽度不足此值时，项目清单与详情各占全宽。"
+      },
+      {
+        "name": "shell-compact-height",
+        "value": "560px",
+        "purpose": "主窗高度不足此值时压缩壳标题与命令区间距。"
+      },
+      {
+        "name": "delivery-compact-width",
+        "value": "820px",
+        "purpose": "宿主宽度不足此值时，交付页以两页呈现。"
+      },
+      {
+        "name": "delivery-compact-height",
+        "value": "620px",
+        "purpose": "宿主高度不足此值时，交付页以两页呈现。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "主操作",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "从 Qt 按钮样式提取的浅色预览，用于收进文件或确认交付。",
+      "html": "<button class=\"ds-primary\" type=\"button\">收进文件</button>",
+      "css": ".ds-primary { background: #096C65; color: #FFFFFF; border: 1px solid #096C65; border-radius: 6px; padding: 6px 12px; min-height: 32px; font-size: 14px; font-weight: 600; } .ds-primary:hover { background: #075D57; border-color: #075D57; } .ds-primary:active { background: #054B47; border-color: #054B47; } .ds-primary:focus-visible { border: 2px solid #222B35; padding: 5px 11px; } .ds-primary:disabled { color: #64707C; background: #EDF0F3; border-color: transparent; }"
+    },
+    {
+      "name": "普通按钮",
+      "kind": "button",
+      "refersTo": "button-standard",
+      "description": "内容面上的常用对象动作。",
+      "html": "<button class=\"ds-standard\" type=\"button\">打开工作目录</button>",
+      "css": ".ds-standard { background: #FCFDFE; color: #222B35; border: 1px solid #C5CED7; border-radius: 6px; padding: 6px 12px; min-height: 32px; font-size: 14px; } .ds-standard:hover { background: #EDF1F5; border-color: #88939E; } .ds-standard:active { background: #E7EBEF; border-color: #88939E; } .ds-standard:focus-visible { border: 2px solid #096C65; padding: 5px 11px; } .ds-standard:disabled { color: #64707C; background: #EDF0F3; border-color: #D7DEE5; }"
+    },
+    {
+      "name": "单行字段",
+      "kind": "input",
+      "refersTo": "text-field",
+      "description": "公共 Qt 单行输入框的视觉预览。",
+      "html": "<input class=\"ds-field\" type=\"text\" aria-label=\"项目名称\" placeholder=\"项目名称\">",
+      "css": ".ds-field { box-sizing: border-box; height: 32px; padding: 0 10px; border-radius: 6px; color: #222B35; background: #FCFDFE; border: 1px solid #C5CED7; border-bottom-color: #88939E; font-size: 14px; } .ds-field::placeholder { color: #5C6773; } .ds-field:hover { background: #F6F8FA; border-color: #88939E; } .ds-field:focus-visible { background: #FCFDFE; border-color: #096C65; } .ds-field:disabled { color: #64707C; background: #EDF0F3; border-color: #D7DEE5; }"
+    },
+    {
+      "name": "横向工作区导航",
+      "kind": "nav",
+      "refersTo": "top-navigation-item-selected",
+      "description": "选中面与底边颜色对应原生横向导航状态。",
+      "html": "<div class=\"ds-nav\"><button type=\"button\" class=\"ds-nav-item\" aria-current=\"page\">项目</button><button type=\"button\" class=\"ds-nav-item\">今日工作量</button></div>",
+      "css": ".ds-nav { display: flex; gap: 4px; padding: 6px 14px; background: #E7EBEF; border-bottom: 1px solid #D7DEE5; } .ds-nav-item { background: transparent; color: #27323E; border: 1px solid transparent; border-radius: 5px; padding: 5px 10px; min-height: 32px; font-size: 14px; font-weight: 500; } .ds-nav-item:hover { background: #DCE3EA; } .ds-nav-item:active { background: #E7EBEF; } .ds-nav-item[aria-current=\"page\"] { background: #F8FAFB; color: #085E58; border-color: #D7DEE5; border-bottom-color: #085E58; font-weight: 600; } .ds-nav-item:focus-visible { border-color: #085E58; }"
+    },
+    {
+      "name": "活动筛选",
+      "kind": "chip",
+      "refersTo": "filter-chip",
+      "description": "筛选折叠时保留一项可单独清除的条件。",
+      "html": "<button class=\"ds-filter\" type=\"button\">加急</button>",
+      "css": ".ds-filter { color: #085E58; background: #E4F0EF; border: 1px solid transparent; border-radius: 5px; padding: 3px 7px; font-size: 12px; } .ds-filter:hover { background: #F8FAFB; } .ds-filter:active { background: #E7EBEF; } .ds-filter:focus-visible { border: 2px solid #096C65; padding: 2px 6px; } .ds-filter:disabled { color: #64707C; background: #EDF0F3; }"
+    },
+    {
+      "name": "选中项目行",
+      "kind": "custom",
+      "refersTo": "project-row-selected",
+      "description": "来自 Qt 列表委托的文字层级与焦点描边。",
+      "html": "<div class=\"ds-project-row\" tabindex=\"0\"><div class=\"ds-project-name\">项目名称</div><div class=\"ds-project-meta\"><span class=\"ds-project-status\">开发中</span> · 项目类型</div></div>",
+      "css": ".ds-project-row { background: #E5EBF1; color: #222B35; border: 1px solid #BECBD7; border-radius: 4px; } .ds-project-row:focus-visible { border-color: #096C65; } .ds-project-name { font-size: 14px; font-weight: 500; overflow-wrap: anywhere; } .ds-project-meta { color: #46515E; font-size: 12px; } .ds-project-status { color: #195BA3; font-weight: 500; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "原生横向工作台",
+    "overview": "WorkBox 是 Windows 原生桌面工作区。原生标题栏显示完整构建号，横向导航带着 WorkBox 图标连接项目、交付记录和异常入口。内容从当前项目、文件和操作展开，常用命令与操作对象就近摆放。\n\n冷灰构成窗口和工作平面，青绿用于主操作、焦点与选中导航。界面以项目与文件的可读性为先，沿用 Qt Widgets 和锁定的 QFluentWidgets。具体页面与验证范围见[横向工作台改版记录](docs/UI-DESKTOP-SHELL.md)。",
+    "dos": [
+      "Do 让命令靠近当前对象，保留键盘可达、清晰焦点及完整的无障碍文本。",
+      "Do 保留手动分栏与列宽、选中项和阅读位置，按窗口空间调整同一工作流程。",
+      "Do 用文字保留批次、状态、已知数量和错误的完整含义。"
+    ],
+    "donts": [
+      "Don't 用装饰性卡片、图表或渐变替代真实工作内容。",
+      "Don't 用颜色替代批次编号或状态文字，也不要把未知数据写成零。",
+      "Don't 通过筛选、导出、改版或目录显示改变项目身份、原件、原始批次、交付历史和工作量规则。"
+    ]
+  }
+}

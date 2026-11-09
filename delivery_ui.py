@@ -57,6 +57,8 @@ class TodayDeliveryDialog(QDialog):
         if embedded:
             # 复用管理内容和任务生命周期，由主窗口承担导航和窗口行为。
             self.setWindowFlags(Qt.Widget)
+            self.setObjectName('deliveryWorkspace')
+            self.setAccessibleName('交付记录管理')
         self.service = service
         self._panel_sizes_dirty = False
         self._details_collapsed = False
@@ -84,7 +86,20 @@ class TodayDeliveryDialog(QDialog):
             self.resize(min(980,area.width()-24),min(680,area.height()-48))
         layout = QVBoxLayout(self)
         layout.setSpacing(4)
-        controls = QHBoxLayout()
+        if embedded:
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(0)
+            command_bar = QWidget(self)
+            command_bar.setObjectName('deliveryCommandBar')
+            controls = self.command_layout = QHBoxLayout(command_bar)
+            controls.setSpacing(8)
+            layout.addWidget(command_bar)
+            content = QWidget(self)
+            self.content_layout = QVBoxLayout(content)
+            layout.addWidget(content, 1)
+        else:
+            controls = QHBoxLayout()
+            layout.addLayout(controls)
         self.date_edit = DateEdit()
         self.date_edit.setAccessibleName('交付记录日期')
         self.date_edit.setAccessibleDescription('按北京时间查询单日交付记录。')
@@ -104,7 +119,7 @@ class TodayDeliveryDialog(QDialog):
         self.search.setMaxLength(200)
         self.refresh_button = button('刷新')
         self.refresh_button.hide()
-        self.export_button = button('导出全部')
+        self.export_button = button('导出全部', primary=embedded)
         self.export_button.setAccessibleName('导出全部有效交付项目')
         self.export_button.setToolTip('导出全部有效交付项目，每个项目一行，不受当前筛选影响。')
         self.date_scope_button = button('全部日期')
@@ -135,7 +150,8 @@ class TodayDeliveryDialog(QDialog):
         self.compact_filter_menu.aboutToShow.connect(self._populate_compact_filters)
         controls.addWidget(self.compact_filter_button)
         controls.addWidget(self.export_button)
-        layout.addLayout(controls)
+        if embedded:
+            layout = self.content_layout
         self.summary = label('','subtle',True)
         self.summary.hide()
         summary_row = QHBoxLayout()
@@ -145,10 +161,12 @@ class TodayDeliveryDialog(QDialog):
         self.type_summary = QWidget(self)
         self.type_summary.setAccessibleName('交付类型统计')
         self.type_summary.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
-        type_summary_layout = QVBoxLayout(self.type_summary)
+        type_summary_layout = (QHBoxLayout if embedded else QVBoxLayout)(self.type_summary)
         type_summary_layout.setContentsMargins(0, 0, 0, 0)
-        type_summary_layout.setSpacing(0)
-        self.type_total = label('',wrap=True)
+        type_summary_layout.setSpacing(14 if embedded else 0)
+        self.type_total = label('', wrap=not embedded)
+        if embedded:
+            self.type_total.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
         font = self.type_total.font()
         font.setBold(True)
         self.type_total.setFont(font)
@@ -156,10 +174,11 @@ class TodayDeliveryDialog(QDialog):
         self.type_total.setObjectName('deliveryTypeTotal')
         type_summary_layout.addWidget(self.type_total)
         self.type_counts = QTextBrowser()
+        self.type_counts.setObjectName('deliveryTypeCounts')
         self.type_counts.setAccessibleName('按当前类型计入工作量的项目数量')
         self.type_counts.setReadOnly(True)
         self.type_counts.setStyleSheet('QTextBrowser { background: transparent; border: none; padding: 0px; }')
-        self.type_counts.document().setDocumentMargin(2)
+        self.type_counts.document().setDocumentMargin(0 if embedded else 2)
         self.type_counts.setOpenLinks(False)
         self.type_counts.setAcceptDrops(False)
         self.type_counts.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -172,12 +191,14 @@ class TodayDeliveryDialog(QDialog):
         self._summary_layout_timer.timeout.connect(self._fit_type_summary)
         self.type_counts.document().documentLayout().documentSizeChanged.connect(
             lambda *_: self._summary_layout_timer.start(0))
-        type_summary_layout.addWidget(self.type_counts)
+        type_summary_layout.addWidget(self.type_counts, 1 if embedded else 0)
         layout.addWidget(self.type_summary)
         self.compact_view_bar = QWidget(self)
+        self.compact_view_bar.setObjectName('deliveryViewBar')
         compact_view_layout = QHBoxLayout(self.compact_view_bar)
         compact_view_layout.setContentsMargins(0,0,0,0)
         self.compact_tabs = QTabBar(self.compact_view_bar)
+        self.compact_tabs.setObjectName('deliveryViewTabs')
         self.compact_tabs.setAccessibleName('交付记录视图')
         self.compact_tabs.addTab('项目记录')
         self.compact_tabs.addTab('交付明细')
@@ -195,11 +216,7 @@ class TodayDeliveryDialog(QDialog):
         if not embedded:
             # 可伸缩列表不把展开说明时的最小高度固化为 Windows 窗口下限。
             self.record_splitter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
-        self.record_splitter.setHandleWidth(10)
-        self.record_splitter.setStyleSheet('''QSplitter#deliveryPanels::handle {
-            background: palette(midlight); border-radius: 2px; margin: 2px 0;
-        }
-        QSplitter#deliveryPanels::handle:hover { background: palette(highlight); }''')
+        self.record_splitter.setHandleWidth(8)
         self.project_panel = QWidget()
         project_layout = QVBoxLayout(self.project_panel)
         project_layout.setContentsMargins(0, 0, 0, 0)
@@ -208,8 +225,8 @@ class TodayDeliveryDialog(QDialog):
         detail_layout = QVBoxLayout(self.detail_panel)
         detail_layout.setContentsMargins(0, 0, 0, 0)
         detail_layout.setSpacing(4)
-        self.project_heading = label('项目记录')
-        self.detail_heading = label('交付明细', wrap=True)
+        self.project_heading = label('项目记录', 'deliverySectionTitle')
+        self.detail_heading = label('交付明细', 'deliverySectionTitle', wrap=True)
         detail_heading_policy = self.detail_heading.sizePolicy()
         detail_heading_policy.setHorizontalPolicy(QSizePolicy.Ignored)
         self.detail_heading.setSizePolicy(detail_heading_policy)
@@ -220,6 +237,7 @@ class TodayDeliveryDialog(QDialog):
         project_layout.addWidget(self.project_heading)
         detail_layout.addWidget(self.detail_heading)
         self.table = self._table('交付项目列表',['项目','批次','首次有效交付','我的工作量','项目类型'],wrapped=True)
+        self.table.setObjectName('deliveryProjects')
         self.table.setMinimumHeight(116)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table.setWordWrap(True)
@@ -232,6 +250,11 @@ class TodayDeliveryDialog(QDialog):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
         for column, width in enumerate((250, 100, 164, 100, 220)):
             self.table.setColumnWidth(column, width)
+        if embedded:
+            # 先呈现项目和交付时间，逻辑列号与用户随后调整的列宽保持独立。
+            header = self.table.horizontalHeader()
+            header.moveSection(header.visualIndex(2), 1)
+            header.moveSection(header.visualIndex(3), 2)
         self._project_layout_anchor = None
         self._project_layout_timer = QTimer(self)
         self._project_layout_timer.setSingleShot(True)
@@ -242,6 +265,7 @@ class TodayDeliveryDialog(QDialog):
         self.details_hint = label('在项目记录中选择一个项目，查看交付明细。','subtle',True)
         detail_layout.addWidget(self.details_hint)
         self.details = self._table('所选项目交付明细',['交付时间（北京时间）','计数说明','交付方式','归档位置'])
+        self.details.setObjectName('deliveryRecords')
         self.event_table = self.details
         self.details.setColumnTypography(emphasized={0}, muted={2, 3})
         self.details.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -293,6 +317,9 @@ class TodayDeliveryDialog(QDialog):
         self.close_button = button('返回项目' if embedded else '关闭')
         self.details_toggle = button('收起明细')
         self.details_toggle.setToolTip('显示或收起所选项目的交付明细。')
+        if embedded:
+            for control in (self.project_actions_button, self.details_toggle, self.record_actions_button, self.close_button):
+                control.setProperty('workboxRole', 'secondary')
         actions.addWidget(self.project_actions_button)
         actions.addWidget(self.details_toggle)
         actions.addWidget(self.record_actions_button)
@@ -967,17 +994,18 @@ class TodayDeliveryDialog(QDialog):
         self.details.setMinimumHeight(92)
         self._summary_layout_timer.start(0)
         self.status_note.setMaximumHeight(32 if compact else 16777215)
-        vertical = 6 if compact else 9
-        left = right = vertical
+        left = right = 10 if compact else 18
+        top = bottom = 6 if compact else 9
         header = getattr(host, 'header_surface', None)
         if header is not None:
             margins = header.layout().contentsMargins()
-            # 页签的原生框已经给内容区加了一层内边距。
             inset = self.mapTo(host, QPoint()).x() - header.mapTo(host, QPoint()).x()
             left = max(0, margins.left() - inset)
             right = max(0, margins.right() - inset)
-        self.layout().setContentsMargins(left, vertical, right, vertical)
-        self.layout().setSpacing(4 if compact else 6)
+            top, bottom = margins.top(), margins.bottom()
+        self.command_layout.setContentsMargins(left, top, right, bottom)
+        self.content_layout.setContentsMargins(left, 5, right, 4)
+        self.content_layout.setSpacing(4 if compact else 6)
         self._sync_record_views()
 
     def _toggle_details(self):
