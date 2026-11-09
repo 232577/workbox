@@ -143,7 +143,8 @@ def check_for_update(*, cancel_event=None, progress=None) -> Release | None:
     return parse_release(payload)
 
 
-def verify_installer(path: Path, release: Release) -> None:
+def verify_installer(path: Path, release: Release, *, cancel_event=None) -> None:
+    _cancel(cancel_event)
     path = plain_path(path)
     if not path.is_file() or path.stat().st_size != release.size:
         raise ValueError('安装包不存在或长度校验失败。')
@@ -154,9 +155,44 @@ def verify_installer(path: Path, release: Release) -> None:
             raise ValueError('下载内容不是Windows安装程序。')
         digest.update(first)
         for block in iter(lambda: stream.read(1024 * 1024), b''):
+            _cancel(cancel_event)
             digest.update(block)
+    _cancel(cancel_event)
     if digest.hexdigest() != release.sha256:
         raise ValueError('安装包SHA-256校验失败，拒绝运行。')
+
+
+def _cached_installer(root: Path, release: Release, *, cancel_event=None) -> Path | None:
+    # Handoff writes results beside its installer. Never reuse an attempt with
+    # results, probes, partial downloads, or any other unexpected contents.
+    for entry in root.iterdir():
+        _cancel(cancel_event)
+        if re.fullmatch('[a-f0-9]{32}', entry.name) is None:
+            continue
+        try:
+            folder = plain_path(entry)
+            if not folder.is_dir() or {p.name for p in folder.iterdir()} != {release.filename}:
+                continue
+            candidate = plain_path(folder / release.filename)
+            if candidate.stat().st_nlink != 1:
+                continue
+            verify_installer(candidate, release, cancel_event=cancel_event)
+            if os.name == 'nt':
+                # Reuse is read-only: retain the original Internet-origin stream
+                # and skip entries whose provenance marker is missing/changed.
+                with Path(str(candidate) + ':Zone.Identifier').open(encoding='utf-8') as stream:
+                    if stream.read(4097) != '[ZoneTransfer]\nZoneId=3\nHostUrl=' + release.url + '\n':
+                        continue
+            _cancel(cancel_event)
+            plain_path(folder)
+            plain_path(candidate)
+            if {p.name for p in folder.iterdir()} == {release.filename}:
+                return candidate
+        except (OSError, ValueError):
+            # A cache is optional. Leave damaged, linked, or inaccessible entries
+            # untouched and use a new download directory instead.
+            continue
+    return None
 
 
 def download_release(release: Release, cache_root: Path, *, cancel_event=None, progress=None) -> Path:
@@ -171,6 +207,12 @@ def download_release(release: Release, cache_root: Path, *, cancel_event=None, p
     root = plain_path(cache_root)
     root.mkdir(parents=True, exist_ok=True)
     root = plain_path(root)
+    cached = _cached_installer(root, release, cancel_event=cancel_event)
+    if cached is not None:
+        if progress is not None:
+            progress(release.size, release.size)
+        _cancel(cancel_event)
+        return cached
     if shutil.disk_usage(root).free < release.size + 64 * 1024 * 1024:
         raise OSError('更新缓存所在磁盘空间不足。')
     folder = root / uuid.uuid4().hex

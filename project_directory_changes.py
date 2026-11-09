@@ -459,11 +459,25 @@ class ProjectDirectoryChanges:
         if path.exists():
             self._read(path)
         temporary = root / ('.' + uuid.uuid4().hex + '.partial')
-        with temporary.open('x', encoding='utf-8', newline='\n') as stream:
-            stream.write(_json(record))
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
+        created = None
+        try:
+            with temporary.open('x', encoding='utf-8', newline='\n') as stream:
+                created = os.fstat(stream.fileno())
+                stream.write(_json(record))
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        except BaseException:
+            if created is not None and created.st_ino:
+                try:
+                    with ZipLease(temporary, movable=True) as owned:
+                        # 内容长度会随写入变化；只清理本次创建且未被替换的文件身份。
+                        if (owned.initial.st_dev, owned.initial.st_ino) == (created.st_dev, created.st_ino):
+                            owned.remove_after_verified_commit()
+                except BaseException:
+                    # 清理失败保留现场，但不能掩盖原始写入或取消异常。
+                    pass
+            raise
 
     def _committed(self, operation_id):
         with self.db.connect() as connection:
