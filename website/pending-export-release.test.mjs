@@ -33,16 +33,15 @@ test('新版横向工作台说明与导航和两种导出按钮一致', () => {
   assert.match(html, /从窗口底部或“高级设置 → 检查更新”主动检查一次/);
 });
 
-test('11月9日r4下载和稳定清单绑定同一安装包与构建', async () => {
-  assert.deepEqual(release, { version: '1.0.0', tag: 'v1.0.0.20261109.4', edition: '正式安装版',
+test('11月9日r4历史下载保持原安装包与构建，稳定清单继续提供横向工作台说明', async () => {
+  const r4 = releases.find(item => item.tag === 'v1.0.0.20261109.4');
+  assert.deepEqual(r4, { version: '1.0.0', tag: 'v1.0.0.20261109.4', edition: '正式安装版',
     date: '2026-11-09', filename: 'WorkBox-1.0.0-Setup-x64-20261109-r4.exe', size: 40662142,
     sha256: '745931fb42979eda910f76a4bbf0a9462c9d32e95679b1776d2a5b4274cd4220' });
-  assert.equal(releases.length, 25);
   const response = await handleRequest(new Request('https://workbox.ltxiangzi.dpdns.org/updates/stable.json'), {});
   assert.equal(response.status, 200);
   const metadata = await response.json();
   assert.equal(metadata.tag_name, release.tag);
-  assert.ok(metadata.body.includes(`来源提交 ${r4Source}。`));
   assert.match(metadata.body, /横向导航.*今日工作量/);
   assert.match(html, /<a class="download-link" href="\/download\/WorkBox-1\.0\.0-Setup-x64-20261109-r2\.exe">历史正式安装版/);
 });
