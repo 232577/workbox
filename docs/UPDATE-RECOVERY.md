@@ -16,6 +16,8 @@
 
 ## 排错记录
 
+支持简化更新流程的 Windows 安装版，从「检查更新」找到新版后，点击「更新并重启」即可开始下载、校验与安装。检查或下载失败可在窗口内重试。若提示文件任务或恢复事项阻止安装，请先处理这些事项，再重新检查更新。源码运行只提供版本检查和安装包下载。
+
 下载缓存按次保存在当前用户的 `LocalAppData/WorkBox/updates/`。修复后的助手写入该次目录的 `install-result.json`，可区分 helper-started、installer-exited、failed、verified-relaunch-requested。没有结果文件时，不应自行假定安装已开始。不要重复运行未知状态的安装器；先检查已有进程和该次日志。
 
 `verified-relaunch-requested` 表示已验证安装目标并请求重启，仍需观察真正的窗口和原数据；它不等于所有业务验收已完成。数据库恢复点不替代工作文件备份。

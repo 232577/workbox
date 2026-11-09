@@ -194,17 +194,26 @@ class TodayDeliveryDialog(QDialog):
         detail_layout = QVBoxLayout(self.detail_panel)
         detail_layout.setContentsMargins(0, 0, 0, 0)
         detail_layout.setSpacing(4)
+        self.project_heading = label('项目记录')
+        self.detail_heading = label('交付明细')
+        for section, heading in ((project_layout, self.project_heading), (detail_layout, self.detail_heading)):
+            font = heading.font()
+            font.setBold(True)
+            heading.setFont(font)
+            heading.setContentsMargins(16, 0, 0, 0)
+            section.addWidget(heading)
         self.table = self._table('交付项目列表',['项目','批次','首次有效交付','我的工作量','项目类型'],wrapped=True)
         self.table.setMinimumHeight(116)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table.setWordWrap(True)
         self.table.setTextElideMode(Qt.ElideNone)
+        self.table.setColumnTypography(emphasized={0}, muted={1, 2, 4})
         self.table.setWrapColumns({0, 4})
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(
             lambda point:self._record_context_menu(self.table,self.project_action_menu,point))
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
-        for column, width in enumerate((250, 100, 150, 100, 220)):
+        for column, width in enumerate((250, 100, 164, 100, 220)):
             self.table.setColumnWidth(column, width)
         self._project_layout_anchor = None
         self._project_layout_timer = QTimer(self)
@@ -217,6 +226,7 @@ class TodayDeliveryDialog(QDialog):
         detail_layout.addWidget(self.details_hint)
         self.details = self._table('所选项目交付明细',['交付时间（北京时间）','计数说明','交付方式','归档位置'])
         self.event_table = self.details
+        self.details.setColumnTypography(emphasized={0}, muted={2, 3})
         self.details.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.details.setContextMenuPolicy(Qt.CustomContextMenu)
         self.details.customContextMenuRequested.connect(
@@ -305,6 +315,7 @@ class TodayDeliveryDialog(QDialog):
         table.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         table.setWordWrap(False)
         table.verticalHeader().hide()
+        table.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         # 紧凑窗口仍能容纳表头及一行，余量优先交给项目和明细列表。
         table.setMinimumHeight(60)
         return table
@@ -607,6 +618,8 @@ class TodayDeliveryDialog(QDialog):
         self.project_actions_button.setText(f'项目操作（{len(projects)}）' if len(projects)>1 else '项目操作')
         self.project_actions_button.setEnabled(idle)
         self.record_actions_button.setEnabled(idle)
+        self.project_heading.setText(f'项目记录 · {len(self.rows)}')
+        self.detail_heading.setText(f'交付明细 · {len(self.events)}')
         self.compact_tabs.setTabText(0,f'项目记录（{len(self.rows)}）')
         self.compact_tabs.setTabText(1,f'交付明细（{len(self.events)}）')
         self._sync_record_views()
@@ -917,6 +930,8 @@ class TodayDeliveryDialog(QDialog):
         restore_sizes = show_projects and show_details and (self.project_panel.isHidden() or self.detail_panel.isHidden())
         self.project_panel.setVisible(show_projects)
         self.detail_panel.setVisible(show_details)
+        self.project_heading.setVisible(not compact)
+        self.detail_heading.setVisible(not compact)
         self.details.setVisible(has_details)
         self.details_hint.setVisible(not has_details)
         self.project_actions_button.setVisible(show_projects and self.table.selectionModel().hasSelection())

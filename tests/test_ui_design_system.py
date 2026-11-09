@@ -172,17 +172,15 @@ def test_material_first_show_respects_default_size(qapp,service):
     finally:d.shutdown();d.deleteLater()
 
 
-def test_update_dialog_stages_are_presentation_only(qapp,tmp_path,monkeypatch):
+def test_update_dialog_is_inert_until_requested(qapp,tmp_path,monkeypatch):
     import update_ui
     network=[]
     monkeypatch.setattr(update_ui,'check_for_update',lambda **k:network.append(True))
     d=update_ui.UpdateDialog(cache_root=tmp_path/'cache')
     try:
-        assert hasattr(d,'stage_label'), 'missing readable update stages'
-        assert '检查' in d.stage_label.text()
         assert network==[] and not (tmp_path/'cache').exists()
         assert d.status_label.property('tone')=='neutral'
-        assert not d.install_button.isEnabled()
+        assert not d.update_button.isEnabled()
     finally:d.shutdown();d.deleteLater()
 
 

@@ -19,8 +19,10 @@ def rule(selector, mode):
     style = stylesheet(mode).split('/* WorkBox semantic appearance */')[-1]
     for match in re.finditer(r'([^{}]+)\{([^{}]+)\}', style):
         if selector in [value.strip() for value in match[1].split(',')]:
-            result = {key.strip(): value.strip() for key, value in
-                      (item.split(':', 1) for item in match[2].split(';') if ':' in item)}
+            if result is None:
+                result = {}
+            result.update({key.strip(): value.strip() for key, value in
+                           (item.split(':', 1) for item in match[2].split(';') if ':' in item)})
     if result is None:
         raise AssertionError('样式规则不存在：' + selector)
     return result

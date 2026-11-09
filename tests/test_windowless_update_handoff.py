@@ -1,8 +1,10 @@
 """A helper exit code alone cannot prove a windowless PS script executed."""
 import base64
+import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import time
@@ -63,7 +65,6 @@ update_install.launch_installer(Path('unused.exe'), object(), Path('unused-data'
 def test_handoff_records_entry_before_waiting_for_application(tmp_path):
     from update_client import Release
     from update_install import handoff_command
-    import hashlib
     data=b'MZanonymous command-generation fixture'
     installer=tmp_path/'WorkBox-anonymous.exe';installer.write_bytes(data)
     app=tmp_path/'app';app.mkdir();(app/'WorkBox.exe').write_bytes(b'anonymous')
@@ -72,3 +73,41 @@ def test_handoff_records_entry_before_waiting_for_application(tmp_path):
     script=base64.b64decode(handoff_command(installer,release,app,1234)[-1]).decode('utf-16le')
     assert "status='helper-started'" in script
     assert script.index("status='helper-started'") < script.index('$parent.WaitForExit')
+
+
+@pytest.mark.parametrize('exit_code', [5, 7])
+def test_incomplete_install_notifies_user_and_keeps_exit_code(tmp_path, exit_code):
+    from update_client import Release
+    from update_install import handoff_command
+
+    content = b'MZanonymous installer fixture'
+    installer = tmp_path / 'WorkBox-anonymous.exe'
+    installer.write_bytes(content)
+    app = tmp_path / 'app'
+    app.mkdir()
+    (app / 'WorkBox.exe').write_bytes(b'anonymous installed executable')
+    release = Release('v1.0.0.20991231', installer.name, len(content), hashlib.sha256(content).hexdigest(), '', '')
+    command = handoff_command(installer, release, app, 2147483647)
+    script = base64.b64decode(command[-1]).decode('utf-16le')
+    # Run the real helper. Substitute a harmless process for Setup and record its
+    # user notification without opening a dialog that requires a human to dismiss it.
+    substitute = r'''
+function Start-Process {
+  param([string]$FilePath, [string]$ArgumentList, [string]$WorkingDirectory, [switch]$PassThru)
+  if ($FilePath -ne $cfg.installer) { throw 'Unexpected application launch.' }
+  Microsoft.PowerShell.Management\Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\cmd.exe') -ArgumentList '/d /c exit __EXIT__' -PassThru -WindowStyle Hidden
+}
+'''.replace('__EXIT__', str(exit_code))
+    script = re.sub(r'(?m)^ +Add-Type -AssemblyName System.Windows.Forms\n', '', script)
+    script, replaced = re.subn(r'(?m)^( +)\[Windows.Forms.MessageBox\]::Show\(.*$',
+        lambda match: match[1] + "[IO.File]::WriteAllText($cfg.result + '.notice', 'notified')", script)
+    assert replaced == 1
+    command[-1] = base64.b64encode((substitute + script).encode('utf-16le')).decode()
+    run = subprocess.run(command, creationflags=subprocess.CREATE_NO_WINDOW,
+                         capture_output=True, timeout=25)
+    assert run.returncode == 0, run.stderr
+    assert (tmp_path / 'install-result.json.notice').is_file()
+    result = json.loads((tmp_path / 'install-result.json').read_text(encoding='utf-8-sig'))
+    assert result['status'] == 'failed' and result['exit_code'] == exit_code
+    assert 'Unexpected application launch.' not in result['error']
+    assert installer.read_bytes() == content

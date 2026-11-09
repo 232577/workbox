@@ -149,6 +149,8 @@ def test_handoff_is_encoded_and_waits_without_force_killing(client,tmp_path):
     assert 'WaitForExit' in script and 'SHA256' in script and 'FileShare]::Read' in script
     assert 'Stop-Process' not in script and 'Invoke-Expression' not in script
     assert '/NORESTART' in script and '/NOCLOSEAPPLICATIONS' in script
+    assert '/SILENT ' in script and '/WORKBOXUPDATE=1 /DIR=' in script
+    assert '/VERYSILENT' not in script and '/SUPPRESSMSGBOXES' not in script
 
 
 def test_site_manifest_avoids_anonymous_api_rate_limit(client,monkeypatch):

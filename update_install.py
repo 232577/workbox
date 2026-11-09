@@ -55,6 +55,7 @@ def handoff_command(installer: Path, release: Release, app_dir: Path, parent_pid
 $ErrorActionPreference = 'Stop'
 $cfg = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('__CONFIG__')) | ConvertFrom-Json
 $lease = $null
+$installerExitCode = $null
 try {
   @{status='helper-started';release_tag=$cfg.tag} | ConvertTo-Json | Set-Content -Encoding UTF8 -LiteralPath $cfg.result
   $parent = $null
@@ -65,26 +66,29 @@ try {
   $hasher = [Security.Cryptography.SHA256]::Create()
   try { $digest = [BitConverter]::ToString($hasher.ComputeHash($lease)).Replace('-', '').ToLowerInvariant() } finally { $hasher.Dispose() }
   if ($digest -ne $cfg.sha256) { throw 'Installer digest changed; installation refused.' }
-  $arguments = '/SP- /NORESTART /NOCLOSEAPPLICATIONS /NORESTARTAPPLICATIONS /WORKBOXUPDATE=1 /DIR="' + $cfg.app + '"'
+  $arguments = '/SP- /SILENT /NORESTART /NOCLOSEAPPLICATIONS /NORESTARTAPPLICATIONS /WORKBOXUPDATE=1 /DIR="' + $cfg.app + '"'
   $job = Start-Process -FilePath $cfg.installer -ArgumentList $arguments -PassThru
   $job.WaitForExit()
-  @{status='installer-exited';exit_code=$job.ExitCode} | ConvertTo-Json | Set-Content -Encoding UTF8 -LiteralPath $cfg.result
-  if ($job.ExitCode -eq 0) {
-    $program = Join-Path $cfg.app 'WorkBox.exe'
-    $probeArgs = '--build-info --build-info-output="' + $cfg.probe + '" --data-dir="' + $cfg.data + '"'
-    $probe = Start-Process -FilePath $program -ArgumentList $probeArgs -WorkingDirectory $cfg.app -PassThru
-    if (-not $probe.WaitForExit(30000) -or $probe.ExitCode -ne 0) { throw 'Installed build probe failed; application was not restarted.' }
-    if (-not [IO.File]::Exists($cfg.probe) -or (Get-Item -LiteralPath $cfg.probe).Length -gt 4096) { throw 'Installed build identity is missing or invalid.' }
-    $actual = [IO.File]::ReadAllText($cfg.probe, [Text.Encoding]::UTF8) | ConvertFrom-Json
-    if ($actual.release_tag -cne $cfg.tag -or $actual.version -cne '1.0.0') { throw 'Installed release tag does not match the requested update.' }
-    if (-not [string]::Equals([IO.Path]::GetFullPath($actual.data_dir), [IO.Path]::GetFullPath($cfg.data), [StringComparison]::OrdinalIgnoreCase)) { throw 'Installed data path does not match the original session.' }
-    $started = Start-Process -FilePath $program -ArgumentList ('--panel --data-dir="' + $cfg.data + '"') -WorkingDirectory $cfg.app -PassThru
-    @{status='verified-relaunch-requested';release_tag=$actual.release_tag;data_dir=$actual.data_dir;pid=$started.Id;exit_code=0} | ConvertTo-Json | Set-Content -Encoding UTF8 -LiteralPath $cfg.result
-  }
+  $installerExitCode = $job.ExitCode
+  @{status='installer-exited';exit_code=$installerExitCode} | ConvertTo-Json | Set-Content -Encoding UTF8 -LiteralPath $cfg.result
+  if ($installerExitCode -ne 0) { throw ('Installer exited with code ' + $installerExitCode + '.') }
+  $program = Join-Path $cfg.app 'WorkBox.exe'
+  $probeArgs = '--build-info --build-info-output="' + $cfg.probe + '" --data-dir="' + $cfg.data + '"'
+  $probe = Start-Process -FilePath $program -ArgumentList $probeArgs -WorkingDirectory $cfg.app -PassThru
+  if (-not $probe.WaitForExit(30000) -or $probe.ExitCode -ne 0) { throw 'Installed build probe failed; application was not restarted.' }
+  if (-not [IO.File]::Exists($cfg.probe) -or (Get-Item -LiteralPath $cfg.probe).Length -gt 4096) { throw 'Installed build identity is missing or invalid.' }
+  $actual = [IO.File]::ReadAllText($cfg.probe, [Text.Encoding]::UTF8) | ConvertFrom-Json
+  if ($actual.release_tag -cne $cfg.tag -or $actual.version -cne '1.0.0') { throw 'Installed release tag does not match the requested update.' }
+  if (-not [string]::Equals([IO.Path]::GetFullPath($actual.data_dir), [IO.Path]::GetFullPath($cfg.data), [StringComparison]::OrdinalIgnoreCase)) { throw 'Installed data path does not match the original session.' }
+  $started = Start-Process -FilePath $program -ArgumentList ('--panel --data-dir="' + $cfg.data + '"') -WorkingDirectory $cfg.app -PassThru
+  @{status='verified-relaunch-requested';release_tag=$actual.release_tag;data_dir=$actual.data_dir;pid=$started.Id;exit_code=0} | ConvertTo-Json | Set-Content -Encoding UTF8 -LiteralPath $cfg.result
 } catch {
-  @{status='failed';error=$_.Exception.Message} | ConvertTo-Json | Set-Content -Encoding UTF8 -LiteralPath $cfg.result
-  Add-Type -AssemblyName System.Windows.Forms
-  [Windows.Forms.MessageBox]::Show('WorkBox update was not completed. Keep the downloaded installer and check install-result.json. Existing data was not reset.', 'WorkBox update') | Out-Null
+  try {
+    @{status='failed';error=$_.Exception.Message;exit_code=$installerExitCode} | ConvertTo-Json | Set-Content -Encoding UTF8 -LiteralPath $cfg.result
+  } finally {
+    Add-Type -AssemblyName System.Windows.Forms
+    [Windows.Forms.MessageBox]::Show('更新未完成。请保留安装包和数据库恢复点。' + [Environment]::NewLine + '安装记录：' + $cfg.result, 'WorkBox 更新') | Out-Null
+  }
 } finally { if ($null -ne $lease) { $lease.Dispose() } }
 '''.replace('__CONFIG__', config)
     powershell = Path(os.environ.get('SystemRoot', 'C:/Windows')) / 'System32/WindowsPowerShell/v1.0/powershell.exe'
