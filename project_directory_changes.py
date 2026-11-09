@@ -343,6 +343,8 @@ class ProjectDirectoryChanges:
             if table in tables:
                 paths.extend(row[0] for row in connection.execute(f'SELECT path FROM {table}'))
         paths.extend(self.workspaces.archive_roots())
+        if 'document_history_roots' in tables:
+            paths.extend(row[0] for row in connection.execute('SELECT path FROM document_history_roots'))
         return [Path(os.path.abspath(path)) for path in paths if path]
 
     def _project(self, connection, project_id):

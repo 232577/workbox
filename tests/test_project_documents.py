@@ -71,6 +71,132 @@ def register_zip(service, path, zip_id=1, project_id=1):
                            (zip_id, project_id, str(path), path.name, 15, 100))
 
 
+def register_history(service, history_root, path, *, file_id=1, project_id=1):
+    """Explicit metadata, never a filename convention, identifies old drafts."""
+    history_root.mkdir(parents=True,exist_ok=True)
+    info=history_root.stat()
+    with service.db.connect() as connection:
+        connection.executescript('''
+            CREATE TABLE IF NOT EXISTS document_history_roots(id INTEGER PRIMARY KEY,
+                path TEXT COLLATE NOCASE UNIQUE,volume_device INTEGER,directory_inode TEXT,created_at TEXT);
+            CREATE TABLE IF NOT EXISTS work_file_supersessions(old_file_id INTEGER PRIMARY KEY,
+                new_file_id INTEGER,operation_id TEXT,history_root_id INTEGER,relative_path TEXT,created_at TEXT);
+        ''')
+        connection.execute('INSERT OR IGNORE INTO document_history_roots VALUES(1,?,?,?,?)',
+                           (str(history_root),info.st_dev,str(info.st_ino),'2026-11-09T01:00:00Z'))
+        connection.execute('INSERT INTO work_files VALUES(?,?,?,?,?,?,?)',
+                           (file_id,project_id,str(path),path.name,str(path),3,100))
+        connection.execute('INSERT INTO work_file_supersessions VALUES(?,?,?,?,?,?)',
+                           (file_id,file_id+100,'a'*32,1,path.relative_to(history_root).as_posix(),'2026-11-09T01:00:00Z'))
+
+
+def test_history_requires_explicit_metadata_and_is_excluded_from_workspace_scan(context):
+    service,root=context
+    history_root=root/'ordinary-looking-directory';history_root.mkdir()
+    old=history_root/'说明.docx';old.write_bytes(b'old')
+    register_history(service,history_root,old)
+    (history_root/'未登记.txt').write_bytes(b'not current')
+    (root/'说明 (deadbeef).docx').write_bytes(b'current despite its name')
+    assert [row['name'] for row in query(service)['documents']]==['说明 (deadbeef).docx']
+    result=importlib.import_module('project_documents').list_project_documents(service,1,include_history=True)
+    histories=[row for row in result['documents'] if row['kind']=='历史文稿']
+    assert len(histories)==1 and histories[0]['path']==str(old)
+    assert histories[0]['superseded_at']=='2026-11-09T01:00:00Z'
+    assert histories[0]['work_file_id']==1
+
+
+def test_history_displays_original_relative_path_and_accepts_manual_archive(context,tmp_path):
+    service,root=context
+    history_root=tmp_path/'history';history_root.mkdir()
+    old=history_root/'说明 (deadbeef).docx';old.write_bytes(b'old')
+    register_history(service,history_root,old)
+    with service.db.connect() as connection:
+        connection.execute('UPDATE work_file_supersessions SET new_file_id=NULL,relative_path=?',('资料/说明.docx',))
+    row,=importlib.import_module('project_documents').list_project_documents(service,1,include_history=True)['documents']
+    assert row['relative_path']=='资料/说明.docx' and row['path']==str(old)
+
+
+def test_history_replaced_directory_is_not_presented_as_the_original(context,tmp_path):
+    service,root=context
+    history_root=tmp_path/'history';history_root.mkdir()
+    old=history_root/'说明.txt';old.write_bytes(b'old')
+    register_history(service,history_root,old)
+    with service.db.connect() as connection:
+        connection.execute('UPDATE document_history_roots SET directory_inode=?',(str(history_root.stat().st_ino+1),))
+    result=importlib.import_module('project_documents').list_project_documents(service,1,include_history=True)
+    assert result['documents']==[] and result['errors']
+
+
+def test_current_project_query_does_not_inspect_other_projects_history_paths(context,tmp_path):
+    service,root=context
+    (root/'当前.txt').write_bytes(b'current')
+    history_root=tmp_path/'history';history_root.mkdir()
+    old=history_root/'其他项目旧稿.txt';old.write_bytes(b'old')
+    register_history(service,history_root,old,project_id=2)
+    with service.db.connect() as connection:
+        connection.execute('UPDATE work_files SET path=? WHERE project_id=2',('unrelated-invalid-relative-path',))
+    result=importlib.import_module('project_documents').list_project_documents(service,1,include_history=True)
+    assert result['errors']==[] and [row['name'] for row in result['documents']]==['当前.txt']
+
+
+def test_history_outside_workspace_follows_current_work_file_project_after_merge(context,tmp_path):
+    service,root=context
+    history_root=tmp_path/'history';history_root.mkdir()
+    old=history_root/'说明.docx';old.write_bytes(b'old')
+    register_history(service,history_root,old,project_id=2)
+    module=importlib.import_module('project_documents')
+    assert not module.list_project_documents(service,1,include_history=True)['documents']
+    row,=module.list_project_documents(service,2,include_history=True)['documents']
+    assert row['kind']=='历史文稿' and row['path']==str(old)
+    with service.db.connect() as connection:
+        connection.execute('UPDATE work_files SET project_id=1 WHERE id=1')
+    row,=module.list_project_documents(service,1,include_history=True)['documents']
+    assert row['work_file_id']==1 and row['path']==str(old)
+
+
+def test_history_metadata_cannot_publish_outside_its_registered_root(context,tmp_path):
+    service,root=context
+    history_root=tmp_path/'history';history_root.mkdir()
+    old=history_root/'old.txt';old.write_bytes(b'old')
+    register_history(service,history_root,old)
+    unrelated=tmp_path/'unrelated.txt';unrelated.write_bytes(b'private')
+    with service.db.connect() as connection:
+        connection.execute('UPDATE work_files SET path=? WHERE id=1',(str(unrelated),))
+    result=importlib.import_module('project_documents').list_project_documents(service,1,include_history=True)
+    assert not result['documents'] and result['errors']
+
+
+def test_history_query_on_read_only_legacy_database_never_creates_tables(context):
+    service,root=context
+    (root/'当前.txt').write_bytes(b'current')
+    service.db.read_only=True
+    before=service.db.path.read_bytes()
+    result=importlib.import_module('project_documents').list_project_documents(service,1,include_history=True)
+    assert [row['name'] for row in result['documents']]==['当前.txt']
+    assert service.db.path.read_bytes()==before and not result['errors']
+
+
+def test_real_rotation_and_manual_history_stay_accessible_without_becoming_current(tmp_path):
+    from desktop_service import DesktopService
+    from project_documents import list_project_documents
+    service=DesktopService(tmp_path/'data'/'fixture.db')
+    service.receive_text('1. 匿名文稿系统')
+    source=tmp_path/'说明.docx';source.write_bytes(b'first')
+    old=service.workspaces.import_file(source,1)['file']
+    source.write_bytes(b'second')
+    new=service.workspaces.import_file(source,1)['file']
+    current=list_project_documents(service,1)
+    assert not current['errors'] and [row['work_file_id'] for row in current['documents']]==[new['id']]
+    rows=list_project_documents(service,1,include_history=True)['documents']
+    historical=[row for row in rows if row['kind']=='历史文稿']
+    assert [row['work_file_id'] for row in historical]==[old['id']]
+    assert Path(historical[0]['path']).read_bytes()==b'first'
+    service.workspaces.archive_existing(1,new['id'],confirmed=True)
+    assert list_project_documents(service,1)['documents']==[]
+    history=list_project_documents(service,1,include_history=True)
+    assert not history['errors'] and {row['work_file_id'] for row in history['documents']}=={old['id'],new['id']}
+
+
 def test_actual_files_are_recursive_and_ids_survive_external_edits(context):
     service, root = context
     (root / '资料').mkdir()
@@ -89,6 +215,15 @@ def test_actual_files_are_recursive_and_ids_survive_external_edits(context):
     updated = next(row for row in query(service)['documents'] if row['name'] == target.name)
     assert updated['id'] == document['id'] and updated['size'] == 7
     assert next(row for row in first['documents'] if row['name'].endswith('ZIP'))['kind'] == 'ZIP工作副本'
+
+
+def test_scan_keeps_registered_current_file_identity_but_never_invents_one(context):
+    service,root=context
+    register_file(service,root,'当前.txt',file_id=7).write_bytes(b'current')
+    (root/'未知.txt').write_bytes(b'unregistered')
+    rows={row['name']:row for row in query(service)['documents']}
+    assert rows['当前.txt']['work_file_id']==7
+    assert rows['未知.txt'].get('work_file_id') is None
 
 
 def test_registered_missing_files_are_not_shown_when_actual_files_differ(context):
