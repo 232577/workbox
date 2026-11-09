@@ -1294,7 +1294,7 @@ class CompactPanel(DropSurface, QWidget):
         if not ids:
             self.show_notice('这次收录的项目已不存在，未跳转到其他项目。')
             return False
-        controls = (self.search, self.batch_filter, self.archive_filter, self.due_filter, self.type_filter,
+        controls = (self.search, self.batch_filter, self.added_date_filter, self.archive_filter, self.due_filter, self.type_filter,
                     self.urgent_filter, self.bulk_mode, *self.status_buttons.values())
         blockers = [QSignalBlocker(control) for control in controls]
         self.search.clear()
@@ -1304,6 +1304,7 @@ class CompactPanel(DropSurface, QWidget):
         self.urgent_filter.setChecked(False)
         self.archive_filter.setCurrentIndex(2 if any(all_projects[pid].get('archived_at') for pid in ids) else 0)
         self.batch_filter.setCurrentIndex(0)
+        self.added_date_filter.setCurrentIndex(0)
         self.bulk_mode.setChecked(False)
         del blockers
         self.status_segments.setCurrentItem('all')

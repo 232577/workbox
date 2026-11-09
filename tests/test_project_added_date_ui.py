@@ -84,3 +84,12 @@ def test_date_filter_refreshes_only_project_view_and_preserves_explicit_empty_da
     picker.setCurrentIndex(0)
     panel.archive_filter.setCurrentIndex(0)
     assert ids(panel) == {1, 2, 3, 4, 5}
+
+
+def test_receipt_view_clears_added_day_and_focuses_the_requested_project(panel):
+    picker = panel.added_date_filter
+    picker.setCurrentIndex(picker.findData('2026-11-06'))
+    assert 4 not in ids(panel)
+    assert panel.focus_projects([4]) is True
+    assert picker.currentData() is None
+    assert panel.project_list.currentItem().data(Qt.UserRole) == 4
