@@ -1,11 +1,13 @@
 """自动建项使用隔离来源，不能把失败收件当成建项或归档成功。"""
 
+import os
 from pathlib import Path
 from zipfile import ZipFile
 
 import pytest
 
 from desktop_service import DesktopService
+from native_files import _windows_path
 
 
 @pytest.fixture
@@ -92,7 +94,10 @@ def test_invalid_source_does_not_create_project(service, tmp_path, tmp_path_fact
         source = tmp_path / '无效.zip'
         source.write_bytes(b'PK\x03\x04' + b'not a zip' * 10)
     elif kind == 'long-name':
-        source = ordinary(tmp_path_factory.mktemp('l'), '长' * 201 + '.txt')
+        source = tmp_path_factory.mktemp('l') / ('长' * 201 + '.txt')
+        # Only fixture creation bypasses the Windows path limit. Intake receives the ordinary path.
+        fixture_path = Path(_windows_path(source)) if os.name == 'nt' else source
+        fixture_path.write_bytes(b'isolated ordinary content')
     with pytest.raises((ValueError, OSError)):
         service.receive_file(source)
     assert service.db.counts()['projects'] == 0
