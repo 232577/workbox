@@ -189,12 +189,15 @@ class SnapshotManager:
             LEFT JOIN projects p ON p.id=z.project_id
             LEFT JOIN zip_bundles b ON b.zip_id=z.id'''
         with self.db.connect() as connection:
+            connection.execute('BEGIN')
             rows = connection.execute(sql + ''' WHERE :pid IS NULL OR EXISTS(
                 SELECT 1 FROM zip_project_links l WHERE l.zip_id=z.id AND l.project_id=:pid)
                 ORDER BY z.id DESC''', {'pid': project_id})
             result = [dict(row, zip_id=row['id'], approved=bool(row['approved'])) for row in rows]
-        for row in result:
-            row['file_counts'] = self.db.get_zip_file_counts(row['id']) if row['bundle_state'] != 'needs-review' else []
+            counts = self.db._zip_file_counts_many(connection,
+                [row['id'] for row in result if row['bundle_state'] != 'needs-review'])
+            for row in result:
+                row['file_counts'] = counts.get(row['id'], [])
         return result
 
     def is_snapshot(self, zip_id):
