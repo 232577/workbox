@@ -137,10 +137,15 @@ def read_project_batch_index(connection):
         count_field = 'delivered_count' if project['status'] == '已交付' else 'remaining_count'
         for key, marker in refs.items():
             if key not in options:
-                options[key] = dict(marker, total_count=0, delivered_count=0, remaining_count=0)
+                options[key] = dict(marker, total_count=0, delivered_count=0, remaining_count=0,
+                                    pending_delivery_count=0)
             if project['deleted_at'] is None:
                 options[key]['total_count'] += 1
+                # remaining_count retains its original not-yet-delivered contract.
+                # Presentation subtracts pending delivery to show unfinished work.
                 options[key][count_field] += 1
+                if project['status'] == '待交付':
+                    options[key]['pending_delivery_count'] += 1
 
     result = {pid: sorted((options[key] for key in refs), key=_sort_key, reverse=True)
               for pid, refs in by_project.items()}
