@@ -2,7 +2,9 @@
 
 个人项目收件、工作目录与交付归档工具。使用 Python、PySide6 和 SQLite；不需要账号或云端服务。
 
-正式安装版标识为 `v1.0.0.20261109.5`，软件版本为 **1.0.0**。安装包来自主分支提交 `14cf3fb70e22d20a11c28f65925d7f68977b4733`。顶部采用横向项目导航，在“待开发”清单可导出项目名称。宽窗并排显示清单和详情，窄窗可切换查看。
+正式安装版标识为 `v1.0.0.20261109.6`，软件版本为 **1.0.0**。安装包来自主分支提交 `5d97450eb00258af46bd7236bf4712c917418884`。顶部采用横向项目导航，在“待开发”清单可导出项目名称。宽窗并排显示清单和详情，窄窗可切换查看。
+
+r6 优化项目较多时的搜索、筛选和项目切换，减少重复刷新与 ZIP 列表查询。
 
 项目沿用四种原项目状态、原排序和同批色号，一项目一行，可属于多个批次。批次编号旁显示“余N”，余量只计待开发和开发中，剩余＝总数－已交付－待交付。例如显示“已交付3/10，待交付2，剩余5”。剩余为零但仍有待交付项目时显示“待交付N”，全部交付时显示“已齐”。选中批次可查看整批进度。余量按整批项目的当前状态统计，个人工作量单独统计。交付页提供日期、搜索、工作量合计、各类型数量和全部交付表导出。
 
@@ -60,8 +62,9 @@ python scripts/dev.py start feat/my-task
 
 从窗口底部或“高级设置 → 检查更新”主动查询官网更新清单，GitHub 为备用源。有新版时点击“更新并重启”。程序下载并校验安装包，保存数据库恢复点，安全退出，在原目录安装成功后重新打开。下载可取消。源码运行提供版本检查和安装包下载。更早没有更新入口的安装版仍需一次引导安装。设计及安全边界见 [在线升级](docs/ONLINE-UPDATES.md)。
 
-- [官网下载](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261109-r5.exe)
-- [GitHub Release](https://github.com/232577/workbox/releases/tag/v1.0.0.20261109.5)
+- [官网下载](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261109-r6.exe)
+- [GitHub Release](https://github.com/232577/workbox/releases/tag/v1.0.0.20261109.6)
+- [历史正式安装版 · 11月9日 r5](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261109-r5.exe)
 - [历史正式安装版 · 11月9日 r2](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261109-r2.exe)
 - [历史正式安装版 · 11月9日 r1](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261109-r1.exe)
 - [历史正式安装版 · 11月6日 r1](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261106-r1.exe)
@@ -72,9 +75,9 @@ python scripts/dev.py start feat/my-task
 - [历史正式安装版 · 11月4日 r2](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261104-r2.exe)
 - [源码](https://github.com/232577/workbox)
 
-文件 `WorkBox-1.0.0-Setup-x64-20261109-r5.exe`，42,195,578 字节。
+文件 `WorkBox-1.0.0-Setup-x64-20261109-r6.exe`，42,200,403 字节。
 
-SHA-256 为 `cebcb7550a040df1b6b594491188b17525f9bfa11ee8dd1ada54e2467ccdc6ba`。
+SHA-256 为 `fb731518fd5e9ddd83aa6ec2bf96f5e41a3b76bf92f5e1fc5cbdc7020a00f304`。
 
 目标平台为 Windows 10 1809+ / Windows 11 x64；实际验收范围以对应发布记录为准，不代表已在其他物理设备或所有Windows版本实测。安装包尚无商业代码签名。按当前用户安装，带独立运行时，不含用户数据库、工作文件、归档或私有凭据。升级前请备份自己的数据，卸载保留运行时生成的data目录。
 
