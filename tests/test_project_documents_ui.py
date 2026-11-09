@@ -119,7 +119,7 @@ def test_empty_history_has_clear_scope_and_return_action(panel):
     wait(lambda:pane.worker is None and pane.table.rowCount()==1)
 
 
-def test_manual_history_action_only_emits_for_registered_current_documents(panel):
+def test_manual_history_action_only_emits_for_registered_current_documents(panel,monkeypatch):
     root=Path(panel.service.workspaces.get_workspace(1)['path'])
     target=root/'甲说明.txt'
     with panel.service.db.connect() as connection:
@@ -132,8 +132,16 @@ def test_manual_history_action_only_emits_for_registered_current_documents(panel
     pane.table.selectRow(0)
     assert action.isEnabled()
     received=[];pane.history_archive_requested.connect(received.append)
+    prompts=[]
+    def decline_history(parent,title,text,buttons,default):
+        prompts.append((title,text,buttons,default))
+        return QMessageBox.No
+    monkeypatch.setattr(QMessageBox,'question',decline_history)
+    before=target.read_bytes()
     action.trigger()
     assert received==[dict(project_id=1,work_file_id=file_id,name=target.name,path=str(target))]
+    assert len(prompts)==1 and prompts[0][0]=='移入历史文稿' and target.name in prompts[0][1]
+    assert prompts[0][2]==QMessageBox.Yes|QMessageBox.No and prompts[0][3]==QMessageBox.No
     unknown=root/'未知.txt';unknown.write_bytes(b'unknown')
     package=root/'包.zip';package.write_bytes(b'not executed')
     with panel.service.db.connect() as connection:
@@ -144,7 +152,7 @@ def test_manual_history_action_only_emits_for_registered_current_documents(panel
         row=next(i for i,record in enumerate(pane.documents) if record['name']==name)
         pane.table.selectRow(row)
         assert not action.isEnabled()
-    assert target.exists() and len(received)==1
+    assert target.read_bytes()==before and len(received)==1 and len(prompts)==1
 
 
 def test_projects_are_left_and_selected_documents_are_right(panel,qapp):
