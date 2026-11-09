@@ -61,6 +61,122 @@ def commit(context, *, fail=False):
     return apply
 
 
+@pytest.mark.parametrize('phase', ['serialize', 'write', 'flush', 'fsync', 'replace', 'cancel'])
+def test_journal_write_failure_removes_only_its_temporary_file(context, monkeypatch, phase):
+    import project_directory_changes as module
+    changes = coordinator(context)
+    record = dict(operation_id='a' * 32, state='original')
+    changes._write(record)
+    journal = changes.journal_root / (record['operation_id'] + '.json')
+    original = journal.read_bytes()
+    foreign = changes.journal_root / '.foreign.partial'
+    foreign.write_bytes(b'keep unrelated temporary file')
+    failure = KeyboardInterrupt('cancel journal write') if phase == 'cancel' else OSError('journal write failed')
+
+    def fail(*args, **kwargs):
+        raise failure
+
+    if phase == 'serialize':
+        monkeypatch.setattr(module, '_json', fail)
+    elif phase in ('write', 'flush'):
+        original_open = Path.open
+
+        class FailingStream:
+            def __init__(self, stream):
+                self.stream = stream
+
+            def __getattr__(self, name):
+                return getattr(self.stream, name)
+
+            def __enter__(self):
+                self.stream.__enter__()
+                return self
+
+            def __exit__(self, *args):
+                return self.stream.__exit__(*args)
+
+            def write(self, value):
+                if phase == 'write':
+                    self.stream.write(value[:5])
+                    raise failure
+                return self.stream.write(value)
+
+            def flush(self):
+                if phase == 'flush':
+                    raise failure
+                return self.stream.flush()
+
+        def open_with_failure(path, *args, **kwargs):
+            stream = original_open(path, *args, **kwargs)
+            return FailingStream(stream) if path.suffix == '.partial' else stream
+
+        monkeypatch.setattr(Path, 'open', open_with_failure)
+    else:
+        monkeypatch.setattr(module.os, 'replace' if phase == 'replace' else 'fsync', fail)
+    with pytest.raises(type(failure)) as caught:
+        changes._write(dict(record, state='updated'))
+    assert caught.value is failure
+    assert journal.read_bytes() == original
+    assert list(changes.journal_root.glob('*.partial')) == [foreign]
+    assert foreign.read_bytes() == b'keep unrelated temporary file'
+
+
+def test_journal_write_failure_preserves_replacement_temporary_file(context, monkeypatch):
+    import project_directory_changes as module
+    changes = coordinator(context)
+    record = dict(operation_id='a' * 32, state='original')
+    changes._write(record)
+    journal = changes.journal_root / (record['operation_id'] + '.json')
+    original = journal.read_bytes()
+    replaced = []
+    failure = OSError('publish failed after temporary file replacement')
+
+    def replace_then_fail(source, target):
+        source.rename(source.with_suffix('.retained'))
+        source.write_bytes(b'external replacement')
+        replaced.append(source)
+        raise failure
+
+    monkeypatch.setattr(module.os, 'replace', replace_then_fail)
+    with pytest.raises(OSError) as caught:
+        changes._write(dict(record, state='updated'))
+    assert caught.value is failure
+    assert replaced[0].read_bytes() == b'external replacement'
+    assert journal.read_bytes() == original
+
+
+def test_journal_write_does_not_remove_existing_temporary_file(context, monkeypatch):
+    import project_directory_changes as module
+    changes = coordinator(context)
+    changes.journal_root.mkdir(parents=True)
+    existing = changes.journal_root / ('.' + 'b' * 32 + '.partial')
+    existing.write_bytes(b'external file')
+    monkeypatch.setattr(module.uuid, 'uuid4', lambda: module.uuid.UUID(hex='b' * 32))
+    with pytest.raises(FileExistsError):
+        changes._write(dict(operation_id='a' * 32))
+    assert existing.read_bytes() == b'external file'
+    assert not (changes.journal_root / ('a' * 32 + '.json')).exists()
+
+
+def test_journal_temporary_cleanup_failure_does_not_mask_publish_error(context, monkeypatch):
+    import project_directory_changes as module
+    changes = coordinator(context)
+    failure = OSError('original publish error')
+
+    def fail_publish(*args):
+        raise failure
+
+    def fail_cleanup(*args):
+        raise PermissionError('temporary file is locked')
+
+    monkeypatch.setattr(module.os, 'replace', fail_publish)
+    monkeypatch.setattr(module.ZipLease, 'remove_after_verified_commit', fail_cleanup)
+    with pytest.raises(OSError) as caught:
+        changes._write(dict(operation_id='a' * 32))
+    assert caught.value is failure
+    assert len(list(changes.journal_root.glob('*.partial'))) == 1
+
+
 def test_rename_uses_registered_parent_and_preserves_filenames(context, tmp_path):
     pid = create(context, ['旧系统'])[0]
     old = Path(context[1].get_workspace(pid)['path'])

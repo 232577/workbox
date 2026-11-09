@@ -78,15 +78,135 @@ class Response(io.BytesIO):
     def geturl(self): return self.url
 
 
-def test_download_verified_unique_path_and_progress(client, tmp_path, monkeypatch):
+def test_download_reuses_verified_cache_and_reports_progress(client, tmp_path, monkeypatch):
     data = b'MZisolated installer'; release=client.parse_release(payload(data))
     monkeypatch.setattr(client, '_open', lambda url: Response(data, url))
     progress=[]
     first=client.download_release(release,tmp_path,progress=lambda done,total:progress.append((done,total)))
-    second=client.download_release(release,tmp_path)
-    assert first != second and first.read_bytes() == data == second.read_bytes()
+    monkeypatch.setattr(client, '_open', lambda url: pytest.fail('verified cache needs no network'))
+    monkeypatch.setattr(client.shutil, 'disk_usage', lambda root: pytest.fail('cache needs no extra disk space'))
+    second=client.download_release(release,tmp_path,progress=lambda done,total:progress.append((done,total)))
+    assert first == second and first.read_bytes() == data
     assert progress[-1] == (len(data),len(data))
     client.verify_installer(first,release)
+
+
+@pytest.mark.parametrize('change', ['size', 'header', 'digest', 'unknown', 'result', 'partial', 'name'])
+def test_cache_reuse_skips_untrusted_or_claimed_entries(client, tmp_path, monkeypatch, change):
+    data=b'MZisolated installer';release=client.parse_release(payload(data))
+    monkeypatch.setattr(client, '_open', lambda url: Response(data,url))
+    first=client.download_release(release,tmp_path)
+    if change == 'size': first.write_bytes(data+b'!')
+    elif change == 'header': first.write_bytes(b'XX'+data[2:])
+    elif change == 'digest': first.write_bytes(b'MZ'+b'x'*(len(data)-2))
+    elif change == 'name':
+        renamed=first.parent.with_name('user-downloads');first.parent.rename(renamed);first=renamed/first.name
+    else:
+        extra={'unknown':'notes.txt','result':'install-result.json','partial':'download.part'}[change]
+        (first.parent/extra).write_bytes(b'preserve')
+    before={p:p.read_bytes() for p in first.parent.iterdir()}
+    second=client.download_release(release,tmp_path)
+    assert first != second and second.read_bytes() == data
+    assert all(p.read_bytes()==content for p,content in before.items())
+
+
+def test_cache_reuse_rechecks_candidate_path_boundaries(client,tmp_path,monkeypatch):
+    data=b'MZisolated installer';release=client.parse_release(payload(data))
+    monkeypatch.setattr(client,'_open',lambda url:Response(data,url))
+    first=client.download_release(release,tmp_path)
+    original=client.plain_path; rejected=[]
+    def reject_candidate(path, **kwargs):
+        if Path(path) == first.parent:
+            rejected.append(path)
+            raise ValueError('isolated reparse point')
+        return original(path,**kwargs)
+    monkeypatch.setattr(client,'plain_path',reject_candidate)
+    second=client.download_release(release,tmp_path)
+    assert rejected and second != first and first.read_bytes()==data
+
+
+def test_cache_verification_honors_cancellation(client,tmp_path,monkeypatch):
+    data=b'MZisolated installer';release=client.parse_release(payload(data))
+    monkeypatch.setattr(client,'_open',lambda url:Response(data,url))
+    first=client.download_release(release,tmp_path)
+    event=threading.Event();original=client.verify_installer
+    def cancel_after_verify(path, item, **kwargs):
+        original(path,item,**kwargs);event.set()
+    monkeypatch.setattr(client,'verify_installer',cancel_after_verify)
+    with pytest.raises(CancelledError):
+        client.download_release(release,tmp_path,cancel_event=event)
+    assert first.read_bytes()==data and len(list(tmp_path.iterdir()))==1
+
+
+def test_cache_reuse_rechecks_handoff_claim_after_hashing(client,tmp_path,monkeypatch):
+    data=b'MZisolated installer';release=client.parse_release(payload(data))
+    monkeypatch.setattr(client,'_open',lambda url:Response(data,url))
+    first=client.download_release(release,tmp_path)
+    original=client.verify_installer
+    def claim_after_verify(path, item, **kwargs):
+        original(path,item,**kwargs)
+        if path == first:
+            (first.parent/'install-result.json').write_text('preserve',encoding='utf-8')
+    monkeypatch.setattr(client,'verify_installer',claim_after_verify)
+    second=client.download_release(release,tmp_path)
+    assert second != first and (first.parent/'install-result.json').read_text()=='preserve'
+
+
+@pytest.mark.skipif(os.name!='nt',reason='Windows junction boundary')
+@pytest.mark.parametrize('linked_root',[False,True])
+def test_cache_reuse_never_follows_directory_junction(client,tmp_path,monkeypatch,linked_root):
+    import _winapi
+    data=b'MZisolated installer';release=client.parse_release(payload(data))
+    cache=tmp_path/'cache';external=tmp_path/'external';external.mkdir();cache.mkdir()
+    installer=external/release.filename;installer.write_bytes(data)
+    linked=tmp_path/'linked-cache' if linked_root else cache/('a'*32)
+    _winapi.CreateJunction(str(external),str(linked))
+    monkeypatch.setattr(client,'_open',lambda url:Response(data,url))
+    if linked_root:
+        with pytest.raises(ValueError):client.download_release(release,linked)
+    else:
+        assert client.download_release(release,cache).parent != linked
+    assert list(external.iterdir())==[installer] and installer.read_bytes()==data
+
+
+def test_cache_reuse_never_accepts_hardlinked_installer(client,tmp_path,monkeypatch):
+    data=b'MZisolated installer';release=client.parse_release(payload(data))
+    monkeypatch.setattr(client,'_open',lambda url:Response(data,url))
+    first=client.download_release(release,tmp_path/'cache')
+    external=tmp_path/'user-installer.exe';os.link(first,external)
+    second=client.download_release(release,tmp_path/'cache')
+    assert second != first and external.read_bytes()==first.read_bytes()==data
+
+
+@pytest.mark.skipif(os.name!='nt',reason='Windows download-origin stream')
+@pytest.mark.parametrize('origin',[None,'[ZoneTransfer]\nZoneId=0\n'])
+def test_cache_reuse_does_not_downgrade_internet_origin(client,tmp_path,monkeypatch,origin):
+    data=b'MZisolated installer';release=client.parse_release(payload(data))
+    monkeypatch.setattr(client,'_open',lambda url:Response(data,url))
+    first=client.download_release(release,tmp_path)
+    stream=Path(str(first)+':Zone.Identifier')
+    if origin is None:stream.unlink()
+    else:stream.write_text(origin,encoding='utf-8')
+    second=client.download_release(release,tmp_path)
+    assert second != first and first.read_bytes()==data
+    assert 'ZoneId=3' in Path(str(second)+':Zone.Identifier').read_text(encoding='utf-8')
+    if origin is None:assert not stream.exists()
+    else:assert stream.read_text(encoding='utf-8')==origin
+
+
+def test_installer_hashing_can_be_cancelled_between_blocks(client,tmp_path,monkeypatch):
+    data=b'MZ'+b'x'*(3*1024*1024);release=client.parse_release(payload(data))
+    target=tmp_path/release.filename;target.write_bytes(data)
+    event=threading.Event();original=client.hashlib.sha256
+    class CancellingHash:
+        def __init__(self):self.digest=original();self.updates=0
+        def update(self,block):
+            self.digest.update(block);self.updates+=1
+            if self.updates==2:event.set()
+        def hexdigest(self):return self.digest.hexdigest()
+    monkeypatch.setattr(client.hashlib,'sha256',CancellingHash)
+    with pytest.raises(CancelledError):client.verify_installer(target,release,cancel_event=event)
+    assert target.read_bytes()==data
 
 
 @pytest.mark.parametrize('data', [b'MZwrong', b'MZisolated installer trailing', b'XXisolated installer'])
