@@ -91,6 +91,7 @@ class FloatingController(QObject):
         self.silent_current = False
         self.background_mode = False
         self.choosing_intake = False
+        self.choosing_pending_export = False
         self.storage_blocked = False
         self.update_dialog = None
         self.pending_update = None
@@ -105,7 +106,8 @@ class FloatingController(QObject):
 
     @property
     def busy(self):
-        return self.choosing_intake or self.worker is not None or bool(self.queue) or self._page_busy()
+        return (self.choosing_intake or self.choosing_pending_export or self.worker is not None
+                or bool(self.queue) or self._page_busy())
 
     def _business_pages(self):
         return [page for name in ('archive_classification_page', 'today_dialog')
@@ -118,7 +120,8 @@ class FloatingController(QObject):
     @property
     def foreground_busy(self):
         # 监视仍占用同一个串行任务槽，但不能每两秒禁用界面。
-        return (self.storage_blocked or self.choosing_intake or (self.worker is not None and not self.silent_current)
+        return (self.storage_blocked or self.choosing_intake or self.choosing_pending_export
+                or (self.worker is not None and not self.silent_current)
                 or any(not item[2] for item in self.queue))
 
     def _sync_panel_busy(self):
@@ -164,6 +167,7 @@ class FloatingController(QObject):
         self.orb.intake.connect(self.receive)
         self.panel.intake.connect(self.receive)
         self.panel.classification_requested.connect(self.panel.show_archive_classification)
+        self.panel.pending_export_requested.connect(self.export_pending_projects)
         self.orb.open_requested.connect(self.show_panel)
         self.bubble.open_requested.connect(self.show_feedback)
         for signal in (self.orb.paste_requested, self.panel.paste_requested):
@@ -223,7 +227,7 @@ class FloatingController(QObject):
     def check_archives(self, *, silent=True):
         if self.storage_blocked or self.busy or self.closed or self.quitting or QApplication.activeModalWidget() is not None:
             return
-        self.enqueue('检查 ZIP 归档', lambda **kw: self.service.scan_archives(**kw), silent=silent)
+        self.enqueue('检查 ZIP 归档', self.service.scan_archives, silent=silent)
 
     def open_workspace(self, project_id):
         def operation(**_):
@@ -439,19 +443,63 @@ class FloatingController(QObject):
             request['project_id'], request['name'], expected_token=request['expected_token'],
             merge_target_id=request['merge_target_id'], confirmed_merge=request['confirmed_merge'], **kw))
 
-    def enqueue(self, caption, operation, *, silent=False, on_cancel=None):
+    def export_pending_projects(self):
+        if self.closed or self.quitting or self.foreground_busy or self._page_busy():
+            return
+        button = self.panel.pending_export_button
+        if not button.isVisible() or not button.isEnabled():
+            return
+        from export_ui import choose_workbook_destination
+
+        self.choosing_pending_export = True
+        self._sync_panel_busy()
+        try:
+            chosen = choose_workbook_destination(self.panel, prefix='待开发项目名单')
+        except (OSError, ValueError) as error:
+            chosen = None
+            if not self.quitting:
+                self.notify(f'导出名单未完成。{error} 可重试。')
+        finally:
+            self.choosing_pending_export = False
+            if not self.closed:
+                self._sync_panel_busy()
+        if self.quitting or chosen is None:
+            self._next()
+            return
+        target, target_identity = chosen
+
+        def export(**kwargs):
+            from delivery_export import export_pending_projects
+            return export_pending_projects(self.service.db, target,
+                replace_existing=target_identity is not None,
+                expected_target_identity=target_identity, **kwargs)
+
+        self.enqueue('正在导出待开发项目名单', export, on_complete=self._pending_export_finished,
+                     on_cancel=lambda: self.notify('已取消导出名单。'))
+
+    def _pending_export_finished(self, worker):
+        if self.quitting:
+            return
+        if worker.cancelled:
+            self.notify('已取消导出名单。')
+        elif worker.error:
+            self.notify(f'导出名单未完成。{worker.error} 可重试。')
+        else:
+            self.notify(f"已导出 {worker.result['project_count']} 个项目。保存位置 {worker.result['path']}")
+
+    def enqueue(self, caption, operation, *, silent=False, on_cancel=None, on_complete=None):
         if self.quitting or self.closed:
             return
         if not self.busy:
             self.errors.clear()
-        self.queue.append((caption, operation, silent, on_cancel))
+        self.queue.append((caption, operation, silent, on_cancel, on_complete))
         self._sync_panel_busy()
         if self.worker is None and not self.choosing_intake:
             self._next()
 
     def _next(self):
         # 页面等待回调可能晚于另一轮enqueue；已有任务时绝不能替换其引用。
-        if self.worker is not None or self.closed:
+        if self.worker is not None or self.closed or self.choosing_pending_export:
             return
         if self._page_busy() and not self.closed and not self.quitting:
             if not self._page_wait_scheduled:
@@ -471,8 +519,9 @@ class FloatingController(QObject):
                 self.shutdown()
                 self.exit_requested.emit()
             return
-        self.caption, operation, self.silent_current, _ = self.queue.popleft()
+        self.caption, operation, self.silent_current, _, on_complete = self.queue.popleft()
         self.worker = FileJob(operation, self)
+        self.worker.on_complete = on_complete
         if not self.silent_current:
             # wait() 结束后仍可能有已排队进度；停机后不再访问已释放的窗口。
             self.worker.progress_changed.connect(
@@ -490,6 +539,11 @@ class FloatingController(QObject):
             return
         worker = self.worker
         self.worker = None
+        if on_complete := getattr(worker, 'on_complete', None):
+            on_complete(worker)
+            worker.deleteLater()
+            self._next()
+            return
         if isinstance(worker.result, dict) and 'project_change_preview' in worker.result:
             reference, serial, plan, error = worker.result['project_change_preview']
             dialog = reference()
@@ -754,17 +808,24 @@ class FloatingController(QObject):
             return None
         return ('projects', tuple(dict.fromkeys(ids))) if ids else None
 
-    def cancel_jobs(self):
-        if self.worker:
-            self.worker.cancel_event.set()
+    def cancel_jobs(self, *, shutting_down=False):
         pending = list(self.queue)
+        # 导出尚未开始时，取消名单不打断已经运行的静默扫描。
+        cancel_queued_export_only = (self.worker is not None and self.silent_current
+                                     and self.worker.operation == self.service.scan_archives
+                                     and not (self.quitting or shutting_down) and len(pending) == 1
+                                     and pending[0][4] == self._pending_export_finished)
+        if self.worker and not cancel_queued_export_only:
+            self.worker.cancel_event.set()
         self.queue.clear()
-        for _, _, _, on_cancel in pending:
+        for _, _, _, on_cancel, _ in pending:
             if on_cancel:
                 try:
                     on_cancel()
                 except Exception as error:
                     self.notify('取消收录的记录写入失败：' + str(error))
+        if cancel_queued_export_only:
+            self._sync_panel_busy()
 
     def show_updates(self):
         from PySide6.QtWidgets import QDialog, QMessageBox
@@ -830,7 +891,7 @@ class FloatingController(QObject):
         self.quitting = True
         self.monitor_timer.stop()
         self.cancel_jobs()
-        if not self.worker:
+        if not self.worker and not self.choosing_pending_export:
             self.shutdown()
             self.exit_requested.emit()
         else:
@@ -839,8 +900,10 @@ class FloatingController(QObject):
     def shutdown(self):
         if self.closed:
             return
+        if self.choosing_pending_export:
+            raise RuntimeError('请先关闭导出名单的保存窗口。')
         self.monitor_timer.stop()
-        self.cancel_jobs()
+        self.cancel_jobs(shutting_down=True)
         if self.worker and not self.worker.wait(15000):
             raise RuntimeError('文件操作仍未结束，窗口与文件锁保持，不强制退出。')
         self.worker = None
