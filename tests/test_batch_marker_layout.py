@@ -11,7 +11,7 @@ from theme import manager, set_theme
 def test_batch_metadata_shares_a_line_when_it_fits_and_wraps_when_needed():
     qapp = QApplication.instance() or QApplication([])
     view = ProjectList()
-    view.resize(350, 260)
+    view.resize(470, 260)
     view.show()
     try:
         rows = [
@@ -27,7 +27,7 @@ def test_batch_metadata_shares_a_line_when_it_fits_and_wraps_when_needed():
         plain, batch, long_name = (view.visualItemRect(view.item(index)).height() for index in range(3))
         assert batch <= plain + 4
         assert long_name > batch
-        assert 'B20261109-1 (B261109-1) 已交付2/4，待交付1，剩余1' in view.item(1).toolTip()
+        assert 'B20261109-1 (B261109-1) 待完成1，共4' in view.item(1).toolTip()
 
         view.resize(200, 260)
         qapp.processEvents()
@@ -53,6 +53,34 @@ def test_narrow_batch_layout_preserves_whole_code_and_visible_more_count():
     badges, summary = fluent_views._batch_badge_layout(markers, metrics, 500)
     assert [value[0]['label'] for value in badges] == [m['label'] for m in markers]
     assert summary == ''
+
+
+def test_narrow_badge_keeps_completion_counts_before_long_code():
+    app = QApplication.instance() or QApplication([])
+    font = QFont(app.font()); font.setPixelSize(11)
+    metrics = QFontMetrics(font)
+    marker = dict(label='R261109-123456789012345', total_count=5,
+                  delivered_count=0, remaining_count=5, pending_delivery_count=1)
+    expected = '待完成4，共5'
+    width = metrics.horizontalAdvance(expected)
+    assert fluent_views._batch_badge_text(marker, metrics, width) == expected
+    assert fluent_views._batch_badge_text(marker, metrics, width + 30).endswith(expected)
+    marker.update(total_count=1, remaining_count=1)
+    assert fluent_views._batch_badge_text(marker, metrics, width) == '待完成0，共1'
+
+
+def test_narrow_progress_badge_reserves_more_batch_count():
+    app = QApplication.instance() or QApplication([])
+    font = QFont(app.font()); font.setPixelSize(11)
+    metrics = QFontMetrics(font)
+    marker = dict(label='R261109-123456789012345', total_count=5,
+                  delivered_count=0, remaining_count=5, pending_delivery_count=1)
+    progress_width = metrics.horizontalAdvance('待完成4，共5')
+    width = 24 + progress_width + 5 + metrics.horizontalAdvance('+1批')
+    badges, summary = fluent_views._batch_badge_layout([marker, marker], metrics, width)
+    assert summary == '+1批'
+    assert len(badges) == 1
+    assert fluent_views._batch_badge_text(marker, metrics, int(badges[0][1]) - 24) == '待完成4，共5'
 
 
 def test_system_dark_marker_uses_resolved_dark_colors(monkeypatch):
