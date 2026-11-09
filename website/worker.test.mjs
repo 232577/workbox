@@ -4,6 +4,133 @@ import worker, { handleRequest, release, releases } from './worker.mjs';
 
 const url = `https://workbox.ltxiangzi.dpdns.org/download/${release.filename}`;
 
+function failedUpstream(status, headers = {}) {
+  let cancelled = false;
+  const response = new Response(new ReadableStream({ cancel() { cancelled = true; } }), { status, headers });
+  return { response, cancelled: () => cancelled };
+}
+
+test('错误正文清理拒绝不阻断单次重试或最终502及416', async () => {
+  function erroredResponse(status, headers = {}) {
+    return new Response(new ReadableStream({ start(controller) {
+      controller.error(new Error('isolated failed upstream stream'));
+    } }), { status, headers });
+  }
+  for (const final of ['success', 'invalid', 'transient', 'range']) {
+    let calls = 0;
+    const response = await handleRequest(new Request(url), {}, async () => {
+      calls++;
+      if (calls === 1) return erroredResponse(503);
+      if (final === 'success') return new Response('MZ12', { headers: { 'Content-Type': 'application/octet-stream' } });
+      if (final === 'invalid') return erroredResponse(200, { 'Content-Type': 'text/html' });
+      return erroredResponse(final === 'range' ? 416 : 504);
+    });
+    assert.equal(calls, 2);
+    assert.equal(response.status, final === 'success' ? 200 : final === 'range' ? 416 : 502);
+    if (final === 'success') assert.equal(await response.text(), 'MZ12');
+    else if (final === 'range') assert.equal(response.headers.get('Content-Range'), `bytes */${release.size}`);
+    else assert.equal(response.headers.has('Content-Disposition'), false);
+  }
+  let calls = 0;
+  const response = await handleRequest(new Request(url), {}, async () => { calls++; return erroredResponse(404); });
+  assert.equal(calls, 1);
+  assert.equal(response.status, 502);
+});
+
+test('暂时性上游错误只用同一可信资产固定查询重试一次，并先取消错误正文', async () => {
+  for (const status of [408, 429, 500, 502, 503, 504]) {
+    const failure = failedUpstream(status, { 'Content-Type': 'text/html' });
+    const calls = [];
+    const response = await handleRequest(new Request(url + '?target=https://untrusted.invalid', {
+      headers: { Cookie: 'private', Authorization: 'private', Range: 'bytes=0-3', 'If-Range': '"version"', 'X-Visitor': 'private' },
+    }), {}, async (target, options) => {
+      calls.push(target);
+      assert.equal(options.method, 'GET');
+      assert.equal(options.redirect, 'follow');
+      assert.deepEqual([...options.headers.keys()].sort(), ['accept', 'if-range', 'range', 'user-agent']);
+      assert.equal(options.headers.get('Range'), 'bytes=0-3');
+      assert.equal(options.headers.get('If-Range'), '"version"');
+      if (calls.length === 1) return failure.response;
+      assert.equal(failure.cancelled(), true);
+      return new Response('MZ12', { status: 206, headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': '4', 'Content-Range': `bytes 0-3/${release.size}` } });
+    });
+    assert.equal(response.status, 206);
+    assert.equal(await response.text(), 'MZ12');
+    const source = `https://github.com/232577/workbox/releases/download/${release.tag}/${release.filename}`;
+    assert.deepEqual(calls, [source, source + '?download=1']);
+  }
+});
+
+test('网络异常后可重试HEAD，最终失败最多两次且保留原备用链接', async () => {
+  for (const recover of [false, true]) {
+    let calls = 0;
+    const response = await handleRequest(new Request(url, { method: 'HEAD' }), {}, async (target, options) => {
+      calls++;
+      assert.equal(options.method, 'HEAD');
+      assert.equal(options.headers.has('Range'), false);
+      if (calls === 1 || !recover) throw new TypeError('isolated network error');
+      assert.ok(target.endsWith('?download=1'));
+      return new Response(null, { headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': String(release.size) } });
+    });
+    assert.equal(calls, 2);
+    assert.equal(response.status, recover ? 200 : 502);
+    if (recover) assert.equal(await response.text(), '');
+    else assert.match(await response.text(), new RegExp(`/releases/download/${release.tag}/${release.filename}`));
+  }
+});
+
+test('永久错误和无效成功响应不重试，错误正文均取消', async () => {
+  for (const [status, headers] of [
+    [400, {}], [401, {}], [403, {}], [404, {}], [416, {}], [501, {}],
+    [200, { 'Content-Type': 'text/html' }], [200, { 'Content-Length': '5' }], [206, {}],
+  ]) {
+    let calls = 0;
+    const failure = failedUpstream(status, headers);
+    const response = await handleRequest(new Request(url), {}, async () => { calls++; return failure.response; });
+    assert.equal(calls, 1);
+    assert.equal(response.status, status === 416 ? 416 : 502);
+    assert.equal(failure.cancelled(), true);
+  }
+});
+
+test('重试响应仍执行安全校验且不产生第三次请求', async () => {
+  for (const [status, headers] of [
+    [504, {}], [404, {}], [200, { 'Content-Type': 'text/html' }],
+    [200, { 'Content-Length': '5' }], [206, {}],
+  ]) {
+    let calls = 0;
+    const first = failedUpstream(503);
+    const second = failedUpstream(status, headers);
+    const response = await handleRequest(new Request(url), {}, async () => ++calls === 1 ? first.response : second.response);
+    assert.equal(calls, 2);
+    assert.equal(response.status, 502);
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    assert.equal(response.headers.has('Content-Disposition'), false);
+    assert.equal(first.cancelled(), true);
+    assert.equal(second.cancelled(), true);
+  }
+});
+
+test('重试成功仅记一次下载开始，失败不记统计', async () => {
+  for (const recover of [false, true]) {
+    const events = [], pending = [];
+    const id = '99999999-9999-4999-8999-999999999999';
+    const env = { METRICS: { idFromName: name => name, get: () => ({ fetch: async request => {
+      events.push(await request.json()); return new Response('ok');
+    } }) } };
+    let calls = 0;
+    const response = await handleRequest(new Request(`${url}?download=${id}`), env, async () => {
+      calls++;
+      return calls === 1 || !recover ? new Response('unavailable', { status: 503 }) : new Response('MZ12', { headers: { 'Content-Type': 'application/octet-stream' } });
+    }, { waitUntil: promise => pending.push(promise) });
+    await Promise.all(pending);
+    assert.equal(calls, 2);
+    assert.equal(response.status, recover ? 200 : 502);
+    assert.deepEqual(events.map(({ type, id }) => ({ type, id })), recover ? [{ type: 'download_start', id }] : []);
+    assert.equal(response.headers.get('Cache-Control'), recover ? 'private, no-store' : 'no-store');
+  }
+});
+
 test('Cloudflare入口接受ExecutionContext，不把它当成上游函数', async () => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => new Response(new Uint8Array([77, 90]));
