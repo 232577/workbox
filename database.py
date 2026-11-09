@@ -978,6 +978,33 @@ class Database:
             ''', (zip_id, include_unlinked))
             return [dict(row, auto_deliver_zip=bool(row['auto_deliver_zip'])) for row in rows]
 
+    def _zip_file_counts_many(self, connection, zip_ids):
+        """在版本列表的同一读取快照内批读事实；缺失仍为空，不猜测零。"""
+        if not isinstance(connection, sqlite3.Connection) or not connection.in_transaction:
+            raise ValueError('版本文件计数需要已开始的读取事务。')
+        result = {}
+        ids = list(dict.fromkeys(zip_ids))
+        # 兼容 SQLite 较低的变量上限，不为每个版本重新连接或查询。
+        for offset in range(0, len(ids), 500):
+            chunk = ids[offset:offset + 500]
+            placeholders = ','.join('?' for _ in chunk)
+            rows = connection.execute('''
+                SELECT f.*,p.name AS project_name,
+                    COALESCE(policy.auto_deliver_zip,1) AS auto_deliver_zip,
+                    COALESCE(policy.zip_delivery_min_files,4) AS zip_delivery_min_files
+                FROM zip_project_file_counts f JOIN projects p ON p.id=f.project_id
+                LEFT JOIN zip_file_count_policies policy ON policy.zip_id=f.zip_id AND policy.project_id=f.project_id
+                WHERE f.zip_id IN (''' + placeholders + ''') AND (
+                    EXISTS (SELECT 1 FROM zips z WHERE z.id=f.zip_id AND z.project_id=f.project_id)
+                    OR EXISTS (SELECT 1 FROM zip_bundle_members m
+                        WHERE m.zip_id=f.zip_id AND m.project_id=f.project_id))
+                ORDER BY f.zip_id,f.project_id
+            ''', chunk)
+            for row in rows:
+                result.setdefault(row['zip_id'], []).append(
+                    dict(row, auto_deliver_zip=bool(row['auto_deliver_zip'])))
+        return result
+
     def _mark_work_file_pending(
         self, connection: sqlite3.Connection, project_id: int, work_file_id: int,
         duplicate: bool = False,

@@ -108,7 +108,8 @@ class ProjectList(WorkbenchListWidget):
         self.setItemDelegate(ProjectListDelegate(self))
         self.setWordWrap(True)
         self.setTextElideMode(Qt.ElideNone)
-        self.setResizeMode(QListView.Adjust)
+        # Width changes are reflowed below; height-only changes must not remeasure every row.
+        self.setResizeMode(QListView.Fixed)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
     def contextMenuEvent(self, event):
@@ -120,6 +121,12 @@ class ProjectList(WorkbenchListWidget):
         event.accept()
 
     def resizeEvent(self, event):
+        if event.size().width() == event.oldSize().width():
+            # QListView relayouts wrapped text on *any* resize, even in Fixed mode.
+            # Keep its native geometry handling without invalidating unchanged row widths.
+            QAbstractItemView.resizeEvent(self, event)
+            self.viewport().update()
+            return
         # 宽度变化会改变换行高度；按当前正在阅读的顶行定位，不借用选中行。
         item = self.itemAt(QPoint(2, 0))
         anchor_id = item.data(Qt.UserRole) if item else None
@@ -465,7 +472,7 @@ class CompactPanel(DropSurface, QWidget):
             self.status_group.addButton(item, index)
             self.status_buttons[state] = item
             item.toggled.connect(lambda checked, key=route: self.status_segments.setCurrentItem(key) if checked else None)
-            item.clicked.connect(self.refresh)
+            item.clicked.connect(self._refresh_project_filters)
         self.status_segments.currentItemChanged.connect(
             lambda key: self.status_buttons[None if key == 'all' else key].setChecked(True))
         scope_tools.addWidget(self.status_segments)
@@ -521,7 +528,7 @@ class CompactPanel(DropSurface, QWidget):
         self.type_filter.setAccessibleName('项目类型筛选')
         self.type_filter.setMinimumWidth(0)
         self.type_filter.setMaximumWidth(170)
-        self.type_filter.currentIndexChanged.connect(self.refresh)
+        self.type_filter.currentIndexChanged.connect(self._refresh_project_filters)
         views.addWidget(self.archive_filter, 0, 0)
         views.addWidget(self.due_filter, 0, 1)
         views.addWidget(self.type_filter, 1, 0)
@@ -806,8 +813,8 @@ class CompactPanel(DropSurface, QWidget):
         self.exit_button.clicked.connect(self.quit_requested)
         self.background_button.clicked.connect(self.background_requested)
         self.cancel_button.clicked.connect(self.cancel_requested)
-        self.search.textChanged.connect(self.refresh)
-        self.batch_filter.currentIndexChanged.connect(self.refresh)
+        self.search.textChanged.connect(self._search_changed)
+        self.batch_filter.currentIndexChanged.connect(self._refresh_project_filters)
         self.unmatched.toggled.connect(self.refresh)
         self.project_list.itemSelectionChanged.connect(self.select_project)
         self.project_list.itemClicked.connect(self.show_project_detail)
@@ -815,9 +822,9 @@ class CompactPanel(DropSurface, QWidget):
         self.project_list.itemDoubleClicked.connect(
             lambda item: self.workspace_requested.emit(item.data(Qt.UserRole)))
         self.project_list.project_context_requested.connect(self.show_project_context_menu)
-        self.archive_filter.currentIndexChanged.connect(self.refresh)
-        self.due_filter.currentIndexChanged.connect(self.refresh)
-        self.urgent_filter.toggled.connect(self.refresh)
+        self.archive_filter.currentIndexChanged.connect(self._refresh_project_filters)
+        self.due_filter.currentIndexChanged.connect(self._refresh_project_filters)
+        self.urgent_filter.toggled.connect(self._refresh_project_filters)
         self.bulk_mode.toggled.connect(self.toggle_bulk)
         self.select_all_button.clicked.connect(self.project_list.selectAll)
         self.clear_selection_button.clicked.connect(self.project_list.clearSelection)
@@ -951,6 +958,9 @@ class CompactPanel(DropSurface, QWidget):
         self.sync_notice_visibility()
         if index == 0 and hasattr(self, 'scan_action'):
             self.sync_advanced_actions()
+        if (index == 1 and hasattr(self, 'scan_action') and not self.refreshing
+                and getattr(self, '_zip_scope', None) != (self.search.text(), self.unmatched.isChecked())):
+            self.refresh()
 
     def refresh_type_controls(self):
         selected_type = self.type_filter.currentData()
@@ -983,7 +993,7 @@ class CompactPanel(DropSurface, QWidget):
             self.type_filter.setCurrentIndex(0)
             self.urgent_filter.setChecked(False)
         self.project_filter_button.setFocus()
-        self.refresh(preserve_project_position=True)
+        self._refresh_project_filters(preserve_project_position=True)
 
     def clear_project_filter(self, key):
         control = {'archive': self.archive_filter, 'due': self.due_filter,
@@ -993,7 +1003,7 @@ class CompactPanel(DropSurface, QWidget):
                 control.setChecked(False)
             else:
                 control.setCurrentIndex(0)
-        self.refresh(preserve_project_position=True)
+        self._refresh_project_filters(preserve_project_position=True)
 
     def _sync_filter_chips(self, scope):
         values = (
@@ -1015,14 +1025,26 @@ class CompactPanel(DropSurface, QWidget):
                 visible += 1
         self.active_project_filters.setVisible(visible > 0)
 
-    def refresh(self, *_, preserve_project_position=False):
+    def _search_changed(self, *_):
+        if self.tabs.currentIndex() == 0:
+            self._refresh_project_filters()
+        else:
+            self.refresh()
+
+    def _refresh_project_filters(self, *_, preserve_project_position=False):
+        self.refresh(preserve_project_position=preserve_project_position, _project_only=True)
+
+    def refresh(self, *_, preserve_project_position=False, _project_only=False):
         if any(view.verticalScrollBar().isSliderDown() for view in (self.project_list, self.zip_list, self.receipt_list)):
             self._refresh_after_drag = True
+            self._deferred_refresh_full = getattr(self, '_deferred_refresh_full', False) or not _project_only
             return
         self._refresh_after_drag = False
+        self._deferred_refresh_full = False
         self.refreshing = True
         try:
-            self.refresh_type_controls()
+            if not _project_only:
+                self.refresh_type_controls()
             batch = self.batch_filter.currentData()
             status = next((s for s, b in self.status_buttons.items() if b.isChecked()), None)
             scope = (self.search.text(), status, batch, self.archive_filter.currentData(), self.due_filter.currentData(), self.urgent_filter.isChecked(), self.type_filter.currentData())
@@ -1076,39 +1098,46 @@ class CompactPanel(DropSurface, QWidget):
                                    else '还没有项目。点击「粘贴消息」开始收录。')
             self.deleted_note.setVisible(deleted_view)
             self.project_list_heading.setText(f'项目清单 · {len(rows)}')
-            receipts = self.service.pending_receipts()
-            populate(self.receipt_list, receipts, lambda r: r['raw_text'][:70].replace('\n', ' ') + '\n' + r['reason'])
-            self.review_empty.setVisible(not receipts)
-            self.tabs.setTabText(2, f'待核对 {len(receipts)}' if receipts else '待核对')
-            self.nav_review.setToolTip(f'待核对 {len(receipts)}' if receipts else '待核对')
-            self.nav_review.setAccessibleDescription(self.nav_review.toolTip())
-            self._review_caption = f'待核对 {len(receipts)}' if receipts else '待核对'
-            self._review_count = len(receipts)
-            self.nav_review.setVisible(bool(receipts) or self.tabs.currentIndex() == 2)
-            self.resize_navigation()
-            zips = self.service.list_zips(self.search.text(), self.unmatched.isChecked())
-            try:
-                snapshot_versions = self.service.snapshots.list_versions()
-            except (OSError, RuntimeError, sqlite3.Error) as error:
-                self.zip_attention_failed(error)
+            if not _project_only and not self._refresh_other_views():
                 return
-            versions = {v['zip_id']: v for v in snapshot_versions}
-            ordinal, totals = {}, {}
-            for version in sorted(versions.values(), key=lambda v: v['zip_id']):
-                key = version['project_id']
-                totals[key] = totals.get(key, 0) + 1
-                ordinal[version['zip_id']] = totals[key]
-            populate(self.zip_list, zips, lambda z: self.zip_caption(z, versions.get(z['id'], {}), ordinal.get(z['id'])))
-            for index in range(self.zip_list.count()):
-                item = self.zip_list.item(index)
-                version = versions.get(item.data(Qt.UserRole))
-                if version:
-                    details = self.zip_count_details(version)
-                    item.setToolTip('来源：' + version['source_path'] + '\n归档：' + version['path'] + ('\n合包核对：' + version['bundle_reason'] if version.get('bundle_reason') else '') + ('\n' + details if details else ''))
-            self.refresh_archive_status(versions=snapshot_versions)
         finally:
             self.refreshing = False
         self.select_project()
+
+    def _refresh_other_views(self):
+        self._zip_scope = None
+        receipts = self.service.pending_receipts()
+        populate(self.receipt_list, receipts, lambda r: r['raw_text'][:70].replace('\n', ' ') + '\n' + r['reason'])
+        self.review_empty.setVisible(not receipts)
+        self.tabs.setTabText(2, f'待核对 {len(receipts)}' if receipts else '待核对')
+        self.nav_review.setToolTip(f'待核对 {len(receipts)}' if receipts else '待核对')
+        self.nav_review.setAccessibleDescription(self.nav_review.toolTip())
+        self._review_caption = f'待核对 {len(receipts)}' if receipts else '待核对'
+        self._review_count = len(receipts)
+        self.nav_review.setVisible(bool(receipts) or self.tabs.currentIndex() == 2)
+        self.resize_navigation()
+        zips = self.service.list_zips(self.search.text(), self.unmatched.isChecked())
+        try:
+            snapshot_versions = self.service.snapshots.list_versions()
+        except (OSError, RuntimeError, sqlite3.Error) as error:
+            self.zip_attention_failed(error)
+            return False
+        versions = {v['zip_id']: v for v in snapshot_versions}
+        ordinal, totals = {}, {}
+        for version in sorted(versions.values(), key=lambda v: v['zip_id']):
+            key = version['project_id']
+            totals[key] = totals.get(key, 0) + 1
+            ordinal[version['zip_id']] = totals[key]
+        populate(self.zip_list, zips, lambda z: self.zip_caption(z, versions.get(z['id'], {}), ordinal.get(z['id'])))
+        for index in range(self.zip_list.count()):
+            item = self.zip_list.item(index)
+            version = versions.get(item.data(Qt.UserRole))
+            if version:
+                details = self.zip_count_details(version)
+                item.setToolTip('来源：' + version['source_path'] + '\n归档：' + version['path'] + ('\n合包核对：' + version['bundle_reason'] if version.get('bundle_reason') else '') + ('\n' + details if details else ''))
+        self.refresh_archive_status(versions=snapshot_versions)
+        self._zip_scope = (self.search.text(), self.unmatched.isChecked())
+        return True
 
     def refresh_batch_filter(self, options, batch):
         signature = tuple((item['key'], item['label'], item['code'], batch_progress_summary(item))
@@ -1214,7 +1243,10 @@ class CompactPanel(DropSurface, QWidget):
 
     def _finish_scroll(self):
         if self._refresh_after_drag:
-            self.refresh()
+            if getattr(self, '_deferred_refresh_full', True):
+                self.refresh()
+            else:
+                self._refresh_project_filters()
 
     def focus_projects(self, project_ids):
         """仅在用户点击本次收录的查看入口时清理筛选并定位，不改变项目数据。"""
@@ -1321,8 +1353,10 @@ class CompactPanel(DropSurface, QWidget):
         type_editable = bulk_allowed and 1 <= count <= 500 and hasattr(self.service, 'set_project_types')
         if type_editable:
             try:
-                type_editable = all(not p.get('archived_at') and not p.get('deleted_at') for p in
-                                    (self.service.get_project(item.data(Qt.UserRole)) for item in self.project_list.selectedItems()))
+                projects = [project] if (count == 1 and project is not None
+                    and project['id'] == self.project_list.selectedItems()[0].data(Qt.UserRole)) else (
+                    self.service.get_project(item.data(Qt.UserRole)) for item in self.project_list.selectedItems())
+                type_editable = all(not p.get('archived_at') and not p.get('deleted_at') for p in projects)
             except KeyError:
                 type_editable = False
         self.change_type_button.setEnabled(type_editable)

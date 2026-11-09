@@ -120,6 +120,7 @@ def read_project_batch_index(connection):
                 attach(pid, marker, f"收件回执 #{receipt['id']}")
 
     # 只对没有收件/当前任务依据的项目回退真实原建项批次；不会改写 batch_id。
+    batch_markers = {}
     for pid, refs in by_project.items():
         if refs:
             continue
@@ -128,7 +129,9 @@ def read_project_batch_index(connection):
         if batch is None:
             warnings.append(f'项目 #{pid} 的原建项批次 #{batch_id} 不存在。')
             continue
-        marker = _marker('batch', batch_id, batch['created_at'])
+        if batch_id not in batch_markers:
+            batch_markers[batch_id] = _marker('batch', batch_id, batch['created_at'])
+        marker = batch_markers[batch_id]
         refs[marker['key']] = marker
     # 归属仍用于原有筛选和已删除视图。进度只统计未删除的 canonical 项目。
     options = {}
@@ -147,7 +150,9 @@ def read_project_batch_index(connection):
                 if project['status'] == '待交付':
                     options[key]['pending_delivery_count'] += 1
 
-    result = {pid: sorted((options[key] for key in refs), key=_sort_key, reverse=True)
+    # 同批项目共用日期和排序依据；只在本次读取内复用，后续读取重新统计。
+    sort_keys = {key: _sort_key(marker) for key, marker in options.items()}
+    result = {pid: [options[key] for key in sorted(refs, key=sort_keys.__getitem__, reverse=True)]
               for pid, refs in by_project.items()}
-    return dict(by_project=result, options=sorted(options.values(), key=_sort_key, reverse=True),
+    return dict(by_project=result, options=[options[key] for key in sorted(options, key=sort_keys.__getitem__, reverse=True)],
                 warnings=list(dict.fromkeys(warnings)))
