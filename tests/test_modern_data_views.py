@@ -147,8 +147,11 @@ def test_document_pane_retains_four_complete_short_file_rows(qapp):
     assert pane.table.horizontalHeaderItem(0).text() == '文件名称'
     assert pane.hint.isHidden()
     pane.apply_result(dict(project_id=1, workspace_path='fixture', errors=['Unavailable location'], documents=documents))
-    assert not pane.hint.isHidden() and '暂不可读' in pane.hint.text()
-    assert pane.file_count.isVisible() and pane.file_count.text() == '12 项'
+    assert not pane.hint.isHidden() and '文件列表不完整' in pane.hint.text()
+    assert pane.table.rowCount() == 12
+    assert pane.file_count.isVisible() and pane.file_count.text() == '已读取 12 项'
+    assert '总数未知' in pane.file_count.toolTip()
+    assert '总数未知' in pane.table.accessibleDescription()
     assert pane.table.horizontalHeaderItem(0).text() == '文件名称'
     pane.hide()
     pane.deleteLater()
