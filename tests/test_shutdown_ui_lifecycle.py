@@ -128,6 +128,7 @@ def test_background_reader_and_business_job_stop_before_roots_are_destroyed(cont
     controller.service.receive_text('1. 隔离退出验证系统')
     controller.show_panel()
     controller.panel.project_list.setCurrentRow(0)
+    controller.panel.show_project_detail()
     wait_for(qapp, reader_entered)
     controller.enqueue('隔离退出任务', operation)
     wait_for(qapp, business_entered)

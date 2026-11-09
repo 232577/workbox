@@ -176,7 +176,6 @@ def test_type_entry_cancel_filter_removal_and_archived_boundary(qapp, tmp_path, 
 
 
 def test_type_entry_narrow_geometry_and_assignment_failure(qapp, tmp_path, monkeypatch):
-    import project_types_ui
     service = DesktopService(tmp_path / 'entry-error.db')
     service.db.create_capture('隔离验证', '分类入口', [('可读项目', False)])
     project = service.list_projects()[0]
@@ -187,16 +186,24 @@ def test_type_entry_narrow_geometry_and_assignment_failure(qapp, tmp_path, monke
         panel.resize(660, 480)
         panel.show()
         panel.project_list.setCurrentRow(0)
+        panel.show_project_detail()
         qapp.processEvents()
-        control = panel.change_type_button
+        control = panel.project_actions_button
         assert control.isVisible()
         assert control.isEnabled()
         assert control.width() >= control.sizeHint().width()
         assert control.parentWidget().rect().contains(control.geometry())
+        menu = panel.project_context_menu(project['id'])
+        types = next(action.menu() for action in menu.actions() if action.text() == '项目类型')
+        assert types.isEnabled()
+        types.popup(control.mapToGlobal(control.rect().bottomLeft()))
+        qapp.processEvents()
+        assert all(types.rect().contains(types.actionGeometry(action)) for action in types.actions())
+        types.close()
         before = service.get_project(project['id'])
-        monkeypatch.setattr(project_types_ui, 'choose_project_type', lambda *a: (True, None))
         monkeypatch.setattr(service, 'set_project_types', lambda *a: (_ for _ in ()).throw(RuntimeError('保存失败')))
-        panel.change_selected_project_types()
+        next(action for action in types.actions() if action.data() is None).trigger()
+        assert '保存失败' in panel.notice.text()
         assert service.get_project(project['id']) == before
         assert marker.read_text(encoding='utf-8') == '保留原文与文件'
     finally:

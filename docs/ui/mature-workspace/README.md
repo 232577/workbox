@@ -10,7 +10,10 @@
 | 交付主表与明细 | [宽窗](light-1200-delivery.png)、[窄窗主表](dark-660-delivery.png)、[窄窗明细](dark-660-delivery-details.png) |
 | 日历 | [浅色](light-calendar.png)、[深色](dark-calendar.png) |
 | 设置与数字步进 | [浅色](light-settings-lower-controls.png)、[深色](dark-settings-lower-controls.png) |
+| 材料规则窄窗（后续列宽修正） | [常规字体](material-light-600-normal.png)、[19px 字体](material-light-600-wide.png) |
 
 通过真实控件回归检查分栏拖动下限、Tab 连续导航、窄窗返回的选择和阅读位置、日期弹出点击区、明细收起和比例恢复。独立评审发现并修复按钮焦点态图文重叠、项目栏过窄裁切、隐藏页签焦点阻塞和设置说明裁切。
+
+完整 CI 随后发现较宽字体下材料规则类型列不足。补充两张 600×540 原生实图及 `material-evidence.json`；19px 字体仅用于几何压力验证，不是产品默认字号。材料类型和份数按实际控件测量宽度保护，保留独立调宽与横向滚动；原断言和新增拖动到极限检查通过，整文件 17 项通过。
 
 图片为 100% 缩放；125%/150% 的控件几何回归不等同于第二台物理设备的实拍。系统界面自动化仅成功验证匿名项目搜索和清除，坐标点击与系统截图接口不可用；其余交互通过 Qt 事件回归及原生窗口图像验证。本轮没有使用真实业务库、发布安装包或升级用户安装。测试结果与历史失败边界见 [VERIFICATION.md](../../../VERIFICATION.md)。

@@ -213,7 +213,11 @@ def test_new_controls_fit_compact_panel_and_bulk_mode(app, qapp):
     panel.resize(660, 492)
     choose(panel, 1)
     qapp.processEvents()
+    assert panel.project_side.isVisible() and not panel.document_side.isVisible()
+    panel.show_project_detail()
+    qapp.processEvents()
     assert panel.width() <= 660
+    assert panel.document_side.isVisible()
     assert panel.document_pane.parentWidget() is panel.document_side
     assert panel.rect().contains(panel.document_pane.mapTo(panel, panel.document_pane.rect().bottomRight()))
     menu = panel.project_context_menu(1)

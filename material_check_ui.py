@@ -2,9 +2,10 @@
 import sqlite3
 import uuid
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDialog, QHBoxLayout,
-    QHeaderView, QPlainTextEdit, QSpinBox, QTableWidget, QTableWidgetItem, QTabWidget,
+from PySide6.QtCore import QRect, Qt
+from PySide6.QtWidgets import (QAbstractItemView, QDialog, QHBoxLayout, QHeaderView,
+    QPlainTextEdit, QSpinBox, QStyle, QStyleOptionComboBox, QStyleOptionSpinBox,
+    QStyleOptionViewItem, QTableWidget, QTableWidgetItem, QTabWidget,
     QVBoxLayout, QWidget, QApplication, QProgressBar, QFrame)
 
 from material_matching import FAMILIES, Requirement, check_snapshot, preset_rules, validate_rules
@@ -76,6 +77,8 @@ class MaterialCheckDialog(QDialog):
         # Preserve readable values instead of squeezing them into header widths.
         self.rule_table.setColumnWidth(0,120);self.rule_table.setColumnWidth(1,185);self.rule_table.setColumnWidth(2,135)
         self.rule_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self._rule_column_minimums = {}
+        self.rule_table.horizontalHeader().sectionResized.connect(self._keep_rule_control_width)
         self.rule_table.setColumnWidth(3,280)
         self.rule_table.verticalHeader().setDefaultSectionSize(44)
         rules_layout.addWidget(self.rule_table,1)
@@ -176,7 +179,49 @@ class MaterialCheckDialog(QDialog):
                 self.rule_table.setCellWidget(row,2,count)
                 self.rule_table.setItem(row,3,QTableWidgetItem(r.keywords))
         finally:self._loading=False
+        self._fit_rule_controls()
         self._invalidate()
+
+    def _fit_rule_controls(self):
+        table = self.rule_table
+        if not table.rowCount():
+            return
+
+        # The delegate places each cell widget inside the styled text rectangle.
+        cell = QStyleOptionViewItem()
+        table.initViewItemOption(cell)
+        cell.rect = QRect(0, 0, table.horizontalHeader().defaultSectionSize(), table.rowHeight(0))
+        cell.widget = table
+        cell_contents = table.style().subElementRect(QStyle.SE_ItemViewItemText, cell, table)
+        cell_inset = cell.rect.width() - cell_contents.width()
+
+        # All rule rows use the same type choices and count range.
+        family = table.cellWidget(0, 1)
+        family.ensurePolished()
+        metrics = family.fontMetrics()
+        type_width = max(metrics.horizontalAdvance(family.itemText(i)) for i in range(family.count()))
+
+        count = table.cellWidget(0, 2)
+        count.ensurePolished()
+        edit = count.lineEdit()
+        edit.ensurePolished()
+        count_width = edit.fontMetrics().horizontalAdvance(count.textFromValue(count.maximum())) + 16
+
+        for column, editor, option, control, field, text_width in (
+            (1, family, QStyleOptionComboBox(), QStyle.CC_ComboBox, QStyle.SC_ComboBoxEditField, type_width + 2),
+            (2, count, QStyleOptionSpinBox(), QStyle.CC_SpinBox, QStyle.SC_SpinBoxEditField, count_width),
+        ):
+            editor.initStyleOption(option)
+            preferred = editor.sizeHint().width()
+            option.rect.setWidth(preferred)
+            editor_contents = editor.style().subControlRect(control, option, field, editor)
+            self._rule_column_minimums[column] = preferred + max(0, text_width - editor_contents.width()) + cell_inset
+            self._keep_rule_control_width(column, 0, table.columnWidth(column))
+
+    def _keep_rule_control_width(self, column, _previous_width, width):
+        minimum = self._rule_column_minimums.get(column, 0)
+        if width < minimum:
+            self.rule_table.setColumnWidth(column, minimum)
 
     def rules(self):
         values=tuple(Requirement(self.rule_table.item(i,0).data(Qt.UserRole),self.rule_table.item(i,0).text(),
