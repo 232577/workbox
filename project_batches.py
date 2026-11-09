@@ -46,7 +46,9 @@ def read_project_batch_index(connection):
         raise ValueError('项目批次共用连接需要已开始的读取事务。')
     tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type IN ('table','view')")}
     warnings = []
-    projects = {r['id']: dict(r) for r in connection.execute('SELECT id,batch_id FROM projects')}
+    projects = {r['id']: dict(r) for r in connection.execute('''
+        SELECT p.id,p.batch_id,p.status,d.deleted_at FROM projects p
+        LEFT JOIN project_deletions d ON d.project_id=p.id''')}
     canonical = {r['project_id']: r['canonical_id'] for r in connection.execute('SELECT project_id,canonical_id FROM project_canonical')}
     batches = {r['id']: dict(r) for r in connection.execute('SELECT id,created_at FROM batches')}
     by_project = {pid: {} for pid in set(canonical.values()) if pid in projects}
@@ -128,7 +130,19 @@ def read_project_batch_index(connection):
             continue
         marker = _marker('batch', batch_id, batch['created_at'])
         refs[marker['key']] = marker
-    result = {pid: sorted(refs.values(), key=_sort_key, reverse=True) for pid, refs in by_project.items()}
-    options = {marker['key']: marker for refs in result.values() for marker in refs}
+    # 归属仍用于原有筛选和已删除视图。进度只统计未删除的 canonical 项目。
+    options = {}
+    for pid, refs in by_project.items():
+        project = projects[pid]
+        count_field = 'delivered_count' if project['status'] == '已交付' else 'remaining_count'
+        for key, marker in refs.items():
+            if key not in options:
+                options[key] = dict(marker, total_count=0, delivered_count=0, remaining_count=0)
+            if project['deleted_at'] is None:
+                options[key]['total_count'] += 1
+                options[key][count_field] += 1
+
+    result = {pid: sorted((options[key] for key in refs), key=_sort_key, reverse=True)
+              for pid, refs in by_project.items()}
     return dict(by_project=result, options=sorted(options.values(), key=_sort_key, reverse=True),
                 warnings=list(dict.fromkeys(warnings)))

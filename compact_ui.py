@@ -22,7 +22,8 @@ from ui_components import StatusSegments
 from qfluentwidgets import FluentIcon, setCustomStyleSheet
 from control_styles import control_style
 from fluent_views import (WorkbenchListWidget, WorkbenchTableWidget, configure_native_scroll,
-                          ProjectListDelegate, PROJECT_NAME_ROLE, PROJECT_DETAIL_ROLE, PROJECT_BATCH_MARKERS_ROLE)
+                          batch_progress_summary, ProjectListDelegate, PROJECT_NAME_ROLE,
+                          PROJECT_DETAIL_ROLE, PROJECT_BATCH_MARKERS_ROLE)
 from database import STATUSES
 from floating import DropSurface
 from parser import ParsedProject
@@ -171,7 +172,11 @@ def populate(widget, rows, caption, *, clear_selection=False):
     def project_metadata(item, pid, text):
         row = row_by_id[pid]
         markers = row.get('batch_markers') or []
-        details = [f"{marker.get('code', '')} ({marker.get('label', '')})" for marker in markers]
+        details = []
+        for marker in markers:
+            code = f"{marker.get('code', '')} ({marker.get('label', '')})"
+            progress = batch_progress_summary(marker)
+            details.append(f'{code} {progress}' if progress else code)
         if row.get('batch_name'):
             details.append('原建项目录批次：' + row['batch_name'])
         description = text + ('\n批次：' + '；'.join(details) if details else '')
@@ -551,9 +556,14 @@ class CompactPanel(DropSurface, QWidget):
         project_layout.addWidget(self.project_queue_header)
         self.project_queue_tools = QWidget()
         self.project_queue_tools.setObjectName('projectQueueTools')
-        queue_tools = QHBoxLayout(self.project_queue_tools)
+        queue_tools = QVBoxLayout(self.project_queue_tools)
         queue_tools.setContentsMargins(0, 0, 0, 0)
+        queue_tools.setSpacing(4)
         queue_tools.addWidget(self.batch_filter)
+        self.batch_progress_summary = label('', 'subtle', True)
+        self.batch_progress_summary.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.batch_progress_summary.hide()
+        queue_tools.addWidget(self.batch_progress_summary)
         project_layout.addWidget(self.project_queue_tools)
         self.intake_log_button.setParent(project_side)
         self.intake_log_button.hide()
@@ -916,28 +926,25 @@ class CompactPanel(DropSurface, QWidget):
                 scope[0], scope[1], scope[2], scope[5],
                 archived=None if deleted_view else scope[3], due_filter=scope[4],
                 deleted=deleted_view, type_id=scope[6])
-            if batch is not None and not any(item['key'] == batch for item in snapshot['batch_options']):
+            active_batch = next((item for item in snapshot['batch_options'] if item['key'] == batch), None)
+            if batch is not None and active_batch is None:
                 batch = None
                 scope = (scope[0], scope[1], None, *scope[3:])
                 snapshot = self.service.project_workbench_snapshot(
                     scope[0], scope[1], None, scope[5],
                     archived=None if deleted_view else scope[3], due_filter=scope[4],
                     deleted=deleted_view, type_id=scope[6])
-            self.batch_filter.blockSignals(True)
-            self.batch_filter.clear()
-            self.batch_filter.addItem('所有批次', None)
-            for item in snapshot['batch_options']:
-                self.batch_filter.addItem(item['label'], item['key'])
-                self.batch_filter.setItemData(self.batch_filter.count() - 1, item['code'], Qt.ToolTipRole)
-            self.batch_filter.setCurrentIndex(max(0, self.batch_filter.findData(batch)))
-            self.batch_filter.blockSignals(False)
+            self.refresh_batch_filter(snapshot['batch_options'], batch)
             if deleted_view and self.bulk_mode.isChecked():
                 self.bulk_mode.setChecked(False)
             rows = snapshot['projects']
             warnings = tuple(snapshot['warnings'])
-            batch_code = self.batch_filter.currentData(Qt.ToolTipRole)
-            self.batch_filter.setToolTip('\n'.join(filter(None, (batch_code, *warnings))))
-            self.batch_filter.setAccessibleDescription(batch_code or '所有批次')
+            batch_description = self.batch_filter.currentData(Qt.ToolTipRole)
+            self.batch_filter.setToolTip('\n'.join(filter(None, (batch_description, *warnings))))
+            self.batch_filter.setAccessibleDescription(batch_description or '所有批次')
+            progress = batch_progress_summary(active_batch) if active_batch is not None else ''
+            self.batch_progress_summary.setText(progress)
+            self.batch_progress_summary.setVisible(bool(progress))
             if warnings and warnings != getattr(self, '_batch_warnings', ()):
                 self.show_notice('批次来源存在异常：\n' + '\n'.join(warnings))
             self._batch_warnings = warnings
@@ -995,6 +1002,22 @@ class CompactPanel(DropSurface, QWidget):
         finally:
             self.refreshing = False
         self.select_project()
+
+    def refresh_batch_filter(self, options, batch):
+        signature = tuple((item['key'], item['label'], item['code'], batch_progress_summary(item))
+                          for item in options)
+        if signature == getattr(self, '_batch_filter_signature', None):
+            return
+        with QSignalBlocker(self.batch_filter):
+            self.batch_filter.clear()
+            self.batch_filter.addItem('所有批次', None)
+            for index, (key, label_text, code, progress) in enumerate(signature, start=1):
+                self.batch_filter.addItem(label_text, key)
+                description = f'{code}\n{progress}' if progress else code
+                self.batch_filter.setItemData(index, description, Qt.ToolTipRole)
+                self.batch_filter.setItemData(index, description, Qt.AccessibleDescriptionRole)
+            self.batch_filter.setCurrentIndex(max(0, self.batch_filter.findData(batch)))
+        self._batch_filter_signature = signature
 
     def sync_zip_navigation(self):
         review_count = getattr(self, '_zip_review_count', 0)
