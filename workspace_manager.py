@@ -16,7 +16,7 @@ from functools import wraps
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
-from native_files import ZipLease, cancelled, identity, plain_path
+from native_files import ZipLease, cancelled, identity, plain_path, path_is_within
 from intake_log import FileIntakeLog
 from first_run import initialize as initialize_first_run, setup_required as read_setup_required, complete as complete_first_run
 from workflow_policy import DEFAULTS as POLICY_DEFAULTS, read_policy, validate as validate_policy
@@ -249,6 +249,21 @@ class WorkspaceManager:
         with self.db.connect() as connection:
             return [row['path'] for row in connection.execute('SELECT path FROM workflow_archive_roots ORDER BY rowid')]
 
+    def history_roots(self):
+        """固定登记的文稿历史位置，不随工作根设置改变。"""
+        with self.db.connect() as connection:
+            return [row['path'] for row in connection.execute('SELECT path FROM document_history_roots ORDER BY id')]
+
+    def assert_current_source(self, path):
+        source = _path(path, allow_network=True)
+        if any(path_is_within(source, Path(root)) for root in self.history_roots()):
+            raise ValueError('历史文稿仅供查看；如需重新收录，请先复制到独立来源位置。')
+
+    def _assert_workspace_history(self, workspace):
+        roots = [Path(path) for path in self.history_roots()]
+        if any(self._overlap(Path(workspace[key]), root) for key in ('path', 'group_path') for root in roots):
+            raise ValueError('项目或分组目录与文稿历史区重叠，未收录或创建项目。')
+
     @staticmethod
     def _overlap(left, right):
         return left == right or left.is_relative_to(right) or right.is_relative_to(left)
@@ -269,6 +284,10 @@ class WorkspaceManager:
         settings = dict(work_root=str(work), archive_root=str(archive), stable_seconds=stable_seconds)
         with self.db.connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
+            for row in connection.execute('SELECT path FROM document_history_roots'):
+                history_root = Path(row['path'])
+                if work == history_root or work.is_relative_to(history_root) or self._overlap(archive, history_root):
+                    raise ValueError('工作根目录不能位于文稿历史区内，归档库不能与文稿历史区重叠。')
             read_setup_required(connection)
             policy = read_policy(connection)
             policy.update({key: value for key, value in policy_changes.items() if value is not None})
@@ -339,10 +358,13 @@ class WorkspaceManager:
                 for batch_id, rows in groups.items():
                     existing = connection.execute('SELECT * FROM project_workspaces WHERE batch_id=? ORDER BY project_id LIMIT 1', (batch_id,)).fetchone()
                     group = _path(existing['group_path']) if existing else None
+                    if existing:
+                        self._assert_workspace_history(existing)
                     multiple = len(rows) > 1
                     for row in rows:
                         registered = connection.execute('SELECT project_id,path,group_path FROM project_workspaces WHERE project_id=?', (row['id'],)).fetchone()
                         if registered:
+                            self._assert_workspace_history(registered)
                             _path(registered['path'])
                             result[row['id']] = dict(registered)
                             continue
@@ -351,6 +373,7 @@ class WorkspaceManager:
                         path = self._allocate(group if multiple or existing else root, row['name'], created)
                         if group is None:
                             group = path
+                        self._assert_workspace_history(dict(path=str(path), group_path=str(group)))
                         connection.execute('INSERT INTO project_workspaces(project_id,path,group_path,batch_id) VALUES (?,?,?,?)',
                                            (row['id'], str(path), str(group), batch_id))
                         result[row['id']] = dict(project_id=row['id'], path=str(path), group_path=str(group))
@@ -364,6 +387,24 @@ class WorkspaceManager:
             raise
 
     @_workspace_operation
+    def archive_existing(self, project_id, work_file_id, *, confirmed=False, cancel_event=None):
+        if confirmed is not True:
+            raise ValueError('将文稿移入历史必须由你明确确认。')
+        if type(project_id) is not int or project_id < 1 or type(work_file_id) is not int or work_file_id < 1:
+            raise ValueError('项目或工作文件编号无效。')
+        workspace = self.get_workspace(project_id)
+        if workspace is None:
+            raise ValueError('项目尚未登记工作目录。')
+        self._assert_workspace_history(workspace)
+        with self.document_versions.operation(project_id) as versions:
+            cancelled(cancel_event)
+            versions.prepare_existing(work_file_id)
+            with self.db.connect() as connection:
+                connection.execute('BEGIN IMMEDIATE')
+                self.db._assert_projects_editable(connection, project_id)
+                return versions.archive_existing(connection, work_file_id, cancel_event=cancel_event)
+
+    @_workspace_operation
     def import_file(self, source, project_id, *, cancel_event=None, progress=None, routing=None, relative_path=None):
         if type(project_id) is not int or project_id < 1:
             raise ValueError('请先明确选择文件所属项目。')
@@ -375,11 +416,13 @@ class WorkspaceManager:
         if type(project_id) is not int or project_id < 1:
             raise ValueError('请先明确选择文件所属项目。')
         source = _path(source, allow_network=True)
+        self.assert_current_source(source)
         if not source.is_file():
             raise ValueError('请选择本机普通文件，不能收录目录。')
         with self.db.connect() as connection:
             self.db._assert_projects_editable(connection, project_id)
         workspace = self.get_workspace(project_id) or self.ensure_projects([project_id])[0]
+        self._assert_workspace_history(workspace)
         directory = _path(workspace['path'])
         directory.mkdir(parents=True, exist_ok=True)
         relative = Path(relative_path) if relative_path is not None else None
@@ -398,6 +441,9 @@ class WorkspaceManager:
         try:
             with ZipLease(source, movable=False) as lease:
                 digest, size = _hash_stream(lease.stream, cancel_event=cancel_event)
+                if (not source.is_relative_to(directory) and source.suffix.casefold() != '.zip'
+                        and (parent / source.name).exists()):
+                    versions.prepare_history(parent / source.name, digest, size)
                 with self.db.connect() as connection:
                     connection.execute('BEGIN IMMEDIATE')
                     self.db._assert_projects_editable(connection, project_id)
@@ -409,7 +455,10 @@ class WorkspaceManager:
                             basis=decision.get('basis', '调用方指定项目'),
                             candidate_ids=decision.get('candidate_ids', ()), manual=decision.get('manual'),
                             connection=connection)
-                    for row in connection.execute('SELECT * FROM work_files WHERE project_id=? AND sha256=? AND size=? ORDER BY id', (project_id, digest, size)):
+                    for row in connection.execute('''SELECT * FROM work_files w
+                        WHERE project_id=? AND sha256=? AND size=? AND NOT EXISTS(
+                            SELECT 1 FROM work_file_supersessions h WHERE h.old_file_id=w.id) ORDER BY id''',
+                        (project_id, digest, size)):
                         saved = _path(row['path'])
                         if (source.suffix.casefold() != '.zip' and not source.is_relative_to(directory)
                                 and saved != parent / source.name):
@@ -446,6 +495,7 @@ class WorkspaceManager:
                     cancelled(cancel_event)
                     file_id = connection.execute('INSERT INTO work_files(project_id,source_path,path,filename,size,sha256,mtime_ns) VALUES (?,?,?,?,?,?,?)',
                                                  (project_id, metadata['source_path'], metadata['path'], metadata['filename'], metadata['size'], metadata['sha256'], metadata['mtime_ns'])).lastrowid
+                    versions.register(connection, file_id)
                     file_row = dict(connection.execute('SELECT * FROM work_files WHERE id=?', (file_id,)).fetchone())
                     record(file_row, 'copied')
                     self.db._mark_work_file_pending(connection, project_id, file_id)

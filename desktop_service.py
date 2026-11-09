@@ -502,6 +502,7 @@ class DesktopService(WorkBox):
                     cancel_event=cancel_event, progress=progress)
             source = _path(path, allow_network=True)
             cancelled(cancel_event)
+            self.workspaces.assert_current_source(source)
             if source.is_dir():
                 from folder_intake import FolderIntake
                 result = FolderIntake(self).receive(source, project_id, cancel_event=cancel_event,
@@ -533,6 +534,7 @@ class DesktopService(WorkBox):
         try:
             source = _path(path, allow_network=True)
             cancelled(cancel_event)
+            self.workspaces.assert_current_source(source)
             if not source.is_file():
                 raise ValueError('请选择本机普通文件，不能收录目录。')
             # ZIP 登记前先验证结构；坏包不能留下根据文件名生成的空项目。
@@ -625,6 +627,11 @@ class DesktopService(WorkBox):
         if self.snapshots.is_snapshot(zip_id):
             return self.snapshots.link_zip(zip_id, project_id)
         return self.archive.link_zip(zip_id, project_id)
+
+    @_serialized_storage
+    def archive_work_file(self, project_id, work_file_id, *, confirmed=False, cancel_event=None, progress=None):
+        return self.workspaces.archive_existing(project_id, work_file_id,
+            confirmed=confirmed, cancel_event=cancel_event)
 
     @_serialized_storage
     def confirm_delivery(self, project_id, zip_id=None, *, confirmed=False, cancel_event=None, progress=None):

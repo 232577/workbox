@@ -23,7 +23,7 @@ from workspace_manager import _path
 MAX_DOCUMENTS = 10000
 MAX_ENTRIES = 50000
 MAX_DEPTH = 64
-_KIND_ORDER = {'工作文件': 0, 'ZIP工作副本': 1, 'ZIP归档': 2, '材料归档': 3}
+_KIND_ORDER = {'工作文件': 0, 'ZIP工作副本': 1, 'ZIP归档': 2, '材料归档': 3, '历史文稿': 4}
 
 
 def _absolute(value):
@@ -41,13 +41,14 @@ def _inside(path, root):
     return path == root or path.is_relative_to(root)
 
 
-def list_project_documents(service, project_id, *, cancel_event=None):
+def list_project_documents(service, project_id, *, include_history=False, cancel_event=None):
     """返回稳定快照；errors 为可显示的字符串列表，部分失败保留可读结果。
 
     documents 行包含 id/name/relative_path/path/kind/size/mtime_ns/modified_at/
     exists/is_directory/origin/source。id 只取项目编号及规范绝对路径，修改
     内容或补登记不会改变 id。已移走的登记文件不显示；目录归档的 size 为 None。
     这里的 exists 仅代表查询时的状态，不代表内容已验证。
+    include_history 仅追加有明确替代关系的历史文稿；旧库读取不会补建表。
     """
     result = dict(project_id=project_id, workspace_path=None, documents=[], errors=[])
     errors, documents = result['errors'], {}
@@ -120,6 +121,13 @@ def list_project_documents(service, project_id, *, cancel_event=None):
             registered = [dict(row) for row in connection.execute(
                 'SELECT * FROM work_files WHERE project_id=? ORDER BY id DESC',
                 (project_id,))] if 'work_files' in tables else []
+            history_roots = [dict(row) for row in connection.execute(
+                'SELECT * FROM document_history_roots')] if 'document_history_roots' in tables else []
+            supersessions = [dict(row) for row in connection.execute(
+                'SELECT f.id,f.path,f.project_id,s.relative_path,s.history_root_id,s.created_at '
+                'FROM work_files f JOIN work_file_supersessions s ON s.old_file_id=f.id '
+                'WHERE f.project_id=?', (project_id,))
+            ] if {'work_files','work_file_supersessions'} <= tables else []
             zips = [dict(row) for row in connection.execute(
                 'SELECT z.* FROM zips z JOIN zip_project_links l ON l.zip_id=z.id '
                 'WHERE l.project_id=? ORDER BY z.id DESC', (project_id,))] if {
@@ -141,6 +149,30 @@ def list_project_documents(service, project_id, *, cancel_event=None):
         problem(f'文档登记读取失败：{error}')
         return result
 
+    historical_paths = {_key(path) for row in supersessions
+                        if (path := lexical(row['path'])) is not None}
+    if include_history:
+        roots_by_id = {row['id']:row for row in history_roots}
+        for row in supersessions:
+            cancelled(cancel_event)
+            metadata = roots_by_id.get(row['history_root_id'])
+            historical_root = safe(metadata['path']) if metadata else None
+            path = safe(row['path'])
+            if historical_root is None or path is None:
+                problem('历史文稿的受管目录登记缺失或不可读取。')
+                continue
+            try:
+                info = historical_root.stat()
+                if (info.st_dev != metadata['volume_device'] or str(info.st_ino) != str(metadata['directory_inode'])
+                        or not path.is_relative_to(historical_root) or path == historical_root):
+                    problem('历史文稿路径或目录身份与登记不一致，已跳过。')
+                    continue
+            except OSError as error:
+                problem(f'历史文稿目录无法读取：{error}')
+                continue
+            add(path, '历史文稿', 'work_file_supersessions', row['relative_path'],
+                work_file_id=row['id'], superseded_at=row['created_at'])
+
     # 先记录明确关联的归档；同一路径只显示一次，不按名称推断关联。
     for row in zips:
         add(row['path'], 'ZIP归档', 'zip_project_links', zip_id=row['id'])
@@ -156,7 +188,7 @@ def list_project_documents(service, project_id, *, cancel_event=None):
     else:
         root = None
     if root is not None:
-        boundaries = [path for value in roots + [row['path'] for row in all_archives]
+        boundaries = [path for value in roots + [row['path'] for row in all_archives] + [row['path'] for row in history_roots]
                       if (path := lexical(value)) is not None]
         other_roots = [path for row in workspaces if row['project_id'] != project_id
                        and (path := lexical(row['path'])) is not None and _inside(path, root)]
@@ -167,7 +199,8 @@ def list_project_documents(service, project_id, *, cancel_event=None):
             return (_inside(path, root) and not any(_inside(path, boundary) for boundary in boundaries)
                     and not any(part in DISCOVERY_EXCLUDED_DIRECTORIES
                                 for part in path.relative_to(root).parts[:-1])
-                    and _key(path) not in known_zips and not path.name.startswith('~$'))
+                    and _key(path) not in known_zips and _key(path) not in historical_paths
+                    and not path.name.startswith('~$'))
 
         if any(_inside(root, boundary) for boundary in boundaries):
             problem('工作目录与其他项目或归档存储重叠，已跳过工作文件扫描。')
@@ -180,7 +213,7 @@ def list_project_documents(service, project_id, *, cancel_event=None):
                     continue
                 seen_registered.add(_key(path))
                 kind = 'ZIP工作副本' if path.suffix.casefold() == '.zip' else '工作文件'
-                add(path, kind, 'work_files', path.relative_to(root).as_posix())
+                add(path, kind, 'work_files', path.relative_to(root).as_posix(), work_file_id=row['id'])
 
             visited = 0
 
@@ -217,7 +250,8 @@ def list_project_documents(service, project_id, *, cancel_event=None):
                             kind = 'ZIP工作副本' if path.suffix.casefold() == '.zip' else '工作文件'
                             existing = documents.get(_key(path))
                             origin = existing['origin'] if existing else 'workspace'
-                            add(path, kind, origin, path.relative_to(root).as_posix())
+                            registered_id = {'work_file_id':existing['work_file_id']} if existing and 'work_file_id' in existing else {}
+                            add(path, kind, origin, path.relative_to(root).as_posix(), **registered_id)
                 except OSError as error:
                     problem(f'工作目录读取不完整：{directory}（{error}）')
 

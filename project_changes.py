@@ -89,6 +89,13 @@ class ProjectChanges:
         fmarks = ','.join('?' for _ in family)
         tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         snapshot = {'source': source, 'target': target, 'candidates': candidates, 'family_ids': family}
+        if 'document_history_roots' in tables:
+            snapshot['document_history_roots'] = [dict(row) for row in connection.execute(
+                'SELECT * FROM document_history_roots ORDER BY id')]
+        if 'work_file_supersessions' in tables:
+            snapshot['work_file_supersessions'] = [dict(row) for row in connection.execute(
+                f'''SELECT s.* FROM work_file_supersessions s JOIN work_files f ON f.id=s.old_file_id
+                    WHERE f.project_id IN ({fmarks}) ORDER BY s.old_file_id''', family)]
         # 旧版可能只改过显示名。只恢复已成功收件/交付事实中保存的项目名，不猜文件夹或文件前缀。
         historical = [dict(row) for row in connection.execute(f'''SELECT project_id,project_name FROM delivery_events
             WHERE project_id IN ({fmarks}) AND project_name!=''
