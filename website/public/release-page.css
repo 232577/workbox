@@ -93,3 +93,16 @@ html:not([data-theme]) .home-page .wb-hash-content .copy-button{color:#c5f0d8;ba
 .home-page .wb-narrow-project-preview a{display:block;border-radius:16px;overflow:hidden;border:1px solid var(--wb-line)}
 .home-page .wb-narrow-project-preview img{display:block;width:100%;height:auto}
 .home-page .wb-narrow-project-preview figcaption{margin-top:12px;font-size:13px;line-height:1.7;color:var(--wb-muted);text-align:center}
+/* Keep secondary copy legible without changing the page composition. */
+.home-page .wb-demo-steps button{font-size:12px;line-height:1.5;min-height:44px;min-width:0;padding:8px 6px;white-space:normal;overflow-wrap:anywhere}
+.home-page .wb-demo-steps button span{display:inline-block;white-space:nowrap}
+.home-page .wb-feature-caption{font-size:12px;line-height:1.75}
+.home-page .wb-demo-file.doc b,.home-page .wb-demo-file.zip b{font-size:11px;line-height:1.4}
+.home-page .wb-file-type{font-size:11px;min-width:34px}
+.home-page .wb-document-row,.home-page .wb-destination,.home-page .wb-destination .wb-state{font-size:12px;line-height:1.6}
+.home-page .wb-document-row>span:nth-child(2){flex:1;min-width:0;overflow-wrap:anywhere}
+.home-page .wb-document-row>span:last-child{flex-shrink:0}
+.home-page .wb-destination strong,.home-page .wb-version-file strong{min-width:0;overflow-wrap:anywhere}
+.home-page .wb-folder-front span,.home-page .wb-art-label,.home-page .wb-art-note,.home-page .wb-version-row small,.home-page .wb-count-pair small,.home-page .wb-archive-slip small{font-size:12px;line-height:1.6}
+.home-page .wb-inbox-details>div{padding:24px;min-width:0}
+@media(max-width:560px){.home-page .wb-inbox-details>div{padding:20px}}
