@@ -11,11 +11,10 @@ const source = '67fab09d4e5392018eb2ae23e67f8573f1fd19c3';
 
 test('批次余量按整批当前状态，筛选和个人工作量不影响数量', () => {
   const batch = html.match(/<section\b[^>]*id="project-batches"[^>]*>([\s\S]*?)<\/section>/)?.[1];
-  assert.match(batch, /编号后显示“余N”/);
-  assert.match(batch, /全部交付.*“已齐”/);
-  assert.match(batch, /选择批次.*已交付.*批次总数.*剩余/);
-  assert.match(batch, /剩余＝总数－已交付－待交付/);
-  assert.match(batch, /剩余为零.*待交付N/);
+  assert.match(batch, /待完成4，共5/);
+  assert.match(batch, /待完成0，共1/);
+  assert.match(batch, /选择批次.*待交付.*已交付/);
+  assert.match(batch, /待完成只计待开发和开发中/);
   assert.match(batch, /整批项目的当前状态/);
   assert.match(batch, /搜索或筛选只改变清单.*个人工作量单独统计/);
   assert.match(batch, /归档项目仍计入.*删除.*恢复/);
@@ -45,7 +44,7 @@ test('11月9日r1目录和下载继续绑定原安装包，稳定清单保留批
   const response = await handleRequest(new Request('https://workbox.ltxiangzi.dpdns.org/updates/stable.json'), {});
   const metadata = await response.json();
   assert.equal(response.status, 200);
-  assert.match(metadata.body, /余N.*已齐.*整批项目的当前状态.*个人工作量单独统计/);
+  assert.match(metadata.body, /待完成4，共5.*待完成0，共1.*整批项目的当前状态.*个人工作量单独统计/);
   assert.match(metadata.body, /检查一次.*更新并重启/);
   assert.match(html, /正式安装版 · 2026 年 11 月 9 日/);
   assert.match(html, /<a class="download-link" href="\/download\/WorkBox-1\.0\.0-Setup-x64-20261106-r1\.exe">历史正式安装版/);
