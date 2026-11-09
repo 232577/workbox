@@ -125,3 +125,18 @@ def test_search_return_does_not_start_import_or_material_read(app,tmp_path,monke
         assert not d.import_button.autoDefault()
     finally:
         d.shutdown();d.close();d.deleteLater();app.processEvents()
+
+
+def test_range_without_complete_dates_reports_error_not_all_rows(app,tmp_path):
+    s=DesktopService(tmp_path/'data/db.sqlite');install_theme(s);d=make_dialog(s);d.show()
+    path=tmp_path/'no-year.csv';path.write_text('名称,日期\n示例系统,11/09',encoding='utf-8')
+    try:
+        d.load_path(path);wait(app,d)
+        previous=list(d.results)
+        assert len(previous)==1 and previous[0]['date']==''
+        d.scope.setCurrentIndex(1);wait(app,d)
+        assert d.notice.property('tone')=='error'
+        assert '日期' in d.notice.text()
+        assert d.results==previous and s.db.counts()['projects']==0
+    finally:
+        d.shutdown();d.close();d.deleteLater();app.processEvents()

@@ -170,8 +170,11 @@ class ChecklistDialog(QDialog):
         if self.worker is not None or not self.tables:return
         table=self.tables[self.sheet.currentIndex()]
         nc,dc=self.name_column.currentData(),self.date_column.currentData()
-        dates=(None,None) if reset_dates or self.scope.currentData()=='all' else (self.start_date.currentData(),self.end_date.currentData())
+        use_range=not reset_dates and self.scope.currentData()=='range'
+        dates=(self.start_date.currentData(),self.end_date.currentData()) if use_range else (None,None)
         def operation(*,cancel_event,progress):
+            if use_range and not all(dates):
+                raise ValueError('没有包含完整年份的可选日期，请选择日期列或改用全部日期；未按范围核对。')
             entries=extract_entries(table,nc,dc,cancel_event=cancel_event)
             selected=filter_entries(entries,*dates)
             results=review_entries(self.service,selected,check_materials=check_materials,cancel_event=cancel_event,progress=progress) if selected else []
