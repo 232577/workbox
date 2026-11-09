@@ -3,6 +3,14 @@ export { SiteMetrics } from './analytics.mjs';
 // 固定版本的公开下载入口；不读取、转发访问者的登录信息。
 export const releases = Object.freeze([Object.freeze({
   version: '1.0.0',
+  tag: 'v1.0.0.20261109.1',
+  edition: '正式安装版',
+  date: '2026-11-09',
+  filename: 'WorkBox-1.0.0-Setup-x64-20261109-r1.exe',
+  size: 40624926,
+  sha256: 'a8a7f9ac597900b52adacb6f1a8188d25309b88abc5c40c0af77bad473727524',
+}), Object.freeze({
+  version: '1.0.0',
   tag: 'v1.0.0.20261106.1',
   edition: '正式安装版',
   date: '2026-11-06',
@@ -228,7 +236,7 @@ export async function handleRequest(request, env, fetcher = fetch, context = nul
     const metadata = {
       tag_name: release.tag, draft: false, prerelease: false,
       html_url: `https://github.com/232577/workbox/releases/tag/${release.tag}`,
-      body: `WorkBox ${release.version} 正式安装版 · ${release.date}。来源提交 9901f92db9d8794a4cb29d78947400c78a773e46。项目沿用四种原项目状态、原排序和一项目一行，保留同批色号，一个项目可属于多个批次。状态和批次直接筛选，归档范围、截止日期、类型和加急按需展开，项目与记录操作随选择显示。交付页直接显示工作量合计和各类型数量，日期、搜索与全部交付表可直接使用。归档分类按最近有效交付的单项目文件数判断，新安装预设恰好 16 个文件归为“可运行”，其他已知数量归为“生成材料”，数量未知时保留原类型。新安装的自动分类默认关闭，升级沿用原配置，旧规则仍按“至少”比较。ZIP 自动交付的独立初始门槛为每项目 4 个实际文件。升级前请备份数据，安装时保存数据库恢复点。安装包尚无商业代码签名。`,
+      body: `WorkBox ${release.version} 正式安装版 · ${release.date}。来源提交 67fab09d4e5392018eb2ae23e67f8573f1fd19c3。批次编号后显示“余N”，全部交付时显示“已齐”。在左侧选择批次可看已交付、总数和剩余。余量按整批项目的当前状态统计，个人工作量单独统计。项目沿用四种原项目状态、原排序和一项目一行，一个项目可属于多个批次。批次选择和多选归入左侧清单，项目与文件操作跟随选择。交付页保留日期、搜索、各类型数量和全部交付表。新版从侧栏主动检查一次，有新版时选择“更新并重启”。程序下载校验、备份数据库，在原目录安装成功后重新打开。归档分类按最近有效交付的单项目文件数判断，新安装预设恰好 16 个文件归为“可运行”，其他已知数量归为“生成材料”，数量未知时保留原类型。新安装的自动分类默认关闭，升级沿用原配置，旧规则仍按“至少”比较。ZIP 自动交付的独立初始门槛为每项目 4 个实际文件。升级前请备份数据。安装包尚无商业代码签名。`,
       assets: [{name: release.filename, size: release.size, state: 'uploaded',
         digest: `sha256:${release.sha256}`,
         browser_download_url: `https://github.com/232577/workbox/releases/download/${release.tag}/${release.filename}`}],

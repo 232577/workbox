@@ -2,10 +2,24 @@
   "kind": "verified-screenshot-walkthrough",
   "source_exe_sha256": "ce9e986d53fd0129c905e4058f7a8bfe3b67df4b0e1d6a8310d42dcd8a114890",
   "privacy_reviewed": true,
-  "latest_screenshot_exe_sha256": "5fdbba35a02d00d716ce00ae4a8289802a7d8163e8fea30955469831249c2c1c",
-  "description": "11月6日r1已验证冻结程序的中性隔离项目界面，分别展示浅色主窗口和窄窗深色对照。历史媒体保留各自构建来源。",
+  "latest_screenshot_exe_sha256": "713d67114a9f090388f0230247ccbff237b2c80ac51dbfd2a3ede3657070eeff",
+  "description": "11月9日r1正式安装版的匿名隔离实拍，分别展示浅色项目工作台和待交付筛选下的窄窗深色界面。历史媒体保留各自构建来源。",
   "duration_seconds": 44,
   "files": {
+    "public/media/workbox-batch-progress-light-20261109-r1.png": {
+      "size": 61679,
+      "sha256": "c5b62748a80544ed11102ae79793d0caa82a54c3c3d9c01d4372145323ce735d",
+      "source_exe_sha256": "713d67114a9f090388f0230247ccbff237b2c80ac51dbfd2a3ede3657070eeff",
+      "source_commit": "67fab09d4e5392018eb2ae23e67f8573f1fd19c3",
+      "description": "1102×792浅色工作台原始PNG。所选批次显示已交付1/3、剩余2，右侧显示所选项目的工作文件。"
+    },
+    "public/media/workbox-batch-progress-narrow-dark-20261109-r1.png": {
+      "size": 45102,
+      "sha256": "49e42c0cd1b510a44315c94e7aa67b3562719cfba57c6d0814e93d04df201c44",
+      "source_exe_sha256": "713d67114a9f090388f0230247ccbff237b2c80ac51dbfd2a3ede3657070eeff",
+      "source_commit": "67fab09d4e5392018eb2ae23e67f8573f1fd19c3",
+      "description": "同一安装实例的662×512窄窗深色原始PNG。待交付筛选只显示一个项目，整批仍显示已交付1/3、剩余2。"
+    },
     "public/media/workbox-ui-cleanup-light-20261106-r1.png": {
       "size": 67409,
       "sha256": "4420d21a048b869d932296017e5b8f0f6c0d9742d68b1c55a55bce88607b3afc",

@@ -2,9 +2,15 @@
 
 个人项目收件、工作目录与交付归档工具。使用 Python、PySide6 和 SQLite；不需要账号或云端服务。
 
-本次发布标识为 `v1.0.0.20261106.1`，软件版本为 **1.0.0**。安装包来自主分支提交 `9901f92db9d8794a4cb29d78947400c78a773e46`。项目沿用四种原项目状态、原排序、一项目一行和同批色号，一个项目可属于多个批次。项目附加筛选可折叠，文件与交付记录操作随选择显示。交付页直接提供日期、搜索、工作量合计、各类型数量和全部交付表导出。
+正式安装版标识为 `v1.0.0.20261109.1`，软件版本为 **1.0.0**。安装包来自主分支提交 `67fab09d4e5392018eb2ae23e67f8573f1fd19c3`。项目沿用四种原项目状态、原排序、一项目一行和同批色号，一个项目可属于多个批次。批次编号旁显示“余N”或“已齐”，选中批次可查看整批进度。余量按整批项目的当前状态统计，个人工作量单独统计。项目附加筛选可折叠，文件与交付记录操作随选择显示。交付页直接提供日期、搜索、工作量合计、各类型数量和全部交付表导出。
 
 “高级设置 → 归档分类”按最近有效交付的单项目归档文件数判断。新安装预设恰好 16 个文件归为“可运行”，其他已知数量归为“生成材料”，数量未知时保留原分类。自动分类默认关闭，升级沿用原配置，旧规则仍按“至少”比较。已有归档可先预览再确认分类。ZIP 自动交付使用独立门槛，自动模式初始为每项目 4 个实际文件。
+
+<details><summary>11月6日 r1历史发布说明</summary>
+
+历史构建 `v1.0.0.20261106.1` 来自 `9901f92db9d8794a4cb29d78947400c78a773e46`。`WorkBox-1.0.0-Setup-x64-20261106-r1.exe` 大小 40,613,745 字节，SHA-256 为 `bbdf096bb8929f5129b05df81387cb7a947fb5af15ec96badcbad7edd5f06969`。
+
+</details>
 
 <details><summary>11月5日 r3历史发布说明</summary>
 
@@ -38,10 +44,11 @@ python scripts/dev.py start feat/my-task
 
 ## Windows 安装包
 
-安装版提供“检查更新”入口，点击后才连接官网更新清单（GitHub为备用源），支持下载、取消、长度与SHA-256校验，以及确认后安全退出再安装。安装前保存数据库恢复点，不删除项目文件；源码模式不允许替换开发目录。更早没有更新入口的安装版仍需一次引导安装。设计及安全边界见 [在线升级](docs/ONLINE-UPDATES.md)。
+新版安装版从侧栏底部或高级设置点击“检查更新”，主动查询官网更新清单，GitHub 为备用源。有新版时点击“更新并重启”。程序下载并校验安装包，保存数据库恢复点，安全退出，在原目录安装成功后重新打开。下载可取消。源码运行提供版本检查和安装包下载。更早没有更新入口的安装版仍需一次引导安装。设计及安全边界见 [在线升级](docs/ONLINE-UPDATES.md)。
 
-- [官网下载](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261106-r1.exe)
-- [GitHub Release](https://github.com/232577/workbox/releases/tag/v1.0.0.20261106.1)
+- [官网下载](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261109-r1.exe)
+- [GitHub Release](https://github.com/232577/workbox/releases/tag/v1.0.0.20261109.1)
+- [历史正式安装版 · 11月6日 r1](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261106-r1.exe)
 - [历史正式安装版 · 11月5日 r3](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261105-r3.exe)
 - [历史正式安装版 · 11月5日 r2](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261105-r2.exe)
 - [历史正式安装版 · 11月4日 r3](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261104-r3.exe)
@@ -49,9 +56,9 @@ python scripts/dev.py start feat/my-task
 - [历史正式安装版 · 11月4日 r2](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261104-r2.exe)
 - [源码](https://github.com/232577/workbox)
 
-文件 `WorkBox-1.0.0-Setup-x64-20261106-r1.exe`，40,613,745 字节。
+文件 `WorkBox-1.0.0-Setup-x64-20261109-r1.exe`，40,624,926 字节。
 
-SHA-256 为 `bbdf096bb8929f5129b05df81387cb7a947fb5af15ec96badcbad7edd5f06969`。
+SHA-256 为 `a8a7f9ac597900b52adacb6f1a8188d25309b88abc5c40c0af77bad473727524`。
 
 目标平台为 Windows 10 1809+ / Windows 11 x64；实际验收范围以对应发布记录为准，不代表已在其他物理设备或所有Windows版本实测。安装包尚无商业代码签名。按当前用户安装，带独立运行时，不含用户数据库、工作文件、归档或私有凭据。升级前请备份自己的数据，卸载保留运行时生成的data目录。
 

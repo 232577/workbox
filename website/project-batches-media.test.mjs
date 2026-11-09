@@ -22,8 +22,9 @@ test('两张r3主项目实拍绑定同一EXE与来源，旧48媒体不变', asyn
     assert.equal(fact.source_commit, '6eb83f50ce3eba52df0da9439be3243afc47df26');
     assert.equal(fact.source_exe_sha256, '3db86834172f225584338465ee245398c16c56a544902d10c200f4108a75bc1d');
   }
-  const old = Object.fromEntries(Object.entries(registry.files).filter(([key]) =>
-    !key.includes('workbox-project-batches-') && !key.includes('-20261106-r1.')));
+  const media = Object.entries(registry.files);
+  const old = Object.fromEntries(media.slice(media.findIndex(([path]) =>
+    path === 'public/media/workbox-task-groups-light-20261105-r2.png')));
   assert.equal(Object.keys(old).length, 48);
   assert.equal(createHash('sha256').update(JSON.stringify(old)).digest('hex'), '8c3a0ef722b3b18bfb2aeced1d80b26b2aa35dc84806d81f88b4701e3dafc123');
 });
