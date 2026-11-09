@@ -26,10 +26,13 @@ test('首页、文档与更新说明保留项目批次、全量导出与文件�
     assert.match(text,/普通文件.*先建项/);
     assert.match(text,/不同文字批次.*唯一同名.*原身份/);
     assert.match(text,/多同名.*受保护状态.*核对/);
-    assert.match(text,/同名普通文档.*新稿保留标准名.*旧稿加内容摘要后缀/);
+    assert.match(text,/同名普通文档.*新稿保留标准名/);
+    assert.match(text,/当前文件.*旧稿.*独立/);
+    assert.match(text,/已有旧稿.*明确选择/);
+    assert.match(text,/归档只包含当前文件/);
     assert.match(text,/旧版.*后缀.*再次拖入.*新规则/);
     assert.match(text,/与当前标准名内容相同.*不增加版本/);
-    assert.match(text,/ZIP.*归档.*规则不变/);
+    assert.match(text,/ZIP.*归档.*(?:规则|记录)不变/);
   }
 });
 
