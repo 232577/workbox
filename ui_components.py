@@ -79,29 +79,43 @@ class DialogHeader(QWidget):
     def __init__(self, title, subtitle='', parent=None, *, icon=None, eyebrow='WORKBOX'):
         super().__init__(parent)
         self.setObjectName('dialogHeader')
-        self._source_icon=icon
-        row=QHBoxLayout(self);row.setContentsMargins(0,0,0,0);row.setSpacing(12)
+        self._source_icon = icon
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(10)
         if icon is not None:
-            self.icon_label=QLabel(self)
-            self.icon_label.setObjectName('headerIcon')
-            self.icon_label.setFixedSize(44,44)
+            self.icon_label = QLabel(self)
+            self.icon_label.setFixedSize(24, 28)
             self.icon_label.setAlignment(Qt.AlignCenter)
             self._refresh_icon()
             qconfig.themeChanged.connect(self._refresh_icon)
-            row.addWidget(self.icon_label)
-        copy=QVBoxLayout();copy.setSpacing(3);copy.setContentsMargins(0,0,0,0)
-        self.eyebrow=QLabel(eyebrow);self.eyebrow.setObjectName('headerEyebrow');self.eyebrow.setTextFormat(Qt.PlainText)
-        self.title=QLabel(title);self.title.setObjectName('pageTitle');self.title.setTextFormat(Qt.PlainText)
-        self.subtitle=ElidedLabel(subtitle);self.subtitle.setObjectName('headerSubtitle')
-        for label in (self.eyebrow,self.title,self.subtitle):copy.addWidget(label)
-        row.addLayout(copy,1)
+            row.addWidget(self.icon_label, 0, Qt.AlignTop)
+        copy = QVBoxLayout()
+        copy.setSpacing(3)
+        self.title = QLabel(title)
+        self.title.setObjectName('pageTitle')
+        self.title.setTextFormat(Qt.PlainText)
+        self.subtitle = ElidedLabel(subtitle)
+        self.subtitle.setObjectName('headerSubtitle')
+        self.eyebrow = QLabel(eyebrow)
+        self.eyebrow.setObjectName('headerContext')
+        self.eyebrow.setTextFormat(Qt.PlainText)
+        self.eyebrow.setVisible(bool(eyebrow and eyebrow != 'WORKBOX'))
+        for label in (self.title, self.subtitle, self.eyebrow):
+            copy.addWidget(label)
+        self.subtitle.setVisible(bool(subtitle))
+        row.addLayout(copy, 1)
 
     def setSubtitle(self, text):
         self.subtitle.setText(text)
+        self.subtitle.setVisible(bool(text))
 
-    def _refresh_icon(self,*_):
-        if self._source_icon is not None:
-            self.icon_label.setPixmap(toQIcon(self._source_icon).pixmap(QSize(24,24)))
+    def _refresh_icon(self, *_):
+        icon = self._source_icon
+        if isinstance(icon, FluentIconBase):
+            from theme import tokens
+            icon = icon.icon(color=QColor(tokens()['muted']))
+        self.icon_label.setPixmap(toQIcon(icon).pixmap(QSize(20, 20)))
 
 
 class MetricStrip(QFrame):
@@ -112,7 +126,12 @@ class MetricStrip(QFrame):
         self.setSizePolicy(QSizePolicy.Expanding,QSizePolicy.Fixed)
         row=QHBoxLayout(self);row.setContentsMargins(16,8,16,8);row.setSpacing(16)
         self.captions=tuple(captions);self.value_labels=[]
-        for caption in self.captions:
+        for index, caption in enumerate(self.captions):
+            if index:
+                divider = QFrame(self)
+                divider.setObjectName('metricDivider')
+                divider.setFixedWidth(1)
+                row.addWidget(divider)
             column=QVBoxLayout();column.setSpacing(0)
             value=QLabel('—');value.setObjectName('metricValue');value.setTextFormat(Qt.PlainText)
             value.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Preferred)
@@ -150,6 +169,8 @@ class LineEdit(_FluentLineEdit):
 
         # A widget-local Fluent sheet wins over the application padding during
         # Qt polish and otherwise reduces this to 22px despite minimumHeight.
+        from theme import tokens
+        self.setCustomFocusedBorderColor(tokens('light')['accent'], tokens('dark')['accent'])
         setCustomStyleSheet(self, control_style('light', 'line'), control_style('dark', 'line'))
 
     def contextMenuEvent(self, event):
@@ -181,23 +202,44 @@ class CheckBox(_FluentCheckBox):
     """复选标记由 Fluent 绘制，避免叠加应用基础皮肤的指示器图片。"""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        rule = ('CheckBox::indicator, CheckBox::indicator:checked, '
-                'CheckBox::indicator:unchecked, CheckBox::indicator:indeterminate '
-                '{ image: none; border: none; background: transparent; width: 17px; height: 17px; }')
-        setCustomStyleSheet(self, rule, rule)
+        def chrome(mode):
+            from theme import tokens
+            return ('CheckBox { color: %(ink)s; spacing: 8px; font-size: 13px; '
+                    'border: 1px solid transparent; border-radius: 4px; padding: 0 2px; }'
+                    'CheckBox:focus { border-color: %(accent)s; }'
+                    'CheckBox:disabled { color: %(disabled)s; }'
+                    'CheckBox::indicator, CheckBox::indicator:checked, '
+                    'CheckBox::indicator:unchecked, CheckBox::indicator:indeterminate '
+                    '{ image: none; border: none; background: transparent; width: 17px; height: 17px; }'
+                    ) % tokens(mode)
+        setCustomStyleSheet(self, chrome('light'), chrome('dark'))
+
+    def _checkedFill(self, colors):
+        if not self.isEnabled():
+            return colors['disabled_check']
+        if self.isDown():
+            return colors['accent_pressed']
+        return colors['accent_hover'] if self.isHover else colors['accent']
 
     def _borderColor(self):
         from theme import tokens
         colors = tokens()
-        return QColor(colors['disabled_check' if self.isChecked() else 'border'] if not self.isEnabled() else
-                      colors['accent'] if self.isChecked() or self.isHover else colors['control_border'])
+        if self.isChecked():
+            return QColor(self._checkedFill(colors))
+        if not self.isEnabled():
+            return QColor(colors['button_border'])
+        return QColor(colors['accent' if self.isHover else 'control_border'])
 
     def _backgroundColor(self):
         from theme import tokens
         colors = tokens()
-        return QColor(colors['disabled_check' if self.isChecked() else 'disabled_bg'] if not self.isEnabled() else
-                      colors['accent'] if self.isChecked() else
-                      colors['raised'] if self.isPressed else colors['surface'])
+        if self.isChecked():
+            return QColor(self._checkedFill(colors))
+        if not self.isEnabled():
+            return QColor(colors['disabled_bg'])
+        if self.isDown():
+            return QColor(colors['raised'])
+        return QColor(colors['hover' if self.isHover else 'surface'])
 
 
 class ComboBox(QComboBox):
@@ -211,7 +253,9 @@ class ComboBox(QComboBox):
             return (control_style('dark' if theme == Theme.DARK else 'light', 'combo') +
                     "ComboBox::drop-down { subcontrol-origin: padding; "
                     "subcontrol-position: top right; width: 28px; border: none; background: transparent; }"
-                    f"ComboBox::down-arrow {{ image: url({arrow}); width: 10px; height: 10px; }}")
+                    "ComboBox::down-arrow, ComboBox::down-arrow:on, "
+                    "ComboBox::down-arrow:hover, ComboBox::down-arrow:focus "
+                    f"{{ image: url({arrow}); width: 10px; height: 10px; }}")
         setCustomStyleSheet(self, native_chrome(Theme.LIGHT), native_chrome(Theme.DARK))
 
 
@@ -346,9 +390,11 @@ def button(text: str, primary: bool | str = False):
             from theme import tokens
             colors = tokens('dark' if theme == Theme.DARK else 'light')
             rules += ("PushButton#danger { color: %(error)s; background: transparent; "
-                      "border: 1px solid %(border)s; }"
+                      "border-color: %(button_border)s; }"
                       "PushButton#danger:hover, PushButton#danger:pressed { background: %(error_bg)s; }"
-                      "PushButton#danger:disabled { color: %(disabled)s; background: %(disabled_bg)s; }") % colors
+                      "PushButton#danger:focus { border-color: %(error)s; }"
+                      "PushButton#danger:disabled { color: %(disabled)s; background: %(disabled_bg)s; "
+                      "border-color: transparent; }") % colors
         if role == 'nav-menu':
             nav_arrow = FluentIcon.ARROW_DOWN.path(theme)
             rules += ('QToolButton#nav::menu-indicator { subcontrol-origin: padding; '

@@ -777,6 +777,7 @@ class FloatingController(QObject):
             with transient_dialog(UpdateDialog(self.panel)) as dialog:
                 self.update_dialog = dialog
                 try:
+                    dialog.check()
                     if dialog.exec() == QDialog.Accepted:
                         selected = (dialog.release, dialog.installer)
                 finally:

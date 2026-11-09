@@ -9,7 +9,7 @@ import math
 import re
 
 from PySide6.QtCore import QPointF, QRect, QRectF, QSize, Qt
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPen, QTextLayout, QTextOption
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPalette, QPen, QTextCharFormat, QTextLayout, QTextOption
 from PySide6.QtWidgets import QAbstractItemView, QListView, QStyle, QStyleOptionViewItem, QWidget
 from qfluentwidgets import ListWidget, SmoothMode, TableWidget, setCustomStyleSheet
 from qfluentwidgets.components.widgets.list_view import ListItemDelegate
@@ -19,6 +19,10 @@ from qfluentwidgets.components.widgets.table_view import TableItemDelegate
 PROJECT_NAME_ROLE = int(Qt.UserRole) + 10
 PROJECT_DETAIL_ROLE = int(Qt.UserRole) + 11
 PROJECT_BATCH_MARKERS_ROLE = int(Qt.UserRole) + 12
+ITEM_TEXT_TONE_ROLE = int(Qt.UserRole) + 13
+
+PROJECT_STATUS_TONES = {'待开发': 'state_new', '开发中': 'state_working',
+                        '待交付': 'state_pending', '已交付': 'state_delivered'}
 
 
 def _batch_badge_background(color, mode):
@@ -26,7 +30,7 @@ def _batch_badge_background(color, mode):
     base, accent = QColor(tokens(mode)['surface']), QColor(color)
     if not accent.isValid():
         accent = QColor('#777777')
-    weight = .30 if mode == 'dark' else .16
+    weight = .22 if mode == 'dark' else .10
     return QColor(*(round(base_channel * (1 - weight) + accent_channel * weight)
                     for base_channel, accent_channel in zip(base.getRgb()[:3], accent.getRgb()[:3])))
 
@@ -49,11 +53,12 @@ def _batch_badge_layout(markers, metrics, width):
     return badges, (f'+{extra}批' if badges and extra else f'{extra}批' if extra else '')
 
 
-def _fluent_item_styles(selector: str, horizontal_padding: int, mode: str) -> str:
+def _fluent_item_styles(selector: str, horizontal_padding: int, mode: str, *, use_item_palette=False) -> str:
     """局部覆盖 Fluent 和父窗口样式；行状态由库委托钩子统一绘制。"""
     from theme import tokens
     colors = tokens(mode)
     color = colors['ink']
+    item_color = '' if use_item_palette else f'color: {color}; selection-color: {color};'
     states = ('', ':hover', ':focus', ':selected', ':selected:hover', ':selected:focus',
               ':hover:focus', ':selected:active', ':selected:!active', ':!selected:hover',
               ':selected:active:focus', ':selected:!active:focus')
@@ -63,7 +68,7 @@ def _fluent_item_styles(selector: str, horizontal_padding: int, mode: str) -> st
     QHeaderView::section, QHeaderView::section:horizontal {{
         color: {colors['muted']}; background: {colors['surface']};
         border: none; border-bottom: 1px solid {colors['border']};
-        height: 18px; padding: 7px 16px; font-size: 12px; font-weight: 500;
+        height: 18px; padding: 6px 16px; font-size: 12px; font-weight: 600;
     }}
     QHeaderView::section:hover {{ background: {colors['subtle_surface']}; }}
     QTableCornerButton::section {{ background: {colors['surface']}; border: none; }}
@@ -75,7 +80,7 @@ def _fluent_item_styles(selector: str, horizontal_padding: int, mode: str) -> st
     }}
     {items} {{
         height: auto; padding: 0px {horizontal_padding}px; border: none;
-        background: transparent; color: {color}; selection-color: {color};
+        background: transparent; {item_color}
         selection-background-color: transparent;
     }}
     {header}
@@ -118,6 +123,9 @@ class _WorkbenchRowStates:
     def _idle_row_color(self, colors):
         return colors['surface']
 
+    def _row_rule_inset(self):
+        return 15 if isinstance(self.parent(), TableWidget) else None
+
     def _row_rect(self, option):
         view = self.parent()
         if isinstance(view, TableWidget):
@@ -145,12 +153,14 @@ class _WorkbenchRowStates:
                 painter.setBrush(Qt.NoBrush)
                 painter.setPen(QPen(QColor(colors['accent']), 1))
                 painter.drawRoundedRect(rect.adjusted(.5, .5, -.5, -.5), 6, 6)
-            elif not selected and not hovered and isinstance(self.parent(), TableWidget):
-                rule = QColor(colors['border'])
-                rule.setAlpha(100)
-                painter.setPen(QPen(rule, 1))
-                painter.drawLine(QPointF(rect.left() + 16, rect.bottom()),
-                                 QPointF(rect.right() - 16, rect.bottom()))
+            elif not (selected or hovered or pressed) and index.row() + 1 < index.model().rowCount():
+                inset = self._row_rule_inset()
+                if inset is not None and rect.width() > 2 * inset:
+                    rule = QColor(colors['border'])
+                    rule.setAlpha(130)
+                    painter.setPen(QPen(rule, 1))
+                    painter.drawLine(QPointF(rect.left() + inset, rect.bottom()),
+                                     QPointF(rect.right() - inset, rect.bottom()))
         finally:
             painter.restore()
 
@@ -212,8 +222,10 @@ class ProjectListDelegate(WrappedFluentListDelegate):
     """项目名和详情独立换行；背景、指示条和交互状态仍由 Fluent 负责。"""
 
     horizontalInset = 14
-    blockSpacing = 4
-    verticalPadding = 4
+    blockSpacing = 2
+    batchSpacing = 4
+    batchHeight = 17
+    verticalPadding = 5
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -222,18 +234,23 @@ class ProjectListDelegate(WrappedFluentListDelegate):
     def _idle_row_color(self, colors):
         return Qt.transparent
 
+    def _row_rule_inset(self):
+        return self.horizontalInset - 1
+
     def initStyleOption(self, option, index):
         super().initStyleOption(option, index)
         if self._painting_background:
             # QStyledItemDelegate.paint 会重新初始化选项，必须在此处隐藏原合并文本。
             option.text = ''
 
-    def _text_layout(self, text, font, width):
+    def _text_layout(self, text, font, width, formats=()):
         # QTextLayout 用行分隔符表达显式换行；模型里的原文字不变。
         layout = QTextLayout(text.replace('\n', '\u2028'), font)
         text_option = QTextOption()
         text_option.setWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
         layout.setTextOption(text_option)
+        if formats:
+            layout.setFormats(formats)
         layout.beginLayout()
         height = 0.0
         while True:
@@ -246,15 +263,27 @@ class ProjectListDelegate(WrappedFluentListDelegate):
         layout.endLayout()
         return layout, height
 
-    def _text_blocks(self, index, width):
+    def _text_blocks(self, index, width, colors=None):
         font = QFont(self.parent().font())
         font.setPixelSize(14)
         font.setWeight(QFont.DemiBold)
         name = self._text_layout(str(index.data(PROJECT_NAME_ROLE)), font, width)
         font.setPixelSize(12)
         font.setWeight(QFont.Normal)
-        detail = index.data(PROJECT_DETAIL_ROLE) or ''
-        return name, self._text_layout(str(detail), font, width)
+        detail = str(index.data(PROJECT_DETAIL_ROLE) or '')
+        status = detail.split('\n', 1)[0].split(' · ', 1)[0]
+        tone = PROJECT_STATUS_TONES.get(status)
+        formats = []
+        if tone:
+            status_range = QTextLayout.FormatRange()
+            status_range.start = 0
+            status_range.length = len(status)
+            status_range.format = QTextCharFormat()
+            status_range.format.setFontWeight(QFont.DemiBold)
+            if colors is not None:
+                status_range.format.setForeground(QColor(colors[tone]))
+            formats.append(status_range)
+        return name, self._text_layout(detail, font, width, formats)
 
     def sizeHint(self, option, index):
         if index.data(PROJECT_NAME_ROLE) is None:
@@ -266,7 +295,7 @@ class ProjectListDelegate(WrappedFluentListDelegate):
         spacing = self.blockSpacing if detail[1] else 0
         height = math.ceil(name[1] + spacing + detail[1])
         if index.data(PROJECT_BATCH_MARKERS_ROLE):
-            height += self.blockSpacing + 18
+            height += self.batchSpacing + self.batchHeight
         return QSize(width, height + 2 * (self.margin + self.verticalPadding))
 
     def paint(self, painter, option, index):
@@ -285,7 +314,8 @@ class ProjectListDelegate(WrappedFluentListDelegate):
         enabled = bool(option.state & QStyle.State_Enabled and index.flags() & Qt.ItemIsEnabled)
         name_color = colors['ink'] if enabled else colors['disabled']
         detail_color = colors['muted'] if enabled else colors['disabled']
-        name, detail = self._text_blocks(index, option.rect.width() - 2 * self.horizontalInset)
+        name, detail = self._text_blocks(index, option.rect.width() - 2 * self.horizontalInset,
+                                         colors if enabled else None)
         position = QPointF(option.rect.left() + self.horizontalInset,
                           option.rect.top() + self.margin + self.verticalPadding)
         painter.save()
@@ -299,31 +329,33 @@ class ProjectListDelegate(WrappedFluentListDelegate):
                 detail[0].draw(painter, position)
             markers = index.data(PROJECT_BATCH_MARKERS_ROLE) or []
             if markers:
-                position.setY(position.y() + (detail[1] if detail[1] else name[1]) + self.blockSpacing)
+                position.setY(position.y() + (detail[1] if detail[1] else name[1]) + self.batchSpacing)
                 font = QFont(self.parent().font())
                 font.setPixelSize(11)
                 painter.setFont(font)
                 metrics = QFontMetrics(font)
                 x = position.x()
-                right = option.rect.right() - self.horizontalInset
+                right = option.rect.right() + 1 - self.horizontalInset
                 badges, summary = _batch_badge_layout(markers, metrics, right - x)
+                mode = resolved_mode()
+                center = position.y() + self.batchHeight / 2
+                baseline = center + (metrics.ascent() - metrics.descent()) / 2
                 for marker, badge_width in badges:
                     text = str(marker.get('label') or marker.get('code') or '')
                     color = QColor(marker.get('color') or '#777777')
                     if not color.isValid():
                         color = QColor('#777777')
-                    painter.setBrush(_batch_badge_background(color, resolved_mode()))
-                    painter.setPen(QPen(color, 1))
-                    painter.drawRoundedRect(QRectF(x, position.y(), badge_width, 17), 4, 4)
-                    painter.setBrush(color)
                     painter.setPen(Qt.NoPen)
-                    painter.drawEllipse(QPointF(x + 8, position.y() + 8.5), 3, 3)
+                    painter.setBrush(_batch_badge_background(color, mode))
+                    painter.drawRoundedRect(QRectF(x, position.y(), badge_width, self.batchHeight), 4, 4)
+                    painter.setBrush(color)
+                    painter.drawEllipse(QPointF(x + 8, center), 2.5, 2.5)
                     painter.setPen(QColor(name_color))
-                    painter.drawText(QPointF(x + 15, position.y() + 12), text)
+                    painter.drawText(QPointF(x + 15, baseline), text)
                     x += badge_width + 5
                 if summary:
                     painter.setPen(QColor(detail_color))
-                    painter.drawText(QPointF(max(position.x(), min(x, right - metrics.horizontalAdvance(summary))), position.y() + 12), summary)
+                    painter.drawText(QPointF(x, baseline), summary)
         finally:
             painter.restore()
 
@@ -334,9 +366,28 @@ class WrappedFluentTableDelegate(_WorkbenchRowStates, _WrappedFluentText, TableI
     def __init__(self, parent):
         super().__init__(parent)
         self.wrapColumns = set()
+        self.emphasizedColumns = set()
+        self.mutedColumns = set()
 
     def _wraps(self, index):
         return index.column() in self.wrapColumns
+
+    def initStyleOption(self, option, index):
+        super().initStyleOption(option, index)
+        if not (self.emphasizedColumns or self.mutedColumns):
+            return
+        # 背景、悬停与焦点由上面的 Fluent 绘制钩子负责。避免 Qt 的样式规则覆盖单元格文字色。
+        option.state &= ~(QStyle.State_Selected | QStyle.State_MouseOver | QStyle.State_HasFocus)
+        if index.column() in self.emphasizedColumns:
+            option.font.setWeight(QFont.DemiBold)
+            option.fontMetrics = QFontMetrics(option.font)
+        tone = index.data(ITEM_TEXT_TONE_ROLE)
+        if not option.state & QStyle.State_Enabled or not index.flags() & Qt.ItemIsEnabled:
+            tone = 'disabled'
+        elif tone is None:
+            tone = 'muted' if index.column() in self.mutedColumns else 'ink'
+        from theme import tokens
+        option.palette.setColor(QPalette.Text, QColor(tokens()[tone]))
 
 
 class WorkbenchListWidget(ListWidget):
@@ -384,3 +435,10 @@ class WorkbenchTableWidget(TableWidget):
         self.delegate.wrapColumns = set(columns)
         self.resizeRowsToContents()
         self.viewport().update()
+
+    def setColumnTypography(self, *, emphasized=(), muted=()):
+        self.delegate.emphasizedColumns = set(emphasized)
+        self.delegate.mutedColumns = set(muted)
+        use_item_palette = bool(self.delegate.emphasizedColumns or self.delegate.mutedColumns)
+        setCustomStyleSheet(self, _fluent_item_styles('QTableView', 16, 'light', use_item_palette=use_item_palette),
+                            _fluent_item_styles('QTableView', 16, 'dark', use_item_palette=use_item_palette))

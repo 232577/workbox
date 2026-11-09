@@ -32,9 +32,9 @@ def test_daily_navigation_and_advanced_tools_remain_reachable(panel):
     assert isinstance(panel.advanced_menu, QMenu)
     assert panel.settings_button.menu() is panel.advanced_menu
     assert [control.accessibleName() for control, _ in panel.nav_controls
-            if control.isVisible()] == ['项目', '今日工作量', '高级设置']
+            if control.isVisible()] == ['项目', '今日工作量', '检查更新', '高级设置']
     for control in (panel.nav_zip, panel.appearance_button, panel.help_button,
-                    panel.update_button, panel.material_check_button, panel.intake_log_button):
+                    panel.material_check_button, panel.intake_log_button):
         assert control.isHidden()
     captions = {item.text() for item in panel.advanced_menu.actions() if not item.isSeparator()}
     assert captions == {'工作设置…', '归档分类', 'ZIP 归档库', '待核对', '收录记录',
@@ -262,8 +262,9 @@ def test_busy_and_resize_do_not_restore_hidden_tools(panel):
             panel.refresh()
             QApplication.processEvents()
             for control in (panel.nav_zip, panel.appearance_button, panel.help_button,
-                            panel.update_button, panel.material_check_button, panel.intake_log_button):
+                            panel.material_check_button, panel.intake_log_button):
                 assert control.isHidden()
+            assert panel.update_button.isVisible()
             assert panel.background_button.isVisible() and panel.exit_button.isVisible()
             assert panel.settings_button.accessibleName() == '高级设置'
 

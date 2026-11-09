@@ -1,0 +1,49 @@
+{
+  "date": "2026-11-09",
+  "platform": "Windows x64, Qt windows",
+  "source_base": "7ddd183e359baa7217f8ea78feb64a31396e0bc2",
+  "source_modules_sha256": {
+    "compact_ui.py": "5fdfcc588619b2d5a0d75226b6c7bce8258dc5da0671d32e0439b70c7d809356",
+    "theme.py": "942d99b7de868fa69aa04e2841070773aa7f5a1ade86e88c51f3340221df7f9b",
+    "control_styles.py": "75d835fcb084559f5f505978372a2bb4ff95ccefc464e18da6681cb7e9c1ba00",
+    "ui_components.py": "1c7c3b91b3f40c4f69c43fb2554c6a7c8c25f7f68e1d42fe45a65502185c9a8a",
+    "fluent_views.py": "2ea210cb1f42d491edb1afe36de98f0b232411e3bbfa282de892f0698f7eded7",
+    "project_documents_ui.py": "1e4952b40ec90d32de0f8cce1dda374cbf6d368ad272dc7ad3d28c41ab3895f1",
+    "delivery_ui.py": "b0f1a14b350b666bd30197e7c362f7419173ea1165e68e4d6862623d7997f29f",
+    "update_ui.py": "787bd72d848e08bf742b1dc437e097a39c016e448f9d65f282585dfa75d3017d"
+  },
+  "images": [
+    {
+      "file": "dark-660-long-name.png",
+      "sha256": "ffe643b771e0d550ce551fcac6ef6f59b2dfaf5ca094337cc1f712a410212a3a",
+      "kind": "native-qt-anonymous-source-window"
+    },
+    {
+      "file": "light-1200-delivery.png",
+      "sha256": "a25d8831ef8c59c4d75d9e0c805b47358ad9c5edbfa617ff873628c240dfb16b",
+      "kind": "native-qt-anonymous-source-window"
+    },
+    {
+      "file": "light-1200-projects.png",
+      "sha256": "46a2a183ee7d4b871d3a92f2f995a4d9a0c6c5d5db6efe06360d4660706e1baa",
+      "kind": "native-qt-anonymous-source-window"
+    },
+    {
+      "file": "light-660-delivery-details.png",
+      "sha256": "e826192461ef531cb1d4603f2d1e65a94bd2f2d1a3227ab13756b01521e0595d",
+      "kind": "native-qt-anonymous-source-window"
+    },
+    {
+      "file": "update-download-light.png",
+      "sha256": "9a454cef8fcdeb24d81d5392d5c07ee8ee31871e0c158a9a86f605112d7f7bf7",
+      "kind": "native-qt-anonymous-source-window"
+    },
+    {
+      "file": "update-offer-light.png",
+      "sha256": "4bf8e1f76bcad0c9a100b82e03ad0d060eb28382c26e065fb3945000bbab98fe",
+      "kind": "native-qt-anonymous-source-window"
+    }
+  ],
+  "release_status": "Source refinement only; not a new published or installed build.",
+  "capture_scope": "Workbench uses real anonymous temporary files; updater uses a simulated release and network results."
+}

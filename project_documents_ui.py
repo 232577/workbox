@@ -3,11 +3,11 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QSignalBlocker, QUrl, QSize, Signal
 from PySide6.QtGui import QColor, QDesktopServices
-from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QHeaderView, QMenu, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QSizePolicy, QMessageBox
+from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QHeaderView, QMenu, QTableWidgetItem, QVBoxLayout, QWidget, QSizePolicy, QMessageBox
 from qfluentwidgets import FluentIcon
 
 from compact_ui import button, label, local_timestamp
-from fluent_views import WorkbenchTableWidget
+from fluent_views import ITEM_TEXT_TONE_ROLE, WorkbenchTableWidget
 from native_files import plain_path
 from project_documents import list_project_documents
 from theme import theme_signal, tokens
@@ -69,6 +69,7 @@ class ProjectDocumentsPane(QWidget):
         self.table.setWordWrap(True)
         self.table.setIconSize(QSize(16, 16))
         self.table.setShowGrid(False)
+        self.table.setColumnTypography(emphasized={0}, muted={1, 2})
         self.table.setWrapColumns({0})
         self.table.setMinimumHeight(90)
         self.table.verticalHeader().hide()
@@ -77,8 +78,9 @@ class ProjectDocumentsPane(QWidget):
         header = self.table.horizontalHeader()
         header.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         header.setSectionResizeMode(QHeaderView.Interactive)
+        self.table.horizontalHeaderItem(2).setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.table.setColumnWidth(1, 94)
-        self.table.setColumnWidth(2, 70)
+        self.table.setColumnWidth(2, 88)
         self._manual_columns = False
         self._fitting_columns = False
         header.sectionResized.connect(self._column_resized)
@@ -96,8 +98,10 @@ class ProjectDocumentsPane(QWidget):
         self.file_menu_button = button('文件操作')
         self.file_menu_button.setObjectName('documentActionsButton')
         self.file_menu = QMenu(self.file_menu_button)
+        self.file_menu.setToolTipsVisible(True)
         self.file_menu_button.setMenu(self.file_menu)
         self.folder_action = self.file_menu.addAction('所在目录', self.open_selected_folder)
+        self.folder_action.setToolTip('打开所选文件或归档的上一级目录。')
         self.file_menu.addAction('刷新文档', self.request_refresh)
         self.refresh_button = button('重试')
         self.refresh_button.setObjectName('retryDocumentsButton')
@@ -105,8 +109,9 @@ class ProjectDocumentsPane(QWidget):
         for control in (self.open_button, self.file_menu_button, self.refresh_button):
             control.setProperty('workboxRole', 'secondary')
         self.open_button.setEnabled(False)
-        actions.addWidget(self.open_button)
+        self.open_button.hide()
         actions.addStretch()
+        actions.addWidget(self.open_button)
         actions.addWidget(self.file_menu_button)
         actions.addWidget(self.refresh_button)
         layout.addLayout(actions)
@@ -257,6 +262,8 @@ class ProjectDocumentsPane(QWidget):
                     if item is None:
                         item = QTableWidgetItem()
                         item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+                        if column == 2:
+                            item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
                         self.table.setItem(row_index, column, item)
                     if item.text() != value:
                         item.setText(value)
@@ -264,6 +271,8 @@ class ProjectDocumentsPane(QWidget):
                     if column == 0:
                         item.setData(Qt.UserRole, record['id'])
                         item.setIcon(icons[bool(record.get('is_directory'))])
+                    elif column == 1:
+                        item.setData(ITEM_TEXT_TONE_ROLE, None if record['exists'] else 'error')
             if selected_id in new_ids:
                 self.table.selectRow(new_ids.index(selected_id))
             elif old_ids != new_ids:
@@ -314,7 +323,11 @@ class ProjectDocumentsPane(QWidget):
         has_project = self.project_id is not None
         retry = self._read_error or self._result_errors
         self.table.setVisible(bool(self.documents))
-        self.open_button.setVisible(bool(self.documents))
+        # 保留已读列表的操作区位置，选取文件时表格不重新分配高度。
+        open_size = self.open_button.sizePolicy()
+        if open_size.retainSizeWhenHidden() != bool(self.documents):
+            open_size.setRetainSizeWhenHidden(bool(self.documents))
+            self.open_button.setSizePolicy(open_size)
         self.file_menu_button.setVisible(has_project and (bool(self.documents) or not retry))
         self.refresh_button.setVisible(has_project and retry)
         minimum=64 if self._compact and show else 90
@@ -367,16 +380,21 @@ class ProjectDocumentsPane(QWidget):
 
     def update_actions(self):
         record = self.current_document()
+        self.open_button.setVisible(record is not None)
         self.open_button.setEnabled(bool(record and record['exists']))
         self.folder_action.setEnabled(bool(record))
         if record and record.get('is_directory'):
             text = '打开归档目录'
+            tooltip = '打开所选归档目录。'
         elif record and Path(record['path']).suffix.casefold() not in DOCUMENT_EXTENSIONS:
             text = '在文件夹查看'
+            tooltip = '打开所在目录，便于查找该文件。'
         else:
             text = '打开文件'
+            tooltip = '使用系统关联的应用打开所选文件。'
         self.open_button.setText(text)
-        self.open_button.setToolTip('仅根据你的点击打开文档；程序、脚本和未知类型只打开所在文件夹。')
+        self.open_button.setToolTip(tooltip if not record or record['exists'] else
+                                    '文件已移动或删除。可查看所在目录或刷新文档。')
 
     def open_selected_folder(self):
         record = self.current_document()
