@@ -26,6 +26,7 @@ test('r5目录、首页与稳定清单使用同一准确安装包和桌面来源
   }
   const primary = [...html.matchAll(/class="[^"]*download-link[^"]*" href="([^"#]+)"/g)].map(match => match[1]);
   assert.equal(primary.filter(value => value === `/download/${expected.filename}`).length, 2);
+  assert.match(html, /<p class="wb-meta">Windows 10 \/ 11 · x64 · 42\.2 MB<\/p>/);
   assert.match(html, /href="https:\/\/github\.com\/232577\/workbox\/releases\/download\/v1\.0\.0\.20261109\.5\/WorkBox-1\.0\.0-Setup-x64-20261109-r5\.exe"/);
 });
 
