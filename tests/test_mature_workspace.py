@@ -82,14 +82,14 @@ def test_selected_project_has_direct_workspace_and_guarded_delivery_actions(pane
     assert not panel.open_workspace_button.isEnabled()
 
 
-def test_search_belongs_to_project_queue_and_moves_to_zip_scope(panel):
-    assert panel.project_side.isAncestorOf(panel.search)
+def test_search_keeps_a_stable_command_position_across_project_and_zip_scope(panel):
+    assert panel.header_surface.isAncestorOf(panel.search)
     panel.search.setText('匿名')
     panel.tabs.setCurrentIndex(1)
     assert panel.header_surface.isAncestorOf(panel.search)
     assert panel.search.isVisible()
     panel.tabs.setCurrentIndex(0)
-    assert panel.project_side.isAncestorOf(panel.search)
+    assert panel.header_surface.isAncestorOf(panel.search)
     assert panel.search.text() == '匿名'
 
 
@@ -106,8 +106,9 @@ def test_dragging_project_split_keeps_all_filters_readable(panel):
     controls = [*panel.status_buttons.values(), panel.batch_filter,
                 panel.project_filter_button, panel.clear_project_filters]
     for control in controls:
-        top_left = control.mapTo(panel.project_side, control.rect().topLeft())
-        assert panel.project_side.rect().contains(control.rect().translated(top_left))
+        owner = panel.header_surface if control in (panel.project_filter_button, panel.clear_project_filters) else panel.project_side
+        top_left = control.mapTo(owner, control.rect().topLeft())
+        assert owner.rect().contains(control.rect().translated(top_left))
         assert control.width() >= control.minimumSizeHint().width()
 
 

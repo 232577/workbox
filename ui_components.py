@@ -183,6 +183,7 @@ class SpinBox(_FluentSpinBox):
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
+        self.setFixedHeight(32)
         from theme import tokens
         self.setCustomFocusedBorderColor(tokens('light')['accent'], tokens('dark')['accent'])
         setCustomStyleSheet(self, control_style('light', 'spin'), control_style('dark', 'spin'))
@@ -298,9 +299,9 @@ class StatusSegments(SegmentedWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor(tokens()['notice_bg']))
+        painter.setBrush(QColor(tokens()['row_selected']))
         rect = item.rect().adjusted(1, 1, -1, -1).translated(int(self.slideAni.value()), 0)
-        painter.drawRoundedRect(rect, 6, 6)
+        painter.drawRoundedRect(rect, 5, 5)
 
 
 class NavigationButton(QPushButton):
@@ -425,6 +426,7 @@ def button(text: str, primary: bool | str = False):
             'nav': NavigationButton, 'nav-menu': NavigationMenuButton}.get(role, _WorkBoxPushButton)
     widget = kind(text)
     widget.setCursor(Qt.PointingHandCursor)
+    widget.setIconSize(QSize(16, 16))
     # Keep Qt's text-derived accessible name live when captions change.
     # Callers may still supply an explicit, stable descriptive name.
     if role:

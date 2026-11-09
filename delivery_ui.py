@@ -710,13 +710,16 @@ class TodayDeliveryDialog(QDialog):
         if worker is None:
             return
         self.worker = None
+        temporary = not worker.error
         if worker.cancelled:
             message = '已取消导出。'
         elif worker.error:
             message = '导出未完成：' + worker.error + '。可重试。'
         else:
-            message = f"已导出 {worker.result['project_count']} 个项目，保存位置：{worker.result['path']}"
-        self._set_status(message,temporary=not worker.error)
+            from export_ui import workbook_export_message
+            message = workbook_export_message(worker.result)
+            temporary = not worker.result.get('recovery_path')
+        self._set_status(message, temporary=temporary)
         worker.deleteLater()
         self._update_open_action()
 

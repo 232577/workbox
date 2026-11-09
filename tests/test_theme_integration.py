@@ -6,7 +6,7 @@ from compact_ui import CompactPanel, DirectorySettingsDialog
 from desktop_controller import FeedbackBubble
 from desktop_service import DesktopService
 from onboarding_ui import QuickStartDialog
-from theme import install_theme, set_theme, current_mode, resolved_mode
+from theme import install_theme, set_theme, current_mode, resolved_mode, tokens
 
 
 @pytest.fixture(scope='module')
@@ -57,8 +57,9 @@ def test_open_and_hidden_dialogs_feedback_and_scrollbar_follow_one_theme(qapp, t
         saved_input = settings.work_root.text() + '-edited'
         settings.work_root.setText(saved_input)
         set_theme('dark', service)
+        colors = tokens('dark')
         for widget in (panel, settings, guide, feedback):
-            assert widget.palette().color(QPalette.Window) in (QColor('#222528'), QColor('#181A1C')), type(widget).__name__
+            assert widget.palette().color(QPalette.Window) in (QColor(colors['surface']), QColor(colors['bg'])), type(widget).__name__
         assert settings.work_root.text() == saved_input
         assert panel.project_list.verticalScrollBar().palette().color(panel.project_list.verticalScrollBar().backgroundRole()).isValid()
     finally:

@@ -94,13 +94,13 @@ def _fluent_item_styles(selector: str, horizontal_padding: int, mode: str, *, us
               ':selected:active:focus', ':selected:!active:focus')
     items = ',\n'.join(f'{selector}::item{state}' for state in states)
     header = f'''
-    QHeaderView {{ background: {colors['surface']}; border: none; }}
+    QHeaderView {{ background: {colors['subtle_surface']}; border: none; }}
     QHeaderView::section, QHeaderView::section:horizontal {{
-        color: {colors['muted']}; background: {colors['surface']};
+        color: {colors['muted']}; background: {colors['subtle_surface']};
         border: none; border-bottom: 1px solid {colors['border']};
         height: 18px; padding: 6px 16px; font-size: 12px; font-weight: 600;
     }}
-    QHeaderView::section:hover {{ background: {colors['subtle_surface']}; }}
+    QHeaderView::section:hover {{ background: {colors['hover']}; }}
     QTableCornerButton::section {{ background: {colors['surface']}; border: none; }}
     ''' if selector == 'QTableView' else ''
     project_background = 'QListView#projectList { background: transparent; }' if selector == 'QListView' else ''
@@ -171,7 +171,7 @@ class _WorkbenchRowStates:
         hovered = index.row() == self.hoverRow
         pressed = index.row() == self.pressedRow
         focused = self.parent().hasFocus() and self.parent().currentIndex().row() == index.row()
-        color = colors['notice_bg'] if selected or pressed else (
+        color = colors['row_selected'] if selected or pressed else (
             colors['hover'] if hovered else self._idle_row_color(colors))
         rect = self._row_rect(option)
         painter.save()
@@ -179,9 +179,9 @@ class _WorkbenchRowStates:
             painter.setBrush(QColor(color))
             painter.setPen(Qt.NoPen)
             painter.drawRoundedRect(rect, 4, 4)
-            if focused:
+            if focused or selected:
                 painter.setBrush(Qt.NoBrush)
-                painter.setPen(QPen(QColor(colors['accent']), 1))
+                painter.setPen(QPen(QColor(colors['accent' if focused else 'row_selected_border']), 1))
                 painter.drawRoundedRect(rect.adjusted(.5, .5, -.5, -.5), 4, 4)
             elif not (selected or hovered or pressed) and index.row() + 1 < index.model().rowCount():
                 inset = self._row_rule_inset()
@@ -252,10 +252,10 @@ class WrappedFluentListDelegate(_WorkbenchRowStates, _WrappedFluentText, ListIte
 class ProjectListDelegate(WrappedFluentListDelegate):
     """项目名和详情独立换行，沿用 Fluent 行交互与工作台的选中、焦点样式。"""
 
-    horizontalInset = 14
-    blockSpacing = 3
-    batchSpacing = 4
-    batchHeight = 17
+    horizontalInset = 12
+    blockSpacing = 2
+    batchSpacing = 3
+    batchHeight = 16
     verticalPadding = 5
 
     def __init__(self, parent):
@@ -297,7 +297,7 @@ class ProjectListDelegate(WrappedFluentListDelegate):
     def _text_blocks(self, index, width, colors=None):
         font = QFont(self.parent().font())
         font.setPixelSize(14)
-        font.setWeight(QFont.DemiBold)
+        font.setWeight(QFont.Medium)
         name = self._text_layout(str(index.data(PROJECT_NAME_ROLE)), font, width)
         font.setPixelSize(12)
         font.setWeight(QFont.Normal)
@@ -316,18 +316,38 @@ class ProjectListDelegate(WrappedFluentListDelegate):
             formats.append(status_range)
         return name, self._text_layout(detail, font, width, formats)
 
+    def _row_layout(self, index, width, colors=None):
+        name, detail = self._text_blocks(index, width, colors)
+        detail_top = name[1] + self.blockSpacing
+        height = detail_top + detail[1] if detail[1] else name[1]
+        markers = index.data(PROJECT_BATCH_MARKERS_ROLE) or []
+        badge_line = None
+        if markers:
+            font = QFont(self.parent().font())
+            font.setPixelSize(11)
+            metrics = QFontMetrics(font)
+            x = math.ceil(detail[0].lineAt(0).naturalTextWidth()) + 8 if detail[1] else 0
+            badges, summary = _batch_badge_layout(markers, metrics, width - x)
+            code, progress = _batch_badge_parts(markers[0])
+            if (detail[0].lineCount() <= 1 and badges
+                    and badges[0][1] >= 24 + metrics.horizontalAdvance(code + progress)):
+                y = detail_top + max(0, (detail[1] - self.batchHeight) / 2)
+            else:
+                x = 0
+                y = height + self.batchSpacing
+                badges, summary = _batch_badge_layout(markers, metrics, width)
+            height = max(height, y + self.batchHeight)
+            badge_line = (QPointF(x, y), font, metrics, badges, summary)
+        return name[0], detail[0], detail_top, badge_line, height
+
     def sizeHint(self, option, index):
         if index.data(PROJECT_NAME_ROLE) is None:
             return super().sizeHint(option, index)
         width = option.rect.width()
         if width <= 0:
             width = self.parent().viewport().width()
-        name, detail = self._text_blocks(index, width - 2 * self.horizontalInset)
-        spacing = self.blockSpacing if detail[1] else 0
-        height = math.ceil(name[1] + spacing + detail[1])
-        if index.data(PROJECT_BATCH_MARKERS_ROLE):
-            height += self.batchSpacing + self.batchHeight
-        return QSize(width, height + 2 * (self.margin + self.verticalPadding))
+        *_, height = self._row_layout(index, width - 2 * self.horizontalInset)
+        return QSize(width, math.ceil(height) + 2 * (self.margin + self.verticalPadding))
 
     def paint(self, painter, option, index):
         if index.data(PROJECT_NAME_ROLE) is None:
@@ -345,58 +365,53 @@ class ProjectListDelegate(WrappedFluentListDelegate):
         enabled = bool(option.state & QStyle.State_Enabled and index.flags() & Qt.ItemIsEnabled)
         name_color = colors['ink'] if enabled else colors['disabled']
         detail_color = colors['muted'] if enabled else colors['disabled']
-        name, detail = self._text_blocks(index, option.rect.width() - 2 * self.horizontalInset,
-                                         colors if enabled else None)
+        name, detail, detail_top, badge_line, _ = self._row_layout(
+            index, option.rect.width() - 2 * self.horizontalInset, colors if enabled else None)
         position = QPointF(option.rect.left() + self.horizontalInset,
                           option.rect.top() + self.margin + self.verticalPadding)
         painter.save()
         try:
             painter.setClipRect(option.rect, Qt.IntersectClip)
             painter.setPen(QColor(name_color))
-            name[0].draw(painter, position)
-            if detail[1]:
-                position.setY(position.y() + name[1] + self.blockSpacing)
-                painter.setPen(QColor(detail_color))
-                detail[0].draw(painter, position)
-            markers = index.data(PROJECT_BATCH_MARKERS_ROLE) or []
-            if markers:
-                position.setY(position.y() + (detail[1] if detail[1] else name[1]) + self.batchSpacing)
-                font = QFont(self.parent().font())
-                font.setPixelSize(11)
+            name.draw(painter, position)
+            painter.setPen(QColor(detail_color))
+            detail.draw(painter, position + QPointF(0, detail_top))
+            if badge_line:
+                offset, font, metrics, badges, summary = badge_line
                 painter.setFont(font)
-                metrics = QFontMetrics(font)
-                x = position.x()
-                right = option.rect.right() + 1 - self.horizontalInset
-                badges, summary = _batch_badge_layout(markers, metrics, right - x)
-                mode = resolved_mode()
-                center = position.y() + self.batchHeight / 2
-                baseline = center + (metrics.ascent() - metrics.descent()) / 2
-                for marker, badge_width in badges:
-                    code, progress = _batch_badge_parts(marker)
-                    text = code + progress
-                    text_width = int(badge_width) - 24
-                    if metrics.horizontalAdvance(text) > text_width:
-                        code_width = text_width - metrics.horizontalAdvance(progress)
-                        if code_width > metrics.horizontalAdvance('…'):
-                            text = metrics.elidedText(code, Qt.ElideMiddle, code_width) + progress
-                        else:
-                            text = metrics.elidedText(text, Qt.ElideRight, text_width)
-                    color = QColor(marker.get('color') or '#777777')
-                    if not color.isValid():
-                        color = QColor('#777777')
-                    painter.setPen(Qt.NoPen)
-                    painter.setBrush(_batch_badge_background(color, mode))
-                    painter.drawRoundedRect(QRectF(x, position.y(), badge_width, self.batchHeight), 4, 4)
-                    painter.setBrush(color)
-                    painter.drawEllipse(QPointF(x + 8, center), 2.5, 2.5)
-                    painter.setPen(QColor(name_color))
-                    painter.drawText(QPointF(x + 15, baseline), text)
-                    x += badge_width + 5
-                if summary:
-                    painter.setPen(QColor(detail_color))
-                    painter.drawText(QPointF(x, baseline), summary)
+                self._draw_badges(painter, position + offset, metrics, badges, summary,
+                                  resolved_mode(), name_color, detail_color)
         finally:
             painter.restore()
+
+    def _draw_badges(self, painter, position, metrics, badges, summary, mode, name_color, detail_color):
+        x, y = position.x(), position.y()
+        center = y + self.batchHeight / 2
+        baseline = center + (metrics.ascent() - metrics.descent()) / 2
+        for marker, badge_width in badges:
+            code, progress = _batch_badge_parts(marker)
+            text = code + progress
+            text_width = int(badge_width) - 24
+            if metrics.horizontalAdvance(text) > text_width:
+                code_width = text_width - metrics.horizontalAdvance(progress)
+                if code_width > metrics.horizontalAdvance('…'):
+                    text = metrics.elidedText(code, Qt.ElideMiddle, code_width) + progress
+                else:
+                    text = metrics.elidedText(text, Qt.ElideRight, text_width)
+            color = QColor(marker.get('color') or '#777777')
+            if not color.isValid():
+                color = QColor('#777777')
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(_batch_badge_background(color, mode))
+            painter.drawRoundedRect(QRectF(x, y, badge_width, self.batchHeight), 4, 4)
+            painter.setBrush(color)
+            painter.drawEllipse(QPointF(x + 8, center), 2.5, 2.5)
+            painter.setPen(QColor(name_color))
+            painter.drawText(QPointF(x + 15, baseline), text)
+            x += badge_width + 5
+        if summary:
+            painter.setPen(QColor(detail_color))
+            painter.drawText(QPointF(x, baseline), summary)
 
 
 class WrappedFluentTableDelegate(_WorkbenchRowStates, _WrappedFluentText, TableItemDelegate):

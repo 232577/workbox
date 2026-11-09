@@ -8,7 +8,9 @@ import stat
 import tempfile
 from contextlib import nullcontext
 from datetime import datetime
+from hashlib import file_digest
 from pathlib import Path
+from uuid import uuid4
 
 from openpyxl import Workbook
 from openpyxl.comments import Comment
@@ -16,7 +18,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 
 from archive_facts import delivery_archive_facts
 from database import DELIVERY_TIMEZONE
-from native_files import cancelled, identity, path_is_within, plain_path
+from native_files import ZipLease, cancelled, identity, path_is_within, plain_path
 from task_groups import read_task_snapshot
 from project_batches import read_project_batch_index
 
@@ -294,9 +296,106 @@ def _sheet(book, name, columns, rows, *, cancel_event=None):
     return sheet
 
 
+def _discard_export_staging(path, created_identity):
+    try:
+        if os.name == 'nt':
+            with ZipLease(path) as owned:
+                if identity(owned.initial)[:2] == created_identity:
+                    owned.remove_after_verified_commit()
+        elif identity(path.lstat())[:2] == created_identity:
+            path.unlink()
+    except (OSError, RuntimeError, ValueError):
+        # 名称已被替换或占用时，保留现场及原异常。
+        pass
+
+
+def _publish_windows(staged, path, expected_target_identity, cancel_event):
+    if expected_target_identity is None:
+        cancelled(cancel_event)
+        staged.rename_to(path)
+        return None
+
+    with ZipLease(path) as previous:
+        if identity(previous.initial) != expected_target_identity:
+            raise ValueError('导出期间目标文件已经变化，未覆盖。')
+        cancelled(cancel_event)
+        backup = path.with_name(f'.workbox-export-recovery-{uuid4().hex}-{path.stem[:64]}.xlsx')
+        # 只有用户确认的句柄能移出原路径，随后使用不覆盖的发布与恢复。
+        previous.rename_to(backup)
+        try:
+            cancelled(cancel_event)
+            staged.rename_to(path)
+        except BaseException:
+            try:
+                previous.rename_to(path)
+            except (OSError, ValueError) as error:
+                raise OSError(f'导出未完成，原文件已保留在 {backup}。无法恢复原位置：{error}') from error
+            raise
+        try:
+            previous.remove_after_verified_commit()
+        except OSError:
+            return backup
+    return None
+
+
+def _publish_workbook(db, book, path, expected_target_identity, *, cancel_event=None):
+    """落盘后复核导出路径；Windows 发布和清理均使用已核对的文件句柄。"""
+    cancelled(cancel_event)
+    temporary = None
+    created_identity = None
+    try:
+        with tempfile.NamedTemporaryFile(prefix='.workbox-export-', suffix='.xlsx',
+                                         dir=path.parent, delete=False) as stream:
+            temporary = Path(stream.name)
+            opened = os.fstat(stream.fileno())
+            if not opened.st_ino:
+                raise OSError('无法核对导出临时文件标识，未导出。')
+            created_identity = identity(opened)[:2]
+            book.save(stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+            cancelled(cancel_event)
+            saved_identity = identity(os.fstat(stream.fileno()))
+            if os.name == 'nt':
+                stream.seek(0)
+                saved_digest = file_digest(stream, 'sha256').hexdigest()
+        cancelled(cancel_event)
+        # 报表保留开始时的业务快照；发布边界必须使用此刻的受管目录。
+        with getattr(db, '_operation_lock', None) or nullcontext():
+            cancelled(cancel_event)
+            _destination(path)
+            with db.connect() as connection:
+                connection.execute('BEGIN')
+                roots, files = _protected_paths(connection, db)
+            _check_protected(path, dict(protected_roots=roots, protected_files=files))
+            if expected_target_identity is not None and target_identity(path) != expected_target_identity:
+                raise ValueError('导出期间目标文件已经变化，未覆盖。')
+            if os.name == 'nt':
+                with ZipLease(temporary) as staged:
+                    if identity(staged.initial) != saved_identity or (
+                            staged.inspect(cancel_event=cancel_event)['sha256'] != saved_digest):
+                        raise ValueError('导出临时文件已经变化，未发布。')
+                    recovery_path = _publish_windows(staged, path, expected_target_identity, cancel_event)
+                created_identity = None
+                return recovery_path
+            if identity(temporary.lstat()) != saved_identity:
+                raise ValueError('导出临时文件已经变化，未发布。')
+            cancelled(cancel_event)
+            if expected_target_identity is not None:
+                os.replace(temporary, path)
+                created_identity = None
+            else:
+                # 非 Windows 的 rename 会覆盖，硬链接提供同卷的独占发布。
+                os.link(temporary, path)
+    finally:
+        if created_identity is not None:
+            _discard_export_staging(temporary, created_identity)
+    return None
+
+
 def export_delivered_projects(db, destination, *, cancel_event=None, progress=None,
                               replace_existing=False, expected_target_identity=None, group_id=None):
-    """同目录独占临时文件完成并落盘后发布；失败仅清理本次临时文件。"""
+    """导出交付项目、类型汇总、任务组汇总和任务明细。"""
     cancelled(cancel_event)
     if type(replace_existing) is not bool:
         raise ValueError('覆盖选项无效。')
@@ -313,7 +412,6 @@ def export_delivered_projects(db, destination, *, cancel_event=None, progress=No
         raise ValueError('导出文件必须使用 .xlsx 扩展名。')
     book = Workbook()
     book.remove(book.active)
-    temporary = None
     try:
         project_sheet = _sheet(book, '交付项目', PROJECT_COLUMNS, report['projects'], cancel_event=cancel_event)
         batch_note = ('与项目列表的收件批次编号一致，同一项目可有多个编号。'
@@ -351,42 +449,15 @@ def export_delivered_projects(db, destination, *, cancel_event=None, progress=No
             '不能仅因有归档位置就认定本次材料有效或已交接。', 'WorkBox')
         if group_id is not None:
             book.active = book.sheetnames.index('任务明细' if report['task_rows'] else '任务组汇总')
-        cancelled(cancel_event)
-        with tempfile.NamedTemporaryFile(prefix='.workbox-export-', suffix='.xlsx',
-                                         dir=path.parent, delete=False) as stream:
-            temporary = Path(stream.name)
-            book.save(stream)
-            stream.flush()
-            os.fsync(stream.fileno())
-        cancelled(cancel_event)
-        # 报表保留开始时的业务快照；发布边界必须使用此刻的受管目录。
-        # 与工作设置共用操作锁，避免复核后本进程再把目标变成受管目录。
-        with getattr(db, '_operation_lock', None) or nullcontext():
-            cancelled(cancel_event)
-            _destination(path)
-            with db.connect() as connection:
-                connection.execute('BEGIN')
-                roots, files = _protected_paths(connection, db)
-            _check_protected(path, dict(protected_roots=roots, protected_files=files))
-            if replace_existing:
-                if target_identity(path) != initial:
-                    raise ValueError('导出期间目标文件已经变化，未覆盖。')
-                os.replace(temporary, path)
-            elif os.name == 'nt':
-                # Windows rename 原子发布且拒绝覆盖已有目标。
-                os.rename(temporary, path)
-            else:
-                # 其他平台 rename 会覆盖，硬链接创建提供同卷的独占发布。
-                os.link(temporary, path)
-                temporary.unlink()
-        temporary = None
+        recovery_path = _publish_workbook(db, book, path, initial, cancel_event=cancel_event)
         if progress:
             progress(1, 1)
-        return dict(path=str(path), project_count=report['project_count'],
-                    workload_project_count=report['workload_project_count'], type_counts=report['type_counts'],
-                    task_count=report['task_count'], handed_task_count=report['handed_task_count'],
-                    group_id=report['group_id'], group_code=report['group_code'])
+        result = dict(path=str(path), project_count=report['project_count'],
+                      workload_project_count=report['workload_project_count'], type_counts=report['type_counts'],
+                      task_count=report['task_count'], handed_task_count=report['handed_task_count'],
+                      group_id=report['group_id'], group_code=report['group_code'])
+        if recovery_path is not None:
+            result['recovery_path'] = str(recovery_path)
+        return result
     finally:
         book.close()
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
