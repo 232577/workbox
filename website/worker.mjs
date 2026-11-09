@@ -204,6 +204,15 @@ export const releases = Object.freeze([Object.freeze({
 export const release = releases[0];
 
 const safeHeaders = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin' };
+const transientDownloadStatuses = new Set([408, 429, 500, 502, 503, 504]);
+
+async function discardDownloadBody(response) {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // Cleanup failure must not replace the retry or validation result.
+  }
+}
 
 async function videoResponse(request, env) {
   // 静态资源路径在实际环境未声明范围能力，显式处理有限大小的教程视频。
@@ -290,12 +299,24 @@ export async function handleRequest(request, env, fetcher = fetch, context = nul
   if (range) headers.set('Range', range);
   if (range && request.headers.has('If-Range')) headers.set('If-Range', request.headers.get('If-Range'));
   let upstream;
-  try {
-    upstream = await fetcher(source, { method: request.method, headers, redirect: 'follow' });
-  } catch {
-    return unavailable(source);
+  // Retry only transient transport failures, using a fixed query on this trusted asset.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      upstream = await fetcher(attempt === 0 ? source : `${source}?download=1`, {
+        method: request.method, headers, redirect: 'follow',
+      });
+    } catch {
+      if (attempt === 0) continue;
+      return unavailable(source);
+    }
+    if (attempt === 0 && transientDownloadStatuses.has(upstream.status)) {
+      await discardDownloadBody(upstream);
+      continue;
+    }
+    break;
   }
   if (upstream.status === 416) {
+    await discardDownloadBody(upstream);
     return new Response(null, { status: 416, headers: { ...safeHeaders, 'Content-Range': `bytes */${fileRelease.size}` } });
   }
   const length = upstream.headers.get('Content-Length');
@@ -303,7 +324,7 @@ export async function handleRequest(request, env, fetcher = fetch, context = nul
       || /text\/|json|xml/i.test(upstream.headers.get('Content-Type') || '')
       || (upstream.status === 200 && length !== null && Number(length) !== fileRelease.size)
       || (upstream.status === 206 && !upstream.headers.has('Content-Range'))) {
-    await upstream.body?.cancel();
+    await discardDownloadBody(upstream);
     return unavailable(source);
   }
   const output = new Headers({ ...safeHeaders,
