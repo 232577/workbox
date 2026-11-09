@@ -36,9 +36,12 @@ def _batch_badge_background(color, mode):
 
 
 def _batch_progress_counts(marker):
-    counts = tuple(marker.get(field) for field in ('total_count', 'delivered_count', 'remaining_count'))
-    if all(type(value) is int and value >= 0 for value in counts) and counts[0] == counts[1] + counts[2]:
-        return counts
+    counts = tuple(marker.get(field) for field in (
+        'total_count', 'delivered_count', 'remaining_count', 'pending_delivery_count'))
+    if (all(type(value) is int and value >= 0 for value in counts)
+            and counts[0] == counts[1] + counts[2] and counts[3] <= counts[2]):
+        total, delivered, undelivered, pending = counts
+        return total, delivered, pending, undelivered - pending
     return None
 
 
@@ -46,10 +49,10 @@ def batch_progress_summary(marker):
     counts = _batch_progress_counts(marker)
     if counts is None:
         return ''
-    total, delivered, remaining = counts
+    total, delivered, pending, remaining = counts
     if total == 0:
         return '本批无有效项目'
-    return f'已交付{delivered}/{total}，剩余{remaining}'
+    return f'已交付{delivered}/{total}，待交付{pending}，剩余{remaining}'
 
 
 def _batch_badge_parts(marker):
@@ -57,10 +60,12 @@ def _batch_badge_parts(marker):
     counts = _batch_progress_counts(marker)
     if counts is None:
         return code, ''
-    total, _, remaining = counts
+    total, delivered, pending, remaining = counts
     if total == 0:
         return code, ' 无项目'
-    return code, f' 余{remaining}' if remaining else ' 已齐'
+    if delivered == total:
+        return code, ' 已齐'
+    return code, f' 余{remaining}' if remaining else f' 待交付{pending}'
 
 
 def _batch_badge_layout(markers, metrics, width):
