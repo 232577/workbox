@@ -1,6 +1,6 @@
 """交付页的查询范围、全量导出提示和可收起的明细。"""
 import pytest
-from PySide6.QtCore import QDate, QPoint, Qt
+from PySide6.QtCore import QDate, QItemSelectionModel, QPoint, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -9,18 +9,21 @@ from delivery_ui import TodayDeliveryDialog
 from desktop_service import DesktopService
 
 
+LONG_PROJECT_NAME = '匿名目标项目跨部门工作资料整理与阶段性交付记录核查平台的超长项目名称验证' * 2
+
+
 @pytest.fixture
 def page(tmp_path):
     app = QApplication.instance() or QApplication([])
     app.setQuitOnLastWindowClosed(False)
     service = DesktopService(tmp_path / 'data' / 'isolated.db')
-    service.receive_text('1. 匿名目标项目\n2. 匿名其他项目')
+    service.receive_text(f'1. {LONG_PROJECT_NAME}\n2. 匿名其他项目')
     with service.db.connect() as connection:
         connection.executemany('''INSERT INTO delivery_events
             (project_id,project_name,batch_name,kind,archive_path,occurred_at)
             VALUES (?,?,'匿名批次','manual-files','',?)''', (
-            (1, '匿名目标项目', '2026-10-25T04:00:00Z'),
-            (1, '匿名目标项目', '2026-10-25T05:00:00Z'),
+            (1, LONG_PROJECT_NAME, '2026-10-25T04:00:00Z'),
+            (1, LONG_PROJECT_NAME, '2026-10-25T05:00:00Z'),
             (2, '匿名其他项目', '2026-10-26T04:00:00Z'),
         ))
     dialog = TodayDeliveryDialog(service)
@@ -108,3 +111,45 @@ def test_delivery_sections_follow_the_shell_title_alignment(page):
         panel.today_dialog.shutdown()
         panel.document_pane.shutdown()
         panel.hide()
+
+
+def test_narrow_delivery_detail_identifies_selected_project_and_clears_stale_name(page):
+    delivery = TodayDeliveryDialog(page.service, embedded=True)
+    delivery.resize(660, 480)
+    delivery.show()
+    try:
+        delivery.all_dates.trigger()
+        QApplication.processEvents()
+        assert delivery.compact_tabs.isVisible()
+        rows = {delivery.table.item(row, 0).data(Qt.UserRole): row
+                for row in range(delivery.table.rowCount())}
+        delivery.table.selectRow(rows[1])
+        delivery.compact_tabs.setCurrentIndex(1)
+        QApplication.processEvents()
+        heading = delivery.detail_heading
+        name = LONG_PROJECT_NAME
+        assert heading.isVisible() and name in heading.text()
+        assert name in heading.accessibleName() and name in heading.toolTip()
+        assert heading.height() >= 2 * heading.fontMetrics().height()
+        assert delivery.details.rowCount() == 2
+        delivery.details.selectRow(1)
+        assert name in heading.text()
+
+        delivery.compact_tabs.setCurrentIndex(0)
+        delivery.table.selectRow(rows[2])
+        delivery.compact_tabs.setCurrentIndex(1)
+        assert heading.isVisible() and '匿名其他项目' in heading.text()
+        assert name not in heading.text() and name not in heading.toolTip()
+        assert delivery.details.rowCount() == 1
+
+        selection = delivery.table.selectionModel()
+        selection.select(delivery.table.model().index(rows[1], 0),
+                         QItemSelectionModel.Select | QItemSelectionModel.Rows)
+        assert not heading.isVisible() and not heading.toolTip() and not heading.accessibleName()
+        assert '选择单个项目' in delivery.details_hint.text()
+        delivery.table.selectRow(rows[1])
+        delivery.search.setText('没有这个项目')
+        assert not heading.isVisible() and not heading.toolTip() and not heading.accessibleName()
+        assert delivery.details.rowCount() == 0 and not delivery.record_actions_button.isVisible()
+    finally:
+        delivery.shutdown()
