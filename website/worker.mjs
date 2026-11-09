@@ -3,6 +3,22 @@ export { SiteMetrics } from './analytics.mjs';
 // 固定版本的公开下载入口；不读取、转发访问者的登录信息。
 export const releases = Object.freeze([Object.freeze({
   version: '1.0.0',
+  tag: 'v1.0.0.20261109.4',
+  edition: '正式安装版',
+  date: '2026-11-09',
+  filename: 'WorkBox-1.0.0-Setup-x64-20261109-r4.exe',
+  size: 40662142,
+  sha256: '745931fb42979eda910f76a4bbf0a9462c9d32e95679b1776d2a5b4274cd4220',
+}), Object.freeze({
+  version: '1.0.0',
+  tag: 'v1.0.0.20261109.2',
+  edition: '正式安装版',
+  date: '2026-11-09',
+  filename: 'WorkBox-1.0.0-Setup-x64-20261109-r2.exe',
+  size: 40639450,
+  sha256: '4d6525f5c8fe336a6c81d67248cb37ae2f0a355337991a54392cc8a30acffa43',
+}), Object.freeze({
+  version: '1.0.0',
   tag: 'v1.0.0.20261109.1',
   edition: '正式安装版',
   date: '2026-11-09',
@@ -236,7 +252,7 @@ export async function handleRequest(request, env, fetcher = fetch, context = nul
     const metadata = {
       tag_name: release.tag, draft: false, prerelease: false,
       html_url: `https://github.com/232577/workbox/releases/tag/${release.tag}`,
-      body: `WorkBox ${release.version} 正式安装版 · ${release.date}。来源提交 67fab09d4e5392018eb2ae23e67f8573f1fd19c3。批次编号后显示“余N”，全部交付时显示“已齐”。在左侧选择批次可看已交付、总数和剩余。余量按整批项目的当前状态统计，个人工作量单独统计。项目沿用四种原项目状态、原排序和一项目一行，一个项目可属于多个批次。批次选择和多选归入左侧清单，项目与文件操作跟随选择。交付页保留日期、搜索、各类型数量和全部交付表。新版从侧栏主动检查一次，有新版时选择“更新并重启”。程序下载校验、备份数据库，在原目录安装成功后重新打开。归档分类按最近有效交付的单项目文件数判断，新安装预设恰好 16 个文件归为“可运行”，其他已知数量归为“生成材料”，数量未知时保留原类型。新安装的自动分类默认关闭，升级沿用原配置，旧规则仍按“至少”比较。ZIP 自动交付的独立初始门槛为每项目 4 个实际文件。升级前请备份数据。安装包尚无商业代码签名。`,
+      body: `WorkBox ${release.version} 正式安装版 · ${release.date}。来源提交 2432b7e237db6424bd70e01f9a96f7567c5e644e。顶部横向导航提供“项目”和“今日工作量”，搜索和筛选入口位于项目清单上方。项目清单选择“待开发”后可点击“导出名单”，将全部未归档、未删除的待开发项目写入 Excel，只有“项目名称”一列，每个项目一行。搜索和筛选只影响当前清单。导出文件保存前复核目标位置，覆盖时校验已确认的文件。宽窗并排显示项目清单和详情。窄窗点击项目打开详情，点击“返回项目清单”回到原阅读位置。批次编号后显示“余N”，全部交付时显示“已齐”。选择批次可看已交付、总数和剩余。余量按整批项目的当前状态统计，个人工作量单独统计。项目沿用四种原项目状态、原排序和一项目一行，一个项目可属于多个批次。交付页保留日期、搜索、各类型数量和全部交付表。从窗口底部或高级设置主动检查一次，有新版时选择“更新并重启”。程序下载校验、备份数据库，在原目录安装成功后重新打开。归档分类按最近有效交付的单项目文件数判断，新安装预设恰好 16 个文件归为“可运行”，其他已知数量归为“生成材料”，数量未知时保留原类型。新安装的自动分类默认关闭，升级沿用原配置，旧规则仍按“至少”比较。ZIP 自动交付的独立初始门槛为每项目 4 个实际文件。升级前请备份数据。安装包尚无商业代码签名。`,
       assets: [{name: release.filename, size: release.size, state: 'uploaded',
         digest: `sha256:${release.sha256}`,
         browser_download_url: `https://github.com/232577/workbox/releases/download/${release.tag}/${release.filename}`}],
