@@ -8,6 +8,7 @@ const html = await readFile(new URL('./public/index.html', import.meta.url), 'ut
 const registry = JSON.parse(await readFile(new URL('./MEDIA.json', import.meta.url), 'utf8'));
 const digest = value => createHash('sha256').update(value).digest('hex');
 const r2Source = '621d7ddc13416f396fc8483c8a6d63f212ae49af';
+const r4Source = '2432b7e237db6424bd70e01f9a96f7567c5e644e';
 
 test('待开发名单入口、导出范围和工作簿内容有明确说明', () => {
   const details = html.match(/<details\b[^>]*id="pending-project-export"[^>]*>([\s\S]*?)<\/details>/)?.[1];
@@ -30,6 +31,45 @@ test('新版横向工作台说明与导航和两种导出按钮一致', () => {
   assert.match(workbench, /搜索和“筛选”在清单上方/);
   assert.match(workbench, /点击“导出全部”可获取全部交付表/);
   assert.match(html, /从窗口底部或“高级设置 → 检查更新”主动检查一次/);
+});
+
+test('11月9日r4下载和稳定清单绑定同一安装包与构建', async () => {
+  assert.deepEqual(release, { version: '1.0.0', tag: 'v1.0.0.20261109.4', edition: '正式安装版',
+    date: '2026-11-09', filename: 'WorkBox-1.0.0-Setup-x64-20261109-r4.exe', size: 40662142,
+    sha256: '745931fb42979eda910f76a4bbf0a9462c9d32e95679b1776d2a5b4274cd4220' });
+  assert.equal(releases.length, 25);
+  const response = await handleRequest(new Request('https://workbox.ltxiangzi.dpdns.org/updates/stable.json'), {});
+  assert.equal(response.status, 200);
+  const metadata = await response.json();
+  assert.equal(metadata.tag_name, release.tag);
+  assert.ok(metadata.body.includes(`来源提交 ${r4Source}。`));
+  assert.match(metadata.body, /横向导航.*今日工作量/);
+  assert.match(html, /<a class="download-link" href="\/download\/WorkBox-1\.0\.0-Setup-x64-20261109-r2\.exe">历史正式安装版/);
+});
+
+test('首页两张横向工作台原始PNG绑定r4同一已安装EXE', async () => {
+  const executable = '92292a7787d252ebe5c3b814ad6f28ef3b9042ac21a661a631af65660395f579';
+  assert.equal(registry.latest_screenshot_exe_sha256, executable);
+  assert.equal(Object.keys(registry.files).length, 58);
+  for (const [name, width, height, size, sha256] of [
+    ['workbox-pending-export-light-20261109-r4.png', 1102, 792, 57306, '8364d23eb147dde24e4fc53b8de340b886d58524ac8166eea3c39cf09b57b38a'],
+    ['workbox-pending-export-narrow-dark-20261109-r4.png', 662, 512, 35748, '9e9a880c3e588c8f082f32f99f0695b942b05c865ed095f0fb6db999d4767b77'],
+  ]) {
+    const path = `public/media/${name}`;
+    const facts = registry.files[path];
+    const bytes = await readFile(new URL(`./${path}`, import.meta.url));
+    assert.equal(bytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    assert.equal(bytes.readUInt32BE(16), width);
+    assert.equal(bytes.readUInt32BE(20), height);
+    assert.equal(bytes.length, size);
+    assert.equal(digest(bytes), sha256);
+    assert.equal(facts.size, size);
+    assert.equal(facts.sha256, sha256);
+    assert.equal(facts.source_commit, r4Source);
+    assert.equal(facts.source_exe_sha256, executable);
+    assert.ok(html.includes(`href="/media/${name}"`));
+    assert.ok(html.includes(`src="/media/${name}" width="${width}" height="${height}"`));
+  }
 });
 
 test('11月9日r2目录和下载继续绑定原安装包，稳定清单保留导出说明', async () => {

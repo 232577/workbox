@@ -2,10 +2,24 @@
   "kind": "verified-screenshot-walkthrough",
   "source_exe_sha256": "ce9e986d53fd0129c905e4058f7a8bfe3b67df4b0e1d6a8310d42dcd8a114890",
   "privacy_reviewed": true,
-  "latest_screenshot_exe_sha256": "f2b1613c42e31867e19ec35e704ab6b057b3c197f4ad7342102a35256f86864d",
-  "description": "11月9日r2正式安装版的匿名隔离实拍。浅色宽窗并排显示待开发清单和项目详情，深色窄窗显示返回后的待开发清单。两张图均显示导出名单入口。历史媒体保留各自构建来源。",
+  "latest_screenshot_exe_sha256": "92292a7787d252ebe5c3b814ad6f28ef3b9042ac21a661a631af65660395f579",
+  "description": "11月9日r4正式安装版的匿名隔离实拍。两张图均显示横向导航和导出名单入口。浅色宽窗并排显示待开发清单和项目详情，深色窄窗显示完整待开发清单。历史媒体保留各自构建来源。",
   "duration_seconds": 44,
   "files": {
+    "public/media/workbox-pending-export-light-20261109-r4.png": {
+      "size": 57306,
+      "sha256": "8364d23eb147dde24e4fc53b8de340b886d58524ac8166eea3c39cf09b57b38a",
+      "source_exe_sha256": "92292a7787d252ebe5c3b814ad6f28ef3b9042ac21a661a631af65660395f579",
+      "source_commit": "2432b7e237db6424bd70e01f9a96f7567c5e644e",
+      "description": "1102×792浅色宽窗原始PNG。顶部是横向导航，左侧待开发清单有两个项目和导出名单入口，右侧显示所选项目的详情。"
+    },
+    "public/media/workbox-pending-export-narrow-dark-20261109-r4.png": {
+      "size": 35748,
+      "sha256": "9e9a880c3e588c8f082f32f99f0695b942b05c865ed095f0fb6db999d4767b77",
+      "source_exe_sha256": "92292a7787d252ebe5c3b814ad6f28ef3b9042ac21a661a631af65660395f579",
+      "source_commit": "2432b7e237db6424bd70e01f9a96f7567c5e644e",
+      "description": "同一安装实例的662×512深色窄窗原始PNG。横向导航下是完整待开发清单，原选中项目和导出名单入口可见。"
+    },
     "public/media/workbox-pending-export-light-20261109-r2.png": {
       "size": 60154,
       "sha256": "d55e3dbeed7d777c30c39525b32e60d76edc2ef66d3fd4939ee57c5801da0668",
