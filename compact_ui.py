@@ -388,6 +388,12 @@ class CompactPanel(DropSurface, QWidget):
         self.paste_button = button('粘贴消息')
         self.paste_button.setProperty('workboxRole', 'secondary')
         self.paste_button.setIcon(FluentIcon.PASTE)
+        self.checklist_button = button('名单核对')
+        self.checklist_button.setProperty('workboxRole', 'secondary')
+        self.checklist_button.setAccessibleName('导入名单核对项目与材料')
+        self.checklist_button.setToolTip('导入 Excel / CSV / TSV，对照已有项目和材料缺项；不新建项目。')
+        self.checklist_button.clicked.connect(self.open_checklist)
+        self.checklist_dialog = None
         self.files_button = button('收进文件', True)
         self.files_button.setIcon(FluentIcon.ADD)
         self.paste_button.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
@@ -417,6 +423,7 @@ class CompactPanel(DropSurface, QWidget):
         self.sync_theme_menu()
         top.addStretch()
         top.addWidget(self.paste_button)
+        top.addWidget(self.checklist_button)
         top.addWidget(self.files_button)
         self.nav_controls.append((self.settings_button, '高级设置'))
         self.appearance_button.setIcon(FluentIcon.PALETTE)
@@ -970,7 +977,7 @@ class CompactPanel(DropSurface, QWidget):
         self.project_filter_button.setVisible(index == 0)
         self.clear_project_filters.setVisible(index == 0 and any(
             not chip.isHidden() for chip in self.project_filter_chips.values()))
-        for control in (self.search, self.paste_button, self.files_button):
+        for control in (self.search, self.paste_button, self.checklist_button, self.files_button):
             control.setVisible(intake_page)
         self._sync_project_layout()
         self.sync_notice_visibility()
@@ -1528,6 +1535,13 @@ class CompactPanel(DropSurface, QWidget):
         if self.current_project is not None and not self.busy:
             self.show_project_context_menu(self.current_project['id'],
                 self.project_actions_button.mapToGlobal(self.project_actions_button.rect().bottomLeft()))
+
+    def open_checklist(self):
+        from checklist_ui import ChecklistDialog
+        if self.checklist_dialog is None:
+            self.checklist_dialog = ChecklistDialog(self.service, self)
+        self.checklist_dialog.show()
+        self.checklist_dialog.raise_()
 
     def open_material_check(self, project_id):
         if self._action_project(project_id) is None:

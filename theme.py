@@ -101,7 +101,9 @@ def _resolve(mode):
 
 def tokens(mode=None):
     """返回颜色副本，调用方不能更改全局主题。"""
-    return dict(_TOKENS[_resolve(mode)])
+    from studio_design import palette_overrides
+    actual = _resolve(mode)
+    return dict(_TOKENS[actual], **palette_overrides(actual))
 
 
 def ui_font_families():
@@ -484,7 +486,8 @@ QTableWidget#materialRules, QTableWidget#materialResults, QTableWidget#materialC
 QWidget#manager[dense="true"] QFrame#workbenchHeader QLabel#pageTitle { font-size: 16px; }
 """ % c
     base = _base_stylesheet(actual) if QApplication.instance() is not None else ''
-    return base + '\n/* WorkBox semantic appearance */\n' + rules
+    from studio_design import chrome
+    return base + '\n/* WorkBox semantic appearance */\n' + rules + chrome(c)
 
 
 def _palette(mode):
