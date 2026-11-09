@@ -22,7 +22,7 @@ from ui_components import StatusSegments
 from qfluentwidgets import FluentIcon, setCustomStyleSheet
 from control_styles import control_style
 from fluent_views import (WorkbenchListWidget, WorkbenchTableWidget, configure_native_scroll,
-                          batch_progress_summary, ProjectListDelegate, PROJECT_NAME_ROLE,
+                          batch_progress_summary, batch_progress_details, ProjectListDelegate, PROJECT_NAME_ROLE,
                           PROJECT_DETAIL_ROLE, PROJECT_BATCH_MARKERS_ROLE)
 from database import STATUSES
 from floating import DropSurface
@@ -30,6 +30,7 @@ from parser import ParsedProject
 from ui import human_size, app_icon
 
 STYLE = stylesheet('light')
+PROJECT_ADDED_DATE_ROLE = int(Qt.UserRole) + 14
 
 
 def label(text='', name='', wrap=False):
@@ -182,14 +183,20 @@ def populate(widget, rows, caption, *, clear_selection=False):
         details = []
         for marker in markers:
             code = f"{marker.get('code', '')} ({marker.get('label', '')})"
-            progress = batch_progress_summary(marker)
+            progress = batch_progress_details(marker)
             details.append(f'{code} {progress}' if progress else code)
         if row.get('batch_name'):
             details.append('原建项目录批次：' + row['batch_name'])
         description = text + ('\n批次：' + '；'.join(details) if details else '')
+        added_date = row.get('added_on_label')
+        if added_date:
+            description += '\n新增日期：' + added_date
         changed = item.data(PROJECT_BATCH_MARKERS_ROLE) != markers
         if changed:
             item.setData(PROJECT_BATCH_MARKERS_ROLE, markers)
+        if item.data(PROJECT_ADDED_DATE_ROLE) != added_date:
+            item.setData(PROJECT_ADDED_DATE_ROLE, added_date)
+            changed = True
         item.setToolTip(description)
         item.setData(Qt.AccessibleDescriptionRole, description)
         return changed
@@ -505,6 +512,14 @@ class CompactPanel(DropSurface, QWidget):
         self.clear_project_filters.hide()
         top.insertWidget(3, self.clear_project_filters)
         scope_tools.addLayout(filters)
+        self.added_date_filter = QComboBox()
+        self.added_date_filter.setAccessibleName('新增日期筛选')
+        self.added_date_filter.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.added_date_filter.setMinimumContentsLength(8)
+        self.added_date_filter.setMinimumWidth(0)
+        self.added_date_filter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.added_date_filter.setToolTip('按项目首次新增日期筛选（北京时间）；与截止日期、批次独立。')
+        scope_tools.addWidget(self.added_date_filter)
         self.project_list_heading = label('项目清单', 'queueHeader')
         self.pending_export_button = button('导出名单')
         self.pending_export_button.setObjectName('pendingProjectExport')
@@ -824,6 +839,7 @@ class CompactPanel(DropSurface, QWidget):
         self.cancel_button.clicked.connect(self.cancel_requested)
         self.search.textChanged.connect(self._search_changed)
         self.batch_filter.currentIndexChanged.connect(self._refresh_project_filters)
+        self.added_date_filter.currentIndexChanged.connect(self._refresh_project_filters)
         self.unmatched.toggled.connect(self.refresh)
         self.project_list.itemSelectionChanged.connect(self.select_project)
         self.project_list.itemClicked.connect(self.show_project_detail)
@@ -1056,12 +1072,12 @@ class CompactPanel(DropSurface, QWidget):
                 self.refresh_type_controls()
             batch = self.batch_filter.currentData()
             status = next((s for s, b in self.status_buttons.items() if b.isChecked()), None)
-            scope = (self.search.text(), status, batch, self.archive_filter.currentData(), self.due_filter.currentData(), self.urgent_filter.isChecked(), self.type_filter.currentData())
+            scope = (self.search.text(), status, batch, self.archive_filter.currentData(), self.due_filter.currentData(), self.urgent_filter.isChecked(), self.type_filter.currentData(), self.added_date_filter.currentData())
             deleted_view = scope[3] == 'deleted'
             snapshot = self.service.project_workbench_snapshot(
                 scope[0], scope[1], scope[2], scope[5],
                 archived=None if deleted_view else scope[3], due_filter=scope[4],
-                deleted=deleted_view, type_id=scope[6])
+                deleted=deleted_view, type_id=scope[6], added_on=scope[7])
             active_batch = next((item for item in snapshot['batch_options'] if item['key'] == batch), None)
             if batch is not None and active_batch is None:
                 batch = None
@@ -1069,8 +1085,9 @@ class CompactPanel(DropSurface, QWidget):
                 snapshot = self.service.project_workbench_snapshot(
                     scope[0], scope[1], None, scope[5],
                     archived=None if deleted_view else scope[3], due_filter=scope[4],
-                    deleted=deleted_view, type_id=scope[6])
+                    deleted=deleted_view, type_id=scope[6], added_on=scope[7])
             self.refresh_batch_filter(snapshot['batch_options'], batch)
+            self.refresh_added_date_filter(snapshot.get('added_date_choices', []), scope[7])
             if deleted_view and self.bulk_mode.isChecked():
                 self.bulk_mode.setChecked(False)
             rows = snapshot['projects']
@@ -1080,6 +1097,7 @@ class CompactPanel(DropSurface, QWidget):
             self.batch_filter.setAccessibleDescription(batch_description or '所有批次')
             progress = batch_progress_summary(active_batch) if active_batch is not None else ''
             self.batch_progress_summary.setText(progress)
+            self.batch_progress_summary.setToolTip(batch_progress_details(active_batch) if active_batch is not None else '')
             self.batch_progress_summary.setVisible(bool(progress))
             if warnings and warnings != getattr(self, '_batch_warnings', ()):
                 self.show_notice('批次来源存在异常：\n' + '\n'.join(warnings))
@@ -1149,7 +1167,7 @@ class CompactPanel(DropSurface, QWidget):
         return True
 
     def refresh_batch_filter(self, options, batch):
-        signature = tuple((item['key'], item['label'], item['code'], batch_progress_summary(item))
+        signature = tuple((item['key'], item['label'], item['code'], batch_progress_details(item))
                           for item in options)
         if signature == getattr(self, '_batch_filter_signature', None):
             return
@@ -1163,6 +1181,25 @@ class CompactPanel(DropSurface, QWidget):
                 self.batch_filter.setItemData(index, description, Qt.AccessibleDescriptionRole)
             self.batch_filter.setCurrentIndex(max(0, self.batch_filter.findData(batch)))
         self._batch_filter_signature = signature
+
+    def refresh_added_date_filter(self, options, added_on):
+        values = tuple((item['added_on'], item['label'], item['total_count']) for item in options)
+        missing = added_on if added_on is not None and all(value[0] != added_on for value in values) else None
+        signature = (values, missing)
+        if signature != getattr(self, '_added_date_filter_signature', None):
+            with QSignalBlocker(self.added_date_filter):
+                self.added_date_filter.clear()
+                self.added_date_filter.addItem('所有新增日期', None)
+                for day, caption, count in values:
+                    self.added_date_filter.addItem(f'{caption} 新增 · {count} 项', day)
+                if missing is not None:
+                    caption = '日期未知' if missing == 'unknown' else missing
+                    self.added_date_filter.addItem(f'{caption}（当前范围无项目）', missing)
+                self.added_date_filter.setCurrentIndex(max(0, self.added_date_filter.findData(added_on)))
+            self._added_date_filter_signature = signature
+        description = self.added_date_filter.currentText() + '\n按项目首次新增日期（北京时间），更新文件或状态不会改变此日期。'
+        self.added_date_filter.setToolTip(description)
+        self.added_date_filter.setAccessibleDescription(description)
 
     def sync_zip_navigation(self):
         review_count = getattr(self, '_zip_review_count', 0)
@@ -1264,7 +1301,7 @@ class CompactPanel(DropSurface, QWidget):
         if not ids:
             self.show_notice('这次收录的项目已不存在，未跳转到其他项目。')
             return False
-        controls = (self.search, self.batch_filter, self.archive_filter, self.due_filter, self.type_filter,
+        controls = (self.search, self.batch_filter, self.added_date_filter, self.archive_filter, self.due_filter, self.type_filter,
                     self.urgent_filter, self.bulk_mode, *self.status_buttons.values())
         blockers = [QSignalBlocker(control) for control in controls]
         self.search.clear()
@@ -1274,6 +1311,7 @@ class CompactPanel(DropSurface, QWidget):
         self.urgent_filter.setChecked(False)
         self.archive_filter.setCurrentIndex(2 if any(all_projects[pid].get('archived_at') for pid in ids) else 0)
         self.batch_filter.setCurrentIndex(0)
+        self.added_date_filter.setCurrentIndex(0)
         self.bulk_mode.setChecked(False)
         del blockers
         self.status_segments.setCurrentItem('all')
@@ -1315,12 +1353,16 @@ class CompactPanel(DropSurface, QWidget):
                 markers = items[0].data(PROJECT_BATCH_MARKERS_ROLE) or []
                 codes = [marker.get('code', '') for marker in markers if marker.get('code')]
                 metadata = '类型：' + (p.get('project_type_name') or '未分类')
+                added_date = items[0].data(PROJECT_ADDED_DATE_ROLE)
+                if added_date:
+                    metadata += '  ·  新增：' + added_date
                 if codes:
                     metadata += '  ·  ' + ' / '.join(codes[:2])
                     if len(codes) > 2:
                         metadata += f' 等 {len(codes)} 批次'
                 self.project_metadata.setText(metadata)
                 self.project_metadata.setToolTip('类型：' + (p.get('project_type_name') or '未分类')
+                                                + ('\n新增日期：' + added_date if added_date else '')
                                                 + ('\n批次：' + ' / '.join(codes) if codes else ''))
             else:
                 self._project_detail_open = False

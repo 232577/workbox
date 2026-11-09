@@ -6,11 +6,11 @@ import hashlib
 import json
 import re
 from concurrent.futures import CancelledError
-from datetime import datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from app import WorkBox
-from database import Database
+from database import Database, DELIVERY_TIMEZONE
 from managed_archive import ManagedArchive
 from parser import MAX_MESSAGE_LENGTH, NUMBERED, PROJECT_LABEL, TITLE, TITLE_END, ParsedProject, parse_message
 from workspace_manager import WorkspaceManager, _path, _zip_structure
@@ -89,6 +89,42 @@ def _serialized_storage(method):
     return guarded
 
 
+def _project_added_on(value):
+    """SQLite 旧无时区时间按 UTC；缺失/损坏事实不猜测新增日期。"""
+    try:
+        if not isinstance(value, str) or not re.match(r'^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}', value):
+            return None
+        moment = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=timezone.utc)
+        return moment.astimezone(DELIVERY_TIMEZONE).date().isoformat()
+    except (ValueError, TypeError, OverflowError, OSError):
+        return None
+
+
+def _read_project_added_dates(connection, *, archived, deleted):
+    # 日期选择只随可见域变化，不受搜索、状态或当前日期选择缩小。
+    clauses = ['NOT EXISTS(SELECT 1 FROM project_merges m WHERE m.source_id=p.id)']
+    if deleted is not None:
+        clauses.append('x.deleted_at IS NOT NULL' if deleted else 'x.deleted_at IS NULL')
+    if archived is not None and deleted is not True:
+        clauses.append('d.archived_at IS NOT NULL' if archived else 'd.archived_at IS NULL')
+    rows = connection.execute('''SELECT p.id,p.created_at FROM projects p
+        LEFT JOIN project_details d ON d.project_id=p.id
+        LEFT JOIN project_deletions x ON x.project_id=p.id WHERE ''' + ' AND '.join(clauses))
+    by_project, counts = {}, {}
+    for row in rows:
+        added_on = _project_added_on(row['created_at'])
+        by_project[row['id']] = added_on
+        key = added_on or 'unknown'
+        counts[key] = counts.get(key, 0) + 1
+    ordered = sorted((key for key in counts if key != 'unknown'), reverse=True)
+    if 'unknown' in counts:
+        ordered.append('unknown')
+    return by_project, [dict(added_on=key, label='日期未知' if key == 'unknown' else key,
+                             total_count=counts[key]) for key in ordered]
+
+
 class DesktopService(WorkBox):
     def __init__(self, database_path):
         super().__init__(database_path)
@@ -135,19 +171,26 @@ class DesktopService(WorkBox):
 
     def project_workbench_snapshot(self, query='', status=None, batch_key=None, urgent_only=False,
                                    *, archived=False, due_filter=None, today=None, deleted=False,
-                                   type_id=None):
+                                   type_id=None, added_on=None):
         """项目、批次和别名取自同一读取事务，沿用项目列表原排序与筛选。"""
         from project_batches import read_project_batch_index
         if not isinstance(query, str) or len(query) > 1000:
             raise ValueError('搜索文字过长。')
         if batch_key is not None and not isinstance(batch_key, str):
             raise ValueError('批次筛选编号无效。')
+        if added_on not in (None, 'unknown'):
+            try:
+                if not isinstance(added_on, str) or date.fromisoformat(added_on).isoformat() != added_on:
+                    raise ValueError
+            except (ValueError, TypeError):
+                raise ValueError('新增日期筛选必须为 YYYY-MM-DD、日期未知或全部。') from None
         filters = dict(status=status, urgent_only=urgent_only, archived=archived,
                        due_filter=due_filter, today=today, deleted=deleted, type_id=type_id)
         with self.db.connect() as connection:
             connection.execute('BEGIN')
             projects = self.db.list_projects(connection=connection, **filters)
             index = read_project_batch_index(connection)
+            added_dates, date_choices = _read_project_added_dates(connection, archived=archived, deleted=deleted)
             aliases, merged_ids = {}, {}
             for row in connection.execute('''SELECT DISTINCT c.canonical_id AS project_id,a.name AS alias_name
                     FROM project_name_aliases a JOIN project_canonical c ON c.project_id=a.project_id
@@ -162,6 +205,10 @@ class DesktopService(WorkBox):
             result = []
             for project in projects:
                 pid = project['id']
+                project['added_on'] = added_dates.get(pid)
+                project['added_on_label'] = project['added_on'] or '日期未知'
+                if added_on is not None and (project['added_on'] or 'unknown') != added_on:
+                    continue
                 markers = index['by_project'].get(pid, [])
                 if batch_key is not None and not any(m['key'] == batch_key for m in markers):
                     continue
@@ -175,7 +222,8 @@ class DesktopService(WorkBox):
                 if pid in merged_ids:
                     project['merged_project_ids'] = merged_ids[pid]
                 result.append(project)
-        return dict(projects=result, batch_options=index['options'], warnings=index['warnings'])
+        return dict(projects=result, batch_options=index['options'], added_date_choices=date_choices,
+                    warnings=index['warnings'])
 
     @staticmethod
     def _receipt(row, *, duplicate=False):

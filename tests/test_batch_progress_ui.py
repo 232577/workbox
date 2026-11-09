@@ -40,28 +40,28 @@ def test_long_batch_progress_reserves_space_for_one_number_and_more_count(qt_app
         {'label': 'G261109-123', 'total_count': 1, 'delivered_count': 1, 'remaining_count': 0, 'pending_delivery_count': 0},
         {'label': 'B261109-456'},
     ]
-    width = 24 + metrics.horizontalAdvance(markers[0]['label'] + ' 余12') + 5 + metrics.horizontalAdvance('+2批')
+    width = 24 + metrics.horizontalAdvance(markers[0]['label'] + ' 待完成12，共15') + 5 + metrics.horizontalAdvance('+2批')
     badges, summary = _batch_badge_layout(markers, metrics, width)
-    assert badges == [(markers[0], 24 + metrics.horizontalAdvance(markers[0]['label'] + ' 余12'))]
+    assert badges == [(markers[0], 24 + metrics.horizontalAdvance(markers[0]['label'] + ' 待完成12，共15'))]
     assert summary == '+2批'
     compact, summary = _batch_badge_layout(markers, metrics, width - 16)
     assert [marker for marker, _ in compact] == markers[:1]
     assert compact[0][1] + 5 + metrics.horizontalAdvance(summary) <= width - 16
     full, summary = _batch_badge_layout(markers[1:], metrics, 500)
-    assert [size for _, size in full] == [24 + metrics.horizontalAdvance(text) for text in ('G261109-123 已齐', 'B261109-456')]
+    assert [size for _, size in full] == [24 + metrics.horizontalAdvance(text) for text in ('G261109-123 待完成0，共1', 'B261109-456')]
     assert summary == ''
 
 
 def test_pending_delivery_reduces_work_remaining_without_claiming_delivery(qt_app):
     marker = {'label': 'R261109-1', 'total_count': 4, 'delivered_count': 1,
               'pending_delivery_count': 1, 'remaining_count': 3}
-    assert batch_progress_summary(marker) == '已交付1/4，待交付1，剩余2'
-    assert _batch_badge_parts(marker) == ('R261109-1', ' 余2')
+    assert batch_progress_summary(marker) == '待完成2，共4'
+    assert _batch_badge_parts(marker) == ('R261109-1', ' 待完成2，共4')
     marker.update(pending_delivery_count=3)
-    assert batch_progress_summary(marker) == '已交付1/4，待交付3，剩余0'
-    assert _batch_badge_parts(marker) == ('R261109-1', ' 待交付3')
+    assert batch_progress_summary(marker) == '待完成0，共4'
+    assert _batch_badge_parts(marker) == ('R261109-1', ' 待完成0，共4')
     marker.update(delivered_count=4, pending_delivery_count=0, remaining_count=0)
-    assert _batch_badge_parts(marker) == ('R261109-1', ' 已齐')
+    assert _batch_badge_parts(marker) == ('R261109-1', ' 待完成0，共4')
     marker.pop('pending_delivery_count')
     assert batch_progress_summary(marker) == ''
     assert _batch_badge_parts(marker) == ('R261109-1', '')
@@ -87,10 +87,10 @@ def test_project_accessibility_retains_known_and_unknown_batch_progress(qt_app):
     item = view.item(0)
     for description in (item.toolTip(), item.data(Qt.AccessibleDescriptionRole)):
         assert all(marker['code'] in description for marker in markers)
-        assert '已交付1/3，待交付1，剩余1' in description
-        assert '已交付4/4，待交付0，剩余0' in description
-        assert '本批无有效项目' in description
-        assert description.count('剩余') == 2
+        assert '待完成1，共3；待交付1，已交付1' in description
+        assert '待完成0，共4；待交付0，已交付4' in description
+        assert '待完成0，共0；待交付0，已交付0' in description
+        assert description.count('待完成') == 3
 
 
 def test_all_pending_batch_stays_pending_on_every_status_page(qt_app, tmp_path):
@@ -104,12 +104,13 @@ def test_all_pending_batch_stays_pending_on_every_status_page(qt_app, tmp_path):
     try:
         key = f"receipt:{receipt['receipt_id']}"
         panel.batch_filter.setCurrentIndex(panel.batch_filter.findData(key))
-        expected = '已交付0/2，待交付2，剩余0'
+        expected = '待完成0，共2'
         for status in ('待开发', '开发中', '待交付', '已交付'):
             panel.status_buttons[status].click()
             qt_app.processEvents()
             assert panel.batch_progress_summary.text() == expected
             assert expected in panel.batch_filter.accessibleDescription()
+            assert '待交付2，已交付0' in panel.batch_filter.accessibleDescription()
             assert panel.project_list.count() == (2 if status == '待交付' else 0)
         panel.status_buttons['待交付'].click()
         panel.project_list.setCurrentRow(0)
@@ -117,7 +118,7 @@ def test_all_pending_batch_stays_pending_on_every_status_page(qt_app, tmp_path):
         assert expected in selected.toolTip()
         assert expected in selected.data(Qt.AccessibleDescriptionRole)
         marker, = selected.data(PROJECT_BATCH_MARKERS_ROLE)
-        assert _batch_badge_parts(marker)[1] == ' 待交付2'
+        assert _batch_badge_parts(marker)[1] == ' 待完成0，共2'
         assert service.db.delivery_history()['valid_event_count'] == 0
         for mode in ('light', 'dark'):
             set_theme(mode, persist=False)
@@ -151,7 +152,7 @@ def test_delivery_and_void_refresh_filtered_workbench_in_place(qt_app, tmp_path)
         QTest.keyClick(panel.batch_filter, Qt.Key_Down)
         qt_app.processEvents()
         assert panel.batch_progress_summary.isVisible()
-        assert panel.batch_progress_summary.text() == '已交付0/24，待交付0，剩余24'
+        assert panel.batch_progress_summary.text() == '待完成24，共24'
         batch_key = panel.batch_filter.currentData()
         projects = panel.project_list
         ids = [projects.item(i).data(Qt.UserRole) for i in range(projects.count())]
@@ -177,9 +178,10 @@ def test_delivery_and_void_refresh_filtered_workbench_in_place(qt_app, tmp_path)
                 service.db.void_delivery_events([events[0]['id']], confirmed=True)
             panel.refresh()
             qt_app.processEvents()
-            progress = f'已交付{delivered}/24，待交付{1 - delivered}，剩余23'
+            progress = '待完成23，共24'
             assert panel.batch_progress_summary.text() == progress
             assert progress in panel.batch_filter.accessibleDescription()
+            assert f'待交付{1 - delivered}，已交付{delivered}' in panel.batch_filter.accessibleDescription()
             assert all(progress in projects.item(i).toolTip() for i in range(projects.count()))
             assert panel.batch_filter.currentData() == batch_key
             assert panel.search.text() == '匿名检修' and panel.status_buttons['待开发'].isChecked()

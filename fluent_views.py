@@ -49,23 +49,34 @@ def batch_progress_summary(marker):
     counts = _batch_progress_counts(marker)
     if counts is None:
         return ''
-    total, delivered, pending, remaining = counts
-    if total == 0:
-        return '本批无有效项目'
-    return f'已交付{delivered}/{total}，待交付{pending}，剩余{remaining}'
+    total, _, _, remaining = counts
+    return f'待完成{remaining}，共{total}'
+
+
+def batch_progress_details(marker):
+    counts = _batch_progress_counts(marker)
+    if counts is None:
+        return ''
+    _, delivered, pending, _ = counts
+    return f'{batch_progress_summary(marker)}；待交付{pending}，已交付{delivered}'
 
 
 def _batch_badge_parts(marker):
     code = str(marker.get('label') or marker.get('code') or '')
-    counts = _batch_progress_counts(marker)
-    if counts is None:
-        return code, ''
-    total, delivered, pending, remaining = counts
-    if total == 0:
-        return code, ' 无项目'
-    if delivered == total:
-        return code, ' 已齐'
-    return code, f' 余{remaining}' if remaining else f' 待交付{pending}'
+    progress = batch_progress_summary(marker)
+    return code, f' {progress}' if progress else ''
+
+
+def _batch_badge_text(marker, metrics, width):
+    code, progress = _batch_badge_parts(marker)
+    text = code + progress
+    if metrics.horizontalAdvance(text) <= width:
+        return text
+    code_width = width - metrics.horizontalAdvance(progress)
+    if code_width > metrics.horizontalAdvance('…'):
+        return metrics.elidedText(code, Qt.ElideMiddle, code_width) + progress
+    # The remaining/total numbers take priority when a long code cannot fit.
+    return metrics.elidedText(progress.strip() or code, Qt.ElideRight, max(0, width))
 
 
 def _batch_badge_layout(markers, metrics, width):
@@ -396,15 +407,7 @@ class ProjectListDelegate(WrappedFluentListDelegate):
         center = y + self.batchHeight / 2
         baseline = center + (metrics.ascent() - metrics.descent()) / 2
         for marker, badge_width in badges:
-            code, progress = _batch_badge_parts(marker)
-            text = code + progress
-            text_width = int(badge_width) - 24
-            if metrics.horizontalAdvance(text) > text_width:
-                code_width = text_width - metrics.horizontalAdvance(progress)
-                if code_width > metrics.horizontalAdvance('…'):
-                    text = metrics.elidedText(code, Qt.ElideMiddle, code_width) + progress
-                else:
-                    text = metrics.elidedText(text, Qt.ElideRight, text_width)
+            text = _batch_badge_text(marker, metrics, int(badge_width) - 24)
             color = QColor(marker.get('color') or '#777777')
             if not color.isValid():
                 color = QColor('#777777')
