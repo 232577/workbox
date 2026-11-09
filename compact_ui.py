@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem, QFileDialog, QSpinBox, QScrollArea,
     QMessageBox, QPlainTextEdit, QPushButton, QTabWidget, QTableWidget, QMenu, QListView,
     QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QSizePolicy, QScrollBar, QStyleFactory, QProxyStyle, QStyle, QSplitter,
-    QStyledItemDelegate, QStyleOptionViewItem,
+    QStyledItemDelegate, QStyleOptionViewItem, QGridLayout,
 )
 
 from theme import apply_to, apply_scrollbar, stylesheet, install_theme, set_theme, current_mode, theme_signal
@@ -366,13 +366,16 @@ class CompactPanel(DropSurface, QWidget):
         top.setContentsMargins(18, 14, 18, 14)
         top.setSpacing(12)
         self.page_title = label('项目', 'pageTitle')
-        self.page_title.setMaximumWidth(260)
+        self.page_title.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.page_title.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         top.addWidget(self.page_title, 1)
         self.paste_button = button('粘贴消息')
         self.paste_button.setProperty('workboxRole', 'secondary')
         self.paste_button.setIcon(FluentIcon.PASTE)
         self.files_button = button('收进文件', True)
         self.files_button.setIcon(FluentIcon.ADD)
+        self.paste_button.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        self.files_button.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
         self.settings_button = button('高级设置', 'nav-menu')
         self.settings_button.setAccessibleName('高级设置')
         self.settings_button.setCheckable(False)
@@ -413,7 +416,6 @@ class CompactPanel(DropSurface, QWidget):
         self.search.setClearButtonEnabled(True)
         self.search.setMinimumHeight(32)
         self.search.setMinimumWidth(100)
-        top.insertWidget(1, self.search, 2)
         self.notice = label('', 'notice')
         self.notice.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.notice.setMaximumHeight(72)
@@ -427,6 +429,7 @@ class CompactPanel(DropSurface, QWidget):
         self.tabs = QTabWidget()
         self.tabs.setObjectName('workbenchPages')
         self.tabs.tabBar().hide()
+        self.tabs.setFocusPolicy(Qt.NoFocus)
         self.nav_projects.clicked.connect(lambda: self.tabs.setCurrentIndex(0))
         self.nav_zip.clicked.connect(lambda: self.tabs.setCurrentIndex(1))
         self.nav_review.clicked.connect(lambda: self.tabs.setCurrentIndex(2))
@@ -438,13 +441,17 @@ class CompactPanel(DropSurface, QWidget):
         pl = self.project_page_layout = QVBoxLayout(projects)
         pl.setContentsMargins(14, 14, 14, 12)
         pl.setSpacing(12)
+        self.project_scope_tools = QWidget()
+        scope_tools = QVBoxLayout(self.project_scope_tools)
+        scope_tools.setContentsMargins(0, 0, 0, 0)
+        scope_tools.setSpacing(8)
         filters = QHBoxLayout()
         self.status_group = QButtonGroup(self)
         self.status_buttons = {}
         self.status_segments = StatusSegments()
         setCustomStyleSheet(self.status_segments, control_style('light', 'segments'),
                             control_style('dark', 'segments'))
-        self.status_segments.setMaximumWidth(430)
+        self.status_segments.setMinimumWidth(0)
         self.status_segments.setAccessibleName('项目状态筛选')
         for index, state in enumerate((None, *STATUSES)):
             route = state or 'all'
@@ -458,11 +465,10 @@ class CompactPanel(DropSurface, QWidget):
             item.clicked.connect(self.refresh)
         self.status_segments.currentItemChanged.connect(
             lambda key: self.status_buttons[None if key == 'all' else key].setChecked(True))
-        filters.addWidget(self.status_segments)
+        scope_tools.addWidget(self.status_segments)
         self.status_buttons[None].setChecked(True)
         self.status_buttons['待交付'].setToolTip('普通文件成功收录后设为待交付。' + zip_delivery_hint(service.workspaces.settings()))
         self.status_buttons['已交付'].setToolTip(zip_delivery_hint(service.workspaces.settings()))
-        filters.addStretch()
         self.batch_filter = QComboBox()
         self.batch_filter.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.batch_filter.setMinimumContentsLength(8)
@@ -472,6 +478,7 @@ class CompactPanel(DropSurface, QWidget):
         self.project_filter_button = button('筛选', 'filter')
         self.project_filter_button.setObjectName('projectFilterToggle')
         self.project_filter_button.setToolTip('筛选归档范围、截止日期、类型和加急项目')
+        filters.addWidget(self.batch_filter, 1)
         filters.addWidget(self.project_filter_button)
         self.clear_project_filters = button('清除')
         self.clear_project_filters.setObjectName('clearProjectFilters')
@@ -479,13 +486,13 @@ class CompactPanel(DropSurface, QWidget):
         self.clear_project_filters.setToolTip('清除归档范围、截止日期、类型和加急筛选')
         self.clear_project_filters.hide()
         filters.addWidget(self.clear_project_filters)
-        pl.addLayout(filters)
-        self.project_list_heading = label('项目清单', 'title')
+        scope_tools.addLayout(filters)
+        self.project_list_heading = label('项目清单', 'queueHeader')
         self.bulk_mode = QCheckBox('批量选择')
         self.bulk_mode.setAccessibleName('批量选择')
         self.project_filter_panel = QWidget()
         self.project_filter_panel.setObjectName('projectFilterPanel')
-        views = QHBoxLayout(self.project_filter_panel)
+        views = QGridLayout(self.project_filter_panel)
         views.setContentsMargins(0, 0, 0, 0)
         views.setSpacing(8)
         self.archive_filter = QComboBox()
@@ -502,11 +509,11 @@ class CompactPanel(DropSurface, QWidget):
         self.type_filter.setMinimumWidth(0)
         self.type_filter.setMaximumWidth(170)
         self.type_filter.currentIndexChanged.connect(self.refresh)
-        views.addWidget(self.archive_filter)
-        views.addWidget(self.due_filter)
-        views.addWidget(self.type_filter)
-        views.addWidget(self.urgent_filter)
-        pl.addWidget(self.project_filter_panel)
+        views.addWidget(self.archive_filter, 0, 0)
+        views.addWidget(self.due_filter, 0, 1)
+        views.addWidget(self.type_filter, 1, 0)
+        views.addWidget(self.urgent_filter, 1, 1)
+        scope_tools.addWidget(self.project_filter_panel)
         self.project_filter_panel.hide()
         self.project_filter_button.toggled.connect(self.project_filter_panel.setVisible)
         self.clear_project_filters.clicked.connect(self.reset_project_filters)
@@ -540,9 +547,8 @@ class CompactPanel(DropSurface, QWidget):
         self.project_splitter.setChildrenCollapsible(False)
         self.project_splitter.setHandleWidth(8)
         self.project_splitter.setObjectName('projectWorkspaceSplit')
-        project_side = QFrame()
+        project_side = self.project_side = QFrame()
         project_side.setObjectName('projectSurface')
-        project_side.setMinimumWidth(180)
         project_layout = self.project_card_layout = QVBoxLayout(project_side)
         project_layout.setContentsMargins(10,10,10,10)
         project_layout.setSpacing(8)
@@ -556,10 +562,27 @@ class CompactPanel(DropSurface, QWidget):
         project_layout.addWidget(self.project_queue_header)
         self.project_queue_tools = QWidget()
         self.project_queue_tools.setObjectName('projectQueueTools')
-        queue_tools = QVBoxLayout(self.project_queue_tools)
+        queue_tools = self.project_queue_tools_layout = QVBoxLayout(self.project_queue_tools)
         queue_tools.setContentsMargins(0, 0, 0, 0)
-        queue_tools.setSpacing(4)
-        queue_tools.addWidget(self.batch_filter)
+        queue_tools.setSpacing(8)
+        queue_tools.addWidget(self.search)
+        queue_tools.addWidget(self.project_scope_tools)
+        self.active_project_filters = QWidget()
+        active_filters = QGridLayout(self.active_project_filters)
+        active_filters.setContentsMargins(0, 0, 0, 0)
+        active_filters.setSpacing(4)
+        self.project_filter_chips = {}
+        for number, key in enumerate(('archive', 'due', 'urgent', 'type')):
+            chip = button('')
+            chip.setObjectName('filterChip')
+            chip.setMinimumWidth(0)
+            chip.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+            chip.clicked.connect(lambda _checked=False, value=key: self.clear_project_filter(value))
+            active_filters.addWidget(chip, number // 2, number % 2, Qt.AlignLeft)
+            chip.hide()
+            self.project_filter_chips[key] = chip
+        self.active_project_filters.hide()
+        queue_tools.addWidget(self.active_project_filters)
         self.batch_progress_summary = label('', 'subtle', True)
         self.batch_progress_summary.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.batch_progress_summary.hide()
@@ -579,6 +602,12 @@ class CompactPanel(DropSurface, QWidget):
         document_layout = self.document_card_layout = QVBoxLayout(document_side)
         document_layout.setContentsMargins(14,12,14,10)
         document_layout.setSpacing(10)
+        self.project_back_button = button('返回项目清单')
+        self.project_back_button.setObjectName('projectBackButton')
+        self.project_back_button.setIcon(FluentIcon.RETURN)
+        self.project_back_button.clicked.connect(self.show_project_queue)
+        self.project_back_button.hide()
+        document_layout.addWidget(self.project_back_button, 0, Qt.AlignLeft)
         self.project_title = label('', 'selectedProjectName', True)
         self.project_title.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.document_heading = QWidget()
@@ -592,19 +621,37 @@ class CompactPanel(DropSurface, QWidget):
         self.project_status_badge.hide()
         document_heading.addWidget(self.project_status_badge, 0, Qt.AlignTop)
         document_layout.addWidget(self.document_heading)
+        self.project_metadata = label('', 'projectMetadata', True)
+        self.project_metadata.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.project_metadata.hide()
+        document_layout.addWidget(self.project_metadata)
         self.project_actions_button = button('项目操作')
         self.project_actions_button.setProperty('workboxRole', 'secondary')
         self.project_actions_button.setAccessibleName('所选项目操作')
         self.project_actions_button.setToolTip('开发状态、备注与日期、改名、交付和归档')
         self.project_actions_button.clicked.connect(self._open_selected_project_menu)
         self.project_actions_row = QWidget()
+        self.project_actions_row.setObjectName('projectDetailActions')
         project_actions = self.project_actions_layout = QHBoxLayout(self.project_actions_row)
         project_actions.setContentsMargins(0, 0, 0, 0)
         project_actions.setSpacing(6)
         project_actions.addWidget(self.material_check_button)
         self.material_check_button.hide()
-        project_actions.addWidget(self.change_type_button)
+        self.change_type_button.setParent(self.project_actions_row)
+        self.change_type_button.hide()
+        self.open_workspace_button = button('打开工作目录')
+        self.open_workspace_button.setIcon(FluentIcon.FOLDER)
+        self.open_workspace_button.setAccessibleName('打开所选项目工作目录')
+        self.open_workspace_button.clicked.connect(
+            lambda: self.open_project_workspace(self.current_project['id']) if self.current_project else None)
+        project_actions.addWidget(self.open_workspace_button)
         project_actions.addStretch()
+        self.confirm_delivery_button = button('确认交付', True)
+        self.confirm_delivery_button.setAccessibleName('确认所选项目交付')
+        self.confirm_delivery_button.clicked.connect(
+            lambda: self.confirm_delivery(self.current_project['id']) if self.current_project else None)
+        self.confirm_delivery_button.hide()
+        project_actions.addWidget(self.confirm_delivery_button)
         project_actions.addWidget(self.project_actions_button)
         document_layout.addWidget(self.project_actions_row)
         from project_documents_ui import ProjectDocumentsPane
@@ -617,6 +664,10 @@ class CompactPanel(DropSurface, QWidget):
         self.project_splitter.setStretchFactor(1,3)
         self.project_splitter.setSizes([400,600])
         self._project_split_manual = False
+        self._project_narrow = False
+        self._project_detail_open = False
+        self._project_wide_sizes = None
+        self._project_queue_anchor = None
         self.project_splitter.splitterMoved.connect(self._remember_project_split)
         self.project_splitter.handle(1).setToolTip('左右拖动，调整项目与文件区域宽度')
         pl.addWidget(self.project_splitter,1)
@@ -747,6 +798,8 @@ class CompactPanel(DropSurface, QWidget):
         self.batch_filter.currentIndexChanged.connect(self.refresh)
         self.unmatched.toggled.connect(self.refresh)
         self.project_list.itemSelectionChanged.connect(self.select_project)
+        self.project_list.itemClicked.connect(self.show_project_detail)
+        self.project_list.itemActivated.connect(self.show_project_detail)
         self.project_list.itemDoubleClicked.connect(
             lambda item: self.workspace_requested.emit(item.data(Qt.UserRole)))
         self.project_list.project_context_requested.connect(self.show_project_context_menu)
@@ -873,8 +926,13 @@ class CompactPanel(DropSurface, QWidget):
         self.nav_review.setVisible((receipts is not None and receipts.count() > 0) or index == 2)
         self.sync_zip_navigation()
         intake_page = index in (0, 1) and not is_classification
+        if index == 1:
+            self.header_surface.layout().insertWidget(1, self.search, 2)
+        else:
+            self.project_queue_tools_layout.insertWidget(0, self.search)
         for control in (self.search, self.paste_button, self.files_button):
             control.setVisible(intake_page)
+        self._sync_project_layout()
         self.sync_notice_visibility()
 
     def refresh_type_controls(self):
@@ -909,6 +967,36 @@ class CompactPanel(DropSurface, QWidget):
             self.urgent_filter.setChecked(False)
         self.project_filter_button.setFocus()
         self.refresh(preserve_project_position=True)
+
+    def clear_project_filter(self, key):
+        control = {'archive': self.archive_filter, 'due': self.due_filter,
+                   'type': self.type_filter, 'urgent': self.urgent_filter}[key]
+        with QSignalBlocker(control):
+            if key == 'urgent':
+                control.setChecked(False)
+            else:
+                control.setCurrentIndex(0)
+        self.refresh(preserve_project_position=True)
+
+    def _sync_filter_chips(self, scope):
+        values = (
+            ('archive', scope[3] is not False, self.archive_filter.currentText()),
+            ('due', scope[4] is not None, self.due_filter.currentText()),
+            ('urgent', scope[5], '只看加急'),
+            ('type', scope[6] is not None, self.type_filter.currentText()),
+        )
+        layout = self.active_project_filters.layout()
+        visible = 0
+        for key, active, caption in values:
+            chip = self.project_filter_chips[key]
+            chip.setText(caption + ' ×')
+            chip.setToolTip('清除筛选：' + caption)
+            chip.setAccessibleName('清除筛选：' + caption)
+            chip.setVisible(bool(active))
+            if active:
+                layout.addWidget(chip, visible // 2, visible % 2, Qt.AlignLeft)
+                visible += 1
+        self.active_project_filters.setVisible(visible > 0)
 
     def refresh(self, *_, preserve_project_position=False):
         if any(view.verticalScrollBar().isSliderDown() for view in (self.project_list, self.zip_list, self.receipt_list)):
@@ -961,6 +1049,7 @@ class CompactPanel(DropSurface, QWidget):
             self.project_filter_button.setToolTip(filter_description)
             self.project_filter_button.setAccessibleDescription(filter_description)
             self.clear_project_filters.setVisible(active_filters > 0)
+            self._sync_filter_chips(scope)
             populate(self.project_list, rows, self.project_caption,
                      clear_selection=scope != self.project_scope and not preserve_project_position)
             self.project_scope = scope
@@ -1140,6 +1229,7 @@ class CompactPanel(DropSurface, QWidget):
         self.project_list.scrollToItem(item, QAbstractItemView.PositionAtCenter)
         self.project_list.setFocus(Qt.OtherFocusReason)
         self.select_project()
+        self.show_project_detail()
         self.show_notice(f'已定位本次收录的 {len(ids)} 个项目，当前选中：' + all_projects[ids[0]]['name'],
                          kind='page-success')
         return True
@@ -1157,22 +1247,46 @@ class CompactPanel(DropSurface, QWidget):
             self.document_heading.setVisible(p is not None)
             self.project_actions_row.setVisible(p is not None)
             self.project_status_badge.setVisible(p is not None)
+            self.project_metadata.setVisible(p is not None)
             if p is not None:
                 self.project_status_badge.setText(p['status'])
                 self.project_status_badge.setProperty('state', p['status'])
                 self.project_status_badge.style().unpolish(self.project_status_badge)
                 self.project_status_badge.style().polish(self.project_status_badge)
+                markers = items[0].data(PROJECT_BATCH_MARKERS_ROLE) or []
+                codes = [marker.get('code', '') for marker in markers if marker.get('code')]
+                metadata = '类型：' + (p.get('project_type_name') or '未分类')
+                if codes:
+                    metadata += '  ·  ' + ' / '.join(codes[:2])
+                    if len(codes) > 2:
+                        metadata += f' 等 {len(codes)} 批次'
+                self.project_metadata.setText(metadata)
+                self.project_metadata.setToolTip('类型：' + (p.get('project_type_name') or '未分类')
+                                                + ('\n批次：' + ' / '.join(codes) if codes else ''))
+            else:
+                self._project_detail_open = False
             self.project_title.setToolTip('\n'.join((p['name'], '类型：' + (p.get('project_type_name') or '未分类'),
                 (p.get('workspace') or {}).get('path', '工作目录尚未创建'))) if p else '')
         finally:
             self.refreshing = False
         self.update_actions()
         self.document_pane.set_project(self.current_project['id'] if self.current_project else None)
+        self._sync_project_layout()
 
     def update_actions(self, *_):
         project = self.current_project
         self.project_actions_button.setVisible(project is not None)
         self.project_actions_button.setEnabled(project is not None and not self.busy)
+        editable = bool(project) and not self.busy and not project.get('archived_at') \
+            and not project.get('deleted_at') and not project.get('block_reason') \
+            and project.get('merged_into_id') is None
+        self.open_workspace_button.setVisible(project is not None)
+        self.open_workspace_button.setEnabled(bool(project) and not self.busy
+            and project.get('merged_into_id') is None
+            and bool(project.get('workspace') or editable))
+        self.confirm_delivery_button.setVisible(bool(project) and project['status'] == '待交付'
+            and not project.get('archived_at') and not project.get('deleted_at'))
+        self.confirm_delivery_button.setEnabled(editable)
         self.material_check_button.setEnabled(bool(project) and not self.busy
             and not project.get('deleted_at') and not project.get('block_reason')
             and project.get('merged_into_id') is None)
@@ -1419,6 +1533,9 @@ class CompactPanel(DropSurface, QWidget):
         actions.insertWidget(1, self.change_type_button)
         self.change_type_button.show()
         self.document_side.setVisible(not enabled)
+        self.change_type_button.setVisible(enabled)
+        if enabled:
+            self._project_detail_open = False
         self.bulk_bar.setVisible(enabled)
         self.select_project()
 
@@ -1807,6 +1924,7 @@ class CompactPanel(DropSurface, QWidget):
             # 样式重算可能触发布局，不能在Qt仍处理resize时重入polish。
             QTimer.singleShot(0, self, self._apply_density)
         super().resizeEvent(event)
+        self._sync_project_layout()
         QTimer.singleShot(0, self, self._fit_project_width)
         if self.today_dialog is not None:
             self.today_dialog._sync_embedded_layout()
@@ -1814,6 +1932,60 @@ class CompactPanel(DropSurface, QWidget):
 
     def _remember_project_split(self, *_):
         self._project_split_manual = True
+        if not self._project_narrow and not self.bulk_mode.isChecked():
+            self._project_wide_sizes = self.project_splitter.sizes()
+
+    def show_project_detail(self, *_):
+        if self.current_project is None or self.bulk_mode.isChecked():
+            return
+        if not self._project_detail_open:
+            item = self.project_list.itemAt(QPoint(2, 0))
+            self._project_queue_anchor = (item.data(Qt.UserRole), self.project_list.visualItemRect(item).top()) if item else None
+        self._project_detail_open = True
+        self._sync_project_layout()
+        if self._project_narrow:
+            self.project_back_button.setFocus(Qt.OtherFocusReason)
+
+    def show_project_queue(self):
+        self._project_detail_open = False
+        self._sync_project_layout()
+        self.project_list.setFocus(Qt.OtherFocusReason)
+        QTimer.singleShot(0, self, self._restore_queue_anchor)
+
+    def _restore_queue_anchor(self):
+        if not self._project_queue_anchor or self._project_detail_open:
+            return
+        pid, top = self._project_queue_anchor
+        item = next((self.project_list.item(i) for i in range(self.project_list.count())
+                     if self.project_list.item(i).data(Qt.UserRole) == pid), None)
+        if item is not None:
+            self.project_list.scrollToItem(item, QAbstractItemView.PositionAtTop)
+            bar = self.project_list.verticalScrollBar()
+            bar.setValue(bar.value() - top)
+
+    def _sync_project_layout(self):
+        if not hasattr(self, '_project_narrow'):
+            return
+        margins = self.project_card_layout.contentsMargins()
+        filter_width = (self.batch_filter.minimumSizeHint().width()
+                        + self.project_filter_button.sizeHint().width()
+                        + self.clear_project_filters.sizeHint().width() + 16)
+        self.project_side.setMinimumWidth(
+            max(self.status_segments.sizeHint().width(), filter_width)
+            + margins.left() + margins.right())
+        narrow = self.workbench.width() < 800
+        changed = narrow != self._project_narrow
+        if changed and narrow and not self.bulk_mode.isChecked() and not self._project_wide_sizes:
+            sizes = self.project_splitter.sizes()
+            if all(sizes):
+                self._project_wide_sizes = sizes
+        self._project_narrow = narrow
+        detail = self._project_detail_open and self.current_project is not None and not self.bulk_mode.isChecked()
+        self.project_side.setVisible(not narrow or not detail)
+        self.document_side.setVisible(not self.bulk_mode.isChecked() and (not narrow or detail))
+        self.project_back_button.setVisible(narrow and detail)
+        if changed and not narrow and self._project_wide_sizes:
+            self.project_splitter.setSizes(self._project_wide_sizes)
 
     def _apply_density(self):
         apply_to(self)
@@ -1823,7 +1995,7 @@ class CompactPanel(DropSurface, QWidget):
             title.updateGeometry()
 
     def _fit_project_width(self):
-        if (self._project_split_manual or self.width() <= 1400 or not self.isVisible()
+        if (self._project_narrow or self._project_split_manual or self.width() <= 1400 or not self.isVisible()
                 or not self.document_side.isVisible()):
             return
         available = sum(self.project_splitter.sizes())
@@ -2097,11 +2269,18 @@ class DirectorySettingsDialog(QDialog):
             card.setMinimumHeight(0)
             card.setMaximumHeight(16777215)
             card.hBoxLayout.setContentsMargins(16, 12, 16, 12)
+            # SettingCard reserves a trailing stretch for an empty action area.
+            # WorkBox supplies the control there and lets the text column fill the rest.
+            card.hBoxLayout.takeAt(card.hBoxLayout.count() - 1)
             card.hBoxLayout.setStretch(2, 1)
+            card.hBoxLayout.setAlignment(Qt.Alignment())
+            card.hBoxLayout.setAlignment(card.iconLabel, Qt.AlignVCenter)
+            card.vBoxLayout.setAlignment(Qt.Alignment())
             for text_label in (card.titleLabel, card.contentLabel):
                 text_label.setWordWrap(True)
                 text_label.setMinimumWidth(0)
                 text_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+                card.vBoxLayout.setAlignment(text_label, Qt.Alignment())
             card.hBoxLayout.addWidget(control, 0, Qt.AlignVCenter)
             return card
 

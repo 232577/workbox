@@ -74,12 +74,16 @@ def answer_correction(action, answer, *, draft=None, contains=()):
 
 def test_wide_and_compact_share_filters_and_show_type_counts(page):
     assert page.date_edit.isVisible() and page.search.isVisible() and page.export_button.isVisible()
+    assert not page.date_scope_button.isVisible()
     filter_button = page.compact_filter_button
     assert menu_action(filter_button, '今天').isEnabled()
     assert menu_action(filter_button, '刷新').isEnabled()
     all_dates = menu_action(filter_button, '全部日期')
     all_dates.trigger()
     assert all_dates.isChecked() and page.table.rowCount() == 1
+    assert page.date_scope_button.isVisible() and '全部日期' in page.date_scope_button.text()
+    assert not page.date_edit.isVisible()
+    assert page.search.isVisible() and page.export_button.isVisible()
     assert '1' in filter_button.text()
     assert page.type_total.isVisible() and '合计 1 个项目' in page.type_total.text()
     assert page.type_counts.isVisible() and '专项材料：1' in page.type_counts.toPlainText()

@@ -46,8 +46,14 @@ def test_file_actions_follow_selection_and_size_aligns_with_header(qapp):
     frame = pane.table.viewport().grab().toImage()
     scale = frame.devicePixelRatio()
     rect = pane.table.visualItemRect(pane.table.item(0, 1))
-    error = QColor(tokens()['error'])
-    error_pixels = sum(frame.pixelColor(x, y) == error
+    error = QColor(tokens()['error']).getRgb()[:3]
+
+    def is_error_pixel(x, y):
+        # Windows 中文字体的抗锯齿会混合相邻颜色，像素仍应接近实际错误色。
+        rgb = frame.pixelColor(x, y).getRgb()[:3]
+        return all(abs(actual - expected) <= 5 for actual, expected in zip(rgb, error))
+
+    error_pixels = sum(is_error_pixel(x, y)
                        for x in range(round(rect.left() * scale), round(rect.right() * scale))
                        for y in range(round(rect.top() * scale), round(rect.bottom() * scale)))
     assert error_pixels > 5

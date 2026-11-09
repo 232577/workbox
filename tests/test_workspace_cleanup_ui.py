@@ -92,7 +92,10 @@ def test_project_row_and_unselected_file_panel_only_show_applicable_content(pane
     assert not pane.open_button.isVisible()
     assert not panel.project_actions_button.isVisible()
     panel.project_list.setCurrentRow(0)
-    assert panel.project_actions_button.isVisible() and panel.change_type_button.isVisible()
+    panel.show_project_detail()
+    assert panel.project_actions_button.isVisible() and panel.open_workspace_button.isVisible()
+    assert panel.project_metadata.isVisible()
+    assert any(action.text() == '项目类型' for action in panel.project_context_menu(panel.current_project['id']).actions())
 
 
 def test_failed_document_read_offers_direct_retry_and_keeps_normal_refresh_in_menu(panel, monkeypatch):
@@ -106,6 +109,7 @@ def test_failed_document_read_offers_direct_retry_and_keeps_normal_refresh_in_me
 
     monkeypatch.setattr(project_documents_ui, 'list_project_documents', fail)
     panel.project_list.setCurrentRow(0)
+    panel.show_project_detail()
     wait_for_reader(pane)
     assert '读取失败' in pane.hint.text()
     assert pane.refresh_button.isVisible() and pane.refresh_button.isEnabled()

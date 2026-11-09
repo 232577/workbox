@@ -3,7 +3,7 @@ from datetime import datetime
 from math import ceil
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QDate, QLocale, QSignalBlocker, QTimer, Signal, QItemSelectionModel
+from PySide6.QtCore import Qt, QDate, QEvent, QLocale, QPoint, QSignalBlocker, QTimer, Signal, QItemSelectionModel
 from PySide6.QtGui import QTextOption
 from PySide6.QtWidgets import (QAbstractItemView, QDialog, QDialogButtonBox,
     QHBoxLayout, QHeaderView, QMenu, QSizePolicy, QTextBrowser,
@@ -22,6 +22,7 @@ KIND_TEXT = {'auto-zip':'ZIP 自动交付','manual-zip':'手动 ZIP 交付',
              'manual-files':'手动材料交付','legacy':'旧交付事实'}
 ROLE_TEXT = {'first':'首次计数','repeat':'补交不计','voided':'已撤销'}
 SCOPE_NOTE = '按北京时间统计个人工作量。代交可设为不计工作量，误记可撤销。'
+DEFAULT_PANEL_SIZES = (2, 1)
 
 
 def beijing_timestamp(value):
@@ -57,12 +58,13 @@ class TodayDeliveryDialog(QDialog):
             self.setWindowFlags(Qt.Widget)
         self.service = service
         self._panel_sizes_dirty = False
+        self._details_collapsed = False
         try:
-            sizes = service.get_setting('delivery_panel_sizes', [400, 400])
+            sizes = service.get_setting('delivery_panel_sizes', list(DEFAULT_PANEL_SIZES))
         except Exception:
             sizes = None
         self._panel_sizes = sizes if (isinstance(sizes, list) and len(sizes) == 2
-            and all(type(size) is int and 0 < size <= 100000 for size in sizes)) else [400, 400]
+            and all(type(size) is int and 0 < size <= 100000 for size in sizes)) else list(DEFAULT_PANEL_SIZES)
         self.rows,self.events = [],[]
         self._summary_signature = self._details_signature = None
         self._history,self._day = None,None
@@ -84,6 +86,8 @@ class TodayDeliveryDialog(QDialog):
         controls = QHBoxLayout()
         self.date_edit = DateEdit()
         self.date_edit.setAccessibleName('交付记录日期')
+        self.date_edit.setAccessibleDescription('按北京时间查询单日交付记录。')
+        self.date_edit.setToolTip('按北京时间查询单日交付记录。')
         self.date_edit.setLocale(QLocale(QLocale.Chinese,QLocale.China))
         self.date_edit.setDisplayFormat('yyyy-MM-dd')
         self.date_edit.setCalendarPopup(True)
@@ -94,33 +98,42 @@ class TodayDeliveryDialog(QDialog):
         self.date_edit.setDate(QDate.fromString(today,'yyyy-MM-dd'))
         self.search = QLineEdit()
         self.search.setAccessibleName('搜索交付项目或批次')
-        self.search.setPlaceholderText('项目或批次')
+        self.search.setPlaceholderText('搜索项目或批次')
         self.search.setClearButtonEnabled(True)
         self.search.setMaxLength(200)
         self.refresh_button = button('刷新')
         self.refresh_button.hide()
-        self.export_button = button('导出表格')
+        self.export_button = button('导出全部')
         self.export_button.setAccessibleName('导出全部有效交付项目')
         self.export_button.setToolTip('导出全部有效交付项目，每个项目一行，不受当前筛选影响。')
+        self.date_scope_button = button('全部日期')
+        self.date_scope_button.setAccessibleName('交付记录日期范围：全部日期')
+        self.date_scope_button.setToolTip('当前查询全部日期，点击可切换到单日。')
+        self.date_scope_button.hide()
         controls.addWidget(self.date_edit)
+        controls.addWidget(self.date_scope_button)
         controls.addWidget(self.search,1)
-        controls.addWidget(self.export_button)
         self.compact_filter_button = button('筛选')
         self.compact_filter_button.setAccessibleName('交付筛选与统计')
         self.compact_filter_button.setToolTip(SCOPE_NOTE)
         self.compact_filter_menu = QMenu(self.compact_filter_button)
         self.compact_filter_button.setMenu(self.compact_filter_menu)
         self.today_action = self.compact_filter_menu.addAction('今天',self.go_today)
+        date_scope_menu = QMenu(self.date_scope_button)
+        self.date_scope_button.setMenu(date_scope_menu)
+        date_scope_menu.addAction(self.today_action)
+        date_scope_menu.addAction('选择日期', self._choose_date)
         self.all_dates = self.compact_filter_menu.addAction('全部日期')
         self.all_dates.setCheckable(True)
         self.show_voided = self.compact_filter_menu.addAction('显示已撤销')
         self.show_voided.setCheckable(True)
         self.refresh_action = self.compact_filter_menu.addAction('刷新',self.refresh)
-        self.type_stats_menu = self.compact_filter_menu.addMenu('类型统计')
+        self.type_stats_menu = self.compact_filter_menu.addMenu('当前筛选的类型统计')
         self.scope_stats_action = self.compact_filter_menu.addAction('交付统计暂不可读')
         self.scope_stats_action.setEnabled(False)
         self.compact_filter_menu.aboutToShow.connect(self._populate_compact_filters)
         controls.addWidget(self.compact_filter_button)
+        controls.addWidget(self.export_button)
         layout.addLayout(controls)
         self.summary = label('','subtle',True)
         self.summary.hide()
@@ -196,12 +209,12 @@ class TodayDeliveryDialog(QDialog):
         detail_layout.setSpacing(4)
         self.project_heading = label('项目记录')
         self.detail_heading = label('交付明细')
-        for section, heading in ((project_layout, self.project_heading), (detail_layout, self.detail_heading)):
+        for heading in (self.project_heading, self.detail_heading):
             font = heading.font()
             font.setBold(True)
             heading.setFont(font)
-            heading.setContentsMargins(16, 0, 0, 0)
-            section.addWidget(heading)
+        project_layout.addWidget(self.project_heading)
+        detail_layout.addWidget(self.detail_heading)
         self.table = self._table('交付项目列表',['项目','批次','首次有效交付','我的工作量','项目类型'],wrapped=True)
         self.table.setMinimumHeight(116)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -247,6 +260,7 @@ class TodayDeliveryDialog(QDialog):
         self._panel_layout_timer = QTimer(self)
         self._panel_layout_timer.setSingleShot(True)
         self._panel_layout_timer.timeout.connect(self._restore_panel_sizes)
+        self.record_splitter.installEventFilter(self)
         layout.addWidget(self.record_splitter,1)
         actions = QHBoxLayout()
         self.project_actions_button = button('项目操作')
@@ -273,7 +287,10 @@ class TodayDeliveryDialog(QDialog):
         self.expand_details_action.setCheckable(True)
         self.expand_details_action.setToolTip('让交付明细使用整个列表区域，再次选择恢复上下分栏。')
         self.close_button = button('返回项目' if embedded else '关闭')
+        self.details_toggle = button('收起明细')
+        self.details_toggle.setToolTip('显示或收起所选项目的交付明细。')
         actions.addWidget(self.project_actions_button)
+        actions.addWidget(self.details_toggle)
         actions.addWidget(self.record_actions_button)
         actions.addStretch()
         actions.addWidget(self.close_button)
@@ -284,8 +301,8 @@ class TodayDeliveryDialog(QDialog):
         self._status_timer = QTimer(self)
         self._status_timer.setSingleShot(True)
         self._status_timer.timeout.connect(self.status_note.hide)
-        for widget in (self.refresh_button,self.export_button,self.compact_filter_button,
-                       self.project_actions_button,self.record_actions_button,self.close_button):
+        for widget in (self.refresh_button,self.export_button,self.date_scope_button,self.compact_filter_button,
+                       self.project_actions_button,self.details_toggle,self.record_actions_button,self.close_button):
             widget.setAutoDefault(False)
         self.timer = QTimer(self)
         self.timer.setInterval(2000)
@@ -302,6 +319,7 @@ class TodayDeliveryDialog(QDialog):
         self.details.itemSelectionChanged.connect(self._update_open_action)
         self.close_button.clicked.connect(self.return_requested.emit if embedded else self.close)
         self.expand_details_action.toggled.connect(self._sync_record_views)
+        self.details_toggle.clicked.connect(self._toggle_details)
         self.refresh()
 
     @staticmethod
@@ -430,6 +448,17 @@ class TodayDeliveryDialog(QDialog):
                 # 先按当前空间换算比例，避免 Qt 用新窗口的最小高度截断旧像素值。
                 first = max(1, min(available - 1,
                                   round(available * self._panel_sizes[0] / sum(self._panel_sizes))))
+                if tuple(self._panel_sizes) == DEFAULT_PANEL_SIZES:
+                    # 初始明细留出可读区域。用户拖动后的比例按原值恢复。
+                    header = self.details.horizontalHeader()
+                    frame = 2 * self.details.frameWidth()
+                    width = self.record_splitter.width() - frame - self.details.verticalScrollBar().sizeHint().width()
+                    scrollbar = self.details.horizontalScrollBar().sizeHint().height() if header.length() > width else 0
+                    readable_detail = (140 + self.detail_heading.sizeHint().height()
+                                       + self.detail_panel.layout().spacing() + header.sizeHint().height()
+                                       + frame + scrollbar)
+                    if available > 2 * readable_detail:
+                        first = min(first, available - readable_detail)
                 self.record_splitter.setSizes([first, available - first])
 
     def _save_panel_sizes(self):
@@ -443,33 +472,46 @@ class TodayDeliveryDialog(QDialog):
             self._panel_sizes_dirty = False
 
     def _scope_changed(self,*_):
-        self.date_edit.setEnabled(not self.all_dates.isChecked())
+        all_dates = self.all_dates.isChecked()
+        if all_dates:
+            self.date_edit.discard_pending_input()
+        self.date_edit.setEnabled(not all_dates)
+        self.date_edit.setVisible(not all_dates)
+        self.date_scope_button.setVisible(all_dates)
         self.refresh()
+
+    def _choose_date(self):
+        self.all_dates.setChecked(False)
+        self.date_edit.setFocus(Qt.OtherFocusReason)
 
     def go_today(self):
         self.date_edit.discard_pending_input()
         self._following_today = True
         with QSignalBlocker(self.all_dates):
             self.all_dates.setChecked(False)
-        self.date_edit.setEnabled(True)
-        self.refresh()
+        self._scope_changed()
 
     def refresh(self,*_):
-        active = sum(action.isChecked() for action in (self.all_dates,self.show_voided))
-        self.compact_filter_button.setText(f'筛选（{active}）' if active else '筛选')
-        self.compact_filter_button.setAccessibleName(f'交付筛选与统计，{active} 项生效' if active else '交付筛选与统计')
+        all_dates = self.all_dates.isChecked()
+        show_voided = self.show_voided.isChecked()
+        active = all_dates + show_voided
+        filter_text = f'筛选（{active}）' if active else '筛选'
+        filter_state = ' · 含已撤销' if show_voided else ''
+        self.compact_filter_button.setText(filter_text + filter_state)
+        self.compact_filter_button.setAccessibleName('交付' + filter_text + filter_state)
+        keyword = self.search.text()
         try:
-            if self._following_today:
+            if self._following_today and not all_dates:
                 today = self.service.db.today_delivery_summary()['day']
                 date = QDate.fromString(today,'yyyy-MM-dd')
                 # 同日刷新也会让 Qt 重写编辑文本，丢弃尚未输完的年份。
                 if self.date_edit.date() != date:
                     with QSignalBlocker(self.date_edit):
                         self.date_edit.setDate(date)
-            day = None if self.all_dates.isChecked() else self.date_edit.date().toPython()
-            history = self.service.db.delivery_history(day,keyword=self.search.text())
+            day = None if all_dates else self.date_edit.date().toPython()
+            history = self.service.db.delivery_history(day,keyword=keyword)
             catalog = self.service.list_project_types(include_inactive=True)
-            signature = (day,self.search.text(),self.show_voided.isChecked(),
+            signature = (day,keyword,show_voided,
                          tuple(tuple(sorted(row.items())) for row in history['events']),
                          tuple(tuple(sorted(row.items())) for row in catalog),
                          tuple(tuple(sorted(row.items())) for row in history.get('type_counts',[])))
@@ -500,7 +542,7 @@ class TodayDeliveryDialog(QDialog):
         scope = day.isoformat() if day else '全部日期'
         grouped = {}
         for event in history['events']:
-            if event['voided'] and not self.show_voided.isChecked():
+            if event['voided'] and not show_voided:
                 continue
             row = grouped.setdefault(event['project_id'],dict(project_id=event['project_id'],project_name=event['project_name'],
                 batch_name=event['batch_name'],first_at=event['first_at'],prior_delivery=event.get('prior_delivery',False),counted=False,has_valid=False,
@@ -513,14 +555,19 @@ class TodayDeliveryDialog(QDialog):
             row['has_valid'] |= not event['voided']
         self.rows = list(grouped.values())
         excluded=sum(row['has_valid'] and not row['included_in_workload'] for row in self.rows)
-        self.summary.setText('暂无交付记录。' if not history['events'] else '没有符合当前筛选的交付记录。')
+        if keyword.strip() or history['events']:
+            self.summary.setText('没有符合当前筛选的交付记录。')
+        else:
+            self.summary.setText('所选日期暂无交付记录。' if day else '暂无交付记录。')
         self.summary.setVisible(not self.rows)
         self.refresh_button.hide()
         self.type_summary.show()
-        self.type_total.setText(f"{scope} · 工作量合计 {history['project_count']} 个项目")
+        self.type_total.setText(f"当前筛选 · 工作量合计 {history['project_count']} 个项目"
+                               f" · 补交 {history['repeat_count']} 条")
+        voided_note = '（列表已隐藏）' if history['voided_count'] and not show_voided else ''
         breakdown = (f"首次交付 {history['project_count']} 个项目 · 补交 {history['repeat_count']} 条"
-                     f" · 已撤销 {history['voided_count']} 条 · 不计工作量 {excluded} 个项目")
-        self.scope_stats_action.setText(breakdown)
+                     f" · 已撤销 {history['voided_count']} 条{voided_note} · 不计工作量 {excluded} 个项目")
+        self.scope_stats_action.setText(f'{scope} · {breakdown}')
         self.type_total.setToolTip(f'{scope} · {breakdown}')
         self.compact_filter_button.setToolTip(SCOPE_NOTE+'\n'+f'{scope} · {breakdown}')
         counts = '  ·  '.join(f"{row['type_name'] or '未分类'}"+
@@ -879,9 +926,13 @@ class TodayDeliveryDialog(QDialog):
                 self.layout().setContentsMargins(margin, margin, margin, margin)
                 self.layout().setSpacing(4)
         super().resizeEvent(event)
-        if self.isVisible() and hasattr(self, '_panel_layout_timer'):
-            # 外层滚动区在切页后可能再次定尺寸，按最终可用空间恢复偏好。
+
+    def eventFilter(self, watched, event):
+        if (watched is getattr(self, 'record_splitter', None)
+                and event.type() == QEvent.Resize and self.isVisible()):
+            # 统计和提示的行高也会改变可用空间，按分隔器的实际尺寸恢复偏好。
             self._panel_layout_timer.start(0)
+        return super().eventFilter(watched, event)
 
     def _populate_compact_filters(self):
         stats = self.type_stats_menu
@@ -910,9 +961,21 @@ class TodayDeliveryDialog(QDialog):
         self.details.setMinimumHeight(92)
         self._summary_layout_timer.start(0)
         self.status_note.setMaximumHeight(32 if compact else 16777215)
-        self.layout().setContentsMargins(6 if compact else 9,6 if compact else 9,
-                                        6 if compact else 9,6 if compact else 9)
+        vertical = 6 if compact else 9
+        left = right = vertical
+        header = getattr(host, 'header_surface', None)
+        if header is not None:
+            margins = header.layout().contentsMargins()
+            # 页签的原生框已经给内容区加了一层内边距。
+            inset = self.mapTo(host, QPoint()).x() - header.mapTo(host, QPoint()).x()
+            left = max(0, margins.left() - inset)
+            right = max(0, margins.right() - inset)
+        self.layout().setContentsMargins(left, vertical, right, vertical)
         self.layout().setSpacing(4 if compact else 6)
+        self._sync_record_views()
+
+    def _toggle_details(self):
+        self._details_collapsed = not self._details_collapsed
         self._sync_record_views()
 
     def _sync_record_views(self,*_):
@@ -926,7 +989,7 @@ class TodayDeliveryDialog(QDialog):
         self.expand_details_action.setText('恢复分栏' if expanded else '放大明细')
         self.expand_details_action.setVisible(not compact)
         show_projects = not detail_tab if compact else not expanded
-        show_details = detail_tab if compact else has_details
+        show_details = detail_tab if compact else has_details and not self._details_collapsed
         restore_sizes = show_projects and show_details and (self.project_panel.isHidden() or self.detail_panel.isHidden())
         self.project_panel.setVisible(show_projects)
         self.detail_panel.setVisible(show_details)
@@ -935,6 +998,8 @@ class TodayDeliveryDialog(QDialog):
         self.details.setVisible(has_details)
         self.details_hint.setVisible(not has_details)
         self.project_actions_button.setVisible(show_projects and self.table.selectionModel().hasSelection())
+        self.details_toggle.setVisible(not compact and show_projects and has_details)
+        self.details_toggle.setText('查看明细' if self._details_collapsed else '收起明细')
         self.record_actions_button.setVisible(show_details and has_details)
         if restore_sizes:
             self._panel_layout_timer.start(0)

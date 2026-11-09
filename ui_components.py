@@ -4,7 +4,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QColor, QIcon, QPainter
 from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QPushButton, QToolButton, QVBoxLayout, QWidget, QFrame, QHBoxLayout, QSizePolicy
-from qfluentwidgets.common.icon import FluentIconBase, toQIcon
+from qfluentwidgets.common.icon import FluentIconBase, FluentIconEngine, toQIcon
 from control_styles import control_style
 from qfluentwidgets import (
     CheckBox as _FluentCheckBox,
@@ -165,7 +165,7 @@ class LineEdit(_FluentLineEdit):
         else:
             super().__init__(parent if parent is not None else text)
 
-        self.setMinimumHeight(32)
+        self.setFixedHeight(32)
 
         # A widget-local Fluent sheet wins over the application padding during
         # Qt polish and otherwise reduces this to 22px despite minimumHeight.
@@ -183,16 +183,45 @@ class SpinBox(_FluentSpinBox):
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
-        # 应用的通用输入框和工具按钮内边距会破坏 Fluent 的固定尺寸。
-        spin_rule = ('SpinBox, SpinBox:focus { min-height: 31px; '
-                     'padding: 0px 80px 0px 10px; } '
-                     'SpinBox:read-only, SpinBox[symbolVisible=false] '
-                     '{ padding: 0px 10px; }')
-        button_rule = ('SpinButton, SpinButton:focus { padding: 0px; '
-                       'min-height: 21px; min-width: 29px; }')
-        setCustomStyleSheet(self, spin_rule, spin_rule)
-        for control in (self.upButton, self.downButton):
-            setCustomStyleSheet(control, button_rule, button_rule)
+        from theme import tokens
+        self.setCustomFocusedBorderColor(tokens('light')['accent'], tokens('dark')['accent'])
+        setCustomStyleSheet(self, control_style('light', 'spin'), control_style('dark', 'spin'))
+        for control, name in ((self.upButton, '增加数值'), (self.downButton, '减少数值')):
+            control.setAccessibleName(name)
+            control.setToolTip(name)
+            setCustomStyleSheet(control, control_style('light', 'spin-button'), control_style('dark', 'spin-button'))
+        self.valueChanged.connect(self._update_step_actions)
+        self._update_step_actions()
+
+    def _update_step_actions(self):
+        # Fluent renders the inline buttons separately from Qt's native stepper.
+        steps = self.stepEnabled()
+        self.upButton.setEnabled(bool(steps & self.StepEnabledFlag.StepUpEnabled))
+        self.downButton.setEnabled(bool(steps & self.StepEnabledFlag.StepDownEnabled))
+
+    def setValue(self, value):
+        super().setValue(value)
+        self._update_step_actions()
+
+    def setRange(self, minimum, maximum):
+        super().setRange(minimum, maximum)
+        self._update_step_actions()
+
+    def setMinimum(self, minimum):
+        super().setMinimum(minimum)
+        self._update_step_actions()
+
+    def setMaximum(self, maximum):
+        super().setMaximum(maximum)
+        self._update_step_actions()
+
+    def setWrapping(self, enabled):
+        super().setWrapping(enabled)
+        self._update_step_actions()
+
+    def setReadOnly(self, read_only):
+        super().setReadOnly(read_only)
+        self._update_step_actions()
 
     def _showContextMenu(self, position):
         _exec_native_edit_menu(self.lineEdit(), self.mapToGlobal(position))
@@ -204,7 +233,7 @@ class CheckBox(_FluentCheckBox):
         super().__init__(*args, **kwargs)
         def chrome(mode):
             from theme import tokens
-            return ('CheckBox { color: %(ink)s; spacing: 8px; font-size: 13px; '
+            return ('CheckBox { color: %(ink)s; spacing: 8px; font-size: 14px; '
                     'border: 1px solid transparent; border-radius: 4px; padding: 0 2px; }'
                     'CheckBox:focus { border-color: %(accent)s; }'
                     'CheckBox:disabled { color: %(disabled)s; }'
@@ -251,8 +280,6 @@ class ComboBox(QComboBox):
         def native_chrome(theme):
             arrow = FluentIcon.ARROW_DOWN.path(theme)
             return (control_style('dark' if theme == Theme.DARK else 'light', 'combo') +
-                    "ComboBox::drop-down { subcontrol-origin: padding; "
-                    "subcontrol-position: top right; width: 28px; border: none; background: transparent; }"
                     "ComboBox::down-arrow, ComboBox::down-arrow:on, "
                     "ComboBox::down-arrow:hover, ComboBox::down-arrow:focus "
                     f"{{ image: url({arrow}); width: 10px; height: 10px; }}")
@@ -364,11 +391,38 @@ class NavigationMenuButton(QToolButton):
             super().setIcon(toQIcon(self._source_icon) if self._source_icon is not None else QIcon())
 
 
+class _NativeButtonIcon:
+    """Let Qt measure and draw the icon and caption together in every state."""
+
+    def setIcon(self, icon):
+        if isinstance(icon, FluentIconBase):
+            icon = QIcon(FluentIconEngine(icon, reverse=isinstance(self, PrimaryPushButton)))
+        QPushButton.setIcon(self, toQIcon(icon) if icon is not None else QIcon())
+
+    def icon(self):
+        return QPushButton.icon(self)
+
+    def paintEvent(self, event):
+        QPushButton.paintEvent(self, event)
+
+
+class _WorkBoxPushButton(_NativeButtonIcon, PushButton):
+    pass
+
+
+class _WorkBoxPrimaryButton(_NativeButtonIcon, PrimaryPushButton):
+    pass
+
+
+class _WorkBoxToggleButton(_NativeButtonIcon, ToggleButton):
+    pass
+
+
 def button(text: str, primary: bool | str = False):
     """兼容紧凑窗口布尔主按钮及旧界面的 primary/filter/nav 角色。"""
     role = primary if isinstance(primary, str) else ('primary' if primary else '')
-    kind = {'primary': PrimaryPushButton, 'filter': ToggleButton,
-            'nav': NavigationButton, 'nav-menu': NavigationMenuButton}.get(role, PushButton)
+    kind = {'primary': _WorkBoxPrimaryButton, 'filter': _WorkBoxToggleButton,
+            'nav': NavigationButton, 'nav-menu': NavigationMenuButton}.get(role, _WorkBoxPushButton)
     widget = kind(text)
     widget.setCursor(Qt.PointingHandCursor)
     # Keep Qt's text-derived accessible name live when captions change.
@@ -411,6 +465,7 @@ def init_fluent_theme(mode: str, accent: str) -> None:
     themes = {'light': Theme.LIGHT, 'dark': Theme.DARK, 'system': Theme.AUTO}
     if mode not in themes:
         raise ValueError(f'不支持的外观模式：{mode}')
-    setFontFamilies(['Microsoft YaHei UI', 'Microsoft YaHei', 'Segoe UI'], save=False)
+    from theme import ui_font_families
+    setFontFamilies(ui_font_families(), save=False)
     setTheme(themes[mode], save=False)
     setThemeColor(accent, save=False)

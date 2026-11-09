@@ -1,5 +1,7 @@
 # WorkBox 界面规范索引
 
+当前项目工作台与控件以[成熟工作台改版](docs/UI-MATURE-WORKSPACE.md)为准：清单内筛选、直接项目动作、窄窗完整详情、表上文件操作和强化的公共控件。本文下方带日期的段落保留历史决策，涉及控件位置和窄窗布局时以当前规范优先。
+
 桌面设计的主规范是 [桌面设计系统](docs/UI-DESIGN-SYSTEM.md)，网站另使用 [网站设计记录](website/DESIGN.md)。本文件记录本轮新增交互的归属，不另建配色或字体系统。
 
 - 桌面使用 PySide6、锁定的 QFluentWidgets 与原生窗口；浅深色、字号和控件外观由 `theme.py`、`control_styles.py`、`ui_components.py` 负责。
