@@ -254,7 +254,7 @@ def test_merged_project_rejects_rule_save_without_mutation(service,monkeypatch):
 
 
 def test_narrow_rule_controls_show_type_and_two_digit_count(qapp,service):
-    from PySide6.QtWidgets import QStyle, QStyleOptionComboBox
+    from PySide6.QtWidgets import QHeaderView, QStyle, QStyleOptionComboBox
     d=make_dialog(service)
     try:
         d.set_rules([Requirement('a','说明书','word',20,'说明书')])
@@ -268,4 +268,17 @@ def test_narrow_rule_controls_show_type_and_two_digit_count(qapp,service):
         edit=count.lineEdit()
         assert edit.contentsRect().width()>=edit.fontMetrics().horizontalAdvance('20')+16, 'count text clipped by nested padding'
         assert d.rect().contains(d.close_button.mapTo(d,d.close_button.rect().bottomRight()))
+        header = d.rule_table.horizontalHeader()
+        for column in (1, 2):
+            assert header.sectionResizeMode(column) == QHeaderView.Interactive
+            wider = header.sectionSize(column) + 24
+            header.resizeSection(column, wider)
+            assert header.sectionSize(column) == wider
+            header.resizeSection(column, 1)
+        QApplication.processEvents()
+        family.initStyleOption(opt)
+        rect = family.style().subControlRect(QStyle.CC_ComboBox, opt, QStyle.SC_ComboBoxEditField, family)
+        longest_type = max(family.fontMetrics().horizontalAdvance(family.itemText(i)) for i in range(family.count()))
+        assert rect.width() >= longest_type
+        assert edit.contentsRect().width() >= edit.fontMetrics().horizontalAdvance('20') + 16
     finally:d.shutdown();d.deleteLater()

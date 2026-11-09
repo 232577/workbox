@@ -56,15 +56,20 @@ def test_projects_are_left_and_selected_documents_are_right(panel,qapp):
     assert pane.table.item(0,0).text()=='乙说明.docx'
     assert panel.project_splitter.orientation()==Qt.Horizontal
     panel.show_notice('文件已经收进项目，原件保留。')
+    left=panel.project_list.mapTo(panel,panel.project_list.rect().topRight())
+    right=pane.table.mapTo(panel,pane.table.rect().topLeft())
+    assert left.x()<right.x()
     for width,height in ((840,670),(660,492)):
         panel.resize(width,height)
         qapp.processEvents()
-        left=panel.project_list.mapTo(panel,panel.project_list.rect().topRight())
-        right=pane.table.mapTo(panel,pane.table.rect().topLeft())
-        assert left.x()<right.x()
+        panel.show_project_detail()
+        qapp.processEvents()
+        assert not panel.project_side.isVisible() and panel.document_side.isVisible()
+        assert panel.project_back_button.isVisible()
         assert panel.width()==width and panel.height()==height and pane.table.viewport().height()>=40
+        pane.table.selectRow(0)
         assert panel.rect().contains(pane.open_button.mapTo(panel,pane.open_button.rect().bottomRight()))
-        assert pane.table.geometry().bottom() < pane.open_button.geometry().top(), '文件表不能被底部按钮遮挡'
+        assert pane.open_button.mapTo(pane,pane.open_button.rect().bottomLeft()).y() < pane.table.geometry().top(), '文件操作应靠近表头且不遮挡数据'
 
 
 def test_document_columns_drag_and_keep_user_width_when_window_changes(panel, qapp):
@@ -278,6 +283,7 @@ def test_hidden_reader_finished_callback_cannot_consume_new_reader(panel,monkeyp
 def test_failed_document_open_is_visible_even_in_compact_layout(panel,monkeypatch,qapp):
     panel.resize(660,492)
     choose(panel,1)
+    panel.show_project_detail()
     pane=panel.document_pane
     wait(lambda:pane.worker is None and pane.table.rowCount()==1)
     pane.table.selectRow(0)

@@ -135,6 +135,7 @@ def test_workbench_wide_to_compact_resize_keeps_native_minimum(qapp,service):
     p=CompactPanel(service)
     try:
         p.show();p.project_list.setCurrentRow(0)
+        p.show_project_detail()
         p.show_notice('匿名布局验证，不修改任何用户文件。')
         for width,height in ((1160,780),(840,670),(660,492),(1160,780),(660,492)):
             p.resize(width,height)

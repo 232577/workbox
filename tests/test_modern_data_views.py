@@ -143,11 +143,13 @@ def test_document_pane_retains_four_complete_short_file_rows(qapp):
                 pane.table.rowViewportPosition(row) + pane.table.rowHeight(row) <= pane.table.viewport().height()]
     assert len(complete) >= 4, (len(complete), pane.table.viewport().height(), pane.table.rowHeight(0))
     assert not pane.table.item(0, 0).icon().isNull()
-    assert pane.table.horizontalHeaderItem(0).text() == '文件名称 · 12'
+    assert pane.file_count.isVisible() and pane.file_count.text() == '12 项'
+    assert pane.table.horizontalHeaderItem(0).text() == '文件名称'
     assert pane.hint.isHidden()
     pane.apply_result(dict(project_id=1, workspace_path='fixture', errors=['Unavailable location'], documents=documents))
     assert not pane.hint.isHidden() and '暂不可读' in pane.hint.text()
-    assert pane.table.horizontalHeaderItem(0).text() == '文件名称 · 12'
+    assert pane.file_count.isVisible() and pane.file_count.text() == '12 项'
+    assert pane.table.horizontalHeaderItem(0).text() == '文件名称'
     pane.hide()
     pane.deleteLater()
 

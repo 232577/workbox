@@ -130,6 +130,10 @@ def test_document_names_wrap_and_reflow_without_replacing_items(
         panel, qapp, document_name, narrow_size, wide_size, record_property):
     panel.resize(*narrow_size)
     pane = panel.document_pane
+    single_pane = narrow_size[0] < 900
+    if single_pane:
+        panel.current_project = panel.service.get_project(1)
+        panel.show_project_detail()
     pane.project_id = 1
     record = dict(id='work:manual', name=document_name, relative_path=document_name,
                   path=document_name, kind='工作文件',
@@ -137,6 +141,8 @@ def test_document_names_wrap_and_reflow_without_replacing_items(
     result = dict(project_id=1, workspace_path='', errors=[], documents=[record])
     pane.apply_result(result)
     panel.project_splitter.setSizes([650, 350])
+    if single_pane:
+        pane.table.setColumnWidth(0, 160)
     settle(qapp)
     table = pane.table
     narrow_height = table.rowHeight(0)
@@ -149,13 +155,17 @@ def test_document_names_wrap_and_reflow_without_replacing_items(
     assert table.model().data(table.model().index(0, 0), Qt.DisplayRole) == document_name
     table.selectRow(0)
     panel.project_splitter.setSizes([220, 780])
+    if single_pane:
+        table.setColumnWidth(0, 220)
     settle(qapp)
     assert table.columnWidth(0) > narrow_width
     assert_complete_item_text_fits(table, item)
-    # 最小窗口的分栏只有约 8 px 可拖动空间，不保证跨越文字换行边界。
-    # 扩大真实窗口后仍严格验证列宽增加、行高缩减，且两种宽度都显示完整文字。
+    # 窄窗单页详情通过表头调列宽，宽窗仍通过分栏调自动列宽。
+    # 两种窗口都严格验证列宽增加、行高缩减和完整文件名。
     panel.resize(*wide_size)
     panel.project_splitter.setSizes([220, 780])
+    if single_pane:
+        table.setColumnWidth(0, 400)
     settle(qapp)
     assert table.columnWidth(0) > narrow_width, (
         panel.size(), narrow_sizes, panel.project_splitter.sizes(),

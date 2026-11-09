@@ -10,8 +10,8 @@ from functools import lru_cache
 os.environ['QT_API'] = 'pyside6'
 
 from PySide6.QtCore import QObject, Qt, Signal, QEvent
-from PySide6.QtGui import QColor, QFont, QPalette
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette
+from PySide6.QtWidgets import QApplication, QCalendarWidget, QWidget
 import shiboken6
 import qdarkstyle
 from qdarkstyle.dark.palette import DarkPalette
@@ -19,6 +19,11 @@ from qdarkstyle.light.palette import LightPalette
 
 
 _MODES = ('light', 'dark', 'system')
+_UI_FONT_FAMILIES = (
+    'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans SC',
+    'Noto Sans CJK SC', 'Source Han Sans SC', 'SimHei', 'WenQuanYi Micro Hei',
+    'Segoe UI', 'Noto Sans', 'DejaVu Sans',
+)
 _TOKENS = {
     'light': {
         'bg': '#F5F5F2', 'surface': '#FFFFFF', 'raised': '#E9ECE7',
@@ -97,6 +102,17 @@ def tokens(mode=None):
     return dict(_TOKENS[_resolve(mode)])
 
 
+def ui_font_families():
+    """Qt 和 Fluent 使用相同的已安装字体序列，中文无衬线优先。"""
+    if QApplication.instance() is None:
+        return list(_UI_FONT_FAMILIES)
+    installed = set(QFontDatabase.families())
+    if not installed:  # Offscreen can lack a platform font database entirely.
+        return list(_UI_FONT_FAMILIES)
+    families = [family for family in _UI_FONT_FAMILIES if family in installed]
+    return families or QFontDatabase.systemFont(QFontDatabase.GeneralFont).families()
+
+
 @lru_cache(maxsize=2)
 def _base_stylesheet(mode):
     palette = DarkPalette if mode == 'dark' else LightPalette
@@ -107,8 +123,15 @@ def stylesheet(mode=None, role='window'):
     """成熟标准控件主题之后追加 WorkBox 语义样式。"""
     actual = _resolve(mode)
     c = tokens(actual)
+    c['ui_fonts'] = ', '.join(f"'{family}'" for family in ui_font_families())
+    from qfluentwidgets import FluentIcon, Theme
+    icon_theme = Theme.DARK if actual == 'dark' else Theme.LIGHT
+    c['calendar_icon'] = FluentIcon.CALENDAR.path(icon_theme)
+    c['left_icon'] = FluentIcon.LEFT_ARROW.path(icon_theme)
+    c['right_icon'] = FluentIcon.RIGHT_ARROW.path(icon_theme)
+    c['chevron_icon'] = FluentIcon.ARROW_DOWN.path(icon_theme)
     rules = """
-QWidget { font-family: 'Microsoft YaHei UI', 'Segoe UI'; font-size: 13px; color: %(ink)s; background: transparent; }
+QWidget { font-family: %(ui_fonts)s; font-size: 14px; color: %(ink)s; background: transparent; }
 FloatingBall { background: transparent; border: none; }
 QMainWindow, QDialog, QWidget#manager { background: %(bg)s; }
 QWidget#surface, QFrame#card, QWidget#documentSurface, QWidget#projectSurface {
@@ -124,7 +147,7 @@ QFrame#dialogActions { background: transparent; border: none; border-top: 1px so
 QFrame#dialogSection { background: %(surface)s; border: 1px solid %(border)s; border-radius: 10px; }
 QLabel#pendingSettings { color: %(muted)s; font-size: 12px; }
 QLabel#settingsNoResults { color: %(muted)s; background: %(subtle_surface)s; border-radius: 8px; padding: 18px; }
-QLabel#heading, QLabel#pageTitle { font-size: 20px; font-weight: 700; }
+QLabel#heading, QLabel#pageTitle { font-size: 20px; font-weight: 600; }
 QLabel#title, QLabel#sectionTitle { font-size: 15px; font-weight: 600; }
 QLabel#subtle, QLabel#muted { font-size: 12px; color: %(muted)s; }
 QLabel#brand { font-size: 24px; font-weight: 700; }
@@ -181,6 +204,8 @@ QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDate
     padding: 6px 9px; min-height: 18px; selection-background-color: %(selection)s; selection-color: %(selection_text)s;
 }
 QLineEdit, QTextEdit, QPlainTextEdit { placeholder-text-color: %(placeholder)s; }
+QLineEdit:read-only, QTextEdit:read-only, QPlainTextEdit:read-only { background: %(subtle_surface)s; }
+QLineEdit:hover, QComboBox:hover, QAbstractSpinBox:hover { border-color: %(muted)s; }
 QLineEdit:disabled, QTextEdit:disabled, QPlainTextEdit:disabled { placeholder-text-color: %(disabled)s; }
 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QAbstractSpinBox:focus {
     border-color: %(accent)s;
@@ -193,6 +218,18 @@ QComboBox::drop-down { width: 24px; border: none; background: transparent; }
 QAbstractSpinBox { padding-right: 28px; }
 QAbstractSpinBox::up-button, QAbstractSpinBox::down-button { border: none; background: transparent; width: 24px; }
 QAbstractSpinBox::up-button:hover, QAbstractSpinBox::down-button:hover { background: %(hover)s; }
+QDateTimeEdit[calendarPopup="true"] { padding: 4px 34px 4px 9px; min-height: 22px; }
+QDateTimeEdit[calendarPopup="true"]:on { border-color: %(accent)s; }
+QDateTimeEdit[calendarPopup="true"]::drop-down {
+    subcontrol-origin: padding; subcontrol-position: right center;
+    width: 30px; background: transparent; border: none; border-radius: 5px;
+}
+QDateTimeEdit[calendarPopup="true"]::drop-down:hover:enabled { background: %(hover)s; }
+QDateTimeEdit[calendarPopup="true"]::drop-down:on { background: %(notice_bg)s; }
+QDateTimeEdit[calendarPopup="true"]::down-arrow, QDateTimeEdit[calendarPopup="true"]::down-arrow:on,
+QDateTimeEdit[calendarPopup="true"]::down-arrow:hover, QDateTimeEdit[calendarPopup="true"]::down-arrow:focus {
+    image: url(%(calendar_icon)s); width: 14px; height: 14px;
+}
 QComboBox QAbstractItemView { color: %(ink)s; background: %(surface)s; selection-background-color: %(selection)s; selection-color: %(selection_text)s; border: 1px solid %(border)s; }
 QAbstractItemView, QListView, QListWidget, QTreeView, QTreeWidget, QTableView, QTableWidget {
     color: %(ink)s; background: %(surface)s; alternate-background-color: %(raised)s; border: 1px solid %(border)s;
@@ -279,22 +316,38 @@ QCheckBox::indicator, QRadioButton::indicator { width: 18px; height: 18px; }
 QCheckBox::indicator:focus, QRadioButton::indicator:focus { border: 2px solid %(accent)s; }
 QGroupBox { color: %(ink)s; border: 1px solid %(border)s; border-radius: 8px; margin-top: 12px; padding-top: 12px; }
 QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }
-/* Native calendar cells and year editors cannot use full-size list/input padding. */
-QCalendarWidget { min-width: 280px; min-height: 240px; }
-QCalendarWidget QWidget { background: %(surface)s; color: %(ink)s; }
-QCalendarWidget QToolButton {
-    color: %(ink)s; background: %(surface)s; border: none; border-radius: 5px;
-    padding: 4px 6px; min-height: 24px;
+/* Calendar popups use the native model, headers, editor and keyboard handling. */
+QCalendarWidget { min-width: 280px; min-height: 248px; background: %(surface)s;
+    border: 1px solid %(button_border)s; border-radius: 7px; }
+QCalendarWidget QWidget#qt_calendar_navigationbar {
+    color: %(ink)s; background: %(subtle_surface)s; border-bottom: 1px solid %(border)s;
 }
-QCalendarWidget QToolButton:focus { padding: 4px 6px; border: none; }
-QCalendarWidget QToolButton:hover { background: %(hover)s; }
-QCalendarWidget QAbstractItemView {
-    color: %(ink)s; background: %(surface)s; padding: 0;
+QCalendarWidget QToolButton {
+    color: %(ink)s; background: transparent; border: 1px solid transparent; border-radius: 5px;
+    padding: 3px 6px; min-width: 20px; min-height: 24px;
+}
+QCalendarWidget QToolButton:focus { border-color: %(accent)s; }
+QCalendarWidget QToolButton:hover:enabled { background: %(hover)s; }
+QCalendarWidget QToolButton:pressed:enabled { background: %(raised)s; }
+QCalendarWidget QToolButton:disabled { color: %(disabled)s; }
+QCalendarWidget QToolButton#qt_calendar_prevmonth {
+    qproperty-icon: url(%(left_icon)s); qproperty-iconSize: 14px 14px;
+}
+QCalendarWidget QToolButton#qt_calendar_nextmonth {
+    qproperty-icon: url(%(right_icon)s); qproperty-iconSize: 14px 14px;
+}
+QCalendarWidget QToolButton#qt_calendar_monthbutton { padding-right: 20px; }
+QCalendarWidget QToolButton#qt_calendar_monthbutton::menu-indicator {
+    subcontrol-origin: padding; subcontrol-position: right center;
+    image: url(%(chevron_icon)s); width: 9px; height: 9px; right: 5px;
+}
+QCalendarWidget QAbstractItemView, QCalendarWidget QAbstractItemView:focus {
+    color: %(ink)s; background: %(surface)s; padding: 0; border: none; border-radius: 0;
     selection-background-color: %(selection)s; selection-color: %(selection_text)s;
 }
 QCalendarWidget QAbstractItemView::item { padding: 0; }
 QCalendarWidget QSpinBox, QCalendarWidget QSpinBox:focus {
-    padding: 2px 24px 2px 4px; min-width: 64px; min-height: 24px;
+    padding: 2px 24px 2px 4px; min-width: 64px; min-height: 24px; border-radius: 5px;
 }
 QCalendarWidget QSpinBox QLineEdit, QCalendarWidget QSpinBox QLineEdit:focus {
     padding: 0; border: none; min-height: 0;
@@ -318,7 +371,7 @@ QSlider::handle:horizontal { background: %(accent)s; border: 1px solid %(accent)
 FeedbackBubble { background: %(surface)s; color: %(ink)s; border: 1px solid %(border)s; border-radius: 8px; }
 FeedbackBubble QLabel { background: transparent; color: %(ink)s; }
 QWidget#manager[dense="true"] QPushButton, QWidget#manager[dense="true"] QToolButton {
-    padding: 4px 8px; min-height: 18px; font-size: 13px;
+    padding: 4px 8px; min-height: 18px; font-size: 14px;
 }
 QWidget#manager[dense="true"] QPushButton:focus, QWidget#manager[dense="true"] QToolButton:focus {
     padding: 3px 7px;
@@ -337,10 +390,11 @@ QWidget#manager[dense="true"] QPushButton#nav[compactCount="true"]:checked:focus
 QWidget#manager[dense="true"] QLineEdit, QWidget#manager[dense="true"] QComboBox,
 QWidget#manager[dense="true"] QDateEdit, QWidget#manager[dense="true"] QDateTimeEdit,
 QWidget#manager[dense="true"] QTimeEdit, QWidget#manager[dense="true"] QSpinBox,
-QWidget#manager[dense="true"] QDoubleSpinBox { padding: 4px; min-height: 18px; font-size: 13px; }
+QWidget#manager[dense="true"] QDoubleSpinBox { padding: 4px; min-height: 18px; font-size: 14px; }
 QWidget#manager[dense="true"] QComboBox, QWidget#manager[dense="true"] QDateEdit,
 QWidget#manager[dense="true"] QDateTimeEdit, QWidget#manager[dense="true"] QTimeEdit,
 QWidget#manager[dense="true"] QSpinBox, QWidget#manager[dense="true"] QDoubleSpinBox { padding-right: 26px; }
+QWidget#manager[dense="true"] QDateTimeEdit[calendarPopup="true"] { padding: 4px 34px 4px 9px; min-height: 22px; }
 QWidget#manager[dense="true"] QTabBar::tab:top { padding: 6px 10px; font-size: 13px; }
 QWidget#manager[dense="true"] QLabel#title, QWidget#manager[dense="true"] QLabel#sectionTitle { font-size: 15px; }
 QWidget#manager[dense="true"] QLabel#notice { padding: 5px 8px; font-size: 12px; }
@@ -352,8 +406,11 @@ QWidget#manager[dense="true"] QLabel#notice { padding: 5px 8px; font-size: 12px;
     rules += """
 QWidget#workbenchCanvas { background: %(bg)s; }
 QFrame#workbenchHeader { background: %(bg)s; border: none; border-radius: 0px; }
-QFrame#workbenchHeader QLabel#pageTitle { font-size: 23px; }
+QFrame#workbenchHeader QLabel#pageTitle { font-size: 21px; }
 QLabel#selectedProjectName { font-size: 18px; font-weight: 600; }
+QLabel#queueHeader { color: %(ink)s; font-size: 15px; font-weight: 600; }
+QLabel#projectMetadata { color: %(muted)s; font-size: 12px; }
+QWidget#projectDetailActions { background: transparent; border: none; }
 QFrame#sidebar { background: %(nav_bg)s; border: none; border-radius: 0px; }
 QFrame#sidebar QLabel#brandName { color: %(nav_ink)s; }
 QFrame#sidebar QLabel#subtle, QFrame#sidebar QLabel#workspaceStatus { color: %(nav_muted)s; }
@@ -384,7 +441,7 @@ QPushButton#danger { color: %(error)s; background: transparent; border-color: %(
 QPushButton#danger:hover { background: %(error_bg)s; }
 QPushButton#danger:disabled { color: %(disabled)s; background: %(disabled_bg)s; }
 QWidget#projectSurface, QFrame#projectQueueHeader, QWidget#projectQueueTools { background: transparent; border: none; }
-QWidget#documentSurface { background: %(surface)s; border: 1px solid %(border)s; border-radius: 10px; }
+QWidget#documentSurface { background: %(surface)s; border: none; border-radius: 0; }
 QListWidget#projectList { background: transparent; border: none; }
 QSplitter#projectWorkspaceSplit::handle { background: transparent; border: none; margin: 0px 3px; }
 QSplitter#projectWorkspaceSplit::handle:hover { background: %(accent)s; border-radius: 1px; }
@@ -395,7 +452,7 @@ QTableWidget#materialRules, QTableWidget#materialResults, QTableWidget#materialC
     background: %(surface)s; alternate-background-color: %(subtle_surface)s; border: 1px solid %(border)s;
     border-radius: 8px; gridline-color: transparent; }
 QWidget#manager[dense="true"] QFrame#workbenchHeader QLabel#pageTitle { font-size: 18px; }
-QWidget#manager[dense="true"] QLabel#selectedProjectName { font-size: 15px; }
+QWidget#manager[dense="true"] QLabel#selectedProjectName { font-size: 16px; }
 """ % c
     base = _base_stylesheet(actual) if QApplication.instance() is not None else ''
     return base + '\n/* WorkBox semantic appearance */\n' + rules
@@ -438,7 +495,10 @@ class ThemeManager(QObject):
         app.styleHints().colorSchemeChanged.connect(self._on_system_color_scheme_changed)
         app.installEventFilter(self)
         app.setStyle('Fusion')
-        app_font = QFont('Microsoft YaHei UI', 10)
+        app_font = QFont()
+        app_font.setFamilies(ui_font_families())
+        app_font.setPointSize(10)
+        app_font.setStyleHint(QFont.SansSerif)
         app_font.setStyleStrategy(QFont.PreferAntialias)
         app.setFont(app_font)
         self._apply()
@@ -466,6 +526,8 @@ class ThemeManager(QObject):
             pass
 
     def eventFilter(self, watched, event):
+        if event.type() == QEvent.Show and isinstance(watched, QCalendarWidget):
+            self._apply_calendar(watched)
         if event.type() in (QEvent.Show, QEvent.WinIdChange):
             self._style_native_window(watched)
         return False
@@ -489,12 +551,27 @@ class ThemeManager(QObject):
         bar.setPalette(palette)
         bar.update()
 
+    def _apply_calendar(self, calendar):
+        colors = tokens(self.resolved)
+        header = calendar.headerTextFormat()
+        header.setForeground(QColor(colors['muted']))
+        header.setBackground(QColor(colors['subtle_surface']))
+        calendar.setHeaderTextFormat(header)
+        for day in (Qt.Saturday, Qt.Sunday):
+            weekend = calendar.weekdayTextFormat(day)
+            weekend.setForeground(QColor(colors['muted']))
+            calendar.setWeekdayTextFormat(day, weekend)
+
     def _apply(self):
         # 设置应用级样式与 palette，使无父级菜单、系统提示也得到同一主题。
         self.app.setStyleSheet(stylesheet(self.resolved))
         self.app.setPalette(_palette(self.resolved))
         from ui_components import init_fluent_theme
         init_fluent_theme(self.resolved, tokens(self.resolved)['accent'])
+        # Qt owns the popup, and a palette event can arrive before its model exists.
+        for widget in self.app.allWidgets():
+            if isinstance(widget, QCalendarWidget) and widget.isVisible():
+                self._apply_calendar(widget)
         for widget, role in list(self._widgets.items()):
             if shiboken6.isValid(widget):
                 self._style_native_window(widget)

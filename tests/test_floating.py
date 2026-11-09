@@ -354,6 +354,7 @@ def test_status_and_package_text_not_clipped_in_compact_height(qapp, tmp_path):
         app.show_panel()
         app.panel.resize(840, 492)
         app.panel.project_list.setCurrentRow(0)
+        app.panel.show_project_detail()
         app.panel.show_notice('ZIP 已归档，原件保留。\n详细处理位置只在完整提示中显示。')
         qapp.processEvents()
         assert app.panel.document_pane.parentWidget() is app.panel.document_side

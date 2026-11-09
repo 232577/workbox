@@ -172,17 +172,17 @@ class _WorkbenchRowStates:
         pressed = index.row() == self.pressedRow
         focused = self.parent().hasFocus() and self.parent().currentIndex().row() == index.row()
         color = colors['notice_bg'] if selected or pressed else (
-            colors['subtle_surface'] if hovered else self._idle_row_color(colors))
+            colors['hover'] if hovered else self._idle_row_color(colors))
         rect = self._row_rect(option)
         painter.save()
         try:
             painter.setBrush(QColor(color))
             painter.setPen(Qt.NoPen)
-            painter.drawRoundedRect(rect, 6, 6)
+            painter.drawRoundedRect(rect, 4, 4)
             if focused:
                 painter.setBrush(Qt.NoBrush)
                 painter.setPen(QPen(QColor(colors['accent']), 1))
-                painter.drawRoundedRect(rect.adjusted(.5, .5, -.5, -.5), 6, 6)
+                painter.drawRoundedRect(rect.adjusted(.5, .5, -.5, -.5), 4, 4)
             elif not (selected or hovered or pressed) and index.row() + 1 < index.model().rowCount():
                 inset = self._row_rule_inset()
                 if inset is not None and rect.width() > 2 * inset:
@@ -233,7 +233,8 @@ class _WrappedFluentText:
         if index.data(Qt.CheckStateRole) is not None:
             text_width = max(1, text_width - 24)
         if index.data(Qt.DecorationRole) is not None:
-            text_width = max(1, text_width - option.decorationSize.width() - 4)
+            # Qt 在图标左右也分别保留 3px，窄列少算会让文件扩展名落在绘制框外。
+            text_width = max(1, text_width - option.decorationSize.width() - 6)
         option.rect.setWidth(text_width)
         size = super().sizeHint(option, index)
         measured = QFontMetrics(option.font).boundingRect(
@@ -249,10 +250,10 @@ class WrappedFluentListDelegate(_WorkbenchRowStates, _WrappedFluentText, ListIte
 
 
 class ProjectListDelegate(WrappedFluentListDelegate):
-    """项目名和详情独立换行；背景、指示条和交互状态仍由 Fluent 负责。"""
+    """项目名和详情独立换行，沿用 Fluent 行交互与工作台的选中、焦点样式。"""
 
     horizontalInset = 14
-    blockSpacing = 2
+    blockSpacing = 3
     batchSpacing = 4
     batchHeight = 17
     verticalPadding = 5
@@ -309,7 +310,7 @@ class ProjectListDelegate(WrappedFluentListDelegate):
             status_range.start = 0
             status_range.length = len(status)
             status_range.format = QTextCharFormat()
-            status_range.format.setFontWeight(QFont.DemiBold)
+            status_range.format.setFontWeight(QFont.Medium)
             if colors is not None:
                 status_range.format.setForeground(QColor(colors[tone]))
             formats.append(status_range)

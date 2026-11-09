@@ -1,0 +1,21 @@
+{
+  "platform": "windows",
+  "source": {
+    "material_check_ui.py": "d9d1fbd76b1ec737afc864d68c0b8fae101f245264a4ec7476045761a7901a80"
+  },
+  "captures": [
+    {
+      "file": "material-light-600-normal.png",
+      "sha256": "c2b7244d1b87128bba72de6c009e0eb35de0ff9c0d1edd0f9a1f42810e73efc0"
+    },
+    {
+      "file": "material-light-600-wide.png",
+      "sha256": "0cb789a390bf0913a954611664ff22cc1606ed4b88500a261c9b46c43905ec17"
+    }
+  ],
+  "window": [
+    600,
+    540
+  ],
+  "wide_font_pixel_size": 19
+}

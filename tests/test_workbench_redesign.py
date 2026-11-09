@@ -122,8 +122,10 @@ def test_bulk_type_action_stays_visible_and_targets_all_selected_projects(panel,
     panel.bulk_mode.setChecked(False)
     assert not panel.change_type_button.isVisible()
     panel.project_list.setCurrentItem(items[0])
-    assert panel.change_type_button.isVisible()
-    assert panel.document_side.isAncestorOf(panel.change_type_button)
+    assert not panel.change_type_button.isVisible()
+    assert panel.project_metadata.isVisible()
+    menu = panel.project_context_menu(items[0].data(Qt.UserRole))
+    assert any(action.text() == '项目类型' and action.isEnabled() for action in menu.actions())
 
 
 @pytest.mark.parametrize('mode', ['light', 'dark'])

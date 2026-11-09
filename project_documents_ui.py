@@ -20,8 +20,19 @@ DOCUMENT_EXTENSIONS = {'.txt', '.md', '.pdf', '.doc', '.docx', '.rtf', '.odt',
 
 
 class DocumentTable(WorkbenchTableWidget):
+    row_height = 36
+    open_requested = Signal()
     width_about_to_change = Signal()
     width_changed = Signal()
+
+    def keyPressEvent(self, event):
+        if (event.key() in (Qt.Key_Return, Qt.Key_Enter)
+                and event.modifiers() in (Qt.NoModifier, Qt.KeypadModifier)):
+            event.accept()
+            if not event.isAutoRepeat():
+                self.open_requested.emit()
+            return
+        super().keyPressEvent(event)
 
     def resizeEvent(self, event):
         changed = event.oldSize().width() != event.size().width()
@@ -51,11 +62,45 @@ class ProjectDocumentsPane(QWidget):
         self._deferred = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 6, 0, 0)
-        layout.setSpacing(6)
-        self.hint = label('选择项目以查看文件。', 'subtle')
+        layout.setSpacing(4)
+        tools = QHBoxLayout()
+        tools.setSpacing(8)
+        tools.addWidget(label('项目文件', 'sectionTitle'))
+        self.file_count = label('', 'subtle')
+        self.file_count.hide()
+        tools.addWidget(self.file_count)
+        tools.addStretch()
+        self.open_button = button('打开文件')
+        self.open_button.setEnabled(False)
+        self.open_button.hide()
+        self.file_menu_button = button('文件操作')
+        self.file_menu_button.setObjectName('documentActionsButton')
+        self.file_menu_button.setAccessibleName('更多文件操作')
+        self.file_menu_button.setToolTip('定位所选文件或刷新项目文件。')
+        self.file_menu = QMenu(self.file_menu_button)
+        self.file_menu.setToolTipsVisible(True)
+        self.file_menu_button.setMenu(self.file_menu)
+        self.folder_action = self.file_menu.addAction('所在目录', self.open_selected_folder)
+        self.folder_action.setToolTip('打开所选文件或归档的上一级目录。')
+        self.file_menu.addAction('刷新文档', self.request_refresh)
+        tools.addWidget(self.open_button)
+        tools.addWidget(self.file_menu_button)
+        layout.addLayout(tools)
+
+        feedback = QHBoxLayout()
+        feedback.setSpacing(8)
+        self.hint = label('选择项目以查看文件。', 'subtle', True)
         self.hint.setMinimumWidth(0)
-        self.hint.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Fixed)
-        layout.addWidget(self.hint)
+        self.hint.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        feedback.addWidget(self.hint, 1)
+        self.refresh_button = button('重试')
+        self.refresh_button.setObjectName('retryDocumentsButton')
+        self.refresh_button.setAccessibleName('重试读取项目文件')
+        feedback.addWidget(self.refresh_button)
+        layout.addLayout(feedback)
+        for control in (self.open_button, self.file_menu_button, self.refresh_button):
+            control.setProperty('workboxRole', 'secondary')
+
         self.table = DocumentTable(0, 3)
         self.table.setObjectName('documentTable')
         self.table.setAccessibleName('项目文档列表')
@@ -69,12 +114,11 @@ class ProjectDocumentsPane(QWidget):
         self.table.setWordWrap(True)
         self.table.setIconSize(QSize(16, 16))
         self.table.setShowGrid(False)
-        self.table.setColumnTypography(emphasized={0}, muted={1, 2})
+        self.table.setColumnTypography(muted={1, 2})
         self.table.setWrapColumns({0})
-        self.table.setMinimumHeight(90)
         self.table.verticalHeader().hide()
-        self.table.verticalHeader().setDefaultSectionSize(40)
-        self.table.verticalHeader().setMinimumSectionSize(40)
+        self.table.verticalHeader().setDefaultSectionSize(DocumentTable.row_height)
+        self.table.verticalHeader().setMinimumSectionSize(DocumentTable.row_height)
         header = self.table.horizontalHeader()
         header.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         header.setSectionResizeMode(QHeaderView.Interactive)
@@ -92,31 +136,11 @@ class ProjectDocumentsPane(QWidget):
         self.table.width_about_to_change.connect(self._queue_row_layout)
         self.table.horizontalHeader().sectionResized.connect(self._queue_row_layout)
         layout.addWidget(self.table, 1)
-        actions = QHBoxLayout()
-        actions.setSpacing(8)
-        self.open_button = button('打开文件')
-        self.file_menu_button = button('文件操作')
-        self.file_menu_button.setObjectName('documentActionsButton')
-        self.file_menu = QMenu(self.file_menu_button)
-        self.file_menu.setToolTipsVisible(True)
-        self.file_menu_button.setMenu(self.file_menu)
-        self.folder_action = self.file_menu.addAction('所在目录', self.open_selected_folder)
-        self.folder_action.setToolTip('打开所选文件或归档的上一级目录。')
-        self.file_menu.addAction('刷新文档', self.request_refresh)
-        self.refresh_button = button('重试')
-        self.refresh_button.setObjectName('retryDocumentsButton')
-        self.refresh_button.setAccessibleName('重试读取项目文件')
-        for control in (self.open_button, self.file_menu_button, self.refresh_button):
-            control.setProperty('workboxRole', 'secondary')
-        self.open_button.setEnabled(False)
-        self.open_button.hide()
-        actions.addStretch()
-        actions.addWidget(self.open_button)
-        actions.addWidget(self.file_menu_button)
-        actions.addWidget(self.refresh_button)
-        layout.addLayout(actions)
+        # 只有表格隐藏时才吸收多余高度，空态提示仍紧挨标题。
+        layout.addStretch(0)
         self.table.itemSelectionChanged.connect(self.update_actions)
         self.table.itemDoubleClicked.connect(lambda _: self.open_selected())
+        self.table.open_requested.connect(self.open_selected)
         self.open_button.clicked.connect(self.open_selected)
         self.refresh_button.clicked.connect(self.request_refresh)
         for bar in (self.table.verticalScrollBar(), self.table.horizontalScrollBar()):
@@ -169,7 +193,7 @@ class ProjectDocumentsPane(QWidget):
         self.documents = []
         self._read_error = self._result_errors = False
         self.table.setRowCount(0)
-        self.table.horizontalHeaderItem(0).setText('文件名称')
+        self.file_count.hide()
         self.table.horizontalHeaderItem(0).setToolTip('')
         self.table.setAccessibleDescription('')
         self.hint.setText('正在读取项目文件…' if project_id is not None else '选择项目以查看文件。')
@@ -278,7 +302,10 @@ class ProjectDocumentsPane(QWidget):
             elif old_ids != new_ids:
                 self.table.clearSelection()
                 self.table.setCurrentCell(-1,-1)
-            # 由 Qt 标准委托按当前列宽计算换行高度，再恢复可见锚点。
+            # 首次出现的表格也按实际视口宽度测量，避免先用隐藏时的列宽拉高长文件名。
+            self._show_hint(result)
+            self.layout().activate()
+            self._fit_columns()
             self.table.resizeRowsToContents()
             self.table.updateGeometries()
             if anchor_id in new_ids:
@@ -289,7 +316,6 @@ class ProjectDocumentsPane(QWidget):
             self.table.horizontalScrollBar().setValue(horizontal)
         self._row_layout_timer.stop()
         self._row_layout_anchor = None
-        self._show_hint(result)
         self._signature = signature
         self._deferred = None
         self.update_actions()
@@ -298,17 +324,19 @@ class ProjectDocumentsPane(QWidget):
         self._read_error = False
         self._result_errors = bool(result['errors'])
         count = len(result['documents'])
-        self.table.horizontalHeaderItem(0).setText(f'文件名称 · {count}')
+        self.file_count.setText(f'{count} 项')
+        self.file_count.show()
         self.table.setAccessibleDescription(f'{count} 项文件与归档')
         caption = f'{count} 项文件与归档' if count else '这个项目还没有文件，可将文件拖入工作箱。'
         if result['errors']:
-            caption = f'{count} 项文件与归档 · 部分位置暂不可读'
+            caption = '部分位置暂不可读。'
         if self.hint.text()!=caption:
             self.hint.setText(caption)
         tooltip='\n'.join(result['errors']) or (result['workspace_path'] or '项目尚未登记工作目录。')
         if self.hint.toolTip()!=tooltip:
             self.hint.setToolTip(tooltip)
-        self.table.horizontalHeaderItem(0).setToolTip(caption + '\n' + tooltip)
+        self.file_count.setToolTip(self.table.accessibleDescription())
+        self.table.horizontalHeaderItem(0).setToolTip(tooltip)
         self._sync_layout()
 
     def set_compact(self,compact):
@@ -317,25 +345,17 @@ class ProjectDocumentsPane(QWidget):
 
     def _sync_layout(self):
         self.layout().setContentsMargins(0, 0 if self._compact else 6, 0, 0)
-        show=not self.documents or self._read_error or self._result_errors
-        if self.hint.isHidden()==show:
-            self.hint.setVisible(show)
         has_project = self.project_id is not None
         retry = self._read_error or self._result_errors
+        self.hint.setVisible(not self.documents or retry)
         self.table.setVisible(bool(self.documents))
-        # 保留已读列表的操作区位置，选取文件时表格不重新分配高度。
-        open_size = self.open_button.sizePolicy()
-        if open_size.retainSizeWhenHidden() != bool(self.documents):
-            open_size.setRetainSizeWhenHidden(bool(self.documents))
-            self.open_button.setSizePolicy(open_size)
         self.file_menu_button.setVisible(has_project and (bool(self.documents) or not retry))
         self.refresh_button.setVisible(has_project and retry)
-        minimum=64 if self._compact and show else 90
         # Fluent 表头叠加产品字体后可能高于原 Qt 表头；至少保留一行文档的视口。
         header = self.table.horizontalHeader()
-        minimum = max(minimum, max(header.height(), header.sizeHint().height()) + 40
-                      + 2 * self.table.frameWidth())
-        if self.table.minimumHeight()!=minimum:
+        minimum = (max(header.height(), header.sizeHint().height()) + DocumentTable.row_height
+                   + 2 * self.table.frameWidth())
+        if self.table.minimumHeight() != minimum:
             self.table.setMinimumHeight(minimum)
 
     def _apply_deferred(self):
@@ -403,7 +423,7 @@ class ProjectDocumentsPane(QWidget):
 
     def open_selected(self):
         record = self.current_document()
-        if not record:
+        if not record or not record['exists']:
             return
         try:
             path = plain_path(record['path'])

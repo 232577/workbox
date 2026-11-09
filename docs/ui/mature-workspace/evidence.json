@@ -1,0 +1,83 @@
+{
+  "platform": "windows",
+  "source_start": {
+    "compact_ui.py": "db6e81081234b8d43159258ea571a0e7006f9131b62cfe9ecb48adea07768a02",
+    "theme.py": "de6199be9acc481a1a3e8d8cfa968bc4fdc77d32b82d4f6411ae665d53c3d537",
+    "control_styles.py": "ecb43175cdf152c96f237f801e526c2a93382c6869175df432ca2ea385a1fee2",
+    "ui_components.py": "0a590ed313d92555f8bfeb5dc702b3df90f004eafd17274dee927cad951ded66",
+    "fluent_views.py": "20619d7db910383533fc009ad00985ac0964ccb766ce2923c1c69cb442866881",
+    "project_documents_ui.py": "f60b0b8eb17816243618c1ad5ca655660355fd336f701d32a1b1a467a55c3868",
+    "delivery_ui.py": "d6b986843a4335341cf44940d6786ec79aac50f78f74d91c9fa83a4999129636"
+  },
+  "captures": [
+    {
+      "file": "light-1200-projects.png",
+      "sha256": "26db1b9c3dbbc6a312164fd6e600775f47893046a14d6be1b7631365092dac69"
+    },
+    {
+      "file": "light-1200-delivery.png",
+      "sha256": "752164b1374966bafe4209c89868739cd140d743992c5b8ec5d7aa536059acb7"
+    },
+    {
+      "file": "light-660-queue.png",
+      "sha256": "0cefb8341bfe1dc20ec07fb8ae19ecd8116941f6aae009c98b9368d1b6a8cc3a"
+    },
+    {
+      "file": "dark-1200-projects.png",
+      "sha256": "a58e41228df44ad6ae2c2bc553b9005de60c629bc5ac55f312d30464184c0977"
+    },
+    {
+      "file": "dark-660-long-name.png",
+      "sha256": "2eba675881997976de52653136462d1c42681d389e5dea6da096ae4fa8e366fa"
+    },
+    {
+      "file": "dark-660-delivery.png",
+      "sha256": "797b8d9beeb3ca2f3d0ed538ead7559807e9332d097355082a4e7df7a28efb1c"
+    },
+    {
+      "file": "dark-660-delivery-details.png",
+      "sha256": "b3f662ea4aed9be7faeb79eff21e020400c2a9d236ea4fa79a1423d7e03e81c6"
+    },
+    {
+      "file": "light-1200-filters.png",
+      "sha256": "9d44f3735ec09b3efd7e1f7a664a3fb6fe06b7c6d0ffc4048661f328d55910ac"
+    },
+    {
+      "file": "light-1200-empty.png",
+      "sha256": "819f713c764eec7f9026535a7e8f537e5fab59fc42bddf6fa73032e2842fb855"
+    },
+    {
+      "file": "light-1200-file-error.png",
+      "sha256": "b65aa723e2fe69f2374ed9caba73896cfc2576cbda9bc2c79b1c4ed70d45312e"
+    },
+    {
+      "file": "light-calendar.png",
+      "sha256": "af2c64c1f649564d61e0cca0fc70dec34622412186b4887215b57c793d634af7"
+    },
+    {
+      "file": "light-settings-lower-controls.png",
+      "sha256": "830f2dd545c55ace591adc4a3f70bd9e698a2f2dc63fffd0991ae42bb2f401e7"
+    },
+    {
+      "file": "dark-calendar.png",
+      "sha256": "07db65ca9e22b288402048fc832023370805b65c79439ba6d3bde1de6892d458"
+    },
+    {
+      "file": "dark-settings-lower-controls.png",
+      "sha256": "e9b911d912bd9cac6c60a37c1394b7c2921f1c11a9b25dc2dbc22be685142ed5"
+    }
+  ],
+  "checks": {
+    "anonymous_project_count": 110
+  },
+  "source_end": {
+    "compact_ui.py": "db6e81081234b8d43159258ea571a0e7006f9131b62cfe9ecb48adea07768a02",
+    "theme.py": "de6199be9acc481a1a3e8d8cfa968bc4fdc77d32b82d4f6411ae665d53c3d537",
+    "control_styles.py": "ecb43175cdf152c96f237f801e526c2a93382c6869175df432ca2ea385a1fee2",
+    "ui_components.py": "0a590ed313d92555f8bfeb5dc702b3df90f004eafd17274dee927cad951ded66",
+    "fluent_views.py": "20619d7db910383533fc009ad00985ac0964ccb766ce2923c1c69cb442866881",
+    "project_documents_ui.py": "f60b0b8eb17816243618c1ad5ca655660355fd336f701d32a1b1a467a55c3868",
+    "delivery_ui.py": "d6b986843a4335341cf44940d6786ec79aac50f78f74d91c9fa83a4999129636"
+  },
+  "source_unchanged_during_capture": true
+}
