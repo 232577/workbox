@@ -6,6 +6,12 @@ import {createHash} from 'node:crypto';
 
 const url='https://workbox.ltxiangzi.dpdns.org/media/workbox-quickstart-20261028.mp4';
 const bytes=Uint8Array.from({length:20},(_,i)=>i);
+function mediaFromProjectBatches(registry){
+  const media=Object.entries(registry.files);
+  const index=media.findIndex(([path])=>path==='public/media/workbox-project-batches-light-20261105-r3.png');
+  assert.ok(index>=0);
+  return media.slice(index);
+}
 function env(){return {ASSETS:{fetch:async request=>new Response(request.method==='HEAD'?null:bytes,{headers:{'Content-Type':'video/mp4','Content-Length':'20',ETag:'"one"'}})}};}
 test('视频完整响应声明字节范围，前端可拖动进度',async()=>{
   const response=await handleRequest(new Request(url),env());
@@ -36,7 +42,7 @@ test('视频请求先经过Worker以应用范围逻辑',async()=>{
 test('11月4日r2匿名截图来自同一冻结构建，保留全部旧媒体来源',async()=>{
   const registry=JSON.parse(await readFile(new URL('./MEDIA.json',import.meta.url),'utf8'));
   const exe='021f59a84ee0a78a823a5eef54b5804803c12ec30f45714984d8bb4206d01352';
-  const oldFiles=Object.fromEntries(Object.entries(registry.files).filter(([path])=>!path.includes('-20261106-r1.')));
+  const oldFiles=Object.fromEntries(mediaFromProjectBatches(registry));
   delete oldFiles['public/media/workbox-project-batches-light-20261105-r3.png'];
   delete oldFiles['public/media/workbox-project-batches-narrow-dark-20261105-r3.png'];
   delete oldFiles['public/media/workbox-task-groups-light-20261105-r2.png'];
@@ -86,7 +92,7 @@ test('精简版新增两张同EXE截图，全部46项旧媒体事实和字节逐
   const registry=JSON.parse(await readFile(new URL('./MEDIA.json',import.meta.url),'utf8'));
   const before=JSON.parse(await readFile(new URL('./fixtures/media-before-slim-workbench.json',import.meta.url),'utf8'));
   assert.equal(Object.keys(before).length,46);
-  assert.equal(Object.keys(registry.files).filter(path=>!path.includes('-20261106-r1.')).length,50);
+  assert.equal(mediaFromProjectBatches(registry).length,50);
   for(const [path,facts] of Object.entries(before)){
     assert.deepEqual(registry.files[path],facts,path);
     const bytes=await readFile(new URL(`./${path}`,import.meta.url));

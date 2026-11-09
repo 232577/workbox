@@ -33,6 +33,9 @@ test('中性实机项目截图标记当前最终构建', async () => {
   const html=await readFile(new URL('./public/index.html',import.meta.url),'utf8');
   const actualUi=html.match(/<section\b[^>]*id="actual-ui"[^>]*>([\s\S]*?)<\/section>/)?.[1];
   assert.ok(actualUi?.includes(`来自 ${release.tag} 的同一隔离实例`));
-  assert.match(actualUi,/来源提交 9901f92db9d8794a4cb29d78947400c78a773e46/);
+  const stable = await handleRequest(new Request('https://workbox.ltxiangzi.dpdns.org/updates/stable.json'), {});
+  const source = (await stable.json()).body.match(/来源提交 ([a-f0-9]{40})。/)?.[1];
+  assert.match(source, /^[a-f0-9]{40}$/);
+  assert.ok(actualUi.includes(`来源提交 ${source}`));
   assert.doesNotMatch(html,/来自当前安装包的匿名隔离示例/);
 });

@@ -57,13 +57,14 @@ test('首页、安装说明和自动更新指向同一当前安装包与构建',
   assert.ok(rootReadme.includes(source));
 });
 
-test('11月6日r1目录使用已核验候选的标签、字节数、安装包摘要和来源', async () => {
-  assert.deepEqual(release, { version: '1.0.0', tag: 'v1.0.0.20261106.1', edition: '正式安装版',
+test('保留11月6日r1下载记录和当前版本沿用的规则说明', async () => {
+  const previous = releases.findIndex(item => item.tag === 'v1.0.0.20261106.1');
+  assert.ok(previous >= 0);
+  assert.deepEqual(releases[previous], { version: '1.0.0', tag: 'v1.0.0.20261106.1', edition: '正式安装版',
     date: '2026-11-06', filename: 'WorkBox-1.0.0-Setup-x64-20261106-r1.exe', size: 40613745,
     sha256: 'bbdf096bb8929f5129b05df81387cb7a947fb5af15ec96badcbad7edd5f06969' });
-  assert.equal(releases.length, 22);
+  assert.equal(releases.length - previous, 22);
   const metadata = await (await handleRequest(new Request('https://workbox.ltxiangzi.dpdns.org/updates/stable.json'), {})).json();
-  assert.match(metadata.body, /来源提交 9901f92db9d8794a4cb29d78947400c78a773e46。/);
   for (const fact of ['原项目状态', '原排序', '多个批次', '全部交付表', '恰好 16 个文件',
     '数量未知', '自动分类默认关闭', '旧规则仍按“至少”', '每项目 4 个实际文件']) {
     assert.ok(metadata.body.includes(fact), fact);
@@ -71,11 +72,9 @@ test('11月6日r1目录使用已核验候选的标签、字节数、安装包摘
   assert.doesNotMatch(metadata.body, /新建任务组|记录已交接|导出本组表格|手动交接/);
 });
 
-test('新增两张11月6日r1实拍保留最终EXE原始PNG及构建来源', async () => {
+test('两张11月6日r1历史实拍保留最终EXE原始PNG及构建来源', async () => {
   const executable = '5fdbba35a02d00d716ce00ae4a8289802a7d8163e8fea30955469831249c2c1c';
   const source = '9901f92db9d8794a4cb29d78947400c78a773e46';
-  assert.equal(registry.latest_screenshot_exe_sha256, executable);
-  assert.equal(Object.keys(registry.files).length, 52);
   for (const [name, width, height, size, hash] of [
     ['workbox-ui-cleanup-light-20261106-r1.png', 1102, 792, 67409, '4420d21a048b869d932296017e5b8f0f6c0d9742d68b1c55a55bce88607b3afc'],
     ['workbox-ui-cleanup-narrow-dark-20261106-r1.png', 662, 512, 52355, '7001673ebc9489563bde345fce0f15601558593c4d537cb66e3c4fe377b4ef99'],
@@ -91,8 +90,6 @@ test('新增两张11月6日r1实拍保留最终EXE原始PNG及构建来源', asy
     assert.equal(registry.files[key].sha256, hash);
     assert.equal(registry.files[key].source_commit, source);
     assert.equal(registry.files[key].source_exe_sha256, executable);
-    assert.ok(html.includes(`href="/media/${name}"`));
-    assert.ok(html.includes(`src="/media/${name}" width="${width}" height="${height}"`));
   }
 });
 
@@ -102,8 +99,9 @@ test('保留截至11月5日r3全部21项目录和50项媒体事实及原字节',
   assert.equal(digest(JSON.stringify(previous)), '72811e159eec1319c96eee71d617b849fbfcc6afc96524bdbcb4ef54ebf765d3');
   for (const { filename } of previous) assert.ok(html.includes(`/download/${filename}`), filename);
 
-  const previousMedia = Object.fromEntries(Object.entries(registry.files)
-    .filter(([path]) => !path.includes('-20261106-r1.')));
+  const media = Object.entries(registry.files);
+  const previousMedia = Object.fromEntries(media.slice(media.findIndex(([path]) =>
+    path === 'public/media/workbox-project-batches-light-20261105-r3.png')));
   assert.equal(Object.keys(previousMedia).length, 50);
   assert.equal(digest(JSON.stringify(previousMedia)), '96be36292e343852bc1c242c02eb23b698e48957c79695e8dab8743e90f8f60a');
   for (const [path, facts] of Object.entries(previousMedia)) {

@@ -42,7 +42,9 @@ test('新增r3后保持已核验的20项旧下载目录与48项旧媒体字节',
   assert.equal(createHash('sha256').update(JSON.stringify(releases.slice(index + 1))).digest('hex'),
     'b14365f75280ddbae09349b0e3deff206f0886601fc0688cbcbdde4add4c1f29');
   const registry = JSON.parse(await readFile(new URL('./MEDIA.json', import.meta.url), 'utf8'));
-  assert.equal(Object.keys(registry.files).filter(path => !path.includes('-20261106-r1.')).length, 50);
+  const mediaPaths = Object.keys(registry.files);
+  const r3 = mediaPaths.indexOf('public/media/workbox-project-batches-light-20261105-r3.png');
+  assert.equal(mediaPaths.length - r3, 50);
   for (const [path, fact] of Object.entries(registry.files)) {
     const bytes = await readFile(new URL(`./${path}`, import.meta.url));
     assert.equal(bytes.length, fact.size, path);
