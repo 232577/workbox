@@ -96,3 +96,20 @@ def test_cancel_before_read_and_batch_limit(tmp_path):
     with pytest.raises(CancelledError): review().review_entries(s,[entry('甲系统')],cancel_event=event)
     with pytest.raises(ValueError): review().review_entries(s,[entry(str(i)) for i in range(2001)])
     assert dump(s)==before
+
+
+def test_preserved_old_revision_is_not_counted_as_another_current_material(tmp_path):
+    s=DesktopService(tmp_path/'data/db.sqlite')
+    pid=s.receive_text('1. 示例甲系统')['project_ids'][0]
+    source=tmp_path/'示例甲系统说明书.docx';source.write_bytes(b'old-version')
+    s.receive_path(source,pid)
+    source.write_bytes(b'current-version');s.receive_path(source,pid)
+    save_rules(s,pid,[Requirement('two','两份不同说明书','word',2,'说明书')])
+    before=dump(s)
+    row=review().review_entries(s,[entry('示例甲系统')],check_materials=True)[0]
+    assert row['material_state']=='材料不齐'
+    assert row['matched']==1 and row['required']==2
+    assert '两份不同说明书' in row['missing']
+    with s.db.connect() as db:
+        assert db.execute('SELECT COUNT(*) FROM work_file_supersessions').fetchone()[0]==1
+    assert dump(s)==before and source.read_bytes()==b'current-version'
