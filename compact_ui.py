@@ -285,6 +285,7 @@ class CompactPanel(DropSurface, QWidget):
     background_requested = Signal()
     task_text_requested = Signal(str, object, bool)
     classification_requested = Signal()
+    pending_export_requested = Signal()
 
     def __init__(self, service):
         super().__init__()
@@ -489,6 +490,16 @@ class CompactPanel(DropSurface, QWidget):
         top.insertWidget(3, self.clear_project_filters)
         scope_tools.addLayout(filters)
         self.project_list_heading = label('项目清单', 'queueHeader')
+        self.pending_export_button = button('导出名单')
+        self.pending_export_button.setObjectName('pendingProjectExport')
+        self.pending_export_button.setAccessibleName('导出全部待开发项目名称')
+        export_scope = '导出全部未归档、未删除的待开发项目名称。搜索、批次和其他筛选不影响导出。'
+        self.pending_export_button.setToolTip(export_scope)
+        self.pending_export_button.setAccessibleDescription(export_scope)
+        self.pending_export_button.clicked.connect(self.pending_export_requested)
+        self.pending_export_button.hide()
+        self.status_segments.currentItemChanged.connect(
+            lambda key: self.pending_export_button.setVisible(key == '待开发'))
         self.bulk_mode = QCheckBox('批量选择')
         self.bulk_mode.setAccessibleName('批量选择')
         self.project_filter_panel = QWidget()
@@ -559,6 +570,7 @@ class CompactPanel(DropSurface, QWidget):
         project_heading.setContentsMargins(0, 0, 0, 0)
         project_heading.setSpacing(8)
         project_heading.addWidget(self.project_list_heading, 1)
+        project_heading.addWidget(self.pending_export_button)
         project_heading.addWidget(self.bulk_mode)
         project_layout.addWidget(self.project_queue_header)
         self.project_queue_tools = QWidget()
@@ -868,6 +880,7 @@ class CompactPanel(DropSurface, QWidget):
                 if worker.isFinished():
                     self.business_worker_finished()
         self.scan_action.setEnabled(not busy)
+        self.pending_export_button.setEnabled(not busy)
         for key in ('settings', 'classification'):
             if key in actions:
                 available = True
@@ -933,6 +946,8 @@ class CompactPanel(DropSurface, QWidget):
             control.setVisible(intake_page)
         self._sync_project_layout()
         self.sync_notice_visibility()
+        if index == 0 and hasattr(self, 'scan_action'):
+            self.sync_advanced_actions()
 
     def refresh_type_controls(self):
         selected_type = self.type_filter.currentData()

@@ -1,4 +1,4 @@
-"""全部有效交付项目的只读快照与本机 XLSX 安全导出。"""
+"""交付报表与待开发项目名单的只读快照和 XLSX 安全导出。"""
 from __future__ import annotations
 
 import json
@@ -6,13 +6,15 @@ import os
 import re
 import stat
 import tempfile
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from datetime import datetime
+from functools import partial
 from hashlib import file_digest
 from pathlib import Path
 from uuid import uuid4
 
 from openpyxl import Workbook
+from openpyxl.cell.rich_text import CellRichText
 from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Font, PatternFill
 
@@ -129,6 +131,26 @@ def collect_delivery_report(db, *, cancel_event=None, progress=None, group_id=No
                 task_count=len(task_rows), handed_task_count=sum(row['counts']['handed'] for row in task_groups_snapshot),
                 group_id=group_id, group_code=task_groups_snapshot[0]['code'] if group_id is not None else None,
                 batch_warnings=batch_index['warnings'],
+                protected_roots=protected_roots, protected_files=protected_files)
+
+
+def collect_pending_project_names(db, *, cancel_event=None, progress=None):
+    """读取日常待开发项目及同一快照的受管路径，沿用项目列表的顺序。"""
+    cancelled(cancel_event)
+    with db.connect() as connection:
+        connection.execute('PRAGMA query_only=ON')
+        connection.execute('BEGIN')
+        projects = db.list_projects(status='待开发', connection=connection)
+        cancelled(cancel_event)
+        protected_roots, protected_files = _protected_paths(connection, db)
+    names = []
+    for index, project in enumerate(projects, 1):
+        cancelled(cancel_event)
+        names.append(project['name'])
+        if progress:
+            progress(index, len(projects))
+    cancelled(cancel_event)
+    return dict(project_names=names, project_count=len(names),
                 protected_roots=protected_roots, protected_files=protected_files)
 
 
@@ -393,14 +415,15 @@ def _publish_workbook(db, book, path, expected_target_identity, *, cancel_event=
     return None
 
 
-def export_delivered_projects(db, destination, *, cancel_event=None, progress=None,
-                              replace_existing=False, expected_target_identity=None, group_id=None):
-    """导出交付项目、类型汇总、任务组汇总和任务明细。"""
+@contextmanager
+def _workbook_export(db, destination, collect_report, *, cancel_event=None, progress=None,
+                     replace_existing=False, expected_target_identity=None):
+    """使用只读报表填充工作簿，完成后统一安全发布。"""
     cancelled(cancel_event)
     if type(replace_existing) is not bool:
         raise ValueError('覆盖选项无效。')
     path = _destination(destination)
-    report = collect_delivery_report(db, cancel_event=cancel_event, progress=progress, group_id=group_id)
+    report = collect_report(db, cancel_event=cancel_event, progress=progress)
     _check_protected(path, report)
     initial = target_identity(path)
     if replace_existing:
@@ -411,8 +434,51 @@ def export_delivered_projects(db, destination, *, cancel_event=None, progress=No
     if path.suffix.lower() != '.xlsx':
         raise ValueError('导出文件必须使用 .xlsx 扩展名。')
     book = Workbook()
-    book.remove(book.active)
+    result = dict(path=str(path), project_count=report['project_count'])
     try:
+        yield book, report, result
+        recovery_path = _publish_workbook(db, book, path, initial, cancel_event=cancel_event)
+        if recovery_path is not None:
+            result['recovery_path'] = str(recovery_path)
+        if progress:
+            progress(1, 1)
+    finally:
+        book.close()
+
+
+def export_pending_projects(db, destination, *, cancel_event=None, progress=None,
+                            replace_existing=False, expected_target_identity=None):
+    """将全部日常待开发项目的名称导出为单列工作簿。"""
+    with _workbook_export(db, destination, collect_pending_project_names, cancel_event=cancel_event,
+                          progress=progress, replace_existing=replace_existing,
+                          expected_target_identity=expected_target_identity) as (book, report, result):
+        names = report['project_names']
+        if len(names) + 1 > 1048576:
+            raise ValueError('待开发项目超过 Excel 工作表行数上限，未截断或导出。')
+        sheet = book.active
+        sheet.title = '待开发项目'
+        sheet['A1'] = '项目名称'
+        sheet.column_dimensions['A'].width = 42
+        for index, name in enumerate(names, 2):
+            cancelled(cancel_event)
+            # XML 读取会归一化回车，且 U+FFFE/U+FFFF 会让工作簿无法读取。
+            if re.search(r'[\r\ufffe\uffff]', name):
+                raise ValueError('项目名称含有 XLSX 无法原样保存的字符，未导出。')
+            value = _text(name)
+            if re.search(r'_x[0-9A-Fa-f]{4}_', value):
+                # 分开写入普通文本段，避免 Excel 将名称中的字面量解释为字符转义。
+                value = CellRichText(re.split(r'(?<=_)(?=x[0-9A-Fa-f]{4}_)', value))
+            sheet.cell(index, 1, value).data_type = 's'
+    return result
+
+
+def export_delivered_projects(db, destination, *, cancel_event=None, progress=None,
+                              replace_existing=False, expected_target_identity=None, group_id=None):
+    """导出交付项目、类型汇总、任务组汇总和任务明细。"""
+    with _workbook_export(db, destination, partial(collect_delivery_report, group_id=group_id),
+                          cancel_event=cancel_event, progress=progress, replace_existing=replace_existing,
+                          expected_target_identity=expected_target_identity) as (book, report, result):
+        book.remove(book.active)
         project_sheet = _sheet(book, '交付项目', PROJECT_COLUMNS, report['projects'], cancel_event=cancel_event)
         batch_note = ('与项目列表的收件批次编号一致，同一项目可有多个编号。'
                       '原“批次”列保留建项批次，编号不改变项目目录或状态。')
@@ -449,15 +515,7 @@ def export_delivered_projects(db, destination, *, cancel_event=None, progress=No
             '不能仅因有归档位置就认定本次材料有效或已交接。', 'WorkBox')
         if group_id is not None:
             book.active = book.sheetnames.index('任务明细' if report['task_rows'] else '任务组汇总')
-        recovery_path = _publish_workbook(db, book, path, initial, cancel_event=cancel_event)
-        if progress:
-            progress(1, 1)
-        result = dict(path=str(path), project_count=report['project_count'],
-                      workload_project_count=report['workload_project_count'], type_counts=report['type_counts'],
-                      task_count=report['task_count'], handed_task_count=report['handed_task_count'],
-                      group_id=report['group_id'], group_code=report['group_code'])
-        if recovery_path is not None:
-            result['recovery_path'] = str(recovery_path)
-        return result
-    finally:
-        book.close()
+    result.update(workload_project_count=report['workload_project_count'], type_counts=report['type_counts'],
+                  task_count=report['task_count'], handed_task_count=report['handed_task_count'],
+                  group_id=report['group_id'], group_code=report['group_code'])
+    return result
