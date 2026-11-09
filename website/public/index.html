@@ -149,7 +149,7 @@
       <div class="wb-faq-list">
         <details><summary>待核对和 ZIP 提醒，会不会被收起来？</summary><p>待核对数量大于零时，顶部导航显示入口和数量。正在查看待核对页时也保留，清空后离开才收起。ZIP归档库通常从高级设置进入，有待核对合包或归档错误时会在顶部导航显示，正在查看 ZIP 页时也保留。ZIP 异常提醒不受项目搜索或筛选影响。高级设置中始终可以打开这两个页面。</p></details>
         <details><summary>设置、检查和维护工具，在哪里打开？</summary><p>“高级设置”集中提供工作设置（含项目类型词典）、归档分类、ZIP归档库、待核对、收录记录、监视详情、外观、使用指南和检查更新。材料检查仍在所选项目的操作菜单。顶部保留粘贴消息、收进文件；底部保留后台运行、退出，处理中可取消。</p></details>
-        <details><summary>项目筛选和操作在哪里？</summary><p>搜索和“筛选”在清单上方，状态、批次和多选位于项目清单。点击“筛选”展开筛选区，可按首次新增日期、归档范围、截止日期、类型或加急查找。收起后仍显示生效条件，可逐项清除。</p><p>宽窗并排显示清单和详情。窄窗点击项目打开详情，再点“返回项目清单”回到原阅读位置。选中项目后可直接打开工作目录，符合条件时也可从项目操作确认交付。</p><p>粘贴消息后可定位本次项目，包括沿用的同名项目。已有项目保留原状态和目录。</p></details>
+        <details><summary>项目筛选和操作在哪里？</summary><p>搜索和“筛选”在清单上方，状态、批次和多选位于项目清单。首次新增日期下拉位于批次下方，常驻显示。点击“筛选”展开筛选区，可按归档范围、截止日期、类型或加急查找。收起后仍显示生效条件，可逐项清除。</p><p>宽窗并排显示清单和详情。窄窗点击项目打开详情，再点“返回项目清单”回到原阅读位置。选中项目后可直接打开工作目录，符合条件时也可从项目操作确认交付。</p><p>粘贴消息后可定位本次项目，包括沿用的同名项目。已有项目保留原状态和目录。</p></details>
         <details id="pending-project-export"><summary>怎样导出待开发项目名单？</summary><p>在项目清单选择“待开发”，点击标题旁的“导出名单”，选择 Excel 文件的保存位置。名单包含全部未归档、未删除的待开发项目。搜索、批次和其他筛选只影响当前清单。</p><p>工作簿只有“项目名称”一列，每个项目一行。没有待开发项目时，工作簿仍保留表头。</p></details>
         <details><summary>怎样查看工作量和导出交付表？</summary><p>交付记录页保留日期和搜索，直接显示工作量合计及各类型数量。选中项目或明细后，从相应菜单调整工作量或纠正误记。点击“导出全部”可获取全部交付表，包含所有有效交付项目，独立于当前筛选。</p></details>
       </div>
@@ -177,7 +177,7 @@
         <p>目标平台为 Windows 10 1809 及以上、Windows 11 的 x64 电脑；实际验收范围以对应发布记录为准。暂不支持 macOS、ARM 和 32 位系统。</p>
         <p>构建 v1.0.0.20261109.7，来源提交 781f3784e830dc3114e1145b31b6170a729e7aa7。顶部横向导航提供项目和今日工作量。在项目清单选择“待开发”后可“导出名单”，Excel 只有“项目名称”一列。宽窗并排显示清单和详情，窄窗可在两者间切换。</p>
         <p>首次新增日期按项目最初进入工作箱的北京时间日期筛选，重复收件不改变日期。r6 优化项目较多时的搜索、筛选和项目切换，减少重复刷新与 ZIP 列表查询。</p>
-        <p>r5 修正批次余量，待交付数量单独显示，不再计入“余N”。选中批次可看整批已交付、待交付和剩余数量。项目沿用四种原项目状态和原排序，一项目一行，可属于多个批次。交付记录管理并入主窗口，保留日期、搜索、工作量合计、各类型数量和全部交付表导出。交付明细可展开、收起和拖动。</p>
+        <p>批次显示“待完成4，共5”或“待完成0，共1”，待完成只计待开发和开发中。选中批次可看整批待交付、已交付明细。项目沿用四种原项目状态和原排序，一项目一行，可属于多个批次。交付记录管理并入主窗口，保留日期、搜索、工作量合计、各类型数量和全部交付表导出。交付明细可展开、收起和拖动。</p>
         <p>新安装的归档分类预设按最近有效交付的单项目归档判断，恰好 16 个文件归为“可运行”，其他已知数量归为“生成材料”，数量未知时保留原分类。自动分类默认关闭，升级沿用原配置。ZIP 自动交付另按自动模式的门槛判断。</p>
         <p>小悬浮球保持置顶，不抢输入焦点，展开的管理窗口不置顶。项目改名同步登记目录，同名项目先预览再确认合并，原材料和历史交付记录保留，不会在启动时自动合并。</p>
         <p id="online-update"><strong>新版怎样在线更新？</strong>从窗口底部或“高级设置 → 检查更新”主动检查一次。有新版时点击“更新并重启”。WorkBox 会下载并校验安装包、备份数据库，在原目录安装成功后重新打开。</p>
@@ -205,7 +205,7 @@
           <a class="download-link" href="/download/WorkBox-1.0.0-Setup-x64-20261030.exe">历史正式安装版 · 10月30日（Fluent工作台）</a>
           <a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-Types-20261029-Setup-x64.exe">历史正式安装版 · 10月29日（类型统计）</a><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-Sidebar-20261029-Setup-x64.exe">历史正式安装版 · 10月29日（侧栏）</a><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-Layout-20261029-Setup-x64.exe">历史正式安装版 · 10月29日（布局）</a><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-Workbench-20261029-Setup-x64.exe">历史正式安装版 · 10月29日（工作台）</a><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-Fluent-20261028-Setup-x64.exe">历史正式安装版 · 10月28日（Fluent）</a><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-UI-20261028-Setup-x64.exe">历史正式安装版 · 10月28日（双主题）</a><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-20261028-Setup-x64.exe">历史正式安装版 · 10月28日（引导）</a><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-20261027-Setup-x64.exe">历史正式安装版 · 10月27日（收件）</a><a class="download-link" href="/download/WorkBox-1.0.0-Setup-x64.exe">历史正式安装版 · 10月26日（初版）</a><a href="https://github.com/232577/workbox/releases">版本记录 ↗</a><a href="https://github.com/232577/workbox">公开源码 ↗</a>
         </div></details></div>
-      <div class="wb-download-details"><h3>安装前，确认这几件事</h3><ul><li>安装包不包含已有项目，首次使用自动建立数据目录。</li><li>升级前备份 data 及另外设置的工作、归档目录。遇到旧版只退出未安装，请按上方恢复说明在原位置安装一次。</li><li>安装包未做商业代码签名，Windows 可能提示未知发布者。请核对来源与校验值，不确定时先不要运行。</li></ul><details class="wb-checksum-details"><summary>查看 SHA-256 校验值</summary><div class="wb-hash-content"><code id="checksum">240a816e8c5049e028060994002a5907ba59c58762ac6ff10c89eb4ce8f2d855</code><button id="copy-checksum" class="copy-button" type="button">复制校验值</button><p id="copy-status" class="copy-status" role="status" aria-live="polite"></p></div></details></div></div>
+      <div class="wb-download-details"><h3>安装前，确认这几件事</h3><ul><li>安装包不包含已有项目，首次使用自动建立数据目录。</li><li>升级前备份 data、工作和归档目录及全部已登记历史文稿目录（可能仍在原工作位置）。遇到旧版只退出未安装，请按上方恢复说明在原位置安装一次。</li><li>安装包未做商业代码签名，Windows 可能提示未知发布者。请核对来源与校验值，不确定时先不要运行。</li></ul><details class="wb-checksum-details"><summary>查看 SHA-256 校验值</summary><div class="wb-hash-content"><code id="checksum">240a816e8c5049e028060994002a5907ba59c58762ac6ff10c89eb4ce8f2d855</code><button id="copy-checksum" class="copy-button" type="button">复制校验值</button><p id="copy-status" class="copy-status" role="status" aria-live="polite"></p></div></details></div></div>
     </div></section>
 
     <details id="legacy-task-groups" class="wb-section wb-wrap wb-release-history"><summary>查看11月5日 r2历史任务组说明</summary>
@@ -231,7 +231,7 @@
       <details id="archive-classification"><summary>归档分类按什么规则判断？</summary><p>在“高级设置 → 归档分类”可按最近一次有效交付的单项目归档文件数设置规则。新安装预设恰好 16 个文件归为“可运行”，其他已知数量归为“生成材料”，数量未知时保留原分类。“可运行”是项目类型，文件数只能作为分类依据，实际运行需单独验证。</p><p>新安装的自动分类默认关闭。升级沿用原有配置，旧规则仍按“至少”比较。要调整已有归档的分类，先按当前规则预览，再确认应用。ZIP 自动交付另有门槛，自动模式初始为每项目 4 个实际文件。</p></details>
       <details><summary>误点交付或删除项目，还能恢复吗？</summary><p>撤销误记会让项目退回“待交付”；排除个人工作量计数则保留“已交付”状态、交付事实、原文件和归档，两者用途不同。恢复已撤销交付记录只恢复统计有效性，不自动改变当前项目状态。删除项目会移入“已删除”，可以恢复，不删除目录和历史文件。</p></details>
       <details><summary>退出以后，还会自动归档吗？</summary><p>不会。“退出”会停止程序和监视任务。“后台运行”会保留托盘入口并继续归档。自动归档只监视已登记的工作目录和主动提交的 ZIP，默认等文件稳定 10 秒后再复制。</p></details>
-      <details><summary>下载失败，或换一台电脑使用怎么办？</summary><p>下载失败可使用 <a href="https://github.com/232577/workbox/releases/download/v1.0.0.20261109.7/WorkBox-1.0.0-Setup-x64-20261109-r7.exe">正式安装版的 GitHub 备用下载</a>。新电脑安装后不会自动带上旧电脑数据；如需迁移，请备份并迁移项目数据及对应工作、归档目录。</p></details>
+      <details><summary>下载失败，或换一台电脑使用怎么办？</summary><p>下载失败可使用 <a href="https://github.com/232577/workbox/releases/download/v1.0.0.20261109.7/WorkBox-1.0.0-Setup-x64-20261109-r7.exe">正式安装版的 GitHub 备用下载</a>。新电脑安装后不会自动带上旧电脑数据；如需迁移，请备份并迁移项目数据、对应工作和归档目录及全部已登记历史文稿目录（可能仍在原工作位置），迁移后核验路径与历史文件可读性。</p></details>
     </div></section>
     <section id="support" hidden></section>
   </main>

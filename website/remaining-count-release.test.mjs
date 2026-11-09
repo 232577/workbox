@@ -51,6 +51,21 @@ test('r7待完成显示零与总数，日期和旧稿规则在各入口一致', 
     assert.match(text, /归档只包含当前文件/);
   }
   assert.doesNotMatch(html, /余2”表示还有 2 个项目未交付/);
+  const download = html.match(/<section\b[^>]*id="download"[^>]*>([\s\S]*?)<\/section>/)?.[1];
+  assert.match(download, /待完成4，共5.*待完成0，共1.*待完成只计待开发和开发中/);
+  assert.doesNotMatch(download, /余N|r5 修正批次余量/);
+  const filters = html.match(/<details><summary>项目筛选和操作在哪里？<\/summary>([\s\S]*?)<\/details>/)?.[1];
+  assert.match(filters, /首次新增日期.*批次下方.*常驻/);
+  assert.doesNotMatch(filters, /展开筛选区[^。]*首次新增日期/);
+  for (const text of [html, readme, siteReadme]) {
+    assert.match(text, /(?:备份|迁移)[^。\n]*已登记历史文稿目录/);
+    assert.match(text, /已登记历史文稿目录[^。\n]*原工作位置/);
+    assert.match(text, /迁移后核验路径与历史文件可读性/);
+  }
+  const backup = html.match(/<li>升级前备份([\s\S]*?)<\/li>/)?.[1];
+  assert.match(backup, /全部已登记历史文稿目录.*原工作位置/);
+  const migration = html.match(/<details><summary>下载失败，或换一台电脑使用怎么办？<\/summary>([\s\S]*?)<\/details>/)?.[1];
+  assert.match(migration, /备份并迁移[^。]*已登记历史文稿目录/);
 });
 
 test('r7保留全部27历史路由、r6以前26项与原58媒体字节及归属', async () => {
