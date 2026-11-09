@@ -272,6 +272,7 @@ class CompactPanel(DropSurface, QWidget):
     state_requested = Signal(int, str)
     urgent_requested = Signal(int, bool)
     delivery_requested = Signal(int, object)
+    history_archive_requested = Signal(int, int)
     rename_requested = Signal(int, str)
     project_change_preview_requested = Signal(object, object)
     project_change_requested = Signal(object)
@@ -684,6 +685,7 @@ class CompactPanel(DropSurface, QWidget):
         from project_documents_ui import ProjectDocumentsPane
         self.document_pane = ProjectDocumentsPane(service)
         self.document_pane.folder_requested.connect(self.folder_requested)
+        self.document_pane.history_archive_requested.connect(self.archive_document)
         document_layout.addWidget(self.document_pane, 1)
         self.project_splitter.addWidget(project_side)
         self.project_splitter.addWidget(document_side)
@@ -1705,6 +1707,18 @@ class CompactPanel(DropSurface, QWidget):
                 return
         if not self.busy:
             self.bulk_requested.emit(ids, options)
+
+    def archive_document(self, row):
+        project_id, file_id = row.get('project_id'), row.get('work_file_id')
+        if not project_id or not file_id or not self._action_project(project_id, editable=True):
+            return
+        answer = QMessageBox.question(self, '移入历史文稿',
+            f'将“{row.get("name", "所选文件")}”移入历史文稿？\n\n'
+            '文件会从当前工作目录移出，以后交付不再包含它。可通过文件菜单的“查看历史文稿”找到它。'
+            '\n已有交付归档和记录保留。',
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if answer == QMessageBox.Yes and self._action_project(project_id, editable=True):
+            self.history_archive_requested.emit(project_id, file_id)
 
     def confirm_delivery(self, project_id):
         project = self._action_project(project_id, editable=True)

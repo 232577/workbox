@@ -84,6 +84,10 @@ class ProjectDeliveryArchive:
         archive_root = plain_path(self.workspaces.settings()['archive_root'])
         if archive_root == root or archive_root.is_relative_to(root) or root.is_relative_to(archive_root):
             raise ValueError('项目工作目录与归档库不能重叠，未确认交付。')
+        for value in getattr(self.workspaces, 'history_roots', lambda: [])():
+            history_root = plain_path(value)
+            if history_root == root or history_root.is_relative_to(root) or root.is_relative_to(history_root):
+                raise ValueError('项目工作目录与历史文稿存储重叠，未确认交付。')
         return root, tuple(sorted(excluded, key=str)), archive_root
 
     @staticmethod

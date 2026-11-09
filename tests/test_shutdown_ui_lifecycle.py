@@ -113,7 +113,8 @@ def test_background_reader_and_business_job_stop_before_roots_are_destroyed(cont
     reader_entered, reader_stopped = Event(), Event()
     business_entered, business_stopped = Event(), Event()
 
-    def read_documents(service, project_id, *, cancel_event):
+    def read_documents(service, project_id, *, cancel_event, include_history=False):
+        assert include_history is False
         reader_entered.set()
         assert cancel_event.wait(5)
         reader_stopped.set()

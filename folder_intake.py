@@ -174,9 +174,10 @@ class FolderIntake:
                     append(root_item, 'needs_choice', '来源位于已归档或已删除项目目录，请明确选择。')
                     return result
             roots = [Path(self.workspaces.settings()['work_root']), *map(Path, self.workspaces.archive_roots())]
+            roots.extend(map(Path, getattr(self.workspaces, 'history_roots', lambda: [])()))
             roots.extend(Path(w['path']) for w in self.workspaces.list_workspaces(include_archived=True))
             if any(path_is_within(root, target) or path_is_within(target, root) for target in roots):
-                raise ValueError('来源文件夹与工作目录或归档目录重叠，请改选独立来源，避免递归收录。')
+                raise ValueError('来源文件夹与工作目录、归档或历史文稿重叠，请改选独立来源，避免递归收录。')
             files = self._scan(root, cancel_event)
             if not files:
                 raise ValueError('文件夹内没有可收录的普通文件。')

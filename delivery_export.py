@@ -201,6 +201,7 @@ def _protected_paths(connection, db):
     files = {str(db.path), str(db.path) + '-wal', str(db.path) + '-shm'}
     for table, columns, target in (
         ('workflow_archive_roots', ('path',), roots),
+        ('document_history_roots', ('path',), roots),
         ('project_workspaces', ('path', 'group_path'), roots),
         ('project_delivery_archives', ('path', 'source_root'), roots),
         ('zips', ('path',), files), ('work_files', ('path',), files),

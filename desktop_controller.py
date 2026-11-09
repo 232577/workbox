@@ -199,6 +199,9 @@ class FloatingController(QObject):
         self.panel.approve_requested.connect(lambda zid: self.enqueue('已标记为可用版本', lambda **_: self.service.snapshots.approve_version(zid)))
         self.panel.bundle_requested.connect(lambda zid, batch: self.enqueue('核对包内项目', lambda **kw: self.service.snapshots.recognize_bundle(zid, batch_id=batch, **kw)))
         self.panel.delivery_requested.connect(lambda pid, zid: self.enqueue('已手动设为已交付', lambda **kw: self.service.confirm_delivery(pid, zid, confirmed=True, **kw)))
+        self.panel.history_archive_requested.connect(lambda pid, fid: self.enqueue(
+            '移入历史文稿',
+            lambda **kw: self.service.archive_work_file(pid, fid, confirmed=True, **kw)))
         self.panel.link_requested.connect(lambda zid, pid: self.enqueue('关联交付包', lambda **_: self._link_zip(zid, pid)))
         available = QApplication.primaryScreen().availableGeometry()
         saved = self.service.get_setting('orb_position', [available.right()-100, available.center().y()])
@@ -619,6 +622,8 @@ class FloatingController(QObject):
                         '本次为补交，不增加今日首次交付数。' if event and event['counting_role'] == 'repeat' else
                         '交付记录已保存。')
             message = '项目工作文件已按原名归档，已设为已交付。' + counting + '\n' + worker.result['archive']['path']
+        elif isinstance(worker.result, dict) and 'archived_file_ids' in worker.result:
+            message = '已移入历史文稿，以后交付仅包含当前文件。可在文件操作中查看历史文稿。'
         elif isinstance(worker.result, dict) and worker.result.get('operation') in ('rename', 'merge'):
             message = worker.result.get('message') or '项目变更已完成。'
         elif isinstance(worker.result, dict) and 'project_lifecycle' in worker.result:

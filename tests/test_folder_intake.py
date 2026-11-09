@@ -149,11 +149,24 @@ def test_conflicting_filename_waits_and_same_name_keeps_new_name_and_old_content
     file(root, 'readme.txt', b'one')
     file(root, '乙系统_代码.docx')
     assert intake(service, root)['needs_choice'] == 1
+    with service.db.connect() as connection:
+        original = dict(connection.execute('SELECT * FROM work_files WHERE project_id=?', (pid,)).fetchone())
     file(root, 'readme.txt', b'two')
     assert intake(service, root)['copied'] == 1
     target = Path(service.workspaces.get_workspace(pid)['path'])
     assert (target / 'readme.txt').read_bytes() == b'two'
-    assert sorted(p.read_bytes() for p in target.glob('*.txt')) == [b'one', b'two']
+    assert [p.read_bytes() for p in target.glob('*.txt')] == [b'two']
+    with service.db.connect() as connection:
+        historical = dict(connection.execute('''SELECT f.*,r.path AS history_root FROM work_files f
+            JOIN work_file_supersessions s ON s.old_file_id=f.id
+            JOIN document_history_roots r ON r.id=s.history_root_id WHERE f.id=?''',
+            (original['id'],)).fetchone())
+    assert historical['sha256'] == original['sha256']
+    assert historical['source_path'] == original['source_path']
+    old_path = Path(historical['path'])
+    assert old_path.is_relative_to(Path(historical['history_root']))
+    assert not old_path.is_relative_to(target)
+    assert old_path.read_bytes() == b'one'
     assert (root / 'readme.txt').read_bytes() == b'two'
     assert (root / '乙系统_代码.docx').is_file()
 

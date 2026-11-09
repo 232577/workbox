@@ -72,6 +72,7 @@ class SnapshotManager:
     def _archive_roots(self):
         history = getattr(self.workspaces, 'archive_roots', None)
         roots = history() if history else []
+        roots.extend(getattr(self.workspaces, 'history_roots', lambda: [])())
         return [Path(os.path.abspath(Path(root).expanduser()))
                 for root in [*roots, self.workspaces.settings()['archive_root']]]
 
@@ -85,7 +86,7 @@ class SnapshotManager:
         if path.suffix.casefold() != '.zip' or not stat.S_ISREG(info.st_mode):
             raise ValueError('请选择本机普通 .zip 文件。')
         if any(path_is_within(path, root) for root in self._archive_roots()):
-            raise ValueError('归档库中的 ZIP 不能再次作为监视来源。')
+            raise ValueError('归档或历史文稿中的 ZIP 不能再次作为监视来源。')
         with self.db.connect() as connection:
             known_paths = connection.execute('SELECT z.path FROM zips z JOIN zip_snapshots s ON s.zip_id=z.id').fetchall()
         if any(path_is_within(path, Path(os.path.abspath(row['path']))) for row in known_paths):

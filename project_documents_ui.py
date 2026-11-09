@@ -45,6 +45,7 @@ class DocumentTable(WorkbenchTableWidget):
 
 class ProjectDocumentsPane(QWidget):
     folder_requested = Signal(str)
+    history_archive_requested = Signal(dict)
 
     def __init__(self, service, parent=None):
         super().__init__(parent)
@@ -60,12 +61,16 @@ class ProjectDocumentsPane(QWidget):
         self._result_errors = False
         self._signature = None
         self._deferred = None
+        self._show_history = False
+        self._current_view_state = None
+        self._view_restore = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 6, 0, 0)
         layout.setSpacing(4)
         tools = QHBoxLayout()
         tools.setSpacing(8)
-        tools.addWidget(label('项目文件', 'sectionTitle'))
+        self.title = label('当前文件', 'sectionTitle')
+        tools.addWidget(self.title)
         self.file_count = label('', 'subtle')
         self.file_count.hide()
         tools.addWidget(self.file_count)
@@ -76,13 +81,21 @@ class ProjectDocumentsPane(QWidget):
         self.file_menu_button = button('文件操作')
         self.file_menu_button.setObjectName('documentActionsButton')
         self.file_menu_button.setAccessibleName('更多文件操作')
-        self.file_menu_button.setToolTip('定位所选文件或刷新项目文件。')
+        self.file_menu_button.setToolTip('定位所选文件、查看历史文稿或刷新列表。')
         self.file_menu = QMenu(self.file_menu_button)
         self.file_menu.setToolTipsVisible(True)
         self.file_menu_button.setMenu(self.file_menu)
         self.folder_action = self.file_menu.addAction('所在目录', self.open_selected_folder)
         self.folder_action.setToolTip('打开所选文件或归档的上一级目录。')
         self.file_menu.addAction('刷新文档', self.request_refresh)
+        self.file_menu.addSeparator()
+        self.archive_history_action = self.file_menu.addAction('移入历史文稿…', self.request_archive_history)
+        self.archive_history_action.setEnabled(False)
+        self.archive_history_action.setToolTip('明确确认后单独保留这个旧稿，后续交付只归档当前文件。')
+        self.history_action = self.file_menu.addAction('查看历史文稿')
+        self.history_action.setCheckable(True)
+        self.history_action.setToolTip('查看单独保留的旧稿；取消勾选返回当前文件。')
+        self.history_action.toggled.connect(self.set_history_visible)
         tools.addWidget(self.open_button)
         tools.addWidget(self.file_menu_button)
         layout.addLayout(tools)
@@ -186,6 +199,12 @@ class ProjectDocumentsPane(QWidget):
             self.request_refresh()
             return
         self.project_id = project_id
+        self._show_history = False
+        self._current_view_state = self._view_restore = None
+        with QSignalBlocker(self.history_action):
+            self.history_action.setChecked(False)
+        self.title.setText('当前文件')
+        self.table.setAccessibleName('项目文档列表')
         self._generation += 1
         self._signature = None
         self._deferred = None
@@ -206,6 +225,36 @@ class ProjectDocumentsPane(QWidget):
         self._pending = project_id is not None
         self.request_refresh()
 
+    def set_history_visible(self, visible):
+        if self._show_history == visible:
+            return
+        if visible:
+            selected = self.current_document()
+            self._current_view_state = (selected['id'] if selected else None,
+                self._document_anchor(), self.table.verticalScrollBar().value(),
+                self.table.horizontalScrollBar().value())
+        else:
+            self._view_restore = self._current_view_state
+        self._show_history = visible
+        self.title.setText('历史文稿' if visible else '当前文件')
+        self.table.setAccessibleName('项目历史文稿列表' if visible else '项目文档列表')
+        self._generation += 1
+        self._signature = self._deferred = None
+        self._row_layout_timer.stop()
+        self._row_layout_anchor = None
+        self.documents = []
+        self.table.setRowCount(0)
+        self.file_count.hide()
+        self._read_error = self._result_errors = False
+        self.hint.setText('正在读取历史文稿…' if visible else '正在读取项目文件…')
+        self.hint.setToolTip('')
+        self.update_actions()
+        self._sync_layout()
+        if self.worker:
+            self.worker.cancel_event.set()
+        self._pending = self.project_id is not None
+        self.request_refresh()
+
     def request_refresh(self):
         if self._closed or self.project_id is None or not self.isVisible():
             return
@@ -213,9 +262,9 @@ class ProjectDocumentsPane(QWidget):
             self._pending = True
             return
         self._pending = False
-        pid, generation = self.project_id, self._generation
+        pid, generation, include_history = self.project_id, self._generation, self._show_history
         self.worker = FileJob(lambda **kw: list_project_documents(
-            self.service, pid, cancel_event=kw.get('cancel_event')), self)
+            self.service, pid, include_history=include_history, cancel_event=kw.get('cancel_event')), self)
         self.worker._document_context = (pid, generation)
         self.worker.finished.connect(self._finished)
         self.worker.start()
@@ -247,6 +296,8 @@ class ProjectDocumentsPane(QWidget):
     def apply_result(self, result):
         if result['project_id'] != self.project_id:
             return
+        if self._show_history and any(row['kind'] != '历史文稿' for row in result['documents']):
+            result = dict(result, documents=[row for row in result['documents'] if row['kind'] == '历史文稿'])
         signature = (result['workspace_path'], tuple(result['errors']),
                      tuple(tuple(sorted(row.items())) for row in result['documents']))
         if signature == self._signature:
@@ -263,6 +314,8 @@ class ProjectDocumentsPane(QWidget):
         anchor_id = self.documents[anchor_row]['id'] if 0 <= anchor_row < len(self.documents) else None
         anchor_top = self.table.rowViewportPosition(anchor_row) if anchor_id else 0
         vertical, horizontal = self.table.verticalScrollBar().value(), self.table.horizontalScrollBar().value()
+        if self._view_restore is not None:
+            selected_id, (anchor_id, anchor_top), vertical, horizontal = self._view_restore
         # 本次刷新会同步测量全部行，取代更早排队的列宽布局。
         # 表头在重建时也可能发出尺寸信号，不能让它保存临时/过期锚点。
         self._row_layout_timer.stop()
@@ -282,9 +335,13 @@ class ProjectDocumentsPane(QWidget):
                 elif record['kind']=='ZIP归档':
                     version=versions.index(record['zip_id'])+1
                     name=f'V{version} · '+name+('（最新）' if record['zip_id']==versions[-1] else '')
+                elif record['kind']=='历史文稿':
+                    name += '\n保留于 ' + local_timestamp(record['superseded_at'])
                 values = [name, record['kind'] if record['exists'] else '文件缺失',
                           '—' if record['size'] is None else human_size(record['size'])]
                 tooltip = record['path'] + '\n' + record['kind']
+                if record.get('superseded_at'):
+                    tooltip += '\n保留时间：' + local_timestamp(record['superseded_at'])
                 if record.get('modified_at'):
                     tooltip += '\n修改时间：' + local_timestamp(record['modified_at'])
                 if not record['exists']:
@@ -326,6 +383,7 @@ class ProjectDocumentsPane(QWidget):
         self._row_layout_anchor = None
         self._signature = signature
         self._deferred = None
+        self._view_restore = None
         self.update_actions()
 
     def _show_hint(self,result):
@@ -340,6 +398,11 @@ class ProjectDocumentsPane(QWidget):
         else:
             self._show_file_count(f'{count} 项', f'{count} 项文件与归档')
             caption = f'{count} 项文件与归档' if count else '这个项目还没有文件，可将文件拖入工作箱。'
+        if self._show_history:
+            caption = ('历史文稿列表不完整。' if self._result_errors else
+                       f'{count} 项历史文稿' if count else '这个项目还没有历史文稿。')
+            description = f'已读取 {count} 项历史文稿，总数未知。' if self._result_errors else f'{count} 项历史文稿'
+            self._show_file_count(count_label if self._result_errors else f'{count} 项', description)
         if self.hint.text()!=caption:
             self.hint.setText(caption)
         tooltip='\n'.join(result['errors']) or (result['workspace_path'] or '项目尚未登记工作目录。')
@@ -364,7 +427,7 @@ class ProjectDocumentsPane(QWidget):
         retry = self._read_error or self._result_errors
         self.hint.setVisible(not self.documents or retry)
         self.table.setVisible(bool(self.documents))
-        self.file_menu_button.setVisible(has_project and (bool(self.documents) or not retry))
+        self.file_menu_button.setVisible(has_project)
         self.refresh_button.setVisible(has_project and retry)
         # Fluent 表头叠加产品字体后可能高于原 Qt 表头；至少保留一行文档的视口。
         header = self.table.horizontalHeader()
@@ -415,6 +478,8 @@ class ProjectDocumentsPane(QWidget):
 
     def update_actions(self):
         record = self.current_document()
+        self.history_action.setEnabled(self.project_id is not None)
+        self.archive_history_action.setEnabled(self._can_archive_history(record))
         self.open_button.setVisible(record is not None)
         self.open_button.setEnabled(bool(record and record['exists']))
         self.folder_action.setEnabled(bool(record))
@@ -430,6 +495,17 @@ class ProjectDocumentsPane(QWidget):
         self.open_button.setText(text)
         self.open_button.setToolTip(tooltip if not record or record['exists'] else
                                     '文件已移动或删除。可查看所在目录或刷新文档。')
+
+    def _can_archive_history(self, record):
+        return bool(not self._show_history and record and record['exists']
+                    and record['kind'] == '工作文件' and type(record.get('work_file_id')) is int
+                    and record['work_file_id'] > 0)
+
+    def request_archive_history(self):
+        record = self.current_document()
+        if self._can_archive_history(record):
+            self.history_archive_requested.emit(dict(project_id=self.project_id,
+                work_file_id=record['work_file_id'], name=record['name'], path=record['path']))
 
     def open_selected_folder(self):
         record = self.current_document()

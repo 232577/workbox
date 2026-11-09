@@ -48,6 +48,113 @@ def choose(panel,pid):
     panel.project_list.setCurrentItem(item)
 
 
+def history_reader(monkeypatch,panel,tmp_path):
+    import project_documents_ui
+    original=project_documents_ui.list_project_documents
+    history=tmp_path/'history'/'甲说明.txt';history.parent.mkdir();history.write_text('旧稿',encoding='utf-8')
+    def read(service,pid,**kwargs):
+        include=kwargs.pop('include_history',False)
+        result=original(service,pid,**kwargs)
+        if include and pid==1:
+            row=dict(result['documents'][0],id='history:1',name=history.name,path=str(history),
+                     relative_path=history.name,kind='历史文稿',work_file_id=1,
+                     superseded_at='2026-11-09T01:00:00Z')
+            result['documents'].append(row)
+        return result
+    monkeypatch.setattr(project_documents_ui,'list_project_documents',read)
+    return history,read
+
+
+def test_history_uses_native_menu_and_keeps_current_selection(panel,tmp_path,monkeypatch):
+    history,_=history_reader(monkeypatch,panel,tmp_path)
+    choose(panel,1);pane=panel.document_pane
+    wait(lambda:pane.worker is None and pane.table.rowCount()==1)
+    pane.table.selectRow(0);selected=pane.current_document()['id']
+    action=next(action for action in pane.file_menu.actions() if action.text()=='查看历史文稿')
+    assert action.isCheckable() and not action.isChecked()
+    action.trigger()
+    wait(lambda:pane.worker is None and pane.documents and pane.documents[0]['kind']=='历史文稿')
+    assert pane.title.text()=='历史文稿' and pane.table.rowCount()==1
+    assert '2026' in pane.table.item(0,0).text() and '保留于' in pane.table.item(0,0).text()
+    opened=[];located=[]
+    monkeypatch.setattr(QDesktopServices,'openUrl',lambda url:opened.append(url.toLocalFile()) or True)
+    pane.folder_requested.connect(located.append)
+    pane.table.selectRow(0);pane.open_selected();pane.open_selected_folder()
+    assert not pane.archive_history_action.isEnabled()
+    assert list(map(Path,opened))==[history] and list(map(Path,located))==[history.parent]
+    action.trigger()
+    wait(lambda:pane.worker is None and pane.documents and pane.documents[0]['kind']=='工作文件')
+    assert pane.title.text()=='当前文件' and pane.current_document()['id']==selected
+
+
+def test_history_mode_rejects_old_current_reader_and_resets_for_new_project(panel,tmp_path,monkeypatch):
+    from threading import Event
+    import project_documents_ui
+    _,read=history_reader(monkeypatch,panel,tmp_path)
+    choose(panel,1);pane=panel.document_pane
+    wait(lambda:pane.worker is None and pane.table.rowCount()==1)
+    entered,release=Event(),Event()
+    def delayed(service,pid,**kwargs):
+        if not kwargs.get('include_history'):
+            entered.set();release.wait(2)
+        return read(service,pid,**kwargs)
+    monkeypatch.setattr(project_documents_ui,'list_project_documents',delayed)
+    pane.request_refresh();wait(entered.is_set)
+    pane.history_action.trigger();release.set()
+    wait(lambda:pane.worker is None and pane.documents and pane.documents[0]['kind']=='历史文稿')
+    assert all(row['kind']=='历史文稿' for row in pane.documents)
+    choose(panel,2)
+    wait(lambda:pane.worker is None and pane.documents and pane.documents[0]['name']=='乙说明.docx')
+    assert not pane.history_action.isChecked() and pane.title.text()=='当前文件'
+
+
+def test_empty_history_has_clear_scope_and_return_action(panel):
+    choose(panel,1);pane=panel.document_pane
+    wait(lambda:pane.worker is None and pane.table.rowCount()==1)
+    pane.history_action.trigger()
+    wait(lambda:pane.worker is None and not pane.documents)
+    assert pane.title.text()=='历史文稿' and '没有历史文稿' in pane.hint.text()
+    assert pane.file_menu_button.isVisible() and pane.history_action.isChecked()
+    pane.history_action.trigger()
+    wait(lambda:pane.worker is None and pane.table.rowCount()==1)
+
+
+def test_manual_history_action_only_emits_for_registered_current_documents(panel,monkeypatch):
+    root=Path(panel.service.workspaces.get_workspace(1)['path'])
+    target=root/'甲说明.txt'
+    with panel.service.db.connect() as connection:
+        file_id=connection.execute('INSERT INTO work_files(project_id,source_path,path,filename,size,sha256,mtime_ns) '
+            'VALUES(?,?,?,?,?,?,?)',(1,str(target),str(target),target.name,target.stat().st_size,'a'*64,100)).lastrowid
+    choose(panel,1);pane=panel.document_pane
+    wait(lambda:pane.worker is None and pane.table.rowCount()==1)
+    action=next(action for action in pane.file_menu.actions() if action.text()=='移入历史文稿…')
+    assert not action.isEnabled()
+    pane.table.selectRow(0)
+    assert action.isEnabled()
+    received=[];pane.history_archive_requested.connect(received.append)
+    prompts=[]
+    def decline_history(parent,title,text,buttons,default):
+        prompts.append((title,text,buttons,default))
+        return QMessageBox.No
+    monkeypatch.setattr(QMessageBox,'question',decline_history)
+    before=target.read_bytes()
+    action.trigger()
+    assert received==[dict(project_id=1,work_file_id=file_id,name=target.name,path=str(target))]
+    assert len(prompts)==1 and prompts[0][0]=='移入历史文稿' and target.name in prompts[0][1]
+    assert prompts[0][2]==QMessageBox.Yes|QMessageBox.No and prompts[0][3]==QMessageBox.No
+    unknown=root/'未知.txt';unknown.write_bytes(b'unknown')
+    package=root/'包.zip';package.write_bytes(b'not executed')
+    with panel.service.db.connect() as connection:
+        connection.execute('INSERT INTO work_files(project_id,source_path,path,filename,size,sha256,mtime_ns) '
+            'VALUES(?,?,?,?,?,?,?)',(1,str(package),str(package),package.name,package.stat().st_size,'b'*64,100))
+    pane.request_refresh();wait(lambda:pane.worker is None and pane.table.rowCount()==3)
+    for name in ('未知.txt','包.zip'):
+        row=next(i for i,record in enumerate(pane.documents) if record['name']==name)
+        pane.table.selectRow(row)
+        assert not action.isEnabled()
+    assert target.read_bytes()==before and len(received)==1 and len(prompts)==1
+
+
 def test_projects_are_left_and_selected_documents_are_right(panel,qapp):
     assert hasattr(panel,'project_splitter'), '缺少项目与文档左右分栏'
     choose(panel,2)
