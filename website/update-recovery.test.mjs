@@ -29,13 +29,15 @@ test('页面明确只修复悬浮球置顶，展开管理窗口不置顶', async
   assert.match(html,/不抢输入焦点/);
 });
 
-test('中性实机项目截图标记当前最终构建', async () => {
+test('中性实机项目截图保留准确r4来源，当前更新清单单独绑定新构建', async () => {
   const html=await readFile(new URL('./public/index.html',import.meta.url),'utf8');
   const actualUi=html.match(/<section\b[^>]*id="actual-ui"[^>]*>([\s\S]*?)<\/section>/)?.[1];
-  assert.ok(actualUi?.includes(`来自 ${release.tag} 的同一隔离实例`));
+  assert.ok(actualUi?.includes('来自 v1.0.0.20261109.4 的同一隔离实例'));
   const stable = await handleRequest(new Request('https://workbox.ltxiangzi.dpdns.org/updates/stable.json'), {});
   const source = (await stable.json()).body.match(/来源提交 ([a-f0-9]{40})。/)?.[1];
   assert.match(source, /^[a-f0-9]{40}$/);
-  assert.ok(actualUi.includes(`来源提交 ${source}`));
+  assert.equal(source, '14cf3fb70e22d20a11c28f65925d7f68977b4733');
+  assert.ok(actualUi.includes('来源提交 2432b7e237db6424bd70e01f9a96f7567c5e644e'));
+  assert.ok(!actualUi.includes(`来自 ${release.tag} 的同一隔离实例`));
   assert.doesNotMatch(html,/来自当前安装包的匿名隔离示例/);
 });

@@ -13,7 +13,9 @@ test('批次余量按整批当前状态，筛选和个人工作量不影响数�
   const batch = html.match(/<section\b[^>]*id="project-batches"[^>]*>([\s\S]*?)<\/section>/)?.[1];
   assert.match(batch, /编号后显示“余N”/);
   assert.match(batch, /全部交付.*“已齐”/);
-  assert.match(batch, /左侧选择批次.*已交付.*批次总数.*剩余/);
+  assert.match(batch, /选择批次.*已交付.*批次总数.*剩余/);
+  assert.match(batch, /剩余＝总数－已交付－待交付/);
+  assert.match(batch, /剩余为零.*待交付N/);
   assert.match(batch, /整批项目的当前状态/);
   assert.match(batch, /搜索或筛选只改变清单.*个人工作量单独统计/);
   assert.match(batch, /归档项目仍计入.*删除.*恢复/);
