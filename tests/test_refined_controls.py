@@ -57,7 +57,7 @@ def test_keyboard_selected_menu_action_uses_shared_soft_selection(appearance):
     appearance.processEvents()
     try:
         grab = menu.grab()
-        for entry, token in zip(menu.actions(), ['notice_bg', 'surface']):
+        for entry, token in zip(menu.actions(), ['row_selected', 'surface']):
             row = menu.actionGeometry(entry)
             point = row.center()
             point.setX(row.right() - 12)
@@ -80,7 +80,7 @@ def test_native_selector_popup_reuses_menu_selection(appearance):
         current = view.visualRect(view.currentIndex())
         point = current.center()
         point.setX(min(current.right(), view.viewport().rect().right()) - 12)
-        assert pixel_color(view.viewport().grab(), point) == QColor(theme.tokens()['notice_bg'])
+        assert pixel_color(view.viewport().grab(), point) == QColor(theme.tokens()['row_selected'])
     finally:
         combo.hidePopup()
         combo.close()

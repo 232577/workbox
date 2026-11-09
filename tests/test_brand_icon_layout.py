@@ -26,11 +26,11 @@ def test_brand_icon_retains_complete_pixmap(tmp_path, mode, width):
         evidence.mkdir(parents=True, exist_ok=True)
         assert panel.grab().save(str(evidence / f"{mode}-{width}-{os.environ.get('QT_SCALE_FACTOR', '1')}x.png"))
         label = panel.brand_icon
-        assert label.contentsRect().width() == 32
-        assert label.contentsRect().height() == 32
+        assert label.contentsRect().width() == 26
+        assert label.contentsRect().height() == 26
         reference = QLabel(panel)
         reference.setStyleSheet('padding: 0px; border: 0px; background: transparent;')
-        reference.setFixedSize(32, 32)
+        reference.setFixedSize(26, 26)
         reference.setPixmap(label.pixmap())
         reference.show()
         app.processEvents()

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from zipfile import ZipFile
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtTest import QSignalSpy, QTest
-from PySide6.QtWidgets import QApplication, QDialog, QLabel, QMenu, QTreeWidget
+from PySide6.QtWidgets import QApplication, QDialog, QMenu, QTreeWidget
 
 from compact_ui import CompactPanel
 from desktop_service import DesktopService
@@ -32,7 +32,8 @@ def test_daily_navigation_and_advanced_tools_remain_reachable(panel):
     assert isinstance(panel.advanced_menu, QMenu)
     assert panel.settings_button.menu() is panel.advanced_menu
     assert [control.accessibleName() for control, _ in panel.nav_controls
-            if control.isVisible()] == ['项目', '今日工作量', '检查更新', '高级设置']
+            if control.isVisible()] == ['项目', '今日工作量', '高级设置']
+    assert panel.update_button.isVisible() and panel.footer_surface.isAncestorOf(panel.update_button)
     for control in (panel.nav_zip, panel.appearance_button, panel.help_button,
                     panel.material_check_button, panel.intake_log_button):
         assert control.isHidden()
@@ -79,21 +80,21 @@ def test_narrow_pending_entry_displays_live_count_across_resize(panel):
     panel.refresh()
     QApplication.processEvents()
     count = len(panel.service.pending_receipts())
-    badge = panel.nav_review.findChild(QLabel, 'navigationCountBadge')
-    assert count > 0 and badge is not None and badge.isVisible()
-    assert badge.text() == str(count) and panel.nav_review.text() == ''
-    assert panel.nav_review.rect().contains(badge.geometry())
+    assert count > 0 and panel.nav_review.isVisible()
+    assert panel.nav_review.text() == f'待核对 {count}'
+    assert panel.nav_review.toolTip() == f'待核对 {count}'
+    assert panel.nav_review.accessibleName() == '待核对'
     panel.resize(1200, 780)
     QApplication.processEvents()
-    assert badge.isHidden() and panel.nav_review.text() == f'待核对 {count}'
+    assert panel.nav_review.text() == f'待核对 {count}'
     panel.resize(660, 480)
     QApplication.processEvents()
-    assert badge.isVisible() and badge.text() == str(count)
+    assert panel.nav_review.text() == f'待核对 {count}'
     action(panel, '待核对').trigger()
     for receipt in panel.service.pending_receipts():
         panel.service.dismiss_receipt(receipt['id'])
     panel.refresh()
-    assert panel.nav_review.isVisible() and badge.isHidden()
+    assert panel.nav_review.isVisible() and panel.nav_review.text() == '待核对'
     panel.nav_projects.click()
     assert panel.nav_review.isHidden()
 
@@ -143,14 +144,14 @@ def test_exception_zip_entry_uses_full_snapshot_counts_and_stays_on_current_page
     assert any(control is panel.nav_zip for control, _ in panel.nav_controls)
     panel.resize(660, 480)
     QApplication.processEvents()
-    badge = panel.nav_zip.findChild(QLabel, 'navigationCountBadge')
-    assert badge.isVisible() and badge.text() == '1' and panel.nav_zip.text() == ''
-    assert panel.nav_zip.rect().contains(badge.geometry())
+    assert caption in panel.nav_zip.text()
+    assert caption in panel.nav_zip.accessibleDescription()
+    assert panel.navigation.rect().contains(panel.nav_zip.rect().translated(panel.nav_zip.pos()))
     panel.nav_zip.click()
     assert panel.tabs.currentIndex() == 1 and panel.page_title.text() == 'ZIP 归档'
     recover()
     panel.refresh()
-    assert panel.nav_zip.isVisible() and badge.isHidden()
+    assert panel.nav_zip.isVisible() and panel.nav_zip.text() == 'ZIP 归档'
     panel.nav_projects.click()
     assert panel.nav_zip.isHidden()
     panel.resize(1200, 780)
@@ -163,14 +164,16 @@ def test_unreadable_zip_attention_preserves_count_and_reports_error(panel, tmp_p
     zip_attention_fixture(panel, tmp_path, 'source')
     panel.resize(660, 480)
     panel.refresh()
-    badge = panel.nav_zip.findChild(QLabel, 'navigationCountBadge')
-    assert badge.isVisible() and badge.text() == '1'
+    previous = panel.nav_zip.text()
+    assert '归档异常 1' in previous
     def unavailable():
         raise OSError('匿名归档状态暂不可读')
     monkeypatch.setattr(panel.service.snapshots, reader, unavailable)
     panel.refresh()
     QApplication.processEvents()
-    assert panel.nav_zip.isVisible() and badge.text() == '1'
+    assert panel.nav_zip.isVisible() and '不可读' in panel.nav_zip.text()
+    assert '归档异常 1' in panel.nav_zip.toolTip()
+    assert panel.nav_zip.accessibleDescription() == panel.nav_zip.toolTip()
     assert '不可读' in panel.nav_zip.toolTip()
     assert panel.notice.isVisible() and '匿名归档状态暂不可读' in panel.notice.text()
 
@@ -201,8 +204,10 @@ def test_idle_review_count_error_keeps_last_attention_visible(panel, tmp_path, m
     monkeypatch.setattr(panel.service.snapshots, 'review_count', unavailable, raising=False)
     panel.refresh_archive_status()
     QApplication.processEvents()
-    badge = panel.nav_zip.findChild(QLabel, 'navigationCountBadge')
-    assert panel._zip_review_count == 1 and badge.isVisible() and badge.text() == '1'
+    assert panel._zip_review_count == 1 and panel.nav_zip.isVisible()
+    assert '不可读' in panel.nav_zip.text()
+    assert '待核对包 1' in panel.nav_zip.toolTip()
+    assert panel.nav_zip.accessibleDescription() == panel.nav_zip.toolTip()
     assert '不可读' in panel.nav_zip.toolTip()
     assert panel.notice.isVisible() and '匿名轻量统计读取失败' in panel.notice.text()
 

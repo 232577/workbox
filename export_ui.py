@@ -1,4 +1,4 @@
-"""共用Excel保存入口：最终名称确认与文件身份传递。"""
+"""Excel 导出共用的保存入口和完成提示。"""
 from datetime import datetime
 from pathlib import Path
 import re
@@ -32,3 +32,10 @@ def choose_workbook_destination(parent, prefix='WorkBox交付项目'):
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
         return None
     return target, previous
+
+
+def workbook_export_message(result):
+    summary = f"已导出 {result['project_count']} 个项目"
+    if recovery_path := result.get('recovery_path'):
+        return f"{summary}，旧文件仍保留。\n旧文件位置 {recovery_path}\n新文件位置 {result['path']}"
+    return f"{summary}。保存位置 {result['path']}"

@@ -2,7 +2,7 @@
 import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWidget
 
 from compact_ui import CompactPanel
 from desktop_service import DesktopService
@@ -24,7 +24,7 @@ def test_queue_tools_stay_with_the_queue_and_update_is_one_click(tmp_path, size)
             assert queue.rect().contains(position)
             assert position.x() + control.width() <= queue.width()
         assert panel.update_button.isVisible()
-        assert panel.navigation.isAncestorOf(panel.update_button)
+        assert panel.footer_surface.isAncestorOf(panel.update_button)
         calls = []
         panel.update_requested.connect(lambda: calls.append('check'))
         panel.update_button.click()
@@ -34,11 +34,22 @@ def test_queue_tools_stay_with_the_queue_and_update_is_one_click(tmp_path, size)
         assert panel.width() == size[0]
         panel.today_button.setFocus()
         QTest.keyClick(panel.today_button, Qt.Key_Tab)
-        assert app.focusWidget() is panel.update_button
-        QTest.keyClick(panel.update_button, Qt.Key_Tab)
+        assert app.focusWidget() is panel.settings_button
+        QTest.keyClick(panel.settings_button, Qt.Key_Tab)
+        assert app.focusWidget() is panel.search
+        QTest.keyClick(panel.search, Qt.Key_Backtab)
         assert app.focusWidget() is panel.settings_button
         QTest.keyClick(panel.settings_button, Qt.Key_Backtab)
+        assert app.focusWidget() is panel.today_button
+        for _ in range(len(panel.findChildren(QWidget))):
+            focused = app.focusWidget()
+            assert focused is not None
+            if focused is panel.update_button:
+                break
+            QTest.keyClick(focused, Qt.Key_Tab)
         assert app.focusWidget() is panel.update_button
+        QTest.keyClick(panel.update_button, Qt.Key_Space)
+        assert calls == ['check', 'check']
     finally:
         panel.document_pane.shutdown()
         panel.hide()

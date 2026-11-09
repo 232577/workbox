@@ -1,6 +1,6 @@
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import QApplication
 
 from compact_ui import CompactPanel
 from desktop_service import DesktopService
@@ -11,12 +11,13 @@ def qapp():
     return QApplication.instance() or QApplication([])
 
 
-def test_left_navigation_keeps_tab_contract_and_actions(qapp, tmp_path):
+def test_horizontal_navigation_keeps_tab_contract_and_actions(qapp, tmp_path):
     panel = CompactPanel(DesktopService(tmp_path / 'workbox.db'))
     panel.show()
     qapp.processEvents()
     try:
-        assert panel.navigation.width() >= 150
+        assert panel.navigation.width() == panel.width()
+        assert panel.navigation.height() <= 60
         assert not panel.tabs.tabBar().isVisible()
         assert panel.tabs.count() == 3
         assert panel.task_groups_page is None
@@ -45,18 +46,25 @@ def test_left_navigation_keeps_tab_contract_and_actions(qapp, tmp_path):
         panel.hide()
 
 
-def test_narrow_workbench_collapses_navigation_and_keeps_controls_inside(qapp, tmp_path):
+def test_narrow_workbench_keeps_horizontal_labels_and_controls_inside(qapp, tmp_path):
     panel = CompactPanel(DesktopService(tmp_path / 'workbox.db'))
     panel.resize(660, 480)
     panel.show()
     qapp.processEvents()
     try:
         assert panel.size().width() == 660
-        assert panel.navigation.width() <= 72
+        assert panel.navigation.width() == panel.width()
+        assert panel.navigation.height() <= 60
         assert panel.settings_button.accessibleName()=='高级设置'
-        assert panel.today_button.isVisible() and panel.today_button.text()==''
-        badge=panel.today_button.findChild(QLabel,'navigationCountBadge')
-        assert badge.isVisible() and badge.text()=='0'
+        assert panel.today_button.isVisible() and panel.today_button.text() == '今日工作量 0'
+        assert panel.today_button.accessibleDescription() == '今日工作量 0'
+        rectangles = []
+        for control, _ in panel.nav_controls:
+            if control.isVisible():
+                rect = control.rect().translated(control.pos())
+                assert panel.navigation.rect().contains(rect)
+                assert all(not rect.intersects(other) for other in rectangles)
+                rectangles.append(rect)
         assert panel.brand_icon.isVisible()
         assert not panel.brand_label.isVisible()
         assert panel.brand_label.text() == 'WorkBox'

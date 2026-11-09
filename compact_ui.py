@@ -304,30 +304,30 @@ class CompactPanel(DropSurface, QWidget):
         self.setAcceptDrops(True)
         self.resize(1200, 780)
         self.setMinimumSize(660, 480)
-        shell = QHBoxLayout(self)
+        shell = QVBoxLayout(self)
         shell.setContentsMargins(0, 0, 0, 0)
         shell.setSpacing(0)
         self.navigation = QFrame()
-        self.navigation.setObjectName('sidebar')
-        self.navigation.setFixedWidth(164)
-        nav = QVBoxLayout(self.navigation)
-        nav.setContentsMargins(12, 20, 12, 14)
-        nav.setSpacing(6)
+        self.navigation.setObjectName('topWorkspaceBar')
+        self.navigation.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        nav = QHBoxLayout(self.navigation)
+        nav.setContentsMargins(14, 6, 14, 6)
+        nav.setSpacing(4)
         self.brand_row = QHBoxLayout()
         self.brand_row.setContentsMargins(0, 0, 0, 0)
         self.brand_row.setSpacing(10)
         self.brand_icon = QLabel()
         self.brand_icon.setStyleSheet('padding: 0px; border: 0px; background: transparent;')
         self.brand_icon.setAlignment(Qt.AlignCenter)
-        self.brand_icon.setPixmap(app_icon().pixmap(32, 32))
-        self.brand_icon.setFixedSize(32, 32)
+        self.brand_icon.setPixmap(app_icon().pixmap(26, 26))
+        self.brand_icon.setFixedSize(26, 26)
         self.brand_icon.setAccessibleName('WorkBox 品牌图标')
         self.brand_icon.setToolTip('WorkBox 工作箱')
         self.brand_row.addWidget(self.brand_icon, 0, Qt.AlignHCenter)
         self.brand_label = label('WorkBox', 'brandName')
         self.brand_row.addWidget(self.brand_label)
         nav.addLayout(self.brand_row)
-        nav.addSpacing(18)
+        nav.addSpacing(12)
         self.nav_projects = button('项目', 'nav')
         self.nav_projects.setIcon(FluentIcon.FOLDER)
         self.nav_zip = button('ZIP 归档', 'nav')
@@ -400,6 +400,7 @@ class CompactPanel(DropSurface, QWidget):
         theme_menu.aboutToShow.connect(self.sync_theme_menu)
         theme_signal().connect(self.sync_theme_menu)
         self.sync_theme_menu()
+        top.addStretch()
         top.addWidget(self.paste_button)
         top.addWidget(self.files_button)
         self.nav_controls.append((self.settings_button, '高级设置'))
@@ -417,6 +418,7 @@ class CompactPanel(DropSurface, QWidget):
         self.search.setClearButtonEnabled(True)
         self.search.setMinimumHeight(32)
         self.search.setMinimumWidth(100)
+        top.insertWidget(1, self.search, 2)
         self.notice = label('', 'notice')
         self.notice.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.notice.setMaximumHeight(72)
@@ -446,7 +448,7 @@ class CompactPanel(DropSurface, QWidget):
         scope_tools = QVBoxLayout(self.project_scope_tools)
         scope_tools.setContentsMargins(0, 0, 0, 0)
         scope_tools.setSpacing(8)
-        filters = QHBoxLayout()
+        filters = self.project_batch_row = QHBoxLayout()
         self.status_group = QButtonGroup(self)
         self.status_buttons = {}
         self.status_segments = StatusSegments()
@@ -480,13 +482,13 @@ class CompactPanel(DropSurface, QWidget):
         self.project_filter_button.setObjectName('projectFilterToggle')
         self.project_filter_button.setToolTip('筛选归档范围、截止日期、类型和加急项目')
         filters.addWidget(self.batch_filter, 1)
-        filters.addWidget(self.project_filter_button)
+        top.insertWidget(2, self.project_filter_button)
         self.clear_project_filters = button('清除')
         self.clear_project_filters.setObjectName('clearProjectFilters')
         self.clear_project_filters.setAccessibleName('清除附加项目筛选')
         self.clear_project_filters.setToolTip('清除归档范围、截止日期、类型和加急筛选')
         self.clear_project_filters.hide()
-        filters.addWidget(self.clear_project_filters)
+        top.insertWidget(3, self.clear_project_filters)
         scope_tools.addLayout(filters)
         self.project_list_heading = label('项目清单', 'queueHeader')
         self.pending_export_button = button('导出名单')
@@ -577,7 +579,6 @@ class CompactPanel(DropSurface, QWidget):
         queue_tools = self.project_queue_tools_layout = QVBoxLayout(self.project_queue_tools)
         queue_tools.setContentsMargins(0, 0, 0, 0)
         queue_tools.setSpacing(8)
-        queue_tools.addWidget(self.search)
         queue_tools.addWidget(self.project_scope_tools)
         self.active_project_filters = QWidget()
         active_filters = QGridLayout(self.active_project_filters)
@@ -619,7 +620,7 @@ class CompactPanel(DropSurface, QWidget):
         self.project_back_button.setIcon(FluentIcon.RETURN)
         self.project_back_button.clicked.connect(self.show_project_queue)
         self.project_back_button.hide()
-        document_layout.addWidget(self.project_back_button, 0, Qt.AlignLeft)
+        self.header_surface.layout().insertWidget(1, self.project_back_button)
         self.project_title = label('', 'selectedProjectName', True)
         self.project_title.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.document_heading = QWidget()
@@ -672,9 +673,9 @@ class CompactPanel(DropSurface, QWidget):
         document_layout.addWidget(self.document_pane, 1)
         self.project_splitter.addWidget(project_side)
         self.project_splitter.addWidget(document_side)
-        self.project_splitter.setStretchFactor(0,2)
-        self.project_splitter.setStretchFactor(1,3)
-        self.project_splitter.setSizes([400,600])
+        self.project_splitter.setStretchFactor(0,0)
+        self.project_splitter.setStretchFactor(1,1)
+        self.project_splitter.setSizes([360,800])
         self._project_split_manual = False
         self._project_narrow = False
         self._project_detail_open = False
@@ -767,7 +768,7 @@ class CompactPanel(DropSurface, QWidget):
         self.footer_surface = QFrame()
         self.footer_surface.setObjectName('workbenchFooter')
         footer = QHBoxLayout(self.footer_surface)
-        footer.setContentsMargins(14, 4, 14, 10)
+        footer.setContentsMargins(14, 2, 14, 4)
         footer.addStretch()
         self.update_button = button('检查更新', 'nav')
         self.update_button.setCheckable(False)
@@ -775,10 +776,9 @@ class CompactPanel(DropSurface, QWidget):
         self.update_button.setAccessibleName('检查更新')
         self.update_button.setToolTip('检查新版本，选择更新后自动下载、备份并重启。')
         self.update_button.clicked.connect(self.update_requested)
-        self.nav_controls.insert(-1, (self.update_button, '检查更新'))
-        nav.insertWidget(nav.indexOf(self.settings_button), self.update_button)
-        self.setTabOrder(self.today_button, self.update_button)
-        self.setTabOrder(self.update_button, self.settings_button)
+        footer.insertWidget(0, self.update_button)
+        self.setTabOrder(self.today_button, self.settings_button)
+        self.setTabOrder(self.settings_button, self.search)
         self.help_button = button('使用指南')
         self.help_button.setAccessibleName('使用指南')
         self.help_button.setObjectName('使用指南')
@@ -932,6 +932,8 @@ class CompactPanel(DropSurface, QWidget):
     def sync_navigation(self, *_):
         index = self.tabs.currentIndex()
         is_classification = getattr(self, 'archive_classification_page', None) is self.tabs.currentWidget()
+        self.header_surface.setVisible(
+            self.tabs.currentWidget() is not getattr(self, 'delivery_page_container', None))
         self.page_title.setText('归档分类' if is_classification else ('项目', 'ZIP 归档', '待核对', '交付记录管理')[min(3, max(0, index))])
         for position, control in enumerate((self.nav_projects, self.nav_zip, self.nav_review, self.today_button)):
             control.setChecked(not is_classification and position == index)
@@ -939,10 +941,10 @@ class CompactPanel(DropSurface, QWidget):
         self.nav_review.setVisible((receipts is not None and receipts.count() > 0) or index == 2)
         self.sync_zip_navigation()
         intake_page = index in (0, 1) and not is_classification
-        if index == 1:
-            self.header_surface.layout().insertWidget(1, self.search, 2)
-        else:
-            self.project_queue_tools_layout.insertWidget(0, self.search)
+        self.page_title.setVisible(not intake_page)
+        self.project_filter_button.setVisible(index == 0)
+        self.clear_project_filters.setVisible(index == 0 and any(
+            not chip.isHidden() for chip in self.project_filter_chips.values()))
         for control in (self.search, self.paste_button, self.files_button):
             control.setVisible(intake_page)
         self._sync_project_layout()
@@ -1079,6 +1081,7 @@ class CompactPanel(DropSurface, QWidget):
             self.review_empty.setVisible(not receipts)
             self.tabs.setTabText(2, f'待核对 {len(receipts)}' if receipts else '待核对')
             self.nav_review.setToolTip(f'待核对 {len(receipts)}' if receipts else '待核对')
+            self.nav_review.setAccessibleDescription(self.nav_review.toolTip())
             self._review_caption = f'待核对 {len(receipts)}' if receipts else '待核对'
             self._review_count = len(receipts)
             self.nav_review.setVisible(bool(receipts) or self.tabs.currentIndex() == 2)
@@ -1884,33 +1887,32 @@ class CompactPanel(DropSurface, QWidget):
 
     def resize_navigation(self):
         narrow = self.width() < 900
-        caption = getattr(self, '_today_caption', '今日工作量 0')
-        control_width = max(152, self.today_button.fontMetrics().horizontalAdvance(caption) + 52)
-        if not self.nav_zip.isHidden():
-            control_width = max(control_width, self.nav_zip.fontMetrics().horizontalAdvance(
-                getattr(self, '_zip_caption', 'ZIP 归档')) + 52)
-        self.navigation.setFixedWidth(72 if narrow else control_width + 24)
-        self.navigation.layout().setContentsMargins(8 if narrow else 12, 14, 8 if narrow else 12, 14)
+        self.navigation.layout().setContentsMargins(10 if narrow else 14, 6, 10 if narrow else 14, 6)
         self.brand_label.setVisible(not narrow)
         for control, caption in self.nav_controls:
-            control.setProperty('compactNav', narrow)
+            control.setProperty('compactNav', False)
             text = getattr(self, '_today_caption', caption) if control is self.today_button else caption
             if control is self.nav_review:
                 text = getattr(self, '_review_caption', caption)
             elif control is self.nav_zip:
                 text = getattr(self, '_zip_caption', caption)
-            if narrow:
+            if narrow and control is self.settings_button:
                 text = ''
-            if control is self.today_button:
-                control.setCompactCount(getattr(self, '_today_compact_caption', '0') if narrow else None)
-            elif control is self.nav_review:
-                count = getattr(self, '_review_count', 0)
-                control.setCompactCount(('99+' if count > 99 else str(count)) if narrow and count else None)
-            elif control is self.nav_zip:
-                count = getattr(self, '_zip_review_count', 0) + getattr(self, '_zip_error_count', 0)
-                control.setCompactCount(('99+' if count > 99 else str(count)) if narrow and count else None)
+            elif narrow and control is self.today_button:
+                text = '今日工作量 ' + getattr(self, '_today_compact_caption', '0')
+            elif narrow and control is self.nav_review and getattr(self, '_review_count', 0) > 99:
+                text = '待核对 99+'
+            elif narrow and control is self.nav_zip:
+                if getattr(self, '_zip_attention_unreadable', False):
+                    text = 'ZIP 状态不可读'
+                elif getattr(self, '_zip_review_count', 0) and getattr(self, '_zip_error_count', 0):
+                    text = 'ZIP 核对/异常'
+            if hasattr(control, 'setCompactCount'):
+                control.setCompactCount(None)
             control.setText(text)
-            control.setFixedWidth(56 if narrow else control_width)
+            control.setMinimumWidth(0)
+            control.setMaximumWidth(16777215)
+            control.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
             control.style().unpolish(control)
             control.style().polish(control)
 
@@ -1982,13 +1984,11 @@ class CompactPanel(DropSurface, QWidget):
         if not hasattr(self, '_project_narrow'):
             return
         margins = self.project_card_layout.contentsMargins()
-        filter_width = (self.batch_filter.minimumSizeHint().width()
-                        + self.project_filter_button.sizeHint().width()
-                        + self.clear_project_filters.sizeHint().width() + 16)
+        filter_width = self.batch_filter.minimumSizeHint().width()
         self.project_side.setMinimumWidth(
             max(self.status_segments.sizeHint().width(), filter_width)
             + margins.left() + margins.right())
-        narrow = self.workbench.width() < 800
+        narrow = self.workbench.width() < 900
         changed = narrow != self._project_narrow
         if changed and narrow and not self.bulk_mode.isChecked() and not self._project_wide_sizes:
             sizes = self.project_splitter.sizes()
@@ -1998,7 +1998,25 @@ class CompactPanel(DropSurface, QWidget):
         detail = self._project_detail_open and self.current_project is not None and not self.bulk_mode.isChecked()
         self.project_side.setVisible(not narrow or not detail)
         self.document_side.setVisible(not self.bulk_mode.isChecked() and (not narrow or detail))
-        self.project_back_button.setVisible(narrow and detail)
+        detail_command = self.tabs.currentIndex() == 0 and narrow and detail
+        self.project_back_button.setVisible(detail_command)
+        if self.tabs.currentIndex() in (0, 1):
+            self.search.setVisible(not detail_command)
+        self.project_filter_button.setVisible(self.tabs.currentIndex() == 0 and not detail_command)
+        self.clear_project_filters.setVisible(self.tabs.currentIndex() == 0 and not detail_command
+            and any(not chip.isHidden() for chip in self.project_filter_chips.values()))
+        if self.files_button.property('contextSecondary') != detail_command:
+            self.files_button.setProperty('contextSecondary', detail_command)
+            self.files_button.style().unpolish(self.files_button)
+            self.files_button.style().polish(self.files_button)
+        inline_scope = narrow and (self.status_segments.minimumSizeHint().width()
+                                   + self.batch_filter.minimumSizeHint().width() + 12
+                                   <= self.workbench.width() - 40)
+        if inline_scope:
+            if self.project_batch_row.indexOf(self.status_segments) < 0:
+                self.project_batch_row.insertWidget(0, self.status_segments, 2)
+        elif self.project_scope_tools.layout().indexOf(self.status_segments) < 0:
+            self.project_scope_tools.layout().insertWidget(0, self.status_segments)
         if changed and not narrow and self._project_wide_sizes:
             self.project_splitter.setSizes(self._project_wide_sizes)
 
@@ -2010,12 +2028,12 @@ class CompactPanel(DropSurface, QWidget):
             title.updateGeometry()
 
     def _fit_project_width(self):
-        if (self._project_narrow or self._project_split_manual or self.width() <= 1400 or not self.isVisible()
+        if (self._project_narrow or self._project_split_manual or not self.isVisible()
                 or not self.document_side.isVisible()):
             return
         available = sum(self.project_splitter.sizes())
         if available > 420:
-            width = min(420, max(180, round(available * .4)))
+            width = max(360, self.project_side.minimumWidth())
             self.project_splitter.setSizes([width, available - width])
 
     def _reveal_current_after_resize(self):

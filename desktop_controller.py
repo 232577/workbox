@@ -485,7 +485,8 @@ class FloatingController(QObject):
         elif worker.error:
             self.notify(f'导出名单未完成。{worker.error} 可重试。')
         else:
-            self.notify(f"已导出 {worker.result['project_count']} 个项目。保存位置 {worker.result['path']}")
+            from export_ui import workbook_export_message
+            self.notify(workbook_export_message(worker.result))
 
     def enqueue(self, caption, operation, *, silent=False, on_cancel=None, on_complete=None):
         if self.quitting or self.closed:

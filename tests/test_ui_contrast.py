@@ -41,5 +41,43 @@ def test_selection_and_form_boundaries_are_distinct(mode):
     background = rule('QListWidget', mode)['background']
     assert contrast(selected['background'], background) >= 3
     assert contrast(selected['color'], selected['background']) >= 4.5
-    border = re.search(r'#[0-9A-Fa-f]{6}', rule('QLineEdit', mode)['border'])[0]
+    field = rule('QLineEdit', mode)
+    border = field.get('border-bottom-color') or re.search(r'#[0-9A-Fa-f]{6}', field['border'])[0]
     assert contrast(border, tokens(mode)['surface']) >= 3
+
+
+@pytest.mark.parametrize('mode', ['light', 'dark'])
+@pytest.mark.parametrize('fluent', [False, True])
+def test_idle_input_renders_the_distinct_bottom_boundary(mode, fluent):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QColor
+    from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QVBoxLayout, QWidget
+    from theme import install_theme, set_theme
+    from ui_components import LineEdit
+
+    app = QApplication.instance() or QApplication([])
+    app.setQuitOnLastWindowClosed(False)
+    install_theme()
+    set_theme(mode, persist=False)
+    window = QWidget()
+    layout = QVBoxLayout(window)
+    field = (LineEdit if fluent else QLineEdit)()
+    field.setPlaceholderText('搜索项目')
+    elsewhere = QPushButton('其他操作')
+    layout.addWidget(field)
+    layout.addWidget(elsewhere)
+    window.resize(300, 140)
+    window.show()
+    window.activateWindow()
+    try:
+        elsewhere.setFocus(Qt.TabFocusReason)
+        app.processEvents()
+        assert not field.hasFocus()
+        captured = field.grab()
+        image = captured.toImage()
+        bottom = image.pixelColor(image.width() // 2, image.height() - 1)
+        assert bottom == QColor(tokens(mode)['control_border'])
+        assert contrast(bottom.name(), tokens(mode)['surface']) >= 3
+    finally:
+        window.close()
+        set_theme('light', persist=False)
