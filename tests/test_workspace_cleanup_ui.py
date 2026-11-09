@@ -112,6 +112,7 @@ def test_failed_document_read_offers_direct_retry_and_keeps_normal_refresh_in_me
     panel.show_project_detail()
     wait_for_reader(pane)
     assert '读取失败' in pane.hint.text()
+    assert pane.file_count.isVisible() and pane.file_count.text() == '总数未知'
     assert pane.refresh_button.isVisible() and pane.refresh_button.isEnabled()
     monkeypatch.setattr(project_documents_ui, 'list_project_documents', original)
     pane.refresh_button.click()

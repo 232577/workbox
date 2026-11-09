@@ -142,6 +142,7 @@ def copy_verified(source, target, *, cancel_event=None, progress=None, require_z
     target.parent.mkdir(parents=True, exist_ok=True)
     _path(target.parent)
     temporary = target.parent / ('.' + uuid.uuid4().hex + '.partial')
+    created_identity = None
     try:
         with ZipLease(source, movable=False) as lease:
             before = os.fstat(lease.stream.fileno())
@@ -151,6 +152,10 @@ def copy_verified(source, target, *, cancel_event=None, progress=None, require_z
             digest, size = hashlib.sha256(), 0
             lease.stream.seek(0)
             with temporary.open('xb') as output:
+                opened = os.fstat(output.fileno())
+                if not opened.st_ino:
+                    raise OSError('无法核对临时副本的文件标识，未发布。')
+                created_identity = (opened.st_dev, opened.st_ino)
                 while True:
                     cancelled(cancel_event)
                     block = lease.stream.read(1024 * 1024)
@@ -163,31 +168,40 @@ def copy_verified(source, target, *, cancel_event=None, progress=None, require_z
                         progress(size, before.st_size)
                 output.flush()
                 os.fsync(output.fileno())
-            cancelled(cancel_event)
-            if size != before.st_size or identity(before) != identity(os.fstat(lease.stream.fileno())):
-                raise RuntimeError('读取期间文件发生变化，副本未发布。')
-            if zone is not None:
-                with open(str(temporary) + ':Zone.Identifier', 'xb') as stream:
-                    stream.write(zone)
-                    stream.flush()
-                    os.fsync(stream.fileno())
-            os.utime(temporary, ns=(before.st_atime_ns, before.st_mtime_ns))
-            with ZipLease(temporary, movable=False) as copied:
+                cancelled(cancel_event)
+                if size != before.st_size or identity(before) != identity(os.fstat(lease.stream.fileno())):
+                    raise RuntimeError('读取期间文件发生变化，副本未发布。')
+                if zone is not None:
+                    with open(str(temporary) + ':Zone.Identifier', 'xb') as stream:
+                        stream.write(zone)
+                        stream.flush()
+                        os.fsync(stream.fileno())
+                os.utime(temporary, ns=(before.st_atime_ns, before.st_mtime_ns))
+            with ZipLease(temporary) as copied:
+                if (copied.initial.st_dev, copied.initial.st_ino) != created_identity:
+                    raise RuntimeError('临时副本在校验前被替换，未发布。')
                 copied_digest, copied_size = _hash_stream(copied.stream, cancel_event=cancel_event)
                 if (copied_digest, copied_size) != (digest.hexdigest(), size):
                     raise RuntimeError('副本校验不一致，未完成收录。')
                 if copied.zone_metadata() != zone:
                     raise RuntimeError('文件来源标记未能保留，副本未发布。')
-            cancelled(cancel_event)
-            _path(target)
-            # Windows 的 rename 不会替换已有目标；同目录发布保证原子性。
-            os.rename(temporary, target)
-            return dict(path=str(target), source_path=str(source), filename=source.name,
-                        size=size, sha256=digest.hexdigest(), mtime_ns=target.stat().st_mtime_ns,
-                        identity=identity(target.stat()))
+                cancelled(cancel_event)
+                # 用校验默认数据流的同一句柄发布，且不覆盖已有目标。
+                copied.rename_to(_path(target))
+                created_identity = None
+                published = os.fstat(copied.stream.fileno())
+                return dict(path=str(target), source_path=str(source), filename=source.name,
+                            size=size, sha256=copied_digest, mtime_ns=published.st_mtime_ns,
+                            identity=identity(published))
     finally:
-        if temporary.exists():
-            temporary.unlink()
+        if created_identity is not None:
+            try:
+                with ZipLease(temporary) as owned:
+                    if (owned.initial.st_dev, owned.initial.st_ino) == created_identity:
+                        owned.remove_after_verified_commit()
+            except (OSError, RuntimeError, ValueError):
+                # 路径失效、被替换或占用时保留现场及原异常。
+                pass
 
 
 def _folder_name(name):

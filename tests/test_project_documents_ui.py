@@ -242,17 +242,55 @@ def test_successful_same_content_refresh_clears_old_read_error(panel,monkeypatch
     choose(panel,1)
     pane=panel.document_pane
     wait(lambda:pane.worker is None and pane.table.rowCount()==1)
+    pane.table.selectRow(0)
     original=project_documents_ui.list_project_documents
     def failed(*args,**kwargs):
         raise OSError('隔离读取失败')
     monkeypatch.setattr(project_documents_ui,'list_project_documents',failed)
     pane.request_refresh()
     wait(lambda:pane.worker is None)
-    assert '失败' in pane.hint.text()
+    assert '失败' in pane.hint.text() and '上次' in pane.hint.text()
+    assert '上次' in pane.file_count.text() and '1 项' in pane.file_count.text()
+    assert '上次' in pane.table.accessibleDescription()
+    assert pane.table.isVisible() and pane.table.currentItem().text() == '甲说明.txt'
+    assert pane.refresh_button.isVisible()
     monkeypatch.setattr(project_documents_ui,'list_project_documents',original)
-    pane.request_refresh()
+    pane.refresh_button.click()
     wait(lambda:pane.worker is None)
     assert '失败' not in pane.hint.text() and '1 项' in pane.hint.text()
+    assert pane.file_count.text() == '1 项' and not pane.refresh_button.isVisible()
+    assert pane.table.currentItem().text() == '甲说明.txt'
+
+
+@pytest.mark.parametrize('readable', [False, True])
+def test_incomplete_document_read_marks_count_and_can_retry(panel, monkeypatch, readable):
+    import project_documents_ui
+
+    original = project_documents_ui.list_project_documents
+
+    def incomplete(*args, **kwargs):
+        result = original(*args, **kwargs)
+        result['errors'].append('匿名子目录暂不可读')
+        if not readable:
+            result['documents'].clear()
+        return result
+
+    monkeypatch.setattr(project_documents_ui, 'list_project_documents', incomplete)
+    choose(panel, 1)
+    pane = panel.document_pane
+    wait(lambda: pane.worker is None and pane.refresh_button.isVisible())
+    assert '不完整' in pane.hint.text()
+    assert pane.file_count.isVisible()
+    assert pane.file_count.text() == ('已读取 1 项' if readable else '总数未知')
+    assert '总数未知' in pane.table.accessibleDescription()
+    assert pane.table.isVisible() is readable
+    if readable:
+        assert pane.table.item(0, 0).text() == '甲说明.txt'
+    monkeypatch.setattr(project_documents_ui, 'list_project_documents', original)
+    pane.refresh_button.click()
+    wait(lambda: pane.worker is None and not pane.refresh_button.isVisible())
+    assert pane.file_count.text() == '1 项'
+    assert pane.table.isVisible() and pane.table.item(0, 0).text() == '甲说明.txt'
 
 
 def test_hidden_reader_finished_callback_cannot_consume_new_reader(panel,monkeypatch,qapp):

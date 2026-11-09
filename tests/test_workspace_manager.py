@@ -2,11 +2,13 @@ import hashlib
 import threading
 from concurrent.futures import CancelledError
 from pathlib import Path
+from uuid import UUID
 from zipfile import ZipFile
 
 import pytest
 
 from app import WorkBox
+from native_files import ZipLease
 from workspace_manager import WorkspaceManager, copy_verified
 
 
@@ -111,6 +113,79 @@ def test_copy_cancel_invalid_and_no_overwrite(tmp_path):
     copy_verified(source, target)
     with pytest.raises(FileExistsError): copy_verified(source, target)
     with pytest.raises(ValueError): copy_verified(tmp_path, tmp_path / 'bad')
+
+
+@pytest.fixture
+def copy_paths(tmp_path, monkeypatch):
+    identifier = UUID(int=1)
+    monkeypatch.setattr('workspace_manager.uuid.uuid4', lambda: identifier)
+    source = tmp_path / 'source.txt'
+    source.write_bytes(b'original material')
+    return source, tmp_path / 'target.txt', tmp_path / f'.{identifier.hex}.partial'
+
+
+def test_copy_does_not_remove_an_existing_temporary_file(copy_paths):
+    source, target, temporary = copy_paths
+    temporary.write_bytes(b'another operation')
+
+    with pytest.raises(FileExistsError):
+        copy_verified(source, target)
+
+    assert temporary.read_bytes() == b'another operation'
+    assert not target.exists()
+
+
+def test_copy_publishes_before_releasing_the_verified_temporary_file(copy_paths, monkeypatch):
+    source, target, temporary = copy_paths
+    close_lease = ZipLease.__exit__
+
+    def change_unlocked_temporary(lease, *args):
+        close_lease(lease, *args)
+        if lease.path == temporary and temporary.exists():
+            temporary.write_bytes(b'changed after verification')
+
+    monkeypatch.setattr(ZipLease, '__exit__', change_unlocked_temporary)
+    result = copy_verified(source, target)
+
+    assert target.read_bytes() == source.read_bytes() == b'original material'
+    assert result['sha256'] == hashlib.sha256(target.read_bytes()).hexdigest()
+
+
+def test_copy_leaves_a_replacement_temporary_file_in_place(copy_paths, monkeypatch):
+    source, target, temporary = copy_paths
+    displaced = temporary.with_suffix('.displaced')
+    open_lease = ZipLease.__enter__
+
+    def substitute_temporary(lease):
+        if lease.path == temporary and not displaced.exists():
+            temporary.rename(displaced)
+            temporary.write_bytes(b'original material')
+        return open_lease(lease)
+
+    monkeypatch.setattr(ZipLease, '__enter__', substitute_temporary)
+    with pytest.raises(RuntimeError):
+        copy_verified(source, target)
+
+    assert not target.exists()
+    assert temporary.read_bytes() == displaced.read_bytes() == b'original material'
+
+
+def test_copy_does_not_overwrite_a_target_created_during_verification(copy_paths, monkeypatch):
+    from workspace_manager import _hash_stream
+
+    source, target, temporary = copy_paths
+
+    def create_competing_target(stream, **kwargs):
+        result = _hash_stream(stream, **kwargs)
+        target.write_bytes(b'another operation')
+        return result
+
+    monkeypatch.setattr('workspace_manager._hash_stream', create_competing_target)
+    with pytest.raises(FileExistsError):
+        copy_verified(source, target)
+
+    assert target.read_bytes() == b'another operation'
+    assert not temporary.exists()
 
 
 def test_zip_structure_validation_and_zone_preserved(tmp_path):

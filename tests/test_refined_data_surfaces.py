@@ -81,7 +81,8 @@ def test_delivery_sections_name_visible_records_once_at_each_width(qapp, tmp_pat
     page.resize(660, 480)
     page.compact_tabs.setCurrentIndex(1)
     qapp.processEvents()
-    assert not page.project_heading.isVisible() and not page.detail_heading.isVisible()
+    assert not page.project_heading.isVisible()
+    assert page.detail_heading.isVisible() and page.detail_heading.text() == '项目：匿名交付项目'
     assert page.compact_tabs.tabText(1) == '交付明细（1）'
     assert page.details.currentRow() == 0
     page.shutdown()
