@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="下载 WorkBox 工作箱 1.0.0 正式安装版。用批次编号找到同批项目，在清单查看交付余量，支持一项目多批和全部交付表导出。项目与文件留在本机。">
+  <meta name="description" content="下载 WorkBox 工作箱 1.0.0 正式安装版。按批次编号查找项目和交付余量，可分别导出待开发项目名单和全部交付表。项目与文件留在本机。">
   <meta name="theme-color" content="#102d40">
   <meta name="color-scheme" content="light dark">
   <script src="/theme.js?v=20261028-fluent"></script>
@@ -136,7 +136,7 @@
 
     <section id="features" class="wb-features-section" aria-labelledby="features-title"><div class="wb-wrap"><div class="wb-section-heading"><div><p class="wb-kicker">日常工作，照顾到细处</p><h2 id="features-title">项目再多，也能一件件理顺。</h2></div></div><div class="wb-features-grid">
       <article><svg class="wb-feature-icon" aria-hidden="true"><use href="#i-calendar"/></svg><h3>知道先做哪一件</h3><p>用加急、备注和截止日期记下要求，按状态、日期或自定义项目类型筛选，待开发到已交付都能跟进。</p><span class="wb-feature-caption">四种状态 · 类型 · 截止日期</span></article>
-      <article><svg class="wb-feature-icon" aria-hidden="true"><use href="#i-file"/></svg><h3>项目和文档，对得上</h3><p>左边选项目，右边看对应工作文件与 ZIP。直接打开文档或所在目录，继续手头的工作。</p><span class="wb-feature-caption">对应文档 · 打开文件 · 定位目录</span></article>
+      <article><svg class="wb-feature-icon" aria-hidden="true"><use href="#i-file"/></svg><h3>项目和文档，对得上</h3><p>宽窗并排显示项目清单和工作文件，窄窗点项目进入详情。可直接打开文档或所在目录。</p><span class="wb-feature-caption">对应文档 · 打开文件 · 定位目录</span></article>
       <article><svg class="wb-feature-icon" aria-hidden="true"><use href="#i-network"/></svg><h3>共享盘上的文件，也能收</h3><p>支持从可读取的 Windows 共享目录和映射盘收录材料。整个文件夹一起拖入，子目录照样保留。</p><span class="wb-feature-caption">共享目录来源 · 工作与归档留在本机</span></article>
       <article><svg class="wb-feature-icon" aria-hidden="true"><use href="#i-stack"/></svg><h3>一个合包，分别记到项目</h3><p>按“首项目名-N[-G].zip”识别多项目包，核对包内项目名称与数量，再逐项目统计实际文件。</p><span class="wb-feature-caption">数量与名称有歧义时，先核对</span></article>
       <article><svg class="wb-feature-icon" aria-hidden="true"><use href="#i-check"/></svg><h3>项目类型，由你定义</h3><p>自定义项目类型可独立增改、停用启用、筛选及右键或批量分配；类型与个人工作量计数互不影响。</p><span class="wb-feature-caption">保留旧项目分类 · 停用后仍可筛选</span></article>
@@ -149,7 +149,8 @@
       <div class="wb-faq-list">
         <details><summary>待核对和 ZIP 提醒，会不会被收起来？</summary><p>待核对数量大于零时，侧栏显示入口和数量；正在查看待核对页时也保留，清空后离开才收起。ZIP归档库通常从高级设置进入；有待核对合包或归档错误时，侧栏恢复入口和数量，正在查看 ZIP 页时也保留。ZIP 异常提醒不受项目搜索或筛选影响。高级设置中始终可以打开这两个页面。</p></details>
         <details><summary>设置、检查和维护工具，在哪里打开？</summary><p>“高级设置”集中提供工作设置（含项目类型词典）、归档分类、ZIP归档库、待核对、收录记录、监视详情、外观、使用指南和检查更新。材料检查仍在所选项目的操作菜单。顶部保留粘贴消息、收进文件；底部保留后台运行、退出，处理中可取消。</p></details>
-        <details><summary>项目筛选和操作在哪里？</summary><p>左侧项目清单直接提供批次选择和多选，右侧显示所选项目和文件。点击“筛选”展开筛选区，可按归档范围、截止日期、类型或加急查找。收起后仍能看到生效条件数量，也可以点击“清除”。</p><p>粘贴消息后可定位本次项目，包括沿用的同名项目。已有项目保留原状态和目录。选中项目后可打开文件，或从项目操作确认交付。</p></details>
+        <details><summary>项目筛选和操作在哪里？</summary><p>搜索、状态、批次和多选都在项目清单。点击“筛选”展开筛选区，可按归档范围、截止日期、类型或加急查找。收起后仍显示生效条件，可逐项清除。</p><p>宽窗并排显示清单和详情。窄窗点击项目打开详情，再点“返回项目清单”回到原阅读位置。选中项目后可直接打开工作目录，符合条件时也可从项目操作确认交付。</p><p>粘贴消息后可定位本次项目，包括沿用的同名项目。已有项目保留原状态和目录。</p></details>
+        <details id="pending-project-export"><summary>怎样导出待开发项目名单？</summary><p>在项目清单选择“待开发”，点击标题旁的“导出名单”，选择 Excel 文件的保存位置。名单包含全部未归档、未删除的待开发项目。搜索、批次和其他筛选只影响当前清单。</p><p>工作簿只有“项目名称”一列，每个项目一行。没有待开发项目时，工作簿仍保留表头。</p></details>
         <details><summary>怎样查看工作量和导出交付表？</summary><p>交付记录页保留日期和搜索，直接显示工作量合计及各类型数量。选中项目或明细后，从相应菜单调整工作量或纠正误记。点击“导出表格”可获取全部交付表，包含所有有效交付项目，独立于当前筛选。</p></details>
       </div>
     </section>
