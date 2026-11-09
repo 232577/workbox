@@ -913,6 +913,9 @@ class FloatingController(QObject):
         material_dialog = getattr(self.panel, 'material_dialog', None)
         if material_dialog is not None:
             material_dialog.shutdown()
+        checklist_dialog = getattr(self.panel, 'checklist_dialog', None)
+        if checklist_dialog is not None:
+            checklist_dialog.shutdown()
         if self.panel is not None and getattr(self.panel, 'today_dialog', None) is not None:
             self.panel.today_dialog.shutdown()
         for name in ('archive_classification_page',):

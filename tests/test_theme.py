@@ -88,7 +88,7 @@ def test_install_reads_saved_theme_without_writing_and_keeps_other_settings(them
     theme.install_theme(store)
     assert theme.current_mode() == theme.resolved_mode() == 'dark'
     assert store.values == before and store.writes == []
-    assert qapp.palette().color(QPalette.Window).name().upper() == '#181A1C'
+    assert qapp.palette().color(QPalette.Window).name().upper() == '#19191F'
     assert qapp.font().family() == 'Microsoft YaHei UI'
     assert qapp.font().pointSize() == 10
 

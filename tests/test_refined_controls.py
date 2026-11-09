@@ -1,4 +1,6 @@
 import pytest
+import time
+from PySide6.QtTest import QTest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
@@ -72,10 +74,22 @@ def test_native_selector_popup_reuses_menu_selection(appearance):
     combo.setCurrentIndex(1)
     combo.resize(185, 32)
     combo.show()
+    # Deliver native show/activation before opening its popup. Otherwise the
+    # delayed top-level activation can immediately close the just-created menu
+    # on Windows (also reproduced against the unchanged base theme).
+    appearance.processEvents()
+    combo.activateWindow()
+    combo.setFocus(Qt.TabFocusReason)
+    appearance.processEvents()
     combo.showPopup()
     appearance.processEvents()
     try:
         view = combo.view()
+        # Native Windows popup animation exposes the container before its view.
+        # Wait for the observable readiness condition, not just one event turn.
+        deadline = time.monotonic() + 2
+        while not view.isVisible() and time.monotonic() < deadline:
+            QTest.qWait(10)
         assert view.isVisible()
         current = view.visualRect(view.currentIndex())
         point = current.center()

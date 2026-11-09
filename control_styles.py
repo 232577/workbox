@@ -8,7 +8,7 @@ def control_style(mode, kind):
         return '''
 PushButton, PrimaryPushButton, ToggleButton {
     color: %(ink)s; background: %(surface)s; border: 1px solid %(button_border)s;
-    border-radius: 6px; padding: 6px 12px; min-height: 18px; font-size: 14px;
+    border-radius: 8px; padding: 6px 12px; min-height: 18px; font-size: 14px;
 }
 PushButton:hover, ToggleButton:hover { background: %(hover)s; border-color: %(control_border)s; }
 PushButton:pressed, ToggleButton:pressed { background: %(raised)s; border-color: %(control_border)s; }
@@ -59,7 +59,7 @@ PushButton#projectBackButton:pressed { background: %(raised)s; }
 PushButton#projectBackButton:focus { border-color: %(accent)s; }
 PushButton#projectBackButton:disabled { color: %(disabled)s; background: transparent; border-color: transparent; }
 QPushButton#nav, QToolButton#nav {
-    background: transparent; border: 1px solid transparent; border-radius: 6px;
+    background: transparent; border: 1px solid transparent; border-radius: 8px;
     color: %(nav_ink)s; padding: 8px 12px; min-height: 20px; text-align: left; font-weight: 500;
 }
 QToolButton#nav { padding-left: 10px; }
@@ -76,7 +76,7 @@ QPushButton#nav[compactCount="true"] { padding-bottom: 22px; }
 QPushButton#nav[compactCount="true"]:focus { padding-bottom: 21px; }
 QPushButton#nav:disabled, QToolButton#nav:disabled { color: %(disabled)s; }
 QFrame#topWorkspaceBar QPushButton#nav, QFrame#topWorkspaceBar QToolButton#nav {
-    background: transparent; border: 1px solid transparent; border-radius: 5px;
+    background: transparent; border: 1px solid transparent; border-radius: 8px;
     color: %(nav_ink)s; padding: 5px 10px; min-height: 20px; text-align: center;
 }
 QFrame#topWorkspaceBar QToolButton#nav { padding: 3px 14px 4px 10px; }
@@ -88,7 +88,7 @@ QFrame#topWorkspaceBar QPushButton#nav:pressed, QFrame#topWorkspaceBar QToolButt
 }
 QFrame#topWorkspaceBar QPushButton#nav:checked,
 QFrame#topWorkspaceBar QPushButton#nav[softSelection="true"]:checked {
-    background: %(nav_selected)s; border-color: %(border)s; border-bottom-color: %(nav_accent)s;
+    background: %(nav_selected)s; border-color: %(nav_selected)s; border-bottom-color: %(nav_selected)s;
     color: %(nav_accent)s; font-weight: 600;
 }
 QFrame#topWorkspaceBar QPushButton#nav:focus, QFrame#topWorkspaceBar QToolButton#nav:focus,
@@ -102,7 +102,7 @@ QFrame#topWorkspaceBar QPushButton#nav:disabled, QFrame#topWorkspaceBar QToolBut
     if kind == 'line':
         return '''
 LineEdit, LineEdit:focus, LineEdit:disabled {
-    min-height: 30px; padding: 0px 10px; border-radius: 6px;
+    min-height: 30px; padding: 0px 10px; border-radius: 8px;
     color: %(ink)s; placeholder-text-color: %(placeholder)s;
     background: %(surface)s; border: 1px solid %(button_border)s; border-bottom-color: %(control_border)s;
     selection-background-color: %(selection)s; selection-color: %(selection_text)s;
@@ -119,7 +119,7 @@ LineEditButton#lineEditButton:pressed { background: %(raised)s; }
     if kind == 'spin':
         return '''
 SpinBox, SpinBox:focus, SpinBox:disabled {
-    min-height: 30px; padding: 0 75px 0 10px; border-radius: 6px;
+    min-height: 30px; padding: 0 75px 0 10px; border-radius: 8px;
     color: %(ink)s; background: %(surface)s; border: 1px solid %(button_border)s;
     border-bottom-color: %(control_border)s;
 }
@@ -145,7 +145,7 @@ SpinButton:focus:enabled { border-color: %(accent)s; }
         return '''
 ComboBox { color: %(ink)s; background: %(surface)s; border: 1px solid %(button_border)s;
     border-bottom-color: %(control_border)s;
-    border-radius: 6px; padding: 5px 30px 5px 10px; min-height: 20px; combobox-popup: 0; }
+    border-radius: 8px; padding: 5px 30px 5px 10px; min-height: 20px; combobox-popup: 0; }
 ComboBox:hover { background: %(subtle_surface)s; border-color: %(control_border)s; }
 ComboBox:focus, ComboBox:on { border: 1px solid %(accent)s; background: %(surface)s; }
 ComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: top right; width: 30px;
@@ -168,7 +168,7 @@ ComboBox QAbstractItemView::item:disabled { color: %(disabled)s; }
 SegmentedWidget { background: transparent; border: none; }
 SegmentedItem { background: transparent; border: 1px solid transparent; border-radius: 5px; color: %(muted)s; }
 SegmentedItem:hover { background: %(raised)s; color: %(ink)s; }
-SegmentedItem[isSelected="true"], SegmentedItem:checked { background: transparent; color: %(accent)s; font-weight: 600; }
+SegmentedItem[isSelected="true"], SegmentedItem:checked { background: %(row_selected)s; color: %(accent)s; font-weight: 600; }
 SegmentedItem:focus, SegmentedItem:checked:focus { border-color: %(accent)s; }
 SegmentedItem:disabled, SegmentedItem:checked:disabled { color: %(disabled)s; }
 ''' % c
