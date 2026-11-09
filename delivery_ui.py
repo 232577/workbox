@@ -1,5 +1,6 @@
 """交付历史与统计管理：首次有效交付计数，误记可撤销和恢复。"""
 from datetime import datetime
+from html import escape
 from math import ceil
 from pathlib import Path
 
@@ -208,7 +209,10 @@ class TodayDeliveryDialog(QDialog):
         detail_layout.setContentsMargins(0, 0, 0, 0)
         detail_layout.setSpacing(4)
         self.project_heading = label('项目记录')
-        self.detail_heading = label('交付明细')
+        self.detail_heading = label('交付明细', wrap=True)
+        detail_heading_policy = self.detail_heading.sizePolicy()
+        detail_heading_policy.setHorizontalPolicy(QSizePolicy.Ignored)
+        self.detail_heading.setSizePolicy(detail_heading_policy)
         for heading in (self.project_heading, self.detail_heading):
             font = heading.font()
             font.setBold(True)
@@ -666,7 +670,6 @@ class TodayDeliveryDialog(QDialog):
         self.project_actions_button.setEnabled(idle)
         self.record_actions_button.setEnabled(idle)
         self.project_heading.setText(f'项目记录 · {len(self.rows)}')
-        self.detail_heading.setText(f'交付明细 · {len(self.events)}')
         self.compact_tabs.setTabText(0,f'项目记录（{len(self.rows)}）')
         self.compact_tabs.setTabText(1,f'交付明细（{len(self.events)}）')
         self._sync_record_views()
@@ -994,7 +997,11 @@ class TodayDeliveryDialog(QDialog):
         self.project_panel.setVisible(show_projects)
         self.detail_panel.setVisible(show_details)
         self.project_heading.setVisible(not compact)
-        self.detail_heading.setVisible(not compact)
+        project_context = f"项目：{self.events[0]['project_name']}" if compact and has_details else ''
+        self.detail_heading.setText(project_context or f'交付明细 · {len(self.events)}')
+        self.detail_heading.setAccessibleName(project_context)
+        self.detail_heading.setToolTip(f'<span>{escape(project_context)}</span>' if project_context else '')
+        self.detail_heading.setVisible(not compact or has_details)
         self.details.setVisible(has_details)
         self.details_hint.setVisible(not has_details)
         self.project_actions_button.setVisible(show_projects and self.table.selectionModel().hasSelection())

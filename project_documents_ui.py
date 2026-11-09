@@ -227,7 +227,14 @@ class ProjectDocumentsPane(QWidget):
         if not self._closed and worker._document_context == (self.project_id, self._generation) and not worker.cancelled:
             if worker.error:
                 self._read_error = True
-                self.hint.setText('文件列表读取失败。')
+                self._deferred = None
+                count = len(self.documents)
+                if count:
+                    self._show_file_count(f'上次读取 {count} 项', f'上次读取到 {count} 项文件与归档，当前总数未知。')
+                    self.hint.setText('文件列表读取失败，当前显示上次读取结果。')
+                else:
+                    self._show_file_count('总数未知', '文件与归档总数未知。')
+                    self.hint.setText('文件列表读取失败。')
                 self.hint.setToolTip(worker.error)
                 self._sync_layout()
             else:
@@ -324,20 +331,27 @@ class ProjectDocumentsPane(QWidget):
         self._read_error = False
         self._result_errors = bool(result['errors'])
         count = len(result['documents'])
-        self.file_count.setText(f'{count} 项')
-        self.file_count.show()
-        self.table.setAccessibleDescription(f'{count} 项文件与归档')
-        caption = f'{count} 项文件与归档' if count else '这个项目还没有文件，可将文件拖入工作箱。'
-        if result['errors']:
-            caption = '部分位置暂不可读。'
+        if self._result_errors:
+            count_label = f'已读取 {count} 项' if count else '总数未知'
+            description = f'已读取 {count} 项文件与归档，总数未知。' if count else '文件与归档总数未知。'
+            self._show_file_count(count_label, description)
+            caption = '文件列表不完整。'
+        else:
+            self._show_file_count(f'{count} 项', f'{count} 项文件与归档')
+            caption = f'{count} 项文件与归档' if count else '这个项目还没有文件，可将文件拖入工作箱。'
         if self.hint.text()!=caption:
             self.hint.setText(caption)
         tooltip='\n'.join(result['errors']) or (result['workspace_path'] or '项目尚未登记工作目录。')
         if self.hint.toolTip()!=tooltip:
             self.hint.setToolTip(tooltip)
-        self.file_count.setToolTip(self.table.accessibleDescription())
         self.table.horizontalHeaderItem(0).setToolTip(tooltip)
         self._sync_layout()
+
+    def _show_file_count(self, text, description):
+        self.file_count.setText(text)
+        self.file_count.setToolTip(description)
+        self.file_count.show()
+        self.table.setAccessibleDescription(description)
 
     def set_compact(self,compact):
         self._compact=compact

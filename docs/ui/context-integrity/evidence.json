@@ -1,0 +1,58 @@
+{
+  "platform": "windows",
+  "source_start": {
+    "compact_ui.py": "db6e81081234b8d43159258ea571a0e7006f9131b62cfe9ecb48adea07768a02",
+    "project_documents_ui.py": "d116e81c471ed1e5d62f290b77a9aa3ac58055a648e3fa3f1eb15bb3aee414cf",
+    "delivery_ui.py": "7bdc09f8f72235e3de7e92239523e7b9729e63bf2a6ed711ed2f38deccd359f3",
+    "workspace_manager.py": "a4337970a3859068b07579ec481c8125a310bc11397130170aa15c01d506e547",
+    "theme.py": "de6199be9acc481a1a3e8d8cfa968bc4fdc77d32b82d4f6411ae665d53c3d537",
+    "ui_components.py": "0a590ed313d92555f8bfeb5dc702b3df90f004eafd17274dee927cad951ded66",
+    "control_styles.py": "ecb43175cdf152c96f237f801e526c2a93382c6869175df432ca2ea385a1fee2",
+    "fluent_views.py": "20619d7db910383533fc009ad00985ac0964ccb766ce2923c1c69cb442866881"
+  },
+  "captures": [
+    {
+      "file": "light-files-last-read.png",
+      "sha256": "e3d31656ad4cdefcee257a27038edc8f6a5fb26ce19d3b17a78c15964a070c5e"
+    },
+    {
+      "file": "light-files-unknown.png",
+      "sha256": "17c5562bfae77776bde4e7682e92026898211adf7c629cd7ebd3f5c94bf0ea9a"
+    },
+    {
+      "file": "light-files-partial.png",
+      "sha256": "46eb2ecd8aa79dc4199ccbef0f630810300bed238ea2776176af50fb5c67f950"
+    },
+    {
+      "file": "light-delivery-project.png",
+      "sha256": "9d2d2d5d933e0c573856fea70f02988f952d3995eff83d37a7aae39230b4c5ab"
+    },
+    {
+      "file": "dark-files-last-read.png",
+      "sha256": "8ed3d27ef5fc1e5889b5eb1be71f6c17fd64385b34ff93086288c19d5ea32138"
+    },
+    {
+      "file": "dark-files-unknown.png",
+      "sha256": "b84affb853181cba6abb5d61485e184b268a51edcb779a48697092385d33b568"
+    },
+    {
+      "file": "dark-files-partial.png",
+      "sha256": "bf5fc22a9f621fb76cbf5bb32107c5a6c632af84972957b34d4c64c18b25ff01"
+    },
+    {
+      "file": "dark-delivery-project.png",
+      "sha256": "69018e3311331438ab14d5059ea581a0fb8a96b4b7507792dd4151e74e181a78"
+    }
+  ],
+  "source_end": {
+    "compact_ui.py": "db6e81081234b8d43159258ea571a0e7006f9131b62cfe9ecb48adea07768a02",
+    "project_documents_ui.py": "d116e81c471ed1e5d62f290b77a9aa3ac58055a648e3fa3f1eb15bb3aee414cf",
+    "delivery_ui.py": "7bdc09f8f72235e3de7e92239523e7b9729e63bf2a6ed711ed2f38deccd359f3",
+    "workspace_manager.py": "a4337970a3859068b07579ec481c8125a310bc11397130170aa15c01d506e547",
+    "theme.py": "de6199be9acc481a1a3e8d8cfa968bc4fdc77d32b82d4f6411ae665d53c3d537",
+    "ui_components.py": "0a590ed313d92555f8bfeb5dc702b3df90f004eafd17274dee927cad951ded66",
+    "control_styles.py": "ecb43175cdf152c96f237f801e526c2a93382c6869175df432ca2ea385a1fee2",
+    "fluent_views.py": "20619d7db910383533fc009ad00985ac0964ccb766ce2923c1c69cb442866881"
+  },
+  "source_unchanged_during_capture": true
+}
