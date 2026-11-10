@@ -23,7 +23,7 @@ def test_settings_use_real_cards_and_keep_footer_visible(qapp, tmp_path):
     dialog.show()
     qapp.processEvents()
     groups = dialog.findChildren(SettingCardGroup)
-    assert [group.titleLabel.text() for group in groups] == ['工作目录', '收录与交付', '归档', '项目类型']
+    assert [group.titleLabel.text() for group in groups] == ['工作目录', '收录与交付', '归档', '项目类型', '窗口与快捷键']
     assert dialog.findChildren(SettingCard)
     assert dialog.findChildren(CardWidget)
     scroll = dialog.findChild(QScrollArea)

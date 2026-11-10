@@ -18,6 +18,7 @@ from native_files import plain_path
 from theme import apply_to
 from dialog_lifecycle import transient_dialog
 from window_environment import DesktopEnvironmentWatcher
+from global_shortcut import GlobalShortcut
 
 
 def screen_for_rect(rect):
@@ -109,6 +110,8 @@ class FloatingController(QObject):
         self.update_backup = None
         self._page_wait_scheduled = False
         self._panel_placed = False
+        self.shortcut = GlobalShortcut(self)
+        self.shortcut.activated.connect(self.toggle_panel)
         self.environment = DesktopEnvironmentWatcher(self)
         self.environment.display_changed.connect(self._recover_desktop)
         self.environment.tray_lost.connect(self._recover_tray_entry)
@@ -176,6 +179,7 @@ class FloatingController(QObject):
                 raise ValueError('首次设置尚未保存，未启动收件与归档。')
         self.orb = FloatingBall()
         self.panel = CompactPanel(self.service)
+        self.panel.window_shortcut = self.shortcut
         self._panel_minimum = self.panel.minimumSize()
         self.panel.installEventFilter(self)
         self.bubble = FeedbackBubble()
@@ -241,6 +245,12 @@ class FloatingController(QObject):
         self._sync_panel_busy()
         if not self.storage_blocked:
             self.monitor_timer.start()
+        saved_shortcut = self.service.get_setting('window_shortcut', '')
+        if saved_shortcut:
+            try:
+                self.shortcut.apply(saved_shortcut)
+            except (ValueError, OSError) as error:
+                self.notify('快捷键未启用：' + str(error))
         return True
 
     def check_archives(self, *, silent=True):
@@ -399,6 +409,25 @@ class FloatingController(QObject):
         self._raise_window(self.panel)
         self._constrain_panel()
         return True
+
+    def toggle_panel(self):
+        if self.closed or self.quitting or self.panel is None:
+            return
+        if QApplication.activeModalWidget() is not None:
+            self.show_panel()
+        elif QApplication.activePopupWidget() is not None:
+            return
+        elif (self.panel.isVisible() and not self.panel.isMinimized()
+                and self.panel.isActiveWindow()):
+            self._save_panel_geometry()
+            self.panel.hide()
+            self.bubble.hide()
+            self.bubble.timer.stop()
+            self.background_mode = False
+            self.environment.set_background_tray(None)
+            self.orb.show()
+        else:
+            self.show_panel()
 
     def show_feedback(self):
         target = self.bubble.navigation_target
@@ -620,8 +649,7 @@ class FloatingController(QObject):
                 self.orb.set_progress(False)
             self._sync_panel_busy()
             if self.quitting:
-                self.shutdown()
-                self.exit_requested.emit()
+                self._finish_quit()
             return
         self.caption, operation, self.silent_current, _, on_complete = self.queue.popleft()
         self.worker = FileJob(operation, self)
@@ -998,10 +1026,32 @@ class FloatingController(QObject):
         self.monitor_timer.stop()
         self.cancel_jobs()
         if not self.worker and not self.choosing_pending_export:
-            self.shutdown()
-            self.exit_requested.emit()
+            self._finish_quit()
         else:
             self.notify('正在结束当前文件操作，完成后退出。', busy=True)
+
+    def _finish_quit(self):
+        try:
+            self.shutdown()
+        except (OSError, RuntimeError) as error:
+            # Installation has its own recovery handler and must see the failure.
+            if self.pending_update is not None:
+                raise
+            self.quitting = False
+            if not self.storage_blocked:
+                self.monitor_timer.start()
+            self.panel.document_pane.resume_after_failed_update()
+            for page in self._business_pages():
+                if hasattr(page, 'resume_after_failed_update'):
+                    page.resume_after_failed_update()
+            self._sync_panel_busy()
+            self.background_mode = False
+            self.environment.set_background_tray(None)
+            self.orb.show()
+            self.notify('退出未完成：' + str(error) + '\n窗口和数据会话仍保留，可稍后再次点击“退出”。')
+            return False
+        self.exit_requested.emit()
+        return True
 
     def shutdown(self):
         if self.closed:
@@ -1013,6 +1063,7 @@ class FloatingController(QObject):
         if self.worker and not self.worker.wait(15000):
             raise RuntimeError('文件操作仍未结束，窗口与文件锁保持，不强制退出。')
         self.worker = None
+        self.shortcut.stop()
         if self.update_dialog is not None:
             self.update_dialog.shutdown()
         material_dialog = getattr(self.panel, 'material_dialog', None)

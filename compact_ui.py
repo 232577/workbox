@@ -305,6 +305,7 @@ class CompactPanel(DropSurface, QWidget):
     def __init__(self, service):
         super().__init__()
         self.service = service
+        self.window_shortcut = None
         self.busy = False
         self.refreshing = False
         self.current_project = None
@@ -2349,11 +2350,11 @@ class DirectorySettingsDialog(QDialog):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(20, 18, 20, 16)
         outer.setSpacing(12)
-        add_header(outer, '工作设置', '目录与规则需保存；类型管理中的操作单独即时保存。',
+        add_header(outer, '工作设置', '目录与规则需保存；快捷键和类型管理单独应用。',
                    icon=FluentIcon.SETTING, eyebrow='WORKBOX / 设置中心')
         tools = QHBoxLayout()
         self.settings_search = FilterEdit()
-        self.settings_search.setPlaceholderText('搜索设置，例如目录、交付、等待…')
+        self.settings_search.setPlaceholderText('搜索设置，例如目录、快捷键、交付…')
         self.settings_search.setAccessibleName('搜索工作设置')
         self.settings_search.setClearButtonEnabled(True)
         self.section_filter = QComboBox()
@@ -2497,6 +2498,12 @@ class DirectorySettingsDialog(QDialog):
         types_body.addWidget(self.archive_rule_button, 0, Qt.AlignLeft)
         types_body.addWidget(label('归档分类独立保存；按最近有效交付的单项目文件数判断，不等于自动交付规则。', 'subtle', True))
         types_body.addWidget(label('项目类型和新项目默认类型单独保存。新增、改名、停用及默认类型选择立即生效，不受本设置窗口的取消影响。默认类型只用于以后创建的项目。', 'subtle', True))
+        from shortcut_settings import ShortcutSettings
+        window_section = group('窗口与快捷键')
+        shortcut_body = body_card(window_section)
+        self.shortcut_settings = ShortcutSettings(service, getattr(parent, 'window_shortcut', None))
+        shortcut_body.addWidget(self.shortcut_settings)
+        self.shortcut_settings.layout_changed.connect(self._queue_setting_card_layout)
         layout.addStretch()
         self.error = InlineError()
         outer.addWidget(self.error)
@@ -2572,11 +2579,16 @@ class DirectorySettingsDialog(QDialog):
         self._layout_setting_cards()
 
     def eventFilter(self, watched, event):
-        from PySide6.QtCore import QEvent, QTimer
-        if watched is self.settings_scroll.viewport() and event.type() == QEvent.Resize and not self._pending_card_layout:
+        from PySide6.QtCore import QEvent
+        if watched is self.settings_scroll.viewport() and event.type() == QEvent.Resize:
+            self._queue_setting_card_layout()
+        return super().eventFilter(watched, event)
+
+    def _queue_setting_card_layout(self):
+        from PySide6.QtCore import QTimer
+        if not self._pending_card_layout:
             self._pending_card_layout = True
             QTimer.singleShot(0, self, self._layout_setting_cards)
-        return super().eventFilter(watched, event)
 
     def _layout_setting_cards(self):
         self._pending_card_layout = False

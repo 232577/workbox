@@ -368,7 +368,10 @@ class DesktopService(WorkBox):
             return json.loads(row[0]) if row else default
 
     def set_setting(self, key, value):
-        if key == 'manager_window_state':
+        if key == 'window_shortcut':
+            from global_shortcut import validate_shortcut
+            value = validate_shortcut(value)
+        elif key == 'manager_window_state':
             if (type(value) is not str or not 0 < len(value) <= 4096 or len(value) % 2
                     or any(character not in '0123456789abcdef' for character in value)):
                 raise ValueError('无效的窗口恢复设置。')
