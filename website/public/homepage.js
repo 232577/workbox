@@ -1,6 +1,7 @@
 "use strict";
 
 // 先呈现完整内容，脚本可用时才启用切换；加载失败仍可阅读。
+let revealWorkflowTarget = () => {};
 const workflowTabs = document.querySelector('[data-workflow-tabs]');
 if (workflowTabs) {
   const tabs = Array.from(workflowTabs.querySelectorAll('[data-workflow-tab]'));
@@ -13,6 +14,10 @@ if (workflowTabs) {
         panels[i].hidden = i !== index;
       });
       if (focus) tabs[index].focus();
+    };
+    revealWorkflowTarget = target => {
+      const index = panels.findIndex(panel => panel === target || panel.contains(target));
+      if (index !== -1) selectTab(index);
     };
     workflowTabs.setAttribute('role', 'tablist');
     tabs.forEach((tab, index) => {
@@ -35,6 +40,36 @@ if (workflowTabs) {
     selectTab(0);
     workflowTabs.hidden = false;
   }
+}
+
+// 深链接与普通锚点都先展开原生指南，再交给浏览器定位。
+if (typeof window !== 'undefined' && window.location) {
+  const revealHash = (hash, scroll = false) => {
+    if (!hash || hash === '#') return;
+    let id;
+    try { id = decodeURIComponent(hash.slice(1)); } catch (_) { return; }
+    const target = document.getElementById(id);
+    if (!target) return;
+    for (let element = target; element; element = element.parentElement) {
+      if (element.tagName === 'DETAILS') element.open = true;
+    }
+    revealWorkflowTarget(target);
+    if (scroll) target.scrollIntoView();
+  };
+  revealHash(window.location.hash, true);
+  window.addEventListener('hashchange', () => revealHash(window.location.hash, true));
+  document.addEventListener('click', event => {
+    if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    const link = event.target.closest?.('a[href]');
+    if (!link || link.getAttribute('download') !== null) return;
+    const target = link.getAttribute('target');
+    if (target && target !== '_self') return;
+    let destination;
+    try { destination = new URL(link.getAttribute('href'), window.location.href); } catch (_) { return; }
+    const current = new URL(window.location.href);
+    if (destination.origin !== current.origin || destination.pathname !== current.pathname || destination.search !== current.search) return;
+    revealHash(destination.hash);
+  });
 }
 
 // 图片未完成或不可读时继续显示流程图；两种外观独立确认加载结果。
