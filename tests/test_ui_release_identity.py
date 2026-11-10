@@ -27,8 +27,15 @@ def test_studio_installer_is_newer_than_the_published_r7():
 def test_window_lifecycle_studio_build_does_not_reuse_the_earlier_draft():
     # The r1 draft already identifies the candidate built before PR73.
     # A new payload must be independently identifiable, even for draft testers.
-    assert update_client.CURRENT_TAG == 'v1.0.0.20261110.2'
+    assert update_client.build_key(update_client.CURRENT_TAG) >= update_client.build_key('v1.0.0.20261110.2')
     assert update_client.build_key(update_client.CURRENT_TAG) > update_client.build_key('v1.0.0.20261110.1')
+
+
+def test_studio_and_global_hotkey_build_has_its_own_identity():
+    # The r2 candidate was frozen before PR75. Preserve both old draft payloads
+    # and let their users discover this integrated Studio/window/hotkey build.
+    assert update_client.CURRENT_TAG == 'v1.0.0.20261110.3'
+    assert update_client.build_key(update_client.CURRENT_TAG) > update_client.build_key('v1.0.0.20261110.2')
 
 
 def test_build_probe_reports_release_without_creating_business_data(tmp_path):
@@ -47,6 +54,8 @@ def test_build_probe_reports_release_without_creating_business_data(tmp_path):
     ('v1.0.0.20261110.1', 'v1.0.0.20261109.7', 'WorkBox-1.0.0-Setup-x64-20261110-r1.exe'),
     ('v1.0.0.20261110.2', 'v1.0.0.20261109.7', 'WorkBox-1.0.0-Setup-x64-20261110-r2.exe'),
     ('v1.0.0.20261110.2', 'v1.0.0.20261110.1', 'WorkBox-1.0.0-Setup-x64-20261110-r2.exe'),
+    ('v1.0.0.20261110.3', 'v1.0.0.20261109.7', 'WorkBox-1.0.0-Setup-x64-20261110-r3.exe'),
+    ('v1.0.0.20261110.3', 'v1.0.0.20261110.2', 'WorkBox-1.0.0-Setup-x64-20261110-r3.exe'),
 ])
 def test_release_upgrades_previous_without_reoffering_installed_or_older(tag, previous, filename):
     payload = {'tag_name': tag, 'draft': False, 'prerelease': False,
