@@ -38,6 +38,15 @@
         ],
         "createdAt": "2026-11-09T09:19:37.040Z",
         "reason": "Agent: 2026-11-09 review of all 33 findings (6 repeated snippets), confirmed in live browser at 320 and 1280 CSS px. FAQ details have 16/20px horizontal padding, summaries 17px vertical padding, FAQ list border-top is overridden to zero; download section has 65px vertical padding and inner wrapper 16px or greater side margins. Preview/video wrappers contain full-bleed media, not flush body text; centered equal-width metric columns use divider lines. No spacing CSS changed in r6. This rule has no extractable value, so this single-file waiver is the narrowest supported CLI scope; future homepage spacing edits still require rendered review."
+      },
+      {
+        "rule": "nested-cards",
+        "value": "*",
+        "files": [
+          "website/public/index.html"
+        ],
+        "createdAt": "2026-11-10T01:07:19.797Z",
+        "reason": "Agent review: all four remaining static matches are document/message/folder/archive shapes in .wb-preview-fallback (lines 80-84), not content cards. Removing each shape in isolated fixtures reduced the count by one, and removing all four reduced it to zero. This labelled illustration is hidden when the real screenshot loads and is required as its failure/no-script fallback. The detector has no element-level ignore; this is the narrowest supported rule/file exception. Re-audit nested cards whenever homepage layout changes."
       }
     ]
   }
