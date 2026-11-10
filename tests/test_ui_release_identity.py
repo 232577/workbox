@@ -18,6 +18,12 @@ def test_integrated_delivery_is_newer_than_the_published_r4():
     assert update_client.build_key(update_client.CURRENT_TAG) > update_client.build_key('v1.0.0.20261103.4')
 
 
+def test_studio_installer_is_newer_than_the_published_r7():
+    # r7 predates PR68. Reusing its identity would prevent installed clients
+    # from discovering the already-integrated Studio/checklist runtime.
+    assert update_client.build_key(update_client.CURRENT_TAG) > update_client.build_key('v1.0.0.20261109.7')
+
+
 def test_build_probe_reports_release_without_creating_business_data(tmp_path):
     data = tmp_path / 'unused-data'
     result = tmp_path / 'identity.json'
@@ -31,6 +37,7 @@ def test_build_probe_reports_release_without_creating_business_data(tmp_path):
 @pytest.mark.parametrize('tag,previous,filename', [
     ('v1.0.0.20261109.6', 'v1.0.0.20261109.5', 'WorkBox-1.0.0-Setup-x64-20261109-r6.exe'),
     ('v1.0.0.20261109.7', 'v1.0.0.20261109.6', 'WorkBox-1.0.0-Setup-x64-20261109-r7.exe'),
+    ('v1.0.0.20261110.1', 'v1.0.0.20261109.7', 'WorkBox-1.0.0-Setup-x64-20261110-r1.exe'),
 ])
 def test_release_upgrades_previous_without_reoffering_installed_or_older(tag, previous, filename):
     payload = {'tag_name': tag, 'draft': False, 'prerelease': False,
