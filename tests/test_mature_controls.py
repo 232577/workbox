@@ -123,7 +123,8 @@ def test_button_lays_out_the_complete_caption_and_icon_at_keyboard_focus(window)
 
 def test_settings_card_descriptions_reflow_in_the_actual_dialog(window):
     settings = dict(work_root='', archive_root='', stable_seconds=10)
-    service = SimpleNamespace(workspaces=SimpleNamespace(settings=lambda: settings))
+    service = SimpleNamespace(workspaces=SimpleNamespace(settings=lambda: settings),
+                              get_setting=lambda _key, default=None: default)
     dialog = DirectorySettingsDialog(service, window)
     dialog.show()
     cards = dialog.findChildren(SettingCard)
