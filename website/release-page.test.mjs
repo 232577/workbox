@@ -6,13 +6,27 @@ import {release, releases} from './worker.mjs';
 const html=await readFile(new URL('./public/index.html',import.meta.url),'utf8');
 const demo=await import('./public/demo.mjs').catch(()=>({}));
 
-test('首屏为原创流程演示，真实界面另有明确入口',()=>{
+test('真实界面优先呈现，保留独立的示例流程与原图入口',()=>{
+  assert.ok(html.indexOf('id="actual-ui"') < html.indexOf('id="overview"'));
+  assert.ok(html.indexOf('id="overview"') < html.indexOf('id="try-workbox"'));
+  assert.ok(html.indexOf('id="try-workbox"') < html.indexOf('id="download"'));
   assert.match(html,/id="workbox-demo"/);
   assert.match(html,/示例演示，不读取或上传真实文件/);
   assert.match(html,/id="actual-ui"/);
   assert.match(html,/href="#actual-ui"/);
   assert.match(html,/src="\/demo.mjs/);
   assert.doesNotMatch(html,/<input[^>]*type="file"/);
+});
+
+test('详细指南默认折叠，全部指南锚点唯一且与首页功能入口对应',()=>{
+  const guide = html.match(/<details\b[^>]*id="guide"[^>]*>/)?.[0];
+  assert.ok(guide);
+  assert.doesNotMatch(guide, /\bopen(?:\s|=|>)/);
+  assert.ok(html.indexOf('id="download"') < html.indexOf('id="guide"'));
+  const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
+  assert.equal(new Set(ids).size, ids.length, '锚点不能重复');
+  for(const match of html.matchAll(/\bhref="#([^"]+)"/g)) assert.ok(ids.includes(match[1]), match[1]);
+  assert.match(html, /class="wb-guide-nav"[\s\S]*?href="#project-batches"/);
 });
 test('演示操作为原生按钮，状态可被辅助技术读取',()=>{
   assert.match(html,/<button[^>]*type="button"[^>]*data-demo-next/);

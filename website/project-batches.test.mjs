@@ -19,7 +19,9 @@ test('项目批次说明保留四个原状态与原排序，一项目多批仍�
 
 test('主要入口说明沿用项目流程与全部交付表，不引入任务交接步骤', () => {
   const nav = html.match(/<nav\b[^>]*class="wb-nav"[^>]*>([\s\S]*?)<\/nav>/)?.[1];
-  assert.match(nav, /href="#project-batches"/);
+  assert.match(nav, /href="#guide"/);
+  const guideNav = html.match(/<nav\b[^>]*class="wb-guide-nav"[^>]*>([\s\S]*?)<\/nav>/)?.[1];
+  assert.match(guideNav, /href="#project-batches"/);
   assert.doesNotMatch(nav, /任务组/);
   assert.ok(daily?.includes('全部交付表'));
   assert.doesNotMatch(daily, /新建任务组|添加消息|记录已交接|导出本组|历史消息补录|高级任务操作/);
