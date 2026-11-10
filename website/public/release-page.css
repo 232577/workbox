@@ -161,6 +161,8 @@ html[data-theme="dark"] .home-page {
 .home-page .wb-download-heading>div>p:last-child { color:var(--release-muted); font-size:14px; margin-top:14px; }
 .home-page .wb-download-heading img { width:60px; height:60px; border-radius:12px; }
 .home-page .wb-download-grid { grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:64px; padding-top:30px; }
+.home-page .wb-download-grid>div { min-width:0; }
+.home-page .wb-release-notes { overflow-wrap:anywhere; }
 .home-page .wb-download-main>p,.home-page .wb-download-details p,.home-page .wb-download-details li { color:var(--release-muted); font-size:14px; }
 .home-page .wb-download-main .wb-package-name { font-size:13px; color:var(--release-muted); overflow-wrap:anywhere; }
 .home-page .wb-download-details { padding:0; background:transparent; border:0; border-radius:0; color:var(--release-ink); }
@@ -170,7 +172,7 @@ html[data-theme="dark"] .home-page {
 .home-page .wb-release-notes,.home-page .wb-release-history { border-top:1px solid var(--release-line); padding-top:6px; margin-top:20px; }
 .home-page .wb-release-notes summary,.home-page .wb-release-history summary { min-height:44px; padding:9px 24px 9px 0; font-size:14px; cursor:pointer; }
 .home-page .wb-release-links { margin-top:8px; gap:8px 20px; }
-.home-page .wb-release-links a { min-height:40px; font-size:13px; }
+.home-page .wb-release-links a { min-height:40px; min-width:0; max-width:100%; overflow-wrap:anywhere; font-size:13px; }
 .home-page .wb-checksum-details { border-color:var(--release-line); }
 .home-page .wb-checksum-details summary,.home-page .wb-checksum-details summary::after { color:var(--release-action); }
 .home-page .wb-checksum-details summary { font-size:14px; min-height:44px; }
@@ -317,7 +319,7 @@ html:has(.home-page) { scrollbar-color:var(--site-muted) var(--site-canvas); }
   .home-page .wb-download-heading { padding-bottom:23px; align-items:flex-start; gap:16px; }
   .home-page .wb-download-heading h2 { font-size:28px; }
   .home-page .wb-download-heading img { width:48px; height:48px; border-radius:8px; }
-  .home-page .wb-download-grid { grid-template-columns:1fr; padding-top:24px; gap:28px; }
+  .home-page .wb-download-grid { grid-template-columns:minmax(0,1fr); padding-top:24px; gap:28px; }
   .home-page .wb-download-main>p,.home-page .wb-download-details p,.home-page .wb-download-details li { font-size:14px; }
   .home-page .wb-guide { margin-block:36px 42px; }
   .home-page .wb-guide>summary { padding-block:23px; min-height:112px; }
