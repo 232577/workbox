@@ -368,7 +368,11 @@ class DesktopService(WorkBox):
             return json.loads(row[0]) if row else default
 
     def set_setting(self, key, value):
-        if key == 'appearance_theme':
+        if key == 'manager_window_state':
+            if (type(value) is not str or not 0 < len(value) <= 4096 or len(value) % 2
+                    or any(character not in '0123456789abcdef' for character in value)):
+                raise ValueError('无效的窗口恢复设置。')
+        elif key == 'appearance_theme':
             if type(value) is not str or value not in ('light', 'dark', 'system'):
                 raise ValueError('外观只支持浅色、深色或跟随系统。')
         elif key == 'delivery_panel_sizes':
