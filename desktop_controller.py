@@ -5,8 +5,8 @@ import hashlib
 from pathlib import Path
 import weakref
 
-from PySide6.QtCore import QCoreApplication, QEvent, QObject, QLockFile, QPoint, QRect, Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import QByteArray, QCoreApplication, QEvent, QObject, QLockFile, QPoint, QRect, Qt, QThread, QTimer, QUrl, Signal
+from PySide6.QtGui import QDesktopServices, QRegion
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QDialog, QFileDialog, QFrame, QHBoxLayout, QMessageBox, QPlainTextEdit, QSystemTrayIcon, QVBoxLayout
 import shiboken6
@@ -17,12 +17,23 @@ from ui import FileJob, app_icon
 from native_files import plain_path
 from theme import apply_to
 from dialog_lifecycle import transient_dialog
+from window_environment import DesktopEnvironmentWatcher
+
+
+def screen_for_rect(rect):
+    screens = QApplication.screens()
+    # Retain the screen containing most of the window, including negative origins.
+    def score(screen):
+        area = screen.availableGeometry()
+        overlap = area.intersected(rect)
+        distance = (area.center() - rect.center()).manhattanLength()
+        return overlap.width() * overlap.height() if not overlap.isEmpty() else 0, -distance
+    return max(screens, key=score)
 
 
 def clamp_position(position, size):
-    screens = QApplication.screens()
     point = QPoint(*position)
-    screen = next((s for s in screens if s.availableGeometry().contains(point)), screens[0])
+    screen = screen_for_rect(QRect(point, size))
     area = screen.availableGeometry().adjusted(6, 6, -6, -6)
     return QPoint(max(area.left(), min(point.x(), area.right()-size.width()+1)),
                   max(area.top(), min(point.y(), area.bottom()-size.height()+1)))
@@ -97,6 +108,10 @@ class FloatingController(QObject):
         self.pending_update = None
         self.update_backup = None
         self._page_wait_scheduled = False
+        self._panel_placed = False
+        self.environment = DesktopEnvironmentWatcher(self)
+        self.environment.display_changed.connect(self._recover_desktop)
+        self.environment.tray_lost.connect(self._recover_tray_entry)
         self.monitor_timer = QTimer(self)
         self.monitor_timer.setInterval(2000)
         self.monitor_timer.timeout.connect(lambda: self.check_archives(silent=True))
@@ -161,6 +176,8 @@ class FloatingController(QObject):
                 raise ValueError('首次设置尚未保存，未启动收件与归档。')
         self.orb = FloatingBall()
         self.panel = CompactPanel(self.service)
+        self._panel_minimum = self.panel.minimumSize()
+        self.panel.installEventFilter(self)
         self.bubble = FeedbackBubble()
         if recovery_errors:
             self.panel.show_notice('项目目录需要恢复，相关写操作已暂停。请保留文件并检查恢复记录。')
@@ -206,9 +223,7 @@ class FloatingController(QObject):
         available = QApplication.primaryScreen().availableGeometry()
         saved = self.service.get_setting('orb_position', [available.right()-100, available.center().y()])
         self.orb.move(clamp_position(saved, self.orb.size()))
-        geometry = self.service.get_setting('manager_geometry')
-        if geometry and len(geometry) == 4:
-            self.panel.setGeometry(QRect(*geometry))
+        self._restore_panel_geometry()
         self.orb.show()
         self.refresh()
         # 即使外壳暂未就绪也注册图标；Qt 会在托盘恢复可用时自动添加。
@@ -218,6 +233,7 @@ class FloatingController(QObject):
             self.tray.setContextMenu(self.orb.context_menu())
             self.tray.activated.connect(lambda reason: self.show_panel() if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick) else None)
             self.tray.show()
+        self.environment.start()
         with self.service.db.connect() as connection:
             pending = connection.execute("SELECT COUNT(*) FROM managed_transfers WHERE state!='complete'").fetchone()[0]
         if pending:
@@ -251,13 +267,7 @@ class FloatingController(QObject):
             socket = self.server.nextPendingConnection()
             socket.readyRead.connect(lambda s=socket: s.readAll())
             socket.disconnected.connect(socket.deleteLater)
-            modal = QApplication.activeModalWidget()
-            if self.panel is None and modal is not None:
-                modal.showNormal()
-                modal.raise_()
-                modal.activateWindow()
-            else:
-                self.show_panel()
+            self.show_panel()
 
     def refresh(self):
         if self.panel is None or self.closed:
@@ -282,31 +292,117 @@ class FloatingController(QObject):
             return {'project_lifecycle': result}
         self.enqueue('正在删除项目' if deleted else '正在恢复项目', change)
 
-    def show_panel(self):
-        if self.panel is None or self.closed:
+    def _restore_panel_geometry(self):
+        saved = self.service.get_setting('manager_window_state')
+        if isinstance(saved, str) and len(saved) <= 4096:
+            try:
+                self._panel_placed = self.panel.restoreGeometry(QByteArray(bytes.fromhex(saved)))
+            except ValueError:
+                pass
+        if not self._panel_placed:
+            geometry = self.service.get_setting('manager_geometry')
+            if (isinstance(geometry, list) and len(geometry) == 4
+                    and all(type(value) is int and abs(value) < 100000 for value in geometry)
+                    and geometry[2] > 0 and geometry[3] > 0):
+                self.panel.setGeometry(QRect(*geometry))
+                self._panel_placed = True
+
+    def _save_panel_geometry(self):
+        if self.closed or not self.owns_lock or not self._panel_placed:
+            return
+        geometry = self.panel.normalGeometry()
+        if not geometry.isValid():
+            geometry = self.panel.geometry()
+        self.service.set_setting('manager_geometry', [geometry.x(), geometry.y(), geometry.width(), geometry.height()])
+        self.service.set_setting('manager_window_state', bytes(self.panel.saveGeometry()).hex())
+
+    def eventFilter(self, watched, event):
+        if watched is self.panel and event.type() == QEvent.Close:
+            self._save_panel_geometry()
+        return super().eventFilter(watched, event)
+
+    @staticmethod
+    def _raise_window(window):
+        # Clearing only minimized preserves a maximized window's normal geometry.
+        if window.isMinimized():
+            window.setWindowState(window.windowState() & ~Qt.WindowMinimized)
+        window.show()
+        window.raise_()
+        window.activateWindow()
+
+    def _constrain_panel(self, screen=None):
+        if self.panel.isMaximized() or self.panel.isFullScreen():
+            return  # Qt owns maximized geometry and restores it on screen removal.
+        frame = self.panel.frameGeometry()
+        area = (screen or screen_for_rect(frame)).availableGeometry().adjusted(6, 6, -6, -6)
+        border_width = max(0, frame.width() - self.panel.width())
+        border_height = max(0, frame.height() - self.panel.height())
+        width, height = max(1, area.width() - border_width), max(1, area.height() - border_height)
+        self.panel.setMinimumSize(min(self._panel_minimum.width(), width), min(self._panel_minimum.height(), height))
+        if screen is None:
+            available = QRegion()
+            for display in QApplication.screens():
+                available = available.united(QRegion(display.availableGeometry()))
+            # A user may deliberately span adjacent monitors or touch a screen edge.
+            if QRegion(self.panel.frameGeometry()).subtracted(available).isEmpty():
+                return
+        if self.panel.width() > width or self.panel.height() > height:
+            self.panel.resize(min(self.panel.width(), width), min(self.panel.height(), height))
+        frame = self.panel.frameGeometry()
+        position = QPoint(max(area.left(), min(frame.x(), area.right() - frame.width() + 1)),
+                          max(area.top(), min(frame.y(), area.bottom() - frame.height() + 1)))
+        if position != frame.topLeft():
+            self.panel.move(position)
+
+    def _recover_desktop(self):
+        if self.closed or self.quitting or self.orb is None:
+            return
+        self.save_position([self.orb.x(), self.orb.y()])
+        if self._panel_placed:
+            self._constrain_panel()
+        if self.bubble.isVisible():
+            self.bubble.move(clamp_position([self.bubble.x(), self.bubble.y()], self.bubble.size()))
+
+    def _recover_tray_entry(self):
+        if self.closed or self.quitting or not self.background_mode:
             return
         self.background_mode = False
+        self.environment.set_background_tray(None)
+        self.save_position([self.orb.x(), self.orb.y()])
+        self.orb.show()
+        self.notify('系统托盘暂不可用，已恢复悬浮球入口；后台任务继续运行。')
+
+    def show_panel(self):
+        if self.closed or self.quitting:
+            return False
+        modal = QApplication.activeModalWidget()
+        if modal is not None:
+            self._raise_window(modal)
+            return False
+        if self.panel is None:
+            return False
+        self.background_mode = False
+        self.environment.set_background_tray(None)
         self.orb.show()
         self.refresh()
-        area = self.orb.screen().availableGeometry()
-        self.panel.resize(min(self.panel.width(), area.width()-24), min(self.panel.height(), area.height()-48))
-        was_visible = self.panel.isVisible()
         self.bubble.hide()
-        self.panel.showNormal()
-        if not was_visible:
+        if not self._panel_placed:
+            area = self.orb.screen().availableGeometry()
+            self._constrain_panel(self.orb.screen())
+            self.panel.resize(min(self.panel.width(), max(1, area.width() - 24)),
+                              min(self.panel.height(), max(1, area.height() - 48)))
             x = self.orb.x()-self.panel.width()-10
             if x < area.left():
                 x = self.orb.x()+self.orb.width()+10
             self.panel.move(clamp_position([x, self.orb.y()-100], self.panel.frameGeometry().size()))
-        else:
-            self.panel.move(clamp_position([self.panel.x(), self.panel.y()], self.panel.frameGeometry().size()))
-        self.panel.raise_()
-        self.panel.activateWindow()
+            self._panel_placed = True
+        self._raise_window(self.panel)
+        self._constrain_panel()
+        return True
 
     def show_feedback(self):
         target = self.bubble.navigation_target
-        self.show_panel()
-        if self.panel is None or self.closed or target is None:
+        if not self.show_panel() or target is None:
             return
         kind, value = target
         if kind == 'projects':
@@ -317,17 +413,21 @@ class FloatingController(QObject):
             self.panel.tabs.setCurrentIndex(value)
 
     def run_in_background(self):
-        if self.closed or self.quitting or self.panel is None:
+        if self.closed or self.quitting or self.panel is None or QApplication.activeModalWidget() is not None:
             return False
+        self._save_panel_geometry()
         self.panel.hide()
         self.bubble.hide()
         self.bubble.timer.stop()
-        if self.tray is None or not self.tray.isVisible() or not QSystemTrayIcon.isSystemTrayAvailable():
+        if (self.tray is None or not shiboken6.isValid(self.tray)
+                or not self.tray.isVisible() or not QSystemTrayIcon.isSystemTrayAvailable()):
             self.background_mode = False
+            self.environment.set_background_tray(None)
             self.orb.show()
             self.notify('系统托盘当前不可用，已保留悬浮球入口；自动归档继续运行。')
             return False
         self.background_mode = True
+        self.environment.set_background_tray(self.tray)
         self.orb.hide()
         return True
 
@@ -931,18 +1031,18 @@ class FloatingController(QObject):
             self.panel.document_pane.shutdown()
         if self.orb:
             self.save_position([self.orb.x(), self.orb.y()])
-            geometry = self.panel.geometry()
-            self.service.set_setting('manager_geometry', [geometry.x(), geometry.y(), geometry.width(), geometry.height()])
+            self._save_panel_geometry()
             if self.pending_update is not None and self.update_backup is None:
                 if not self.owns_lock:
                     raise RuntimeError('升级备份必须持有数据会话锁。')
                 from update_install import backup_database
                 self.update_backup = backup_database(self.service.db.path,
                     self.service.db.path.parent / '升级恢复点')
+            self.environment.stop()
             for widget in (self.orb, self.panel, self.bubble):
                 widget.hide()
             self.bubble.timer.stop()
-        if self.tray:
+        if self.tray is not None and shiboken6.isValid(self.tray):
             self.tray.hide()
         if self.server:
             self.server.close()
