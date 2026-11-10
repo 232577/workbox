@@ -2,7 +2,7 @@
 
 个人项目收件、工作目录与交付归档工具。使用 Python、PySide6 和 SQLite；不需要账号或云端服务。
 
-安装包构建标识为 `v1.0.0.20261110.3`，软件版本为 **1.0.0**。本次整合 Studio 与名单核对，恢复窗口位置与最大化状态，保持模态窗口优先和悬浮入口可用。全局快捷键默认关闭，可在工作设置中启用。安装包来自主分支提交 `3863d4c63a4851f46ef62aecf1a5b075309a131d`。顶部采用横向项目导航，在“待开发”清单可导出项目名称。宽窗并排显示清单和详情，窄窗可切换查看。
+安装包构建标识为 `v1.0.0.20261110.4`，软件版本为 **1.0.0**。本次整合 Studio 与名单核对，恢复窗口位置与最大化状态，保持模态窗口优先和悬浮入口可用。全局快捷键默认关闭，可在工作设置中启用。安装包来自主分支提交 `4c1f59d9a1bd29196104140a7a7554eb5b34d654`。顶部采用横向项目导航，在“待开发”清单可导出项目名称。宽窗并排显示清单和详情，窄窗可切换查看。
 
 r6 优化项目较多时的搜索、筛选和项目切换，减少重复刷新与 ZIP 列表查询。
 
@@ -62,8 +62,8 @@ python scripts/dev.py start feat/my-task
 
 从窗口底部或“高级设置 → 检查更新”主动查询官网更新清单，GitHub 为备用源。有新版时点击“更新并重启”。程序下载并校验安装包，保存数据库恢复点，安全退出，在原目录安装成功后重新打开。下载可取消。源码运行提供版本检查和安装包下载。更早没有更新入口的安装版仍需一次引导安装。设计及安全边界见 [在线升级](docs/ONLINE-UPDATES.md)。
 
-- [官网下载](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261110-r3.exe)
-- [GitHub Release](https://github.com/232577/workbox/releases/tag/v1.0.0.20261110.3)
+- [官网下载](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261110-r4.exe)
+- [GitHub Release](https://github.com/232577/workbox/releases/tag/v1.0.0.20261110.4)
 - [历史正式安装版 · 11月9日 r7](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261109-r7.exe)
 - [历史正式安装版 · 11月9日 r6](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261109-r6.exe)
 - [历史正式安装版 · 11月9日 r5](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261109-r5.exe)
@@ -77,9 +77,9 @@ python scripts/dev.py start feat/my-task
 - [历史正式安装版 · 11月4日 r2](https://workbox.ltxiangzi.dpdns.org/download/WorkBox-1.0.0-Setup-x64-20261104-r2.exe)
 - [源码](https://github.com/232577/workbox)
 
-文件 `WorkBox-1.0.0-Setup-x64-20261110-r3.exe`，42,283,385 字节。
+文件 `WorkBox-1.0.0-Setup-x64-20261110-r4.exe`，42,286,238 字节。
 
-SHA-256 为 `9425720502effe013002b7a6e728862d1d81adb68cb52cdeefb9ad158197129d`。
+SHA-256 为 `33181c95cb04c59bc0eddba1599da0e7caa9a1f603abf8d12eb5b8c43b2093aa`。
 
 目标平台为 Windows 10 1809+ / Windows 11 x64；实际验收范围以对应发布记录为准，不代表已在其他物理设备或所有Windows版本实测。安装包尚无商业代码签名。按当前用户安装，带独立运行时，不含用户数据库、工作文件、归档或私有凭据。升级前请备份 data、工作和归档目录及全部已登记历史文稿目录（可能仍在原工作位置）。迁移后核验路径与历史文件可读性；卸载保留运行时生成的data目录。
 
