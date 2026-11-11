@@ -309,6 +309,7 @@ class CompactPanel(DropSurface, QWidget):
         self.busy = False
         self.refreshing = False
         self.current_project = None
+        self._project_rows = {}
         self.project_scope = None
         self._refresh_after_drag = False
         self.today_dialog = None
@@ -436,6 +437,7 @@ class CompactPanel(DropSurface, QWidget):
             nav.addWidget(control)
         layout.addWidget(self.header_surface)
         self.search = QLineEdit()
+        self.search.setMaxLength(1000)
         self.search.setPlaceholderText('搜索项目、备注、批次或 ZIP 名称')
         self.search.setAccessibleName('搜索项目、备注、批次或 ZIP 名称')
         self.search.setClearButtonEnabled(True)
@@ -1092,6 +1094,7 @@ class CompactPanel(DropSurface, QWidget):
             if deleted_view and self.bulk_mode.isChecked():
                 self.bulk_mode.setChecked(False)
             rows = snapshot['projects']
+            self._project_rows = {row['id']: row for row in rows}
             warnings = tuple(snapshot['warnings'])
             batch_description = self.batch_filter.currentData(Qt.ToolTipRole)
             self.batch_filter.setToolTip('\n'.join(filter(None, (batch_description, *warnings))))
@@ -1126,8 +1129,11 @@ class CompactPanel(DropSurface, QWidget):
                                    else '还没有项目。点击「粘贴消息」开始收录。')
             self.deleted_note.setVisible(deleted_view)
             self.project_list_heading.setText(f'项目清单 · {len(rows)}')
-            if not _project_only and not self._refresh_other_views():
-                return
+            if not _project_only:
+                try:
+                    self._refresh_other_views()
+                except (OSError, RuntimeError, sqlite3.Error) as error:
+                    self.show_notice('ZIP 或待核对信息读取失败：' + str(error))
         finally:
             self.refreshing = False
         self.select_project()
@@ -1339,7 +1345,12 @@ class CompactPanel(DropSurface, QWidget):
         try:
             items = self.project_list.selectedItems()
             pid = items[0].data(Qt.UserRole) if len(items) == 1 else None
-            self.current_project = self.service.get_project(pid) if pid is not None else None
+            self.current_project = None
+            if pid is not None:
+                try:
+                    self.current_project = self.service.get_project(pid)
+                except (OSError, RuntimeError, sqlite3.Error, KeyError) as error:
+                    self.show_notice('项目详情读取失败，请刷新或重新选择项目重试。\n' + str(error))
             p = self.current_project
             self.project_title.setText(p['name'] if p else '')
             self.document_heading.setVisible(p is not None)
@@ -1404,13 +1415,15 @@ class CompactPanel(DropSurface, QWidget):
         self.bulk_action.setEnabled(bulk_allowed)
         type_editable = bulk_allowed and 1 <= count <= 500 and hasattr(self.service, 'set_project_types')
         if type_editable:
-            try:
-                projects = [project] if (count == 1 and project is not None
-                    and project['id'] == self.project_list.selectedItems()[0].data(Qt.UserRole)) else (
-                    self.service.get_project(item.data(Qt.UserRole)) for item in self.project_list.selectedItems())
-                type_editable = all(not p.get('archived_at') and not p.get('deleted_at') for p in projects)
-            except KeyError:
-                type_editable = False
+            # 按钮状态复用列表快照；执行修改时仍逐项核对当前项目并由服务层校验。
+            if count == 1:
+                projects = [project] if (project is not None
+                    and project['id'] == self.project_list.selectedItems()[0].data(Qt.UserRole)) else [None]
+            else:
+                projects = (self._project_rows.get(item.data(Qt.UserRole))
+                            for item in self.project_list.selectedItems())
+            type_editable = all(p is not None and not p.get('archived_at') and not p.get('deleted_at')
+                                for p in projects)
         self.change_type_button.setEnabled(type_editable)
         self.sync_advanced_actions()
         zid = selected(self.zip_list) if self.zip_list.selectedItems() else None

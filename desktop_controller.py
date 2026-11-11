@@ -1063,7 +1063,6 @@ class FloatingController(QObject):
         if self.worker and not self.worker.wait(15000):
             raise RuntimeError('文件操作仍未结束，窗口与文件锁保持，不强制退出。')
         self.worker = None
-        self.shortcut.stop()
         if self.update_dialog is not None:
             self.update_dialog.shutdown()
         material_dialog = getattr(self.panel, 'material_dialog', None)
@@ -1089,6 +1088,10 @@ class FloatingController(QObject):
                 from update_install import backup_database
                 self.update_backup = backup_database(self.service.db.path,
                     self.service.db.path.parent / '升级恢复点')
+        # Keep the effective shortcut if a reader, setting save or backup aborts
+        # shutdown. Activation is already suppressed while quitting.
+        self.shortcut.stop()
+        if self.orb:
             self.environment.stop()
             for widget in (self.orb, self.panel, self.bubble):
                 widget.hide()
