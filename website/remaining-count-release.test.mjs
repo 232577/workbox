@@ -7,13 +7,13 @@ import { handleRequest, release, releases } from './worker.mjs';
 const html = await readFile(new URL('./public/index.html', import.meta.url), 'utf8');
 const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
 const siteReadme = await readFile(new URL('./README.md', import.meta.url), 'utf8');
-const source = '4c1f59d9a1bd29196104140a7a7554eb5b34d654';
-const expected = { version: '1.0.0', tag: 'v1.0.0.20261110.4', edition: '正式安装版',
-  date: '2026-11-10', filename: 'WorkBox-1.0.0-Setup-x64-20261110-r4.exe', size: 42286238,
-  sha256: '33181c95cb04c59bc0eddba1599da0e7caa9a1f603abf8d12eb5b8c43b2093aa' };
+const source = '50596bde66e7116dff3f1f4efc7df328c8919848';
+const expected = { version: '1.0.0', tag: 'v1.0.0.20261111.1', edition: '正式安装版',
+  date: '2026-11-11', filename: 'WorkBox-1.0.0-Setup-x64-20261111-r1.exe', size: 42282708,
+  sha256: 'aac9e27652139630657a7ab79d502d15aabd06e44c8e5aee820507dfdf071e80' };
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 
-test('11月10日r4目录、首页与稳定清单使用同一准确安装包和桌面来源', async () => {
+test('11月11日r1目录、首页与稳定清单使用同一准确安装包和桌面来源', async () => {
   assert.deepEqual(release, expected);
   const metadata = await (await handleRequest(new Request('https://example.com/updates/stable.json'), {})).json();
   assert.equal(metadata.tag_name, expected.tag);
@@ -22,7 +22,7 @@ test('11月10日r4目录、首页与稳定清单使用同一准确安装包和�
     digest: `sha256:${expected.sha256}`,
     browser_download_url: `https://github.com/232577/workbox/releases/download/${expected.tag}/${expected.filename}` }]);
   for (const text of [html, readme, siteReadme]) {
-    for (const value of [expected.filename, expected.sha256, source, '42,286,238']) assert.ok(text.includes(value), value);
+    for (const value of [expected.filename, expected.sha256, source, '42,282,708']) assert.ok(text.includes(value), value);
   }
   const primary = [...html.matchAll(/class="[^"]*download-link[^"]*" href="([^"#]+)"/g)].map(match => match[1]);
   assert.equal(primary.filter(value => value === `/download/${expected.filename}`).length, 2);
@@ -32,8 +32,13 @@ test('11月10日r4目录、首页与稳定清单使用同一准确安装包和�
     assert.match(text, /Studio/);
     assert.match(text, /窗口位置.*最大化/);
     assert.match(text, /全局快捷键默认关闭/);
-    assert.doesNotMatch(text, /r4[^。<\n]*(?:第二设备验证通过|物理键盘验证通过|全部原生界面验证通过)/);
+    assert.match(text, /批量选择项目时减少重复读取/);
+    assert.match(text, /读取失败后清单与详情保持同步/);
+    assert.match(text, /项目搜索最多 1000 个字符/);
+    assert.match(text, /退出时保存设置或升级时备份数据库失败后，已启用的全局快捷键仍可使用/);
+    assert.doesNotMatch(text, /r1[^。<\n]*(?:第二设备验证通过|物理键盘验证通过|全部原生界面验证通过)/);
   }
+  for (const text of [readme, siteReadme]) assert.doesNotMatch(text, /待发布/);
 });
 
 test('r6准确说明多项目性能修复，不把性能说明冒称实拍或全面验收', async () => {
@@ -74,8 +79,9 @@ test('r7待完成显示零与总数，日期和旧稿规则在各入口一致', 
   assert.match(migration, /备份并迁移[^。]*已登记历史文稿目录/);
 });
 
-test('11月10日r4保留全部28历史路由、r7与更早目录和原58媒体字节及归属', async () => {
+test('11月11日r1保留全部28历史路由、r7与更早目录和原58媒体字节及归属', async () => {
   assert.equal(releases.length, 29);
+  assert.equal(digest(JSON.stringify(releases.slice(1))), '47dc35631d6353174b5dc167db1ae11b7826284a2215ecb4ffbc3d79e6f0c3eb');
   assert.deepEqual(releases[1], {version:'1.0.0',tag:'v1.0.0.20261109.7',edition:'正式安装版',
     date:'2026-11-09',filename:'WorkBox-1.0.0-Setup-x64-20261109-r7.exe',size:42226464,
     sha256:'240a816e8c5049e028060994002a5907ba59c58762ac6ff10c89eb4ce8f2d855'});
@@ -94,7 +100,8 @@ test('11月10日r4保留全部28历史路由、r7与更早目录和原58媒体�
     assert.equal(bytes.length, facts.size, path); assert.equal(digest(bytes), facts.sha256, path);
   }
   assert.ok(!releases.some(item => item.tag === 'v1.0.0.20261109.3'));
-  assert.ok(!releases.some(item => ['v1.0.0.20261110.1','v1.0.0.20261110.2','v1.0.0.20261110.3'].includes(item.tag)));
+  assert.ok(!releases.some(item => ['v1.0.0.20261110.1','v1.0.0.20261110.2','v1.0.0.20261110.3','v1.0.0.20261110.4'].includes(item.tag)));
+  assert.doesNotMatch(html, /WorkBox-1\.0\.0-Setup-x64-20261110-r[1-4]\.exe/);
 });
 
 test('沿用r4实拍准确标注历史构建，不把既有照片改称新版', () => {

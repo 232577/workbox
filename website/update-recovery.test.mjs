@@ -36,7 +36,7 @@ test('中性实机项目截图保留准确r4来源，当前更新清单单独绑
   const stable = await handleRequest(new Request('https://workbox.ltxiangzi.dpdns.org/updates/stable.json'), {});
   const source = (await stable.json()).body.match(/来源提交 ([a-f0-9]{40})。/)?.[1];
   assert.match(source, /^[a-f0-9]{40}$/);
-  assert.equal(source, '4c1f59d9a1bd29196104140a7a7554eb5b34d654');
+  assert.equal(source, '50596bde66e7116dff3f1f4efc7df328c8919848');
   assert.ok(actualUi.includes('来源提交 2432b7e237db6424bd70e01f9a96f7567c5e644e'));
   assert.ok(!actualUi.includes(`来自 ${release.tag} 的同一隔离实例`));
   assert.doesNotMatch(html,/来自当前安装包的匿名隔离示例/);
