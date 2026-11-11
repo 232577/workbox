@@ -1350,7 +1350,7 @@ class CompactPanel(DropSurface, QWidget):
                 try:
                     self.current_project = self.service.get_project(pid)
                 except (OSError, RuntimeError, sqlite3.Error, KeyError) as error:
-                    self.show_notice('项目详情读取失败：' + str(error) + '\n请刷新或重新选择项目重试。')
+                    self.show_notice('项目详情读取失败，请刷新或重新选择项目重试。\n' + str(error))
             p = self.current_project
             self.project_title.setText(p['name'] if p else '')
             self.document_heading.setVisible(p is not None)

@@ -120,7 +120,8 @@ def test_archive_error_clears_unreadable_selected_details_and_can_retry(panel, m
     assert panel.current_project is None
     assert panel.document_pane.project_id is None
     assert not panel.project_actions_button.isEnabled()
-    assert 'anonymous selected archive read failure' in panel.notice.text()
+    assert '重新选择项目重试' in panel.notice.text()
+    assert 'anonymous selected archive read failure' in panel.notice.toolTip()
     assert not panel.change_type_button.isEnabled()
     monkeypatch.setattr(panel.service.snapshots, 'list_versions', original)
     panel.refresh()
