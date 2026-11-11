@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { handleRequest, releases } from './worker.mjs';
+import { handleRequest, release, releases } from './worker.mjs';
 
 const html = await readFile(new URL('./public/index.html', import.meta.url), 'utf8');
 const registry = JSON.parse(await readFile(new URL('./MEDIA.json', import.meta.url), 'utf8'));
@@ -46,7 +46,8 @@ test('11月9日r1目录和下载继续绑定原安装包，稳定清单保留批
   assert.equal(response.status, 200);
   assert.match(metadata.body, /待完成4，共5.*待完成0，共1.*整批项目的当前状态.*个人工作量单独统计/);
   assert.match(metadata.body, /检查一次.*更新并重启/);
-  assert.match(html, /正式安装版 · 2026 年 11 月 9 日/);
+  const [year, month, day] = release.date.split('-').map(Number);
+  assert.ok(html.includes(`正式安装版 · ${year} 年 ${month} 月 ${day} 日`));
   assert.match(html, /<a class="download-link" href="\/download\/WorkBox-1\.0\.0-Setup-x64-20261106-r1\.exe">历史正式安装版/);
 });
 

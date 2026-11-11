@@ -90,7 +90,8 @@ test('11月9日r2目录和下载继续绑定原安装包，稳定清单保留导
   assert.equal(metadata.tag_name, release.tag);
   assert.match(metadata.body, /待开发.*导出名单.*“项目名称”一列/);
   assert.match(metadata.body, /窄窗.*返回项目清单/);
-  assert.match(html, /正式安装版 · 2026 年 11 月 9 日/);
+  const [year, month, day] = release.date.split('-').map(Number);
+  assert.ok(html.includes(`正式安装版 · ${year} 年 ${month} 月 ${day} 日`));
   assert.match(html, /<a class="download-link" href="\/download\/WorkBox-1\.0\.0-Setup-x64-20261109-r1\.exe">历史正式安装版/);
 });
 
