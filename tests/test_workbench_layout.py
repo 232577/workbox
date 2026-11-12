@@ -68,23 +68,39 @@ def test_narrow_workbench_keeps_horizontal_labels_and_controls_inside(qapp, tmp_
         assert panel.brand_icon.isVisible()
         assert not panel.brand_label.isVisible()
         assert panel.brand_label.text() == 'WorkBox'
-        assert not panel.archive_filter.isVisible() and not panel.type_filter.isVisible()
-        for control in (panel.project_filter_button, panel.batch_filter):
+        assert not panel.archive_filter.isVisible()
+        rectangles = []
+        for control in (panel.project_filter_button, panel.batch_filter,
+                        panel.added_date_filter, panel.type_filter):
             assert control.isVisible()
             rect = control.rect()
             rect.moveTopLeft(control.mapTo(panel, rect.topLeft()))
             assert panel.rect().contains(rect), (control.accessibleName(), rect)
+            assert all(not rect.intersects(other) for other in rectangles)
+            rectangles.append(rect)
         panel.project_filter_button.click()
         qapp.processEvents()
+        rectangles = []
         for control in (panel.search, panel.files_button, panel.background_button,
-                        panel.exit_button, panel.archive_filter, panel.type_filter):
+                        panel.exit_button, panel.archive_filter, panel.type_filter,
+                        panel.added_date_filter):
             assert control.isVisible()
             rect = control.rect()
             rect.moveTopLeft(control.mapTo(panel, rect.topLeft()))
             assert panel.rect().contains(rect), (control.accessibleName(), rect)
+            assert all(not rect.intersects(other) for other in rectangles)
+            rectangles.append(rect)
         panel.project_filter_button.click()
         qapp.processEvents()
-        assert not panel.archive_filter.isVisible() and not panel.type_filter.isVisible()
+        assert not panel.archive_filter.isVisible()
+        rectangles = []
+        for control in (panel.added_date_filter, panel.type_filter):
+            assert control.isVisible()
+            rect = control.rect()
+            rect.moveTopLeft(control.mapTo(panel, rect.topLeft()))
+            assert panel.rect().contains(rect), (control.accessibleName(), rect)
+            assert all(not rect.intersects(other) for other in rectangles)
+            rectangles.append(rect)
         assert panel.nav_zip.toolTip() == 'ZIP 归档'
     finally:
         panel.document_pane.shutdown()
