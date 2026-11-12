@@ -1,0 +1,80 @@
+name: WorkBox installer acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_tag:
+        description: Draft candidate release tag
+        required: true
+        type: string
+      source_sha:
+        description: Reviewed source commit used to build the candidate
+        required: true
+        type: string
+      installer_sha256:
+        description: Independently measured installer SHA-256
+        required: true
+        type: string
+      previous_tag:
+        description: Previous public stable release
+        required: true
+        default: v1.0.0.20261112.2
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      INSTALLER_SHA: ${{ inputs.installer_sha256 }}
+      PREVIOUS_TAG: ${{ inputs.previous_tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.11'
+      - name: Validate reviewed source and download exact candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:SOURCE_SHA -notmatch '^[0-9a-f]{40}$' -or $env:INSTALLER_SHA -notmatch '^[0-9a-f]{64}$') { throw 'Invalid source/hash input' }
+          if ($env:CANDIDATE_TAG -notmatch '^v1\.0\.0\.20[0-9]{6}(\.[1-9][0-9]{0,3})?$' -or $env:PREVIOUS_TAG -notmatch '^v1\.0\.0\.20[0-9]{6}(\.[1-9][0-9]{0,3})?$') { throw 'Invalid tag input' }
+          git merge-base --is-ancestor $env:SOURCE_SHA origin/main
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate source is not reviewed main history' }
+          New-Item -ItemType Directory -Path .local/installer-candidate,.local/installer-previous | Out-Null
+          gh release download $env:CANDIDATE_TAG --repo $env:GITHUB_REPOSITORY --dir .local/installer-candidate --pattern '*.exe' --pattern BUILD_PROVENANCE.json --pattern PACKAGE_CONTENTS.sha256
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate download failed' }
+          gh release download $env:PREVIOUS_TAG --repo $env:GITHUB_REPOSITORY --dir .local/installer-previous --pattern '*.exe'
+          if ($LASTEXITCODE -ne 0) { throw 'Previous installer download failed' }
+          gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:PREVIOUS_TAG" | Out-File -Encoding utf8 .local/installer-previous/release.json
+          if ($LASTEXITCODE -ne 0) { throw 'Previous metadata download failed' }
+      - name: Run exact installer upgrade and uninstall with anonymous data
+        shell: pwsh
+        run: |
+          python -m scripts.verify_installer_windows --candidate-dir .local/installer-candidate --previous-dir .local/installer-previous --expected-tag $env:CANDIDATE_TAG --previous-tag $env:PREVIOUS_TAG --expected-sha $env:INSTALLER_SHA --expected-source $env:SOURCE_SHA --output .local/installer-acceptance
+          if ($LASTEXITCODE -ne 0) { throw 'Installer acceptance failed' }
+      - name: Retain acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: installer-acceptance
+          path: |
+            .local/installer-acceptance/*.json
+            .local/installer-acceptance/*.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
