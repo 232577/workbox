@@ -7,12 +7,12 @@ import re
 import json
 import hashlib
 import os
-import unicodedata
 from datetime import date, datetime, time, timedelta, timezone
 from contextlib import ExitStack, contextmanager, nullcontext
 from pathlib import Path, PurePosixPath
 from typing import Iterator
 from workflow_policy import read_policy
+from project_names import project_name_key
 
 STATUSES = ("待开发", "开发中", "待交付", "已交付")
 DELIVERY_TIMEZONE = timezone(timedelta(hours=8))
@@ -419,7 +419,7 @@ class Database:
                     VALUES (?,?,1,?)''', (target_id, earliest, f'合并继承原有历史交付规则（项目 #{source_id}、#{target_id}）。'))
         connection.execute('''INSERT INTO project_merges(source_id,target_id,operation_id,snapshot_json)
             VALUES (?,?,?,?)''', (source_id, target_id, operation_id, json.dumps(snapshot, ensure_ascii=False)))
-        normalized = ' '.join(unicodedata.normalize('NFKC', source['name']).split()).casefold()
+        normalized = project_name_key(source['name'])
         connection.execute('''INSERT INTO project_name_aliases(project_id,name,normalized_name,operation_id)
             VALUES (?,?,?,?)''', (source_id, source['name'], normalized, operation_id))
         return dict(source_id=source_id, target_id=target_id, operation_id=operation_id, status=result_status)

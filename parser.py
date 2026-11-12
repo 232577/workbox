@@ -1,8 +1,9 @@
 """Deterministic, offline project-title parsing with an editable UI preview."""
 
 import re
-import unicodedata
 from dataclasses import dataclass, replace
+
+from project_names import project_name_key
 
 MAX_MESSAGE_LENGTH = 200_000
 MAX_PROJECT_NAME = 200
@@ -68,7 +69,7 @@ def parse_message(text: str) -> list[ParsedProject]:
         structured = [value for s in values if (value := _project(s)) is not None]
     unique: dict[str, ParsedProject] = {}
     for project in structured:
-        key = unicodedata.normalize("NFKC", " ".join(project.name.split())).casefold()
+        key = project_name_key(project.name)
         if key in unique:
             unique[key] = replace(unique[key], urgent=unique[key].urgent or project.urgent)
         else:

@@ -5,15 +5,11 @@ import hashlib
 import json
 import os
 import tempfile
-import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
 from native_files import cancelled, plain_path
-
-
-def normalized_name(value):
-    return ' '.join(unicodedata.normalize('NFKC', value).split()).casefold()
+from project_names import project_name_key as normalized_name
 
 
 def fingerprint(value):

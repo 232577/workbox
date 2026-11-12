@@ -1,16 +1,12 @@
 """Resolve explicit text names without silently duplicating project identities."""
 from collections import OrderedDict
-import unicodedata
 
 from parser import ParsedProject
+from project_names import project_name_key as normalized_name
 
 
 class TextProjectConflict(ValueError):
     """The entire receipt must remain pending, without partial project creation."""
-
-
-def normalized_name(value):
-    return ' '.join(unicodedata.normalize('NFKC', value).split()).casefold()
 
 
 def resolve_text_projects(connection, projects):

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import stat
-import unicodedata
 from concurrent.futures import CancelledError
 from pathlib import Path
 
@@ -13,10 +12,7 @@ from workspace_manager import _folder_name, _path, _zip_structure
 from bundle_analyzer import analyze_bundle
 from file_matcher import match_work_file_projects
 from workflow_policy import creation_disabled_message
-
-
-def _normalized(name):
-    return ' '.join(unicodedata.normalize('NFKC', name).split()).casefold()
+from project_names import project_name_key as _normalized
 
 
 class FolderIntake:

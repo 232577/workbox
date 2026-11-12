@@ -21,7 +21,7 @@ from file_matcher import match_work_file_projects, new_file_project_name
 from bundle_analyzer import analyze_bundle, bundle_hint
 from workflow_policy import read_policy, creation_disabled_message
 from text_intake import TextProjectConflict, resolve_text_projects
-import unicodedata
+from project_names import project_name_key
 from functools import wraps
 
 EXTENSIONS = '''
@@ -468,15 +468,13 @@ class DesktopService(WorkBox):
     def is_bundle_candidate(self, filename):
         if not bundle_hint(filename):
             return False
-        normalized = lambda name: ' '.join(unicodedata.normalize('NFKC', name).split()).casefold()
-        stem = normalized(Path(filename).stem)
-        return not any(normalized(name) == stem for p in self.list_projects(archived=None, deleted=None)
+        stem = project_name_key(Path(filename).stem)
+        return not any(project_name_key(name) == stem for p in self.list_projects(archived=None, deleted=None)
                        for name in [p['name'], *p.get('name_aliases', [])])
 
     def _capture_file_projects(self, source, names):
         """名称检查与收件提交共用事务，重复拖入不能产生第二组项目。"""
-        normalized = lambda value: ' '.join(unicodedata.normalize('NFKC', value).split()).casefold()
-        wanted = {normalized(name) for name in names}
+        wanted = {project_name_key(name) for name in names}
         if not names or len(names) > 500 or len(wanted) != len(names):
             raise ValueError('项目名称或项目数量无效。')
         with self.db.connect() as connection:
@@ -487,7 +485,7 @@ class DesktopService(WorkBox):
                 FROM projects p LEFT JOIN project_details d ON d.project_id=p.id
                 LEFT JOIN project_deletions x ON x.project_id=p.id
                 WHERE NOT EXISTS(SELECT 1 FROM project_merges m WHERE m.source_id=p.id)''')
-                if normalized(row['name']) in wanted]
+                if project_name_key(row['name']) in wanted]
             if existing:
                 if len(names) == 1 and len(existing) == 1 and not existing[0]['archived_at'] and not existing[0]['deleted_at']:
                     return dict(project_ids=[existing[0]['id']], created_project_ids=[])

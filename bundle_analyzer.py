@@ -9,6 +9,7 @@ from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
 from native_files import ZipLease
+from project_names import project_name_key
 
 
 MAX_MEMBERS = 10000
@@ -16,7 +17,7 @@ MAX_WRAPPERS = 4
 
 
 def _name(value):
-    return ' '.join(unicodedata.normalize('NFKC', str(value)).split()).casefold()
+    return project_name_key(str(value))
 
 
 def _filename(value):
