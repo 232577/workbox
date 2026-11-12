@@ -19,7 +19,7 @@ import uuid
 
 from native_files import plain_path
 
-CURRENT_TAG = 'v1.0.0.20261112.2'
+CURRENT_TAG = 'v1.0.0.20261112.3'
 API_URL = 'https://api.github.com/repos/232577/workbox/releases/latest'
 MANIFEST_URL = 'https://workbox.ltxiangzi.dpdns.org/updates/stable.json'
 RELEASE_ROOT = 'https://github.com/232577/workbox/releases/'

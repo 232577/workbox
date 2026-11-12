@@ -34,6 +34,17 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 
 网站部署凭据由发布者本机登录或受保护的 CI environment 提供，不复制个人 OAuth 到源码或 PR。当前 CI **只检查，不自动部署，也不自动公开安装包**。执行部署时，应直接针对已核验的干净克隆 `website/wrangler.jsonc`，保存 SHA 和部署 ID；不得改其他站点或重置 Durable Object。
 
+## 干净 Windows 安装验收
+
+`WorkBox installer acceptance` 只由主分支上的 `workflow_dispatch` 运行。候选先保留为草稿，
+提供安装包、`BUILD_PROVENANCE.json` 和 `PACKAGE_CONTENTS.sha256`；输入准确源码提交与
+独立测量的安装包 SHA-256。工作流核对源码属于 main 历史后，在一次性 Windows runner
+下载并验证候选和上一正式版本。下载步骤使用 GitHub 的短期只读令牌，安装步骤不传入令牌。
+
+验收覆盖上一版全新安装、匿名数据库及材料保护、候选原目录升级、逐文件摘要、运行时构建标识
+及卸载后匿名数据保留。存在任何既有 WorkBox 安装注册信息时直接拒绝测试；不在工作电脑上
+临时覆盖卸载注册项。通过前不得公开候选，也不得把云端虚拟机称为第二台物理设备。
+
 ## 失败与回退
 
 公开前失败：保留失败证据和草稿，不把它称作正式版。公开后发现问题：新增修复版本或在网站指向先前的已验证资产，保留原标签和资产。业务数据恢复属于独立、受控的本机流程，不能通过 Git checkout 或覆盖旧数据库完成。

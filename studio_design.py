@@ -20,7 +20,7 @@ PALETTES = {
         'warning_bg': '#FFF2DE', 'error_bg': '#FCECF0',
         'nav_bg': '#F8F7F5', 'nav_ink': '#2B2A39', 'nav_muted': '#565767',
         'nav_hover': '#EFEDF8', 'nav_selected': '#EAE7FB', 'nav_accent': '#473BB7',
-        'orb_accent': '#4F46C8', 'orb_glow': '#E3DFF9', 'progress_fill': '#C9C4F5',
+        'orb_accent': '#526CF2', 'orb_glow': '#EDF0FF', 'progress_fill': '#C9C4F5',
     },
     'dark': {
         'bg': '#19191F', 'surface': '#24242D', 'raised': '#30303B',
@@ -38,7 +38,7 @@ PALETTES = {
         'warning_bg': '#443525', 'error_bg': '#492E3B',
         'nav_bg': '#202027', 'nav_ink': '#F0EFF7', 'nav_muted': '#C2BFCE',
         'nav_hover': '#34313F', 'nav_selected': '#393249', 'nav_accent': '#C4BDFF',
-        'orb_accent': '#B4AEFF', 'orb_glow': '#393249', 'progress_fill': '#554878',
+        'orb_accent': '#A8B6FF', 'orb_glow': '#283550', 'progress_fill': '#554878',
     },
 }
 
