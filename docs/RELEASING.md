@@ -39,7 +39,10 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 `WorkBox installer acceptance` 只由主分支上的 `workflow_dispatch` 运行。候选先保留为草稿，
 提供安装包、`BUILD_PROVENANCE.json` 和 `PACKAGE_CONTENTS.sha256`；输入准确源码提交与
 独立测量的安装包 SHA-256。工作流核对源码属于 main 历史后，在一次性 Windows runner
-下载并验证候选和上一正式版本。下载步骤使用 GitHub 的短期只读令牌，安装步骤不传入令牌。
+下载并验证候选和上一正式版本。草稿只有具备推送权限的身份可见，因此下载分为独立 Linux
+任务，使用短期 `contents: write` 令牌，仅下载字节并核对输入的 SHA-256，不执行安装包。
+通过当前工作流的短期制品交给独立 Windows 任务；该任务只有 `contents: read`，不传入
+下载令牌，不持久化 checkout 凭据。普通 PR 检查仍保持只读权限。
 
 验收覆盖上一版全新安装、匿名数据库及材料保护、候选原目录升级、逐文件摘要、运行时构建标识
 及卸载后匿名数据保留。存在任何既有 WorkBox 安装注册信息时直接拒绝测试；不在工作电脑上
