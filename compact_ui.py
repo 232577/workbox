@@ -308,6 +308,9 @@ class CompactPanel(DropSurface, QWidget):
         self.window_shortcut = None
         self.busy = False
         self.refreshing = False
+        self._project_read_error = ''
+        self._storage_notice = ''
+        self._notice_message = ''
         self.current_project = None
         self._project_rows = {}
         self.project_scope = None
@@ -1071,24 +1074,33 @@ class CompactPanel(DropSurface, QWidget):
         self._deferred_refresh_full = False
         self.refreshing = True
         try:
-            if not _project_only:
-                self.refresh_type_controls()
-            batch = self.batch_filter.currentData()
-            status = next((s for s, b in self.status_buttons.items() if b.isChecked()), None)
-            scope = (self.search.text(), status, batch, self.archive_filter.currentData(), self.due_filter.currentData(), self.urgent_filter.isChecked(), self.type_filter.currentData(), self.added_date_filter.currentData())
-            deleted_view = scope[3] == 'deleted'
-            snapshot = self.service.project_workbench_snapshot(
-                scope[0], scope[1], scope[2], scope[5],
-                archived=None if deleted_view else scope[3], due_filter=scope[4],
-                deleted=deleted_view, type_id=scope[6], added_on=scope[7])
-            active_batch = next((item for item in snapshot['batch_options'] if item['key'] == batch), None)
-            if batch is not None and active_batch is None:
-                batch = None
-                scope = (scope[0], scope[1], None, *scope[3:])
+            try:
+                if not _project_only:
+                    self.refresh_type_controls()
+                batch = self.batch_filter.currentData()
+                status = next((s for s, b in self.status_buttons.items() if b.isChecked()), None)
+                scope = (self.search.text(), status, batch, self.archive_filter.currentData(), self.due_filter.currentData(), self.urgent_filter.isChecked(), self.type_filter.currentData(), self.added_date_filter.currentData())
+                deleted_view = scope[3] == 'deleted'
                 snapshot = self.service.project_workbench_snapshot(
-                    scope[0], scope[1], None, scope[5],
+                    scope[0], scope[1], scope[2], scope[5],
                     archived=None if deleted_view else scope[3], due_filter=scope[4],
                     deleted=deleted_view, type_id=scope[6], added_on=scope[7])
+                active_batch = next((item for item in snapshot['batch_options'] if item['key'] == batch), None)
+                if batch is not None and active_batch is None:
+                    batch = None
+                    scope = (scope[0], scope[1], None, *scope[3:])
+                    snapshot = self.service.project_workbench_snapshot(
+                        scope[0], scope[1], None, scope[5],
+                        archived=None if deleted_view else scope[3], due_filter=scope[4],
+                        deleted=deleted_view, type_id=scope[6], added_on=scope[7])
+            except (OSError, RuntimeError, sqlite3.Error, ValueError) as error:
+                self._project_read_error = ('项目清单读取失败，保留上次结果；请调整搜索或筛选重试。\n'
+                                            + str(error))
+                self._render_notice()
+                return
+            if self._project_read_error:
+                self._project_read_error = ''
+                self._render_notice()
             self.refresh_batch_filter(snapshot['batch_options'], batch)
             self.refresh_added_date_filter(snapshot.get('added_date_choices', []), scope[7])
             if deleted_view and self.bulk_mode.isChecked():
@@ -1997,21 +2009,38 @@ class CompactPanel(DropSurface, QWidget):
 
     def show_notice(self, message, *, kind='persistent', page=None):
         self._notice_timer.stop()
+        if kind == 'storage-blocked':
+            self._storage_notice = message
+            self._render_notice()
+            return
+        if (self._project_read_error or self._storage_notice) and kind in ('intake-success', 'page-success'):
+            return
+        self._notice_message = message
         self._notice_pages = ()
         if kind == 'intake-success':
             self._notice_pages = (self.tabs.widget(0), self.tabs.widget(1))
         elif kind == 'page-success':
             self._notice_pages = (page or self.tabs.currentWidget(),)
+        self._render_notice()
+
+    def _render_notice(self):
+        # 读取/恢复错误独立于任务进度，不能被后续成功提示或计时器冲掉。
+        message = self._storage_notice or self._project_read_error or self._notice_message
+        if self._storage_notice and self._project_read_error:
+            message += '\n' + self._project_read_error
         self.notice.setText(message.splitlines()[0] if message else '')
         self.notice.setToolTip(message)
         self.notice.setAccessibleDescription(message)
         self.sync_notice_visibility()
-        if message and self._notice_pages:
+        if self._storage_notice or self._project_read_error:
+            self._notice_timer.stop()
+        elif message and self._notice_pages:
             self._notice_timer.start()
 
     def sync_notice_visibility(self):
         self.notice.setVisible(bool(self.notice.toolTip()) and
-                               (not self._notice_pages or self.tabs.currentWidget() in self._notice_pages))
+                               (bool(self._storage_notice or self._project_read_error)
+                                or not self._notice_pages or self.tabs.currentWidget() in self._notice_pages))
 
     def closeEvent(self, event):
         self.hide()

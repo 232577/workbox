@@ -22,6 +22,9 @@ from dialog_lifecycle import transient_dialog
 from window_environment import DesktopEnvironmentWatcher
 from global_shortcut import GlobalShortcut
 
+STORAGE_RECOVERY_NOTICE = ('项目目录或文档版本需要恢复，收录与修改已暂停。\n'
+                           '未开始的任务已取消；请保留现场并检查恢复记录。')
+
 
 def screen_for_rect(rect):
     screens = QApplication.screens()
@@ -152,6 +155,21 @@ class FloatingController(QObject):
             if hasattr(page, 'set_busy'):
                 page.set_busy(busy)
 
+    def _sync_storage_blocked(self):
+        previous = self.storage_blocked
+        self.storage_blocked = self.service.storage_blocked
+        if self.storage_blocked:
+            self.monitor_timer.stop()
+            # 恢复阻断时连静默扫描也要取消，不能沿用“仅取消排队导出”的特例。
+            self.cancel_jobs(shutting_down=True)
+        elif previous and not self.closed and not self.quitting:
+            self.monitor_timer.start()
+        if self.panel is not None:
+            if self.storage_blocked or previous:
+                self.panel.show_notice(STORAGE_RECOVERY_NOTICE if self.storage_blocked else '', kind='storage-blocked')
+            self._sync_panel_busy()
+        return self.storage_blocked
+
     def start(self, *, setup_callback=None):
         if not self.lock.tryLock(0):
             socket = QLocalSocket()
@@ -171,7 +189,7 @@ class FloatingController(QObject):
         self.server.newConnection.connect(self._activate)
         # 目录恢复必须在单实例锁之后，避免第二次启动回滚正在执行的变更。
         recovery_errors = self.service.recover_project_changes()
-        self.storage_blocked = any(error.get('global_block') for error in recovery_errors)
+        self.storage_blocked = self.service.storage_blocked
         # 持有单实例锁后才打开首次向导；此时没有收件入口或监视任务。
         if setup_callback is not None and self.service.workspaces.setup_required():
             if not setup_callback():
@@ -190,7 +208,7 @@ class FloatingController(QObject):
         self._panel_minimum = self.panel.minimumSize()
         self.panel.installEventFilter(self)
         self.bubble = FeedbackBubble()
-        if recovery_errors:
+        if recovery_errors and not self.storage_blocked:
             self.panel.show_notice('项目目录需要恢复，相关写操作已暂停。请保留文件并检查恢复记录。')
         self.orb.intake.connect(self.receive)
         self.panel.intake.connect(self.receive)
@@ -250,7 +268,7 @@ class FloatingController(QObject):
             pending = connection.execute("SELECT COUNT(*) FROM managed_transfers WHERE state!='complete'").fetchone()[0]
         if pending:
             self.enqueue('检查上次归档结果', lambda **_: self.service.archive.recover())
-        self._sync_panel_busy()
+        self._sync_storage_blocked()
         if not self.storage_blocked:
             self.monitor_timer.start()
         saved_shortcut = self.service.get_setting('window_shortcut', '')
@@ -262,7 +280,9 @@ class FloatingController(QObject):
         return True
 
     def check_archives(self, *, silent=True):
-        if self.storage_blocked or self.busy or self.closed or self.quitting or QApplication.activeModalWidget() is not None:
+        if self.closed or self.quitting:
+            return
+        if self._sync_storage_blocked() or self.busy or QApplication.activeModalWidget() is not None:
             return
         self.enqueue('检查 ZIP 归档', self.service.scan_archives, silent=silent)
 
@@ -290,6 +310,7 @@ class FloatingController(QObject):
     def refresh(self):
         if self.panel is None or self.closed:
             return
+        self._sync_storage_blocked()
         self.panel.refresh()
         pending = sum(p['status'] != '已交付' for p in self.service.list_projects())
         self.orb.set_summary(pending)
@@ -641,6 +662,8 @@ class FloatingController(QObject):
     def enqueue(self, caption, operation, *, silent=False, on_cancel=None, on_complete=None):
         if self.quitting or self.closed:
             return
+        if self._sync_storage_blocked():
+            return
         if not self.busy:
             self.errors.clear()
         self.queue.append((caption, operation, silent, on_cancel, on_complete))
@@ -651,6 +674,9 @@ class FloatingController(QObject):
     def _next(self):
         # 页面等待回调可能晚于另一轮enqueue；已有任务时绝不能替换其引用。
         if self.worker is not None or self.closed or self.choosing_pending_export:
+            return
+        if not self.quitting and self._sync_storage_blocked():
+            self.orb.set_progress(False)
             return
         if self._page_busy() and not self.closed and not self.quitting:
             if not self._page_wait_scheduled:
@@ -689,18 +715,28 @@ class FloatingController(QObject):
             return
         worker = self.worker
         self.worker = None
-        if on_complete := getattr(worker, 'on_complete', None):
-            on_complete(worker)
+        caption = self.caption
+        try:
+            if not self.quitting:
+                self._sync_storage_blocked()
+            self._show_completed(worker)
+        except Exception as error:
+            message = '处理结果显示失败，已完成的操作保留；请刷新重试。\n' + (str(error) or type(error).__name__)
+            self.errors.append(caption + '：' + (str(error) or type(error).__name__))
+            self.notify(message)
+        finally:
             worker.deleteLater()
             self._next()
+
+    def _show_completed(self, worker):
+        if on_complete := getattr(worker, 'on_complete', None):
+            on_complete(worker)
             return
         if isinstance(worker.result, dict) and 'project_change_preview' in worker.result:
             reference, serial, plan, error = worker.result['project_change_preview']
             dialog = reference()
             if dialog is not None and shiboken6.isValid(dialog) and dialog.isVisible():
                 dialog.show_preview(serial, plan, error)
-            worker.deleteLater()
-            self._next()
             return
         target = None if worker.cancelled or worker.error else self._result_target(worker.result)
         notice_kind = 'persistent'
@@ -815,7 +851,6 @@ class FloatingController(QObject):
         if (isinstance(worker.result, dict) and worker.result.get('created_project_ids')
                 and not worker.result.get('workspace_error') and not worker.error and not worker.cancelled):
             message = f"已新建 {len(worker.result['created_project_ids'])} 个项目及工作目录。" + message
-        worker.deleteLater()
         if (self.silent_current and isinstance(worker.result, dict) and 'archived' in worker.result
                 and not worker.result['archived']
                 and not worker.error and not worker.cancelled):
@@ -832,9 +867,9 @@ class FloatingController(QObject):
             notice_kind = 'persistent'
         if message:
             self.notify(message, target=target, kind=notice_kind)
-        if not worker.cancelled and not worker.error and isinstance(worker.result, dict):
+        if (not self.storage_blocked and not worker.cancelled and not worker.error
+                and isinstance(worker.result, dict)):
             self._resolve_intake_choices(worker.result)
-        self._next()
 
     def _resolve_intake_choices(self, result):
         if self.quitting or self.closed:

@@ -66,6 +66,14 @@ class SnapshotManager:
             # 单调观察不能跨进程继承：旧时间戳不证明重启期间持续稳定。
             connection.execute('UPDATE zip_sources SET last_stat=NULL,stable_since=NULL')
 
+    def _assert_storage_ready(self):
+        guard = getattr(self.service, 'assert_storage_ready', None)
+        if guard is not None:
+            guard()
+        elif getattr(getattr(self.workspaces, 'document_versions', None), 'blocked', None):
+            # 兼容仅组合 WorkBox 和 WorkspaceManager 的旧调用者。
+            raise RuntimeError('文稿版本记录需要恢复，暂不能修改 ZIP 来源或归档。请保留现场。')
+
     def _root(self):
         return plain_path(self.workspaces.settings()['archive_root'])
 
@@ -98,6 +106,7 @@ class SnapshotManager:
 
     def watch_zip(self, source, project_id=None):
         with self._lock:
+            self._assert_storage_ready()
             path = self._source(source)
             with self.db.connect() as connection:
                 self._assert_project(connection, project_id)
@@ -120,6 +129,7 @@ class SnapshotManager:
     def watch_work_copy(self, source, original_source, project_id=None, *, baseline_sha256):
         """程序生成的未修改副本只保留，不重复参与自动交付判断。"""
         with self._lock:
+            self._assert_storage_ready()
             path, original = self._source(source), self._source(original_source)
             if path == original:
                 return self.watch_zip(path, project_id)
@@ -207,7 +217,19 @@ class SnapshotManager:
 
     def _discover(self, cancel_event):
         archive_roots = self._archive_roots()
-        for workspace in self.workspaces.list_workspaces(include_archived=False):
+        workspaces = self.workspaces.list_workspaces(include_archived=False)
+        # 合并保留目录也仍是材料边界，不能由外层项目重新发现。
+        with self.db.connect() as connection:
+            registered = [dict(row) for row in connection.execute('SELECT project_id,path FROM project_workspaces')]
+        owners = {}
+        for row in [*registered, *workspaces]:
+            key = self._key(Path(os.path.abspath(row['path'])))
+            owners.setdefault(key, set()).add(row['project_id'])
+
+        def owned_elsewhere(path, project_id):
+            return any(owner != project_id for owner in owners.get(self._key(path), ()))
+
+        for workspace in workspaces:
             cancelled(cancel_event)
             try:
                 root = plain_path(workspace['path'])
@@ -217,6 +239,8 @@ class SnapshotManager:
                     self._assert_project(connection, workspace['project_id'])
             except (OSError, ValueError, KeyError):
                 continue
+            if owned_elsewhere(root, workspace['project_id']):
+                continue
             for directory, dirs, files in os.walk(root, followlinks=False):
                 cancelled(cancel_event)
                 allowed = []
@@ -225,7 +249,8 @@ class SnapshotManager:
                         continue
                     try:
                         child = plain_path(Path(directory) / name)
-                        if not any(child.is_relative_to(archive_root) for archive_root in archive_roots):
+                        if (not owned_elsewhere(child, workspace['project_id'])
+                                and not any(child.is_relative_to(archive_root) for archive_root in archive_roots)):
                             allowed.append(name)
                     except (OSError, ValueError):
                         pass
@@ -282,6 +307,7 @@ class SnapshotManager:
         result = {'archived': [], 'pending': 0, 'errors': []}
         with self._lock:
             cancelled(cancel_event)
+            self._assert_storage_ready()
             self._recover_pending(result, cancel_event=cancel_event)
             self._discover(cancel_event)
             for source in self.list_sources():
@@ -480,6 +506,7 @@ class SnapshotManager:
 
     def archive_now(self, source, project_id=None, *, cancel_event=None, progress=None):
         with self._lock:
+            self._assert_storage_ready()
             watched = self.watch_zip(source, project_id)
             with self.db.connect() as connection:
                 row = dict(connection.execute('SELECT * FROM zip_sources WHERE source_key=?', (self._key(Path(watched['source_path'])),)).fetchone())
@@ -492,6 +519,7 @@ class SnapshotManager:
 
     def approve_version(self, zip_id):
         with self._lock:
+            self._assert_storage_ready()
             if not self.is_snapshot(zip_id):
                 raise ValueError('请选择新的 ZIP 归档版本。')
             record = self.db.get_zip(zip_id)
@@ -509,6 +537,7 @@ class SnapshotManager:
     def recognize_bundle(self, zip_id, *, batch_id=None, cancel_event=None, progress=None):
         """用原始文件名和归档内容重新识别；不复制、改名或搬动文件。"""
         with self._lock:
+            self._assert_storage_ready()
             record = self.db.get_zip(zip_id)
             with ZipLease(record['path'], movable=False):
                 checked = self._inspect(record['path'], cancel_event=cancel_event, progress=progress)
@@ -530,6 +559,7 @@ class SnapshotManager:
 
     def link_zip(self, zip_id, project_id):
         with self._lock:
+            self._assert_storage_ready()
             record = self.db.get_zip(zip_id)
             with ZipLease(record['path'], movable=False):
                 checked = self._inspect(record['path'])

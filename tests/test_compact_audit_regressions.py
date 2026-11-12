@@ -88,11 +88,11 @@ def test_project_snapshot_failure_keeps_the_previous_list_and_details(panel, mon
         raise sqlite3.OperationalError('anonymous primary snapshot failure')
 
     monkeypatch.setattr(panel.service, 'project_workbench_snapshot', fail)
-    with pytest.raises(sqlite3.OperationalError, match='anonymous primary snapshot failure'):
-        panel.refresh()
+    panel.refresh()
     assert panel.project_list.currentItem() is previous_item
     assert panel.current_project is previous_project
     assert panel.current_project['status'] == '待开发'
+    assert 'anonymous primary snapshot failure' in panel.notice.toolTip()
 
 
 def test_search_limit_does_not_escape_the_qt_slot(panel, monkeypatch):
