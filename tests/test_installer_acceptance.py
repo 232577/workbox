@@ -41,3 +41,18 @@ def test_installer_cli_refuses_a_workstation_without_creating_output(tmp_path, m
             '--expected-tag', 'v1.0.0.20261112.3', '--previous-tag', 'v1.0.0.20261112.2',
             '--expected-sha', 'a' * 64, '--expected-source', 'b' * 40, '--output', str(output)])
     assert not output.exists()
+
+
+def test_draft_download_permissions_are_isolated_from_installer_execution():
+    from pathlib import Path
+    import re
+    workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/installer-acceptance.yml').read_text(encoding='utf-8')
+    jobs = dict(re.findall(r'^  (download|verify):\n(.*?)(?=^  \w+:\n|\Z)', workflow, re.MULTILINE | re.DOTALL))
+    assert set(jobs) == {'download', 'verify'}
+    assert 'contents: write' in jobs['download']
+    assert 'runs-on: ubuntu-latest' in jobs['download']
+    assert 'verify_installer_windows' not in jobs['download']
+    assert 'contents: read' in jobs['verify'] and 'contents: write' not in jobs['verify']
+    assert 'needs: download' in jobs['verify']
+    assert 'GH_TOKEN:' not in jobs['verify']
+    assert 'actions/download-artifact@' in jobs['verify']
