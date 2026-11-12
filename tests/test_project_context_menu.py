@@ -1,4 +1,4 @@
-"""项目菜单只作用于调用时的项目，隔离数据库，不打开真实目录。"""
+"""项目菜单明确区分批量加急和当前项目操作，隔离数据库，不打开真实目录。"""
 
 from pathlib import Path
 
@@ -58,19 +58,21 @@ def test_standard_menu_contains_all_project_actions(panel):
     assert action(menu, '确认交付…').isEnabled() is False
 
 
-def test_menu_actions_capture_clicked_project_instead_of_selection_or_batch(panel):
+def test_menu_keeps_other_actions_on_clicked_project_and_applies_urgency_to_selection(panel):
     panel.bulk_mode.setChecked(True)
     panel.project_list.selectAll()
-    changed, urgent, folders = [], [], []
+    changed, urgent, folders, batches = [], [], [], []
     panel.state_requested.connect(lambda *args: changed.append(args))
     panel.urgent_requested.connect(lambda *args: urgent.append(args))
     panel.workspace_requested.connect(folders.append)
+    panel.bulk_requested.connect(lambda ids, options: batches.append((set(ids), options)))
     menu = panel.project_context_menu(2)
     action(menu, '开发中').trigger()
-    action(menu, '加急').trigger()
+    action(menu, '标记加急').trigger()
     action(menu, '建工作目录').trigger()
     assert changed == [(2, '开发中')]
-    assert urgent == [(2, True)]
+    assert urgent == []
+    assert batches == [({1, 2}, {'urgent': True})]
     assert folders == [2]
 
 
