@@ -63,6 +63,27 @@ def test_bundle_spacing_variants_are_duplicate_members_not_two_new_projects(tmp_
     assert '重复' in result['reason']
 
 
+@pytest.mark.parametrize('materials', [
+    ['mobileAPP/a.txt', 'mobile APP/b.txt'],
+    ['mobileAPP', 'mobile APP'],
+])
+def test_app_spacing_does_not_collapse_distinct_material_paths_in_bundle(tmp_path, materials):
+    path = tmp_path / 'Alpha-2.zip'
+    entries = [*(f'Alpha/{name}' for name in materials), 'Beta/c.txt']
+    with ZipFile(path, 'w') as archive:
+        for entry in entries:
+            archive.writestr(entry, entry.encode('utf-8'))
+    rows = [dict(id=1, name='Alpha', batch_id=1),
+            dict(id=2, name='Beta', batch_id=1)]
+    result = analyze_bundle(path, rows)
+    assert result['state'] == 'matched', result['reason']
+    assert result['project_ids'] == [1, 2]
+    assert [match['file_count'] for match in result['matches']] == [2, 1]
+    with ZipFile(path) as archive:
+        assert archive.namelist() == entries
+        assert [archive.read(entry) for entry in entries] == [entry.encode('utf-8') for entry in entries]
+
+
 @pytest.mark.parametrize(('name', 'filename'), [
     ('匿名预约APP', '匿名预约 APP-代码（Python）.txt'),
     ('匿名预约APP', '匿名预约 APP (1).docx'),

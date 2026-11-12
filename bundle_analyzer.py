@@ -20,6 +20,11 @@ def _name(value):
     return project_name_key(str(value))
 
 
+def _path_key(value):
+    # 材料路径沿用原有冲突检查；项目名的 APP 空白规则不适用于包内文件和子目录。
+    return ' '.join(unicodedata.normalize('NFKC', str(value)).split()).casefold()
+
+
 def _filename(value):
     return unicodedata.normalize('NFKC', str(value)).strip()
 
@@ -89,7 +94,7 @@ def _directories(infos):
     file_paths = set()
     for info in infos:
         parts = _parts(info)
-        key = tuple(_name(part) for part in parts)
+        key = tuple(_path_key(part) for part in parts)
         if key in members:
             raise ValueError('ZIP 包含重复或正规化后重名的成员，需人工检查。')
         members.add(key)
@@ -109,7 +114,7 @@ def _directories(infos):
             if key in directory_paths:
                 raise ValueError('ZIP 路径同时声明为文件和目录。')
             file_paths.add(key)
-        if any(_name(part) in ('__macosx', '.ds_store') for part in parts):
+        if any(_path_key(part) in ('__macosx', '.ds_store') for part in parts):
             continue
         node = root
         for part in directories:
