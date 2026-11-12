@@ -1466,8 +1466,6 @@ class CompactPanel(DropSurface, QWidget):
             return None
         menu = QMenu(self)
         menu.setAccessibleName(project['name'] + ' · 项目操作')
-        heading = menu.addSection(menu.fontMetrics().elidedText(project['name'],Qt.ElideRight,320).replace('&','&&'))
-        heading.setToolTip(project['name'])
         active = not self.busy
         editable = active and not project.get('archived_at') and not project.get('block_reason')
 
@@ -1476,6 +1474,32 @@ class CompactPanel(DropSurface, QWidget):
             item.setEnabled(bool(enabled))
             item.triggered.connect(callback)
             return item
+
+        batch_ids = tuple(item.data(Qt.UserRole) for item in self.project_list.selectedItems()) \
+            if self.bulk_mode.isChecked() else ()
+        if len(batch_ids) < 2 or project_id not in batch_ids:
+            batch_ids = ()
+        if batch_ids:
+            batch_title = f'所选 {len(batch_ids)} 个项目'
+            menu.setAccessibleName(batch_title + ' · ' + project['name'] + ' · 项目操作')
+            # Windows styles can hide QMenu section text; keep batch scope visible.
+            menu.addAction(batch_title).setEnabled(False)
+            # Reuse list snapshots for menu state; the batch transaction revalidates every ID.
+            batch_editable = active and len(batch_ids) <= 500 and all(
+                (row := self._project_rows.get(pid)) is not None
+                and not any(row.get(key) for key in ('archived_at', 'deleted_at', 'merged_into_id', 'block_reason'))
+                for pid in batch_ids)
+            add(menu, '标记加急', lambda: self.request_bulk(list(batch_ids), {'urgent': True}), batch_editable)
+            add(menu, '取消加急', lambda: self.request_bulk(list(batch_ids), {'urgent': False}), batch_editable)
+        heading_text = ('当前项目：' if batch_ids else '') + project['name']
+        heading_text_elided = menu.fontMetrics().elidedText(heading_text, Qt.ElideRight, 320).replace('&', '&&')
+        if batch_ids:
+            menu.addSeparator()
+            heading = menu.addAction(heading_text_elided)
+            heading.setEnabled(False)
+        else:
+            heading = menu.addSection(heading_text_elided)
+        heading.setToolTip(heading_text)
 
         add(menu, '工作目录' if project.get('workspace') else '建工作目录',
             lambda: self.open_project_workspace(project_id), active and (editable or project.get('workspace')))
@@ -1491,9 +1515,10 @@ class CompactPanel(DropSurface, QWidget):
             item.setCheckable(True)
             item.setChecked(state == project['status'])
             group.addAction(item)
-        urgent = add(menu, '加急', lambda checked: self.change_urgent(project_id, checked), editable)
-        urgent.setCheckable(True)
-        urgent.setChecked(bool(project['urgent']))
+        if not batch_ids:
+            urgent = add(menu, '加急', lambda checked: self.change_urgent(project_id, checked), editable)
+            urgent.setCheckable(True)
+            urgent.setChecked(bool(project['urgent']))
         if hasattr(self.service, 'list_project_types'):
             type_menu = menu._type_menu = QMenu('项目类型', menu)
             menu.addMenu(type_menu)
