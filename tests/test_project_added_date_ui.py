@@ -80,7 +80,8 @@ def test_date_filter_refreshes_only_project_view_and_preserves_explicit_empty_da
     panel.archive_filter.setCurrentIndex(panel.archive_filter.findData(True))
     assert picker.currentData() == '2026-11-07'
     assert ids(panel) == set()
-    assert '无项目' in picker.currentText()
+    assert picker.currentText() == '2026-11-07'
+    assert '无项目' in picker.toolTip()
     picker.setCurrentIndex(0)
     panel.archive_filter.setCurrentIndex(0)
     assert ids(panel) == {1, 2, 3, 4, 5}
