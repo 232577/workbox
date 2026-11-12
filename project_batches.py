@@ -52,6 +52,7 @@ def read_project_batch_index(connection):
     canonical = {r['project_id']: r['canonical_id'] for r in connection.execute('SELECT project_id,canonical_id FROM project_canonical')}
     batches = {r['id']: dict(r) for r in connection.execute('SELECT id,created_at FROM batches')}
     by_project = {pid: {} for pid in set(canonical.values()) if pid in projects}
+    covered_projects = set()
 
     def attach(project_id, marker, source):
         target = canonical.get(project_id)
@@ -59,6 +60,7 @@ def read_project_batch_index(connection):
             warnings.append(f'{source}引用的项目 #{project_id} 不存在或合并身份缺失。')
             return False
         by_project[target][marker['key']] = marker
+        covered_projects.add(project_id)
         return True
 
     covered_receipts = set()
@@ -119,12 +121,12 @@ def read_project_batch_index(connection):
             for pid in dict.fromkeys(ids):
                 attach(pid, marker, f"收件回执 #{receipt['id']}")
 
-    # 只对没有收件/当前任务依据的项目回退真实原建项批次；不会改写 batch_id。
+    # 按原项目分别判断依据，再归并到当前身份；另一成员的收件不能遮住原建项批次。
     batch_markers = {}
-    for pid, refs in by_project.items():
-        if refs:
+    for pid, project in projects.items():
+        if pid in covered_projects:
             continue
-        batch_id = projects[pid]['batch_id']
+        batch_id = project['batch_id']
         batch = batches.get(batch_id)
         if batch is None:
             warnings.append(f'项目 #{pid} 的原建项批次 #{batch_id} 不存在。')
@@ -132,7 +134,7 @@ def read_project_batch_index(connection):
         if batch_id not in batch_markers:
             batch_markers[batch_id] = _marker('batch', batch_id, batch['created_at'])
         marker = batch_markers[batch_id]
-        refs[marker['key']] = marker
+        attach(pid, marker, f'原建项批次 #{batch_id}')
     # 归属仍用于原有筛选和已删除视图。进度只统计未删除的 canonical 项目。
     options = {}
     for pid, refs in by_project.items():
