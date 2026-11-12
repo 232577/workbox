@@ -1,4 +1,6 @@
 """交付页的查询范围、全量导出提示和可收起的明细。"""
+from time import monotonic
+
 import pytest
 from PySide6.QtCore import QDate, QItemSelectionModel, QPoint, Qt
 from PySide6.QtTest import QTest
@@ -10,6 +12,26 @@ from desktop_service import DesktopService
 
 
 LONG_PROJECT_NAME = '匿名目标项目跨部门工作资料整理与阶段性交付记录核查平台的超长项目名称验证' * 2
+
+
+def _wait_for_record_layout(page):
+    timers = (page._project_layout_timer, page._summary_layout_timer, page._panel_layout_timer)
+
+    def geometry():
+        return (page.record_splitter.sizes(), page.type_summary.height(), page.type_counts.height())
+
+    deadline = monotonic() + 3
+    while monotonic() < deadline:
+        QApplication.processEvents()
+        if not any(timer.isActive() for timer in timers):
+            before = geometry()
+            # 已结束的布局回调还可能投递父布局和分栏的重排事件。
+            QTest.qWait(10)
+            QApplication.processEvents()
+            if not any(timer.isActive() for timer in timers) and geometry() == before:
+                return
+        QTest.qWait(10)
+    pytest.fail('交付统计与记录分栏的延迟布局未完成')
 
 
 @pytest.fixture
@@ -74,7 +96,7 @@ def test_empty_search_describes_current_results(page):
 
 def test_detail_can_be_closed_and_reopened_without_losing_the_selected_event(page):
     page.table.selectRow(0)
-    QTest.qWait(80)
+    _wait_for_record_layout(page)
     project_height, detail_height = page.record_splitter.sizes()
     assert project_height > detail_height > 0
     page.details.selectRow(1)
@@ -85,7 +107,7 @@ def test_detail_can_be_closed_and_reopened_without_losing_the_selected_event(pag
     page.refresh()
     assert not page.details.isVisible()
     page.details_toggle.click()
-    QTest.qWait(80)
+    _wait_for_record_layout(page)
     assert page.details.isVisible()
     assert page.details.currentItem().data(Qt.UserRole) == selected
     assert page.record_splitter.sizes() == [project_height, detail_height]
