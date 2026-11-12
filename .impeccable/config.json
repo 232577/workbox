@@ -38,6 +38,24 @@
         ],
         "createdAt": "2026-11-09T09:19:37.040Z",
         "reason": "Agent review 2026-11-10 redesign: re-audited all 45 raw findings across desktop/mobile and both themes. Matches are full-bleed image/video frames, section divider lines with 28-64px block spacing, transparent FAQ rows with only bottom rules and 16px vertical padding, or centered demo metrics with inset text. Removed actual card borders; no text sits against an enclosing box edge. Rule does not model cascade or padding-block reliably, and file scope is its narrowest supported selector. Re-audit after future layout changes."
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "website/public/guide.html"
+        ],
+        "createdAt": "2026-11-12T01:43:42.166Z",
+        "reason": "Agent review 2026-11-12: measured the deployed page at 1440 and 390px in both themes with all details expanded (padding-review-measured.log). Actual bordered text gaps are at least 19.5px in demo metrics, FAQ top 20px and bottom 25.6px; features have 40px side inset and 66px block padding. Message/intake/workflow containers have no border. Video is intentionally edge-to-edge media without text. Static analysis misses cascade and padding-block. File scope is the narrowest supported scope; re-audit after layout changes."
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "website/public/releases.html"
+        ],
+        "createdAt": "2026-11-12T01:43:42.207Z",
+        "reason": "Agent review 2026-11-12: measured 1440 and 390px light/dark with historical FAQ and checksum details expanded. FAQ has only top/bottom separators, no enclosing side borders; actual text-to-rule gaps are top 20px and bottom 25.6px, checksum bottom 29.6px. Static file analysis incorrectly treats transparent details and separators as enclosing boxes. File scope is the narrowest supported scope; other design rules stay enabled and layout changes require re-audit."
       }
     ]
   }
