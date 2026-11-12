@@ -46,6 +46,8 @@ r6 优化项目较多时的搜索、筛选和项目切换，减少重复刷新�
 
 本仓库是多个地点共同维护的唯一产品源码基线。每台电脑直接克隆此仓库，使用独立任务分支和 Pull Request，不再通过某台机器的整目录导出覆盖 main。先阅读 [协作指南](CONTRIBUTING.md)、[项目约定](AGENTS.md) 和 [发布规程](docs/RELEASING.md)。
 
+第一次接手请读 [项目地图、已复现问题与维护顺序](docs/PROJECT-TAKEOVER-2026-11-12.md)。它区分当前入口、历史兼容代码、源码与安装版本，并记录审查基准和验证范围。
+
 ```powershell
 python scripts/dev.py setup
 python scripts/dev.py doctor
