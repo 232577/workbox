@@ -122,7 +122,8 @@ def test_download_copy_zip_keeps_batch_ambiguity_and_project_numbers():
                 {'id': 2, 'name': '甲系统', 'batch_name': '第二批'}]
     assert manager().match_projects('甲系统_最终版 (2).zip', projects) == projects
     assert manager().match_projects('第二批_甲系统_最终版 (2).zip', projects) == [projects[1]]
-    for filename in ['甲系统-2.zip', '甲系统2.zip', '甲系统(2).zip', '甲系统_未知 (2).zip']:
+    assert manager().match_projects('甲系统_未知 (2).zip', projects) == projects
+    for filename in ['甲系统-2.zip', '甲系统2.zip', '甲系统(2).zip']:
         assert manager().match_projects(filename, projects) == []
     from bundle_analyzer import bundle_hint
     assert bundle_hint('甲系统-2.zip')['declared_count'] == 2

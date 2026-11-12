@@ -1,4 +1,4 @@
-"""普通工作文件归属只使用完整项目名和明确尾缀。"""
+"""完整项目名优先，已有项目允许任意下划线附注。"""
 
 import pytest
 
@@ -56,20 +56,27 @@ def test_complete_project_name_precedes_suffix_and_download_copy_rules():
 
 
 @pytest.mark.parametrize('filename', [
-    '甲系统_未知.txt',
-    '甲系统_代码（待审核）.txt',
     '甲系统代码(Python).txt',
     '甲系统操作手册.docx',
-    '甲系统_代码（Python）(1).txt',
     '甲系统2_代码（Python）.txt',
     '甲_代码（Python）.txt',
-    '甲系统_代码（Python）_草稿.txt',
     '甲系统_代码（Python）.zip',
 ])
-def test_unknown_or_partial_names_do_not_guess_project(filename):
+def test_partial_names_or_missing_boundary_do_not_guess_project(filename):
     result = match_work_file_projects(filename, [{'id': 1, 'name': '甲系统'}])
     assert result['candidates'] == []
     assert result['recognized_name'] is None
+
+
+@pytest.mark.parametrize('filename', [
+    '甲系统_未知.txt', '甲系统_代码（待审核）.txt',
+    '甲系统_代码（Python）(1).txt', '甲系统_代码（Python）_草稿.txt',
+])
+def test_free_form_annotations_reuse_existing_whole_name(filename):
+    project = {'id': 1, 'name': '甲系统'}
+    result = match_work_file_projects(filename, [project])
+    assert result['candidates'] == [project]
+    assert result['recognized_name'] == project['name']
 
 
 def test_duplicate_project_names_return_all_batches():
@@ -108,7 +115,7 @@ def test_existing_project_matches_named_edition_suffix_without_creating_another_
     projects = [{'id': 1, 'name': '甲系统'}, {'id': 2, 'name': '甲系统_企业版'}]
     assert match_work_file_projects('甲系统_企业版.txt', projects)['candidates'] == [projects[1]]
     assert match_work_file_projects('甲系统_测试版.docx', projects)['candidates'] == [projects[0]]
-    assert match_work_file_projects('甲系统_未知.txt', projects)['candidates'] == []
+    assert match_work_file_projects('甲系统_未知.txt', projects)['candidates'] == [projects[0]]
 
 
 @pytest.mark.parametrize('with_short_project', [False, True])
@@ -136,9 +143,11 @@ def test_explicit_material_download_suffix_matches_and_provisions_consistently(s
     '_申请表重新下载备份', '_申请表下载', '_申请表任意内容下载链接',
     '_申请表下载链接地址', '_重新下载', '_下载说明', '申请表重新下载',
 ])
-def test_material_download_suffix_does_not_strip_unknown_text(suffix):
+def test_arbitrary_annotations_match_existing_names_but_do_not_trim_new_names(suffix):
     filename = '图像分析系统' + suffix + '.txt'
-    assert match_work_file_projects(filename, [{'id': 1, 'name': '图像分析系统'}])['candidates'] == []
+    project = {'id': 1, 'name': '图像分析系统'}
+    expected = [project] if suffix.startswith('_') else []
+    assert match_work_file_projects(filename, [project])['candidates'] == expected
     assert new_file_project_name(filename) == '图像分析系统' + suffix
 
 

@@ -59,6 +59,17 @@ def test_english_names_and_versions_remain_intact(parser_module):
     assert parser_module.parse_message("1. WorkBox v1.0")[0].name == "WorkBox v1.0"
 
 
+@pytest.mark.parametrize("first,second", [
+    ("匿名预约APP", "匿名签到APP"),
+    ("匿名预约App", "匿名签到app"),
+    ("匿名预约APP v1.0", "匿名签到App V2.1"),
+])
+def test_plain_app_title_lists_keep_every_original_name(parser_module, first, second):
+    assert [p.name for p in parser_module.parse_message(first + "\n" + second)] == [
+        first, second
+    ]
+
+
 def test_unstructured_prose_does_not_create_a_project_per_sentence(parser_module):
     assert len(parser_module.parse_message("需要一个收件工具\n可以保存消息\n还需要管理ZIP")) == 1
 

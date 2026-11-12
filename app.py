@@ -86,7 +86,7 @@ class WorkBox:
 
     def import_zip(self, path: str | Path, *, cancel_event=None, progress=None) -> dict:
         info = inspect_zip(path, cancel_event=cancel_event, progress=progress)
-        candidates = match_projects(info.filename, self.list_projects())
+        candidates = match_projects(info.filename, self.list_projects(), include_annotations=False)
         if cancel_event is not None and cancel_event.is_set():
             raise CancelledError("已取消 ZIP 登记。")
         project_id = candidates[0]["id"] if len(candidates) == 1 else None

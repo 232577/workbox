@@ -13,6 +13,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from bundle_analyzer import bundle_hint
+from file_matcher import match_annotated_project_names
+
 Progress = Callable[[int, int], None]
 
 
@@ -85,7 +88,7 @@ def _key(value: str) -> str:
     return "".join(ch for ch in unicodedata.normalize("NFKC", value).casefold() if ch.isalnum())
 
 
-def match_projects(filename: str, projects: list[dict]) -> list[dict]:
+def match_projects(filename: str, projects: list[dict], *, include_annotations=True) -> list[dict]:
     """Return all equally strongest candidates, not a guessed winner."""
     stem = Path(filename).stem
     codes = {int(value) for value in CODE.findall(stem)}
@@ -127,5 +130,11 @@ def match_projects(filename: str, projects: list[dict]) -> list[dict]:
         for alias in project.get('name_aliases', []))]
     if aliases_with_batch:
         return aliases_with_batch
-    return [project for project in projects if any(isinstance(alias, str) and _key(alias) in variants
-            for alias in project.get('name_aliases', []))]
+    aliases = [project for project in projects if any(isinstance(alias, str) and _key(alias) in variants
+               for alias in project.get('name_aliases', []))]
+    if aliases:
+        return aliases
+    # 末尾件数仍交给合包检查，不能把多项目 ZIP 当成一个项目的普通附注。
+    if include_annotations and not bundle_hint(filename):
+        return match_annotated_project_names(Path(filename).stem, projects)['candidates']
+    return []

@@ -14,7 +14,7 @@ URGENCY = re.compile(
     r"[\[（(【]\s*(?:加急|urgent)\s*[\]）)】]|^(?:加急|urgent)\s*[:：|｜-]\s*|(?<!\S)(?:加急|urgent)(?!\S)",
     re.IGNORECASE,
 )
-TITLE_END = re.compile(r"(?:系统|平台|工具|软件|应用|小程序|网站|助手|工作箱)(?:\s*v?\d+(?:\.\d+)*)?$", re.IGNORECASE)
+TITLE_END = re.compile(r"(?:系统|平台|工具|软件|应用|小程序|网站|助手|工作箱|APP)(?:\s*v?\d+(?:\.\d+)*)?$", re.IGNORECASE)
 
 
 def _project(value: str, urgent: bool = False) -> "ParsedProject | None":

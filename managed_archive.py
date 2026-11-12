@@ -139,7 +139,7 @@ class ManagedArchive:
                 return {'zip': dict(current), 'candidates': [], 'duplicate': True, 'moved': False, 'method': 'already-managed'}
             with ZipLease(source) as lease:
                 info = lease.inspect(cancel_event=cancel_event, progress=progress)
-                candidates = match_projects(source.name, self.service.list_projects())
+                candidates = match_projects(source.name, self.service.list_projects(), include_annotations=False)
                 if project_id is None and len(candidates) == 1:
                     project_id = candidates[0]['id']
                 if project_id is not None:
