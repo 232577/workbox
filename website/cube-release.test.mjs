@@ -3,15 +3,15 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { handleRequest, release, releases } from './worker.mjs';
 
-test('立方品牌 r3 安装包、源码与更新清单使用实际已核验身份', async () => {
-  assert.deepEqual(release, {
+test('立方品牌 r3 历史资产身份与当前品牌说明保持', async () => {
+  assert.deepEqual(releases.find(item => item.tag === 'v1.0.0.20261112.3'), {
     version: '1.0.0', tag: 'v1.0.0.20261112.3', edition: '正式安装版', date: '2026-11-12',
     filename: 'WorkBox-1.0.0-Setup-x64-20261112-r3.exe', size: 39405750,
     sha256: '1865219068cebf810d47e5da074cef21585a6cce193025247af40abf94c88ee8',
   });
   const metadata = await (await handleRequest(new Request('https://example.com/updates/stable.json'), {})).json();
   assert.equal(metadata.tag_name, release.tag);
-  assert.ok(metadata.body.includes('来源提交 284dda8773712e249ecd7edd741b7dcc9765b9dc。'));
+  assert.ok(metadata.body.includes('来源提交 8b09af66f20932eb305fd0272ea648cf8dfc42a1。'));
   for (const text of [metadata.body,
     await readFile(new URL('../README.md', import.meta.url), 'utf8'),
     await readFile(new URL('./README.md', import.meta.url), 'utf8'),
