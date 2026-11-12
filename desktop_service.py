@@ -274,14 +274,19 @@ class DesktopService(WorkBox):
         with self.db.connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
             row = connection.execute('SELECT * FROM intake_receipts WHERE fingerprint=?', (fingerprint,)).fetchone()
-            if row:
+            if row and (row['state'] != 'needs-review' or reason):
                 result = self._receipt(row, duplicate=True)
             else:
                 candidates = json.dumps([{'name': p.name, 'urgent': p.urgent} for p in projects], ensure_ascii=False)
-                receipt_id = connection.execute("INSERT INTO intake_receipts(fingerprint,raw_text,candidates,state,reason,batch_name) VALUES (?,?,?,'needs-review',?,'')", (fingerprint, text, candidates, reason)).lastrowid
-                moment = datetime.now()
-                batch_name = f'{moment:%m}月{moment:%d}日 {moment:%H:%M} 收件 #{receipt_id}'
-                connection.execute('UPDATE intake_receipts SET batch_name=? WHERE id=?', (batch_name, receipt_id))
+                if row:
+                    # 仅在用户重投时重评旧待核对项，保留原收件身份及原文。
+                    receipt_id = row['id']
+                    connection.execute('UPDATE intake_receipts SET candidates=? WHERE id=?', (candidates, receipt_id))
+                else:
+                    receipt_id = connection.execute("INSERT INTO intake_receipts(fingerprint,raw_text,candidates,state,reason,batch_name) VALUES (?,?,?,'needs-review',?,'')", (fingerprint, text, candidates, reason)).lastrowid
+                    moment = datetime.now()
+                    batch_name = f'{moment:%m}月{moment:%d}日 {moment:%H:%M} 收件 #{receipt_id}'
+                    connection.execute('UPDATE intake_receipts SET batch_name=? WHERE id=?', (batch_name, receipt_id))
                 receipt = connection.execute('SELECT * FROM intake_receipts WHERE id=?', (receipt_id,)).fetchone()
                 if not reason:
                     try:
@@ -289,6 +294,8 @@ class DesktopService(WorkBox):
                     except TextProjectConflict as error:
                         connection.execute('UPDATE intake_receipts SET reason=? WHERE id=?', (str(error), receipt_id))
                 result = self._receipt(connection.execute('SELECT * FROM intake_receipts WHERE id=?', (receipt_id,)).fetchone())
+                if row and changes:
+                    result.update(self.task_groups.receipt_resolved(connection, receipt_id, result['project_ids']))
         result.update(changes)
         return self._attach_workspaces(result)
 
@@ -419,26 +426,25 @@ class DesktopService(WorkBox):
         if any(row.get('archived_at') for row in protected):
             return dict(candidates=[], basis='来源位于已归档项目工作目录，请恢复项目或人工选择', requires_choice=True)
         retained = [row for row in all_projects.values() if not row.get('deleted_at')]
-        deleted = [row for row in all_projects.values() if row.get('deleted_at')]
         active = self.list_projects()
         by_id = {row['id']: row for row in active}
         inside = [by_id[row['project_id']] for row in self.workspaces.list_workspaces()
                   if row['project_id'] in by_id and path_is_within(source, row['path'])]
         if source.suffix.casefold() == '.zip':
-            named = match_projects(source.name, retained)
-            if any(row.get('archived_at') for row in named):
-                return dict(candidates=[row for row in named if not row.get('archived_at')],
-                    basis='ZIP 名称涉及已归档项目，请恢复项目或人工选择', requires_choice=True)
-            if not named and match_projects(source.name, deleted):
-                return dict(candidates=inside, basis='ZIP 名称涉及已删除项目，请恢复项目或人工选择', requires_choice=True)
+            named = match_projects(source.name, retained, include_annotations=False)
+            if not named:
+                named = match_projects(source.name, list(all_projects.values()))
+            if any(row.get('archived_at') or row.get('deleted_at') for row in named):
+                return dict(candidates=[row for row in named if not row.get('archived_at') and not row.get('deleted_at')],
+                    basis='ZIP 名称涉及已归档或已删除项目，请恢复项目或人工选择', requires_choice=True)
             return dict(candidates=inside or named, basis='ZIP 专门匹配规则')
-        named = match_work_file_projects(source.name, retained)
-        if any(row.get('archived_at') for row in named['candidates']):
-            # 已归档的完整名称仍是名称边界，不能继续剥尾缀命中另一个活动项目。
-            return dict(candidates=[row for row in named['candidates'] if not row.get('archived_at')],
-                basis=named['basis'] + '，涉及已归档项目，请恢复项目或人工选择', requires_choice=True)
-        if not named['candidates'] and match_work_file_projects(source.name, deleted)['candidates']:
-            return dict(candidates=inside, basis='材料名称涉及已删除项目，请恢复项目或人工选择', requires_choice=True)
+        named = match_work_file_projects(source.name, retained, include_annotations=False)
+        if not named['candidates']:
+            # 明确材料规则仍可纠正已删除的误建名称；开放附注则必须先比较所有长名。
+            named = match_work_file_projects(source.name, list(all_projects.values()))
+        if any(row.get('archived_at') or row.get('deleted_at') for row in named['candidates']):
+            return dict(candidates=[row for row in named['candidates'] if not row.get('archived_at') and not row.get('deleted_at')],
+                basis=named['basis'] + '，涉及已归档或已删除项目，请恢复项目或人工选择', requires_choice=True)
         if not inside:
             return named
         if not named['candidates']:

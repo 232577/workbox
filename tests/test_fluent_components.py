@@ -181,9 +181,14 @@ def test_button_geometry_default_and_shortcut_are_native(qapp, widgets, mode):
         assert control.sizeHint().height() >= control.fontMetrics().height() + 6
     assert sizes[0] == sizes[1] == sizes[2]
     assert control.isDefault() and control.autoDefault()
-    QTest.keyClick(control, Qt.Key_Return, Qt.ControlModifier)
-    QTest.qWait(150)
-    assert spy.count() == 1
+    try:
+        QTest.keyClick(control, Qt.Key_Return, Qt.ControlModifier)
+        QTest.qWait(150)
+        assert spy.count() == 1
+    finally:
+        # QTest 会保留快捷键修饰状态，必须显式释放，避免污染后续表格选择。
+        QTest.keyRelease(control, Qt.Key_Control, Qt.NoModifier)
+    assert QApplication.keyboardModifiers() == Qt.NoModifier
 
 
 def test_native_button_menu_and_arrow_reserve_space(qapp, widgets):

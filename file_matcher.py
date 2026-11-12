@@ -49,8 +49,33 @@ def new_file_project_name(filename: str) -> str:
     return name
 
 
-def match_work_file_projects(filename: str, projects: list[dict]) -> dict:
-    """只返回完整名称相同的全部项目，不选择批次、不改变业务状态。"""
+def match_annotated_project_names(stem: str, projects: list[dict]) -> dict:
+    """已有完整名后的下划线可接任意附注；只保留最长且同强度的归属。"""
+    key = _normalized(stem).casefold()
+    best = (0, False)
+    candidates, seen, recognized = [], set(), None
+    for project in projects:
+        names = [(project['name'], True),
+                 *((alias, False) for alias in project.get('name_aliases', []) if isinstance(alias, str))]
+        for name, current in names:
+            normalized = _normalized(name)
+            prefix = normalized.casefold()
+            if not prefix or not key.startswith(prefix + '_'):
+                continue
+            if not key[len(prefix) + 1:].strip(' _'):
+                continue
+            strength = (len(prefix), current)
+            if strength > best:
+                best, candidates, seen, recognized = strength, [], set(), normalized
+            if strength == best and project['id'] not in seen:
+                candidates.append(project)
+                seen.add(project['id'])
+    return dict(candidates=candidates, recognized_name=recognized,
+                basis='完整项目名与下划线附注匹配' if candidates else '未识别文件名')
+
+
+def match_work_file_projects(filename: str, projects: list[dict], *, include_annotations=True) -> dict:
+    """完整名称、明确尾缀优先，再匹配已有名称后的任意下划线附注。"""
     source = Path(filename)
     if source.suffix.casefold() == '.zip':
         return {'candidates': [], 'basis': 'ZIP 使用专门匹配规则', 'recognized_name': None}
@@ -89,4 +114,6 @@ def match_work_file_projects(filename: str, projects: list[dict]) -> dict:
         if candidates:
             reason = '、'.join([*reasons, '已登记旧项目名']) + '匹配'
             return {'candidates': candidates, 'basis': reason, 'recognized_name': stem}
+    if include_annotations:
+        return match_annotated_project_names(source.stem, projects)
     return {'candidates': [], 'basis': '未识别文件名', 'recognized_name': None}

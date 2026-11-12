@@ -96,6 +96,77 @@ def test_plain_title_list_followed_by_correct_count_is_not_lost(tmp_path):
     assert service.db.counts()['projects'] == 2
 
 
+@pytest.mark.parametrize('raw,names', [
+    ('匿名预约APP', ['匿名预约APP']),
+    ('匿名预约App', ['匿名预约App']),
+    ('匿名预约app', ['匿名预约app']),
+    ('匿名预约APP v1.0', ['匿名预约APP v1.0']),
+    ('匿名预约APP\n匿名签到APP', ['匿名预约APP', '匿名签到APP']),
+    ('1. 匿名资料系统\n匿名预约APP', ['匿名资料系统', '匿名预约APP']),
+    ('匿名预约APP；匿名签到APP', ['匿名预约APP', '匿名签到APP']),
+    ('匿名预约APP\n匿名签到APP\n2个项目', ['匿名预约APP', '匿名签到APP']),
+])
+def test_clear_app_titles_are_received_without_review(tmp_path, raw, names):
+    service = desktop(tmp_path)
+    result = service.receive_text(raw)
+    assert result['state'] == 'committed'
+    assert [service.get_project(pid)['name'] for pid in result['project_ids']] == names
+    assert service.pending_receipts() == []
+
+
+def test_app_is_part_of_project_identity_and_original_spelling(tmp_path):
+    service = desktop(tmp_path)
+    original_id = service.receive_text('1. 匿名预约系统')['project_ids'][0]
+    result = service.receive_text('匿名预约系统APP')
+    assert result['state'] == 'committed'
+    app_id = result['project_ids'][0]
+    assert app_id != original_id
+    assert service.receive_text('匿名预约系统app')['project_ids'] == [app_id]
+    assert service.get_project(original_id)['name'] == '匿名预约系统'
+    assert service.get_project(app_id)['name'] == '匿名预约系统APP'
+    assert service.db.counts()['projects'] == 2
+
+
+def test_file_first_app_project_is_reused_by_plain_text_without_review(tmp_path):
+    service = desktop(tmp_path)
+    source = tmp_path / '匿名预约APP.docx'
+    source.write_bytes(b'anonymous-app-material')
+    file_result = service.receive_path(source)
+    project_id = file_result['file']['project_id']
+    original = service.get_project(project_id)
+    workspace = dict(service.workspaces.get_workspace(project_id))
+
+    result = service.receive_text('匿名预约APP')
+
+    assert result['state'] == 'committed'
+    assert result['project_ids'] == result['reused_project_ids'] == [project_id]
+    assert result['created_project_ids'] == []
+    assert service.db.counts()['projects'] == 1
+    retained = service.get_project(project_id)
+    assert retained['name'] == '匿名预约APP'
+    assert retained['status'] == original['status'] == '待交付'
+    assert retained['batch_id'] == original['batch_id']
+    assert dict(service.workspaces.get_workspace(project_id)) == workspace
+    assert source.read_bytes() == b'anonymous-app-material'
+
+
+@pytest.mark.parametrize('raw', [
+    '这里是描述性内容。\n匿名预约APP',
+    'https://example.invalid/匿名预约APP',
+    'C:/anonymous/匿名预约APP',
+    '匿名预约APP.zip',
+    '匿名预约APP\n2个项目',
+    'G20261112-001 匿名预约APP',
+])
+def test_app_suffix_does_not_bypass_text_review_boundaries(tmp_path, raw):
+    service = desktop(tmp_path)
+    result = service.receive_text(raw)
+    assert result['state'] == 'needs-review'
+    assert result['reason']
+    assert result['project_ids'] == []
+    assert service.db.counts()['projects'] == 0
+
+
 def test_conflicting_batch_name_cannot_lose_pending_text(tmp_path):
     service = desktop(tmp_path)
     result = service.receive_text('需要核对的文字。')
