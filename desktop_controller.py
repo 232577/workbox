@@ -2,6 +2,7 @@
 
 from collections import deque
 import hashlib
+import sqlite3
 from pathlib import Path
 import weakref
 
@@ -13,6 +14,7 @@ import shiboken6
 
 from compact_ui import CompactPanel, button, label, zip_delivery_hint
 from floating import FloatingBall, decode_mime
+from floating_settings import DEFAULT_FLOATING_SIZE, validate_floating_size
 from ui import FileJob, app_icon
 from native_files import plain_path
 from theme import apply_to
@@ -178,6 +180,11 @@ class FloatingController(QObject):
             if self.service.workspaces.setup_required():
                 raise ValueError('首次设置尚未保存，未启动收件与归档。')
         self.orb = FloatingBall()
+        try:
+            saved_size = validate_floating_size(self.service.get_setting('orb_size', DEFAULT_FLOATING_SIZE))
+        except (TypeError, ValueError):
+            saved_size = DEFAULT_FLOATING_SIZE
+        self.orb.set_orb_size(saved_size)
         self.panel = CompactPanel(self.service)
         self.panel.window_shortcut = self.shortcut
         self._panel_minimum = self.panel.minimumSize()
@@ -206,6 +213,7 @@ class FloatingController(QObject):
         self.panel.data_changed.connect(self.refresh)
         self.bubble.cancel_requested.connect(self.cancel_jobs)
         self.orb.position_changed.connect(self.save_position)
+        self.orb.size_requested.connect(self.change_orb_size)
         self.orb.hint_changed.connect(self.drop_hint)
         self.panel.state_requested.connect(lambda pid, state: self.enqueue('状态已更新', lambda **_: self.service.set_status(pid, state)))
         self.panel.urgent_requested.connect(lambda pid, urgent: self.enqueue('加急标记已更新', lambda **_: self.service.set_urgent(pid, urgent)))
@@ -459,6 +467,16 @@ class FloatingController(QObject):
         self.environment.set_background_tray(self.tray)
         self.orb.hide()
         return True
+
+    def change_orb_size(self, size):
+        try:
+            size = validate_floating_size(size)
+            self.service.set_setting('orb_size', size)
+        except (ValueError, OSError, sqlite3.Error) as error:
+            self.notify(f'无法保存悬浮窗尺寸，已保留原尺寸：{error}')
+            return
+        self.orb.set_orb_size(size)
+        self.orb.move(clamp_position([self.orb.x(), self.orb.y()], self.orb.size()))
 
     def save_position(self, position):
         self.orb.move(clamp_position(position, self.orb.size()))

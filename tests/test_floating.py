@@ -102,14 +102,15 @@ def test_ball_is_small_round_surface_and_click_opens_not_moves(qapp):
     orb = module().FloatingBall()
     try:
         orb.show()
-        assert orb.width() == orb.height() and 64 <= orb.width() <= 88
+        assert orb.width() == orb.height() == 48
         assert orb.testAttribute(Qt.WA_TranslucentBackground)
         opened = QSignalSpy(orb.open_requested)
-        QTest.mouseClick(orb, Qt.LeftButton, pos=QPoint(38, 38))
+        center = orb.rect().center()
+        QTest.mouseClick(orb, Qt.LeftButton, pos=center)
         assert opened.count() == 1
-        QTest.mousePress(orb, Qt.LeftButton, pos=QPoint(38, 38))
-        QTest.mouseMove(orb, QPoint(68, 48), delay=30)
-        QTest.mouseRelease(orb, Qt.LeftButton, pos=QPoint(68, 48))
+        QTest.mousePress(orb, Qt.LeftButton, pos=center)
+        QTest.mouseMove(orb, center + QPoint(30, 10), delay=30)
+        QTest.mouseRelease(orb, Qt.LeftButton, pos=center + QPoint(30, 10))
         assert opened.count() == 1
     finally:
         orb.hide()

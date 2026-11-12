@@ -375,7 +375,10 @@ class DesktopService(WorkBox):
             return json.loads(row[0]) if row else default
 
     def set_setting(self, key, value):
-        if key == 'window_shortcut':
+        if key == 'orb_size':
+            from floating_settings import validate_floating_size
+            value = validate_floating_size(value)
+        elif key == 'window_shortcut':
             from global_shortcut import validate_shortcut
             value = validate_shortcut(value)
         elif key == 'manager_window_state':

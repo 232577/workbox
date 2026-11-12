@@ -23,7 +23,7 @@ def test_vector_assets_are_valid_and_match_runtime():
         assert data == branding.svg_bytes()
 
 
-@pytest.mark.parametrize('size', [16, 24, 32, 48, 64, 128, 256])
+@pytest.mark.parametrize('size', [16, 24, 32, 48, 64, 128, 256, 512])
 def test_icon_has_visible_mark_and_transparent_corners(qapp, size):
     image = branding.icon_image(size)
     assert image.size().width() == image.size().height() == size
@@ -64,12 +64,16 @@ def test_runtime_icon_exposes_native_sizes(qapp):
     assert not icon.pixmap(16, 16).isNull()
 
 
-def test_floating_mark_keeps_badge_and_progress_outside_the_symbol(qapp):
+@pytest.mark.parametrize('size', [32, 40, 48, 56, 64])
+@pytest.mark.parametrize('dpr', [1, 2])
+def test_floating_mark_keeps_badge_and_progress_outside_the_symbol(qapp, size, dpr):
     from floating import FloatingBall
     ball = FloatingBall()
+    ball.set_orb_size(size)
     try:
         def render():
-            image = QImage(76, 76, QImage.Format_ARGB32_Premultiplied)
+            image = QImage(size * dpr, size * dpr, QImage.Format_ARGB32_Premultiplied)
+            image.setDevicePixelRatio(dpr)
             image.fill(Qt.transparent)
             ball.render(image)
             return image
@@ -79,18 +83,22 @@ def test_floating_mark_keeps_badge_and_progress_outside_the_symbol(qapp):
         counted = render()
         ball.set_progress(True, 67)
         progressing = render()
-        assert ball.size().width() == ball.size().height() == 76
+        assert ball.size().width() == ball.size().height() == size
         assert idle != counted and idle != progressing
-        assert idle.copy(26, 26, 24, 24) == counted.copy(26, 26, 24, 24)
-        assert idle.copy(26, 26, 24, 24) == progressing.copy(26, 26, 24, 24)
-        mark = QImage(76, 76, QImage.Format_ARGB32_Premultiplied)
+        unit = size * dpr / 48
+        center = (round(16 * unit), round(16 * unit), round(16 * unit), round(16 * unit))
+        assert idle.copy(*center) == counted.copy(*center)
+        assert idle.copy(*center) == progressing.copy(*center)
+        mark = QImage(size * dpr, size * dpr, QImage.Format_ARGB32_Premultiplied)
+        mark.setDevicePixelRatio(dpr)
         mark.fill(Qt.transparent)
         painter = QPainter(mark)
-        branding.draw_mark(painter, QRectF(10, 9, 56, 56))
+        painter.scale(size / 48, size / 48)
+        branding.draw_mark(painter, QRectF(5, 5, 38, 38))
         painter.end()
         # 中心前景与共享矢量一致；底色混合允许两级抗锯齿舍入误差。
-        for y in range(20, 54):
-            for x in range(18, 58):
+        for y in range(round(13 * unit), round(39 * unit)):
+            for x in range(round(11 * unit), round(37 * unit)):
                 if mark.pixelColor(x, y).alpha() == 255:
                     actual = idle.pixelColor(x, y).getRgb()
                     expected = mark.pixelColor(x, y).getRgb()
