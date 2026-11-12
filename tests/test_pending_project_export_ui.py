@@ -42,13 +42,13 @@ def wait(controller):
     QApplication.processEvents()
 
 
-def test_pending_export_button_belongs_to_pending_queue_in_light_and_dark(controller):
+def test_pending_export_menu_belongs_to_pending_queue_in_light_and_dark(controller):
     panel = controller.panel
-    button = panel.pending_export_button
-    assert button.text() == '导出名单'
-    assert button.accessibleName() == '导出全部待开发项目名称'
-    assert '搜索' in button.toolTip() and '批次' in button.toolTip()
-    assert not button.isVisible()
+    button = panel.project_export_button
+    assert button.text() == '导出项目表'
+    assert panel.pending_export_button.accessibleName() == '导出全部待开发项目名称'
+    assert '搜索' in panel.pending_export_action.toolTip() and '批次' in panel.pending_export_action.toolTip()
+    assert not panel.pending_export_action.isVisible()
     prior_theme = current_mode()
     try:
         for theme in ('light', 'dark'):
@@ -58,6 +58,7 @@ def test_pending_export_button_belongs_to_pending_queue_in_light_and_dark(contro
             QApplication.processEvents()
             assert panel.width() == 660
             assert button.isVisible() and button.isEnabled()
+            assert panel.pending_export_action.isVisible()
             assert button.width() >= button.minimumSizeHint().width()
             assert panel.project_queue_header.rect().contains(button.geometry())
             assert not button.geometry().intersects(panel.bulk_mode.geometry())
@@ -71,7 +72,7 @@ def test_pending_export_button_belongs_to_pending_queue_in_light_and_dark(contro
             panel.tabs.setCurrentIndex(0)
             assert button.isVisible()
             panel.status_buttons['开发中'].click()
-            assert not button.isVisible()
+            assert button.isVisible() and not panel.pending_export_action.isVisible()
     finally:
         set_theme(prior_theme)
 
@@ -119,11 +120,11 @@ def test_locating_intake_switches_to_all_and_hides_pending_export(controller):
     panel = controller.panel
     panel.status_buttons['待开发'].click()
     pid = panel.project_list.item(0).data(Qt.UserRole)
-    assert panel.pending_export_button.isVisible()
+    assert panel.pending_export_action.isVisible()
     assert panel.focus_projects([pid])
     panel.show_project_queue()
     assert panel.status_buttons[None].isChecked()
-    assert not panel.pending_export_button.isVisible()
+    assert not panel.pending_export_action.isVisible()
 
 
 def test_cancel_save_or_overwrite_never_starts_worker(controller, tmp_path, monkeypatch):
@@ -146,7 +147,7 @@ def test_empty_visible_list_can_export_and_error_stays_until_retry(controller, t
     panel.status_buttons['待开发'].click()
     panel.search.setText('匿名无匹配')
     assert panel.project_list.count() == 0
-    assert panel.pending_export_button.isVisible() and panel.pending_export_button.isEnabled()
+    assert panel.pending_export_action.isVisible() and panel.pending_export_button.isEnabled()
     target = tmp_path / 'out.xlsx'
     monkeypatch.setattr(QFileDialog, 'getSaveFileName', lambda *a, **k: (str(target), ''))
 

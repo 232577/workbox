@@ -301,6 +301,7 @@ class CompactPanel(DropSurface, QWidget):
     task_text_requested = Signal(str, object, bool)
     classification_requested = Signal()
     pending_export_requested = Signal()
+    project_table_export_requested = Signal(object, str)
 
     def __init__(self, service):
         super().__init__()
@@ -508,7 +509,7 @@ class CompactPanel(DropSurface, QWidget):
         self.batch_filter.setAccessibleName('批次筛选')
         self.project_filter_button = button('筛选', 'filter')
         self.project_filter_button.setObjectName('projectFilterToggle')
-        self.project_filter_button.setToolTip('筛选归档范围、截止日期、类型和加急项目')
+        self.project_filter_button.setToolTip('筛选归档范围、截止日期和加急项目')
         filters.addWidget(self.batch_filter, 1)
         top.insertWidget(2, self.project_filter_button)
         self.clear_project_filters = button('清除')
@@ -525,7 +526,10 @@ class CompactPanel(DropSurface, QWidget):
         self.added_date_filter.setMinimumWidth(0)
         self.added_date_filter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.added_date_filter.setToolTip('按项目首次新增日期筛选（北京时间）；与截止日期、批次独立。')
-        scope_tools.addWidget(self.added_date_filter)
+        date_type_row = QHBoxLayout()
+        date_type_row.setSpacing(8)
+        date_type_row.addWidget(self.added_date_filter, 1)
+        scope_tools.addLayout(date_type_row)
         self.project_list_heading = label('项目清单', 'queueHeader')
         self.pending_export_button = button('导出名单')
         self.pending_export_button.setObjectName('pendingProjectExport')
@@ -534,9 +538,22 @@ class CompactPanel(DropSurface, QWidget):
         self.pending_export_button.setToolTip(export_scope)
         self.pending_export_button.setAccessibleDescription(export_scope)
         self.pending_export_button.clicked.connect(self.pending_export_requested)
+        self.pending_export_button.setParent(self)
         self.pending_export_button.hide()
-        self.status_segments.currentItemChanged.connect(
-            lambda key: self.pending_export_button.setVisible(key == '待开发'))
+        self.project_export_button = button('导出项目表')
+        self.project_export_button.setAccessibleName('导出项目表')
+        self.project_export_button.setToolTip('将当前筛选结果或已勾选项目导出为 Excel；仅导出表格，不改变项目。')
+        self.project_export_menu = QMenu(self.project_export_button)
+        self.project_export_button.setMenu(self.project_export_menu)
+        self.project_export_filtered_action = self.project_export_menu.addAction('导出当前筛选结果（0项）')
+        self.project_export_filtered_action.triggered.connect(lambda: self.request_project_table_export('filtered'))
+        self.project_export_checked_action = self.project_export_menu.addAction('导出已勾选项目（0项）')
+        self.project_export_checked_action.triggered.connect(lambda: self.request_project_table_export('checked'))
+        self.project_export_menu.addSeparator()
+        self.pending_export_action = self.project_export_menu.addAction('全部待开发名单（仅名称）')
+        self.pending_export_action.setToolTip(export_scope)
+        self.pending_export_action.triggered.connect(self.pending_export_button.click)
+        self.project_export_menu.aboutToShow.connect(self.sync_project_export_actions)
         self.bulk_mode = QCheckBox('批量选择')
         self.bulk_mode.setAccessibleName('批量选择')
         self.project_filter_panel = QWidget()
@@ -557,11 +574,15 @@ class CompactPanel(DropSurface, QWidget):
         self.type_filter.setAccessibleName('项目类型筛选')
         self.type_filter.setMinimumWidth(0)
         self.type_filter.setMaximumWidth(170)
+        self.type_filter.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.type_filter.setMinimumContentsLength(5)
+        self.type_filter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.type_filter.setToolTip('项目类型；与首次新增日期、状态和批次共同筛选。')
         self.type_filter.currentIndexChanged.connect(self._refresh_project_filters)
+        date_type_row.addWidget(self.type_filter, 1)
         views.addWidget(self.archive_filter, 0, 0)
         views.addWidget(self.due_filter, 0, 1)
-        views.addWidget(self.type_filter, 1, 0)
-        views.addWidget(self.urgent_filter, 1, 1)
+        views.addWidget(self.urgent_filter, 1, 0)
         scope_tools.addWidget(self.project_filter_panel)
         self.project_filter_panel.hide()
         self.project_filter_button.toggled.connect(self.project_filter_panel.setVisible)
@@ -607,7 +628,7 @@ class CompactPanel(DropSurface, QWidget):
         project_heading.setContentsMargins(0, 0, 0, 0)
         project_heading.setSpacing(8)
         project_heading.addWidget(self.project_list_heading, 1)
-        project_heading.addWidget(self.pending_export_button)
+        project_heading.addWidget(self.project_export_button)
         project_heading.addWidget(self.bulk_mode)
         project_layout.addWidget(self.project_queue_header)
         self.project_queue_tools = QWidget()
@@ -641,6 +662,12 @@ class CompactPanel(DropSurface, QWidget):
         self.intake_log_button.hide()
         self.empty.setWordWrap(True)
         project_layout.addWidget(self.empty)
+        self.empty_clear_filters_button = button('清除筛选')
+        self.empty_clear_filters_button.setAccessibleName('清除所有项目筛选')
+        self.empty_clear_filters_button.setToolTip('清除搜索、状态、批次、新增日期、类型和附加筛选，返回日常项目。')
+        self.empty_clear_filters_button.clicked.connect(self.clear_all_project_filters)
+        self.empty_clear_filters_button.hide()
+        project_layout.addWidget(self.empty_clear_filters_button, 0, Qt.AlignLeft)
         self.deleted_note = label('原文件、归档和交付记录保留。', 'subtle', True)
         self.deleted_note.hide()
         project_layout.addWidget(self.deleted_note)
@@ -920,6 +947,7 @@ class CompactPanel(DropSurface, QWidget):
                     self.business_worker_finished()
         self.scan_action.setEnabled(not busy)
         self.pending_export_button.setEnabled(not busy)
+        self.sync_project_export_actions()
         for key in ('settings', 'classification'):
             if key in actions:
                 available = True
@@ -1036,6 +1064,65 @@ class CompactPanel(DropSurface, QWidget):
                 control.setCurrentIndex(0)
         self._refresh_project_filters(preserve_project_position=True)
 
+    def clear_all_project_filters(self):
+        controls = (self.search, self.batch_filter, self.added_date_filter, self.archive_filter,
+                    self.due_filter, self.type_filter, self.urgent_filter, *self.status_buttons.values())
+        blockers = [QSignalBlocker(control) for control in controls]
+        self.search.clear()
+        self.status_buttons[None].setChecked(True)
+        for control in (self.batch_filter, self.added_date_filter, self.archive_filter,
+                        self.due_filter, self.type_filter):
+            control.setCurrentIndex(0)
+        self.urgent_filter.setChecked(False)
+        del blockers
+        with QSignalBlocker(self.status_segments):
+            self.status_segments.setCurrentItem('all')
+        self._refresh_project_filters()
+        self.search.setFocus()
+
+    def project_export_ids(self, *, checked=False):
+        if checked and not self.bulk_mode.isChecked():
+            return ()
+        return tuple(item.data(Qt.UserRole) for index in range(self.project_list.count())
+                     if (item := self.project_list.item(index)) is not None
+                     and (not checked or item.isSelected()))
+
+    def sync_project_export_actions(self):
+        count = self.project_list.count()
+        checked = len(self.project_export_ids(checked=True))
+        available = (not self.business_page_busy() and not self._project_read_error
+                     and not self._refresh_after_drag)
+        self.project_export_button.setEnabled(not self.business_page_busy())
+        self.project_export_filtered_action.setText(f'导出当前筛选结果（{count}项）')
+        self.project_export_filtered_action.setEnabled(available and count > 0)
+        self.project_export_checked_action.setText(f'导出已勾选项目（{checked}项）')
+        self.project_export_checked_action.setEnabled(available and checked > 0)
+        self.project_export_checked_action.setToolTip('先开启批量选择，再勾选要导出的项目。')
+        self.pending_export_action.setVisible(self.status_buttons['待开发'].isChecked())
+        self.pending_export_action.setEnabled(not self.business_page_busy())
+
+    def request_project_table_export(self, mode):
+        if (mode not in ('filtered', 'checked') or self.business_page_busy() or self._project_read_error
+                or self._refresh_after_drag):
+            return
+        project_ids = self.project_export_ids(checked=mode == 'checked')
+        if not project_ids:
+            return
+        title = '已勾选项目' if mode == 'checked' else '当前筛选结果'
+        state = next((state for state, control in self.status_buttons.items() if control.isChecked()), None)
+        day = self.added_date_filter.currentData()
+        date_caption = ('日期未知' if day == 'unknown' else day) if day is not None else '所有日期'
+        details = [f'{title}（{len(project_ids)}项）', f'状态：{state or "全部"}',
+                   f'首次新增日期（北京时间）：{date_caption}', '类型：' + self.type_filter.currentText(),
+                   '批次：' + self.batch_filter.currentText(), self.archive_filter.currentText()]
+        if self.search.text():
+            details.append('搜索：' + self.search.text())
+        if self.due_filter.currentData() is not None:
+            details.append('截止日期：' + self.due_filter.currentText())
+        if self.urgent_filter.isChecked():
+            details.append('只看加急')
+        self.project_table_export_requested.emit(project_ids, '；'.join(details))
+
     def _sync_filter_chips(self, scope):
         values = (
             ('archive', scope[3] is not False, self.archive_filter.currentText()),
@@ -1069,6 +1156,7 @@ class CompactPanel(DropSurface, QWidget):
         if any(view.verticalScrollBar().isSliderDown() for view in (self.project_list, self.zip_list, self.receipt_list)):
             self._refresh_after_drag = True
             self._deferred_refresh_full = getattr(self, '_deferred_refresh_full', False) or not _project_only
+            self.sync_project_export_actions()
             return
         self._refresh_after_drag = False
         self._deferred_refresh_full = False
@@ -1097,6 +1185,7 @@ class CompactPanel(DropSurface, QWidget):
                 self._project_read_error = ('项目清单读取失败，保留上次结果；请调整搜索或筛选重试。\n'
                                             + str(error))
                 self._render_notice()
+                self.sync_project_export_actions()
                 return
             if self._project_read_error:
                 self._project_read_error = ''
@@ -1127,7 +1216,7 @@ class CompactPanel(DropSurface, QWidget):
             active_filters = len(active_labels)
             self.project_filter_button.setText(f'筛选 {active_filters}' if active_filters else '筛选')
             filter_description = ('生效筛选：' + '、'.join(active_labels) if active_labels
-                                  else '筛选归档范围、截止日期、类型和加急项目')
+                                  else '筛选归档范围、截止日期和加急项目')
             self.project_filter_button.setToolTip(filter_description)
             self.project_filter_button.setAccessibleDescription(filter_description)
             self.clear_project_filters.setVisible(active_filters > 0)
@@ -1136,11 +1225,14 @@ class CompactPanel(DropSurface, QWidget):
                      clear_selection=scope != self.project_scope and not preserve_project_position)
             self.project_scope = scope
             self.empty.setVisible(not rows)
+            self.empty_clear_filters_button.setVisible(not rows and bool(scope[0] or scope[1] or scope[2]
+                or scope[3] is not False or scope[4] or scope[5] or scope[6] is not None or scope[7]))
             if not rows:
                 self.empty.setText('没有匹配的项目。可调整搜索或筛选。' if self.service.db.counts()['projects']
                                    else '还没有项目。点击「粘贴消息」开始收录。')
             self.deleted_note.setVisible(deleted_view)
-            self.project_list_heading.setText(f'项目清单 · {len(rows)}')
+            self.project_list_heading.setText(f'项目清单 · {len(rows)}项')
+            self.project_list_heading.setAccessibleDescription(f'当前筛选结果 {len(rows)} 项')
             if not _project_only:
                 try:
                     self._refresh_other_views()
@@ -1210,13 +1302,20 @@ class CompactPanel(DropSurface, QWidget):
                 self.added_date_filter.clear()
                 self.added_date_filter.addItem('所有新增日期', None)
                 for day, caption, count in values:
-                    self.added_date_filter.addItem(f'{caption} 新增 · {count} 项', day)
+                    self.added_date_filter.addItem(caption, day)
+                    index = self.added_date_filter.count() - 1
+                    details = f'{caption} 首次新增 · 全状态 {count} 项'
+                    self.added_date_filter.setItemData(index, details, Qt.ToolTipRole)
+                    self.added_date_filter.setItemData(index, details, Qt.AccessibleDescriptionRole)
                 if missing is not None:
                     caption = '日期未知' if missing == 'unknown' else missing
-                    self.added_date_filter.addItem(f'{caption}（当前范围无项目）', missing)
+                    self.added_date_filter.addItem(caption, missing)
+                    self.added_date_filter.setItemData(self.added_date_filter.count() - 1,
+                        f'{caption}（当前范围无项目）', Qt.ToolTipRole)
                 self.added_date_filter.setCurrentIndex(max(0, self.added_date_filter.findData(added_on)))
             self._added_date_filter_signature = signature
-        description = self.added_date_filter.currentText() + '\n按项目首次新增日期（北京时间），更新文件或状态不会改变此日期。'
+        description = (self.added_date_filter.currentData(Qt.ToolTipRole) or self.added_date_filter.currentText()) \
+            + '\n按项目首次新增日期（北京时间）；统计含全状态，与当前结果数、截止日期、批次独立。更新文件或状态不会改变此日期。'
         self.added_date_filter.setToolTip(description)
         self.added_date_filter.setAccessibleDescription(description)
 

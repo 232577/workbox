@@ -214,6 +214,7 @@ class FloatingController(QObject):
         self.panel.intake.connect(self.receive)
         self.panel.classification_requested.connect(self.panel.show_archive_classification)
         self.panel.pending_export_requested.connect(self.export_pending_projects)
+        self.panel.project_table_export_requested.connect(self.export_project_table)
         self.orb.open_requested.connect(self.show_panel)
         self.bubble.open_requested.connect(self.show_feedback)
         for signal in (self.orb.paste_requested, self.panel.paste_requested):
@@ -618,7 +619,8 @@ class FloatingController(QObject):
         if self.closed or self.quitting or self.foreground_busy or self._page_busy():
             return
         button = self.panel.pending_export_button
-        if not button.isVisible() or not button.isEnabled():
+        if (not self.panel.project_export_button.isVisible() or not button.isEnabled()
+                or not self.panel.status_buttons['待开发'].isChecked()):
             return
         from export_ui import choose_workbook_destination
 
@@ -658,6 +660,54 @@ class FloatingController(QObject):
         else:
             from export_ui import workbook_export_message
             self.notify(workbook_export_message(worker.result))
+
+    def export_project_table(self, project_ids, scope_label):
+        if self.closed or self.quitting or self.foreground_busy or self._page_busy():
+            return
+        if (not self.panel.project_export_button.isVisible() or self.panel._project_read_error
+                or not isinstance(project_ids, tuple) or not project_ids):
+            return
+        from export_ui import choose_workbook_destination
+
+        scope_title = scope_label.split('；', 1)[0]
+        self.choosing_pending_export = True
+        self._sync_panel_busy()
+        try:
+            chosen = choose_workbook_destination(self.panel, prefix='项目表_' + scope_title)
+        except (OSError, ValueError) as error:
+            chosen = None
+            if not self.quitting:
+                self.notify(f'导出项目表未完成。{error} 可重试。')
+        finally:
+            self.choosing_pending_export = False
+            if not self.closed:
+                self._sync_panel_busy()
+        if self.quitting or chosen is None:
+            self._next()
+            return
+        target, target_identity = chosen
+
+        def export(**kwargs):
+            from delivery_export import export_project_table
+            result = export_project_table(self.service.db, target, project_ids=project_ids,
+                scope_label=scope_label, replace_existing=target_identity is not None,
+                expected_target_identity=target_identity, **kwargs)
+            return dict(result, scope_label=scope_label)
+
+        self.enqueue('正在导出项目表 · ' + scope_title, export,
+                     on_complete=self._project_table_export_finished,
+                     on_cancel=lambda: self.notify('已取消导出项目表。'))
+
+    def _project_table_export_finished(self, worker):
+        if self.quitting:
+            return
+        if worker.cancelled:
+            self.notify('已取消导出项目表。')
+        elif worker.error:
+            self.notify(f'导出项目表未完成。{worker.error} 可重试。')
+        else:
+            from export_ui import workbook_export_message
+            self.notify(workbook_export_message(worker.result) + '\n导出范围：' + worker.result['scope_label'])
 
     def enqueue(self, caption, operation, *, silent=False, on_cancel=None, on_complete=None):
         if self.quitting or self.closed:
@@ -1001,7 +1051,8 @@ class FloatingController(QObject):
         cancel_queued_export_only = (self.worker is not None and self.silent_current
                                      and self.worker.operation == self.service.scan_archives
                                      and not (self.quitting or shutting_down) and len(pending) == 1
-                                     and pending[0][4] == self._pending_export_finished)
+                                     and pending[0][4] in (self._pending_export_finished,
+                                                          self._project_table_export_finished))
         if self.worker and not cancel_queued_export_only:
             self.worker.cancel_event.set()
         self.queue.clear()

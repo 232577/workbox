@@ -154,6 +154,56 @@ def collect_pending_project_names(db, *, cancel_event=None, progress=None):
                 protected_roots=protected_roots, protected_files=protected_files)
 
 
+def collect_project_table(db, *, project_ids, cancel_event=None, progress=None):
+    """导出点击时选定的项目身份；字段与受管边界来自同一只读快照。"""
+    from desktop_service import _project_added_on
+
+    cancelled(cancel_event)
+    if (not isinstance(project_ids, (tuple, list)) or not project_ids
+            or any(type(pid) is not int or not 0 < pid <= 9223372036854775807 for pid in project_ids)):
+        raise ValueError('请先选择或筛选要导出的项目，不会自动改为导出全部项目。')
+    ids = tuple(dict.fromkeys(project_ids))
+    if len(ids) > 1048575:
+        raise ValueError('项目数超过 Excel 工作表行数上限，未截断或导出。')
+    by_id = {}
+    with db.connect() as connection:
+        connection.execute('PRAGMA query_only=ON')
+        connection.execute('BEGIN')
+        # 分块绑定编号，避免 SQLite 参数上限；不逐项查 ZIP 或扫描项目文件。
+        for offset in range(0, len(ids), 800):
+            cancelled(cancel_event)
+            chunk = ids[offset:offset + 800]
+            placeholders = ','.join('?' for _ in chunk)
+            rows = connection.execute(f'''SELECT p.id AS project_id,p.name AS project_name,
+                p.status,p.created_at,p.urgent,COALESCE(pt.name,'未分类') AS project_type_name,
+                d.due_date,COALESCE(d.notes,'') AS notes,d.archived_at,x.deleted_at
+                FROM projects p
+                LEFT JOIN project_details d ON d.project_id=p.id
+                LEFT JOIN project_deletions x ON x.project_id=p.id
+                LEFT JOIN project_type_links tl ON tl.project_id=p.id
+                LEFT JOIN project_types pt ON pt.id=tl.type_id
+                WHERE p.id IN ({placeholders})
+                AND NOT EXISTS (SELECT 1 FROM project_merges m WHERE m.source_id=p.id)''', chunk)
+            by_id.update((row['project_id'], dict(row)) for row in rows)
+        if len(by_id) != len(ids):
+            raise ValueError('所选项目已合并或不存在，请刷新清单后重新导出；未改用其他项目。')
+        batch_index = read_project_batch_index(connection)
+        protected_roots, protected_files = _protected_paths(connection, db)
+    projects = []
+    for count, pid in enumerate(ids, 1):
+        cancelled(cancel_event)
+        row = by_id[pid]
+        row['added_on'] = _project_added_on(row.pop('created_at')) or '日期未知'
+        row['urgent'] = bool(row['urgent'])
+        row['visibility'] = '已删除' if row['deleted_at'] else '已归档' if row['archived_at'] else '日常项目'
+        row['intake_batch_codes'] = '；'.join(marker['code'] for marker in batch_index['by_project'].get(pid, []))
+        projects.append(row)
+        if progress:
+            progress(count, len(ids))
+    return dict(projects=projects, project_count=len(projects), batch_warnings=batch_index['warnings'],
+                protected_roots=protected_roots, protected_files=protected_files)
+
+
 def _task_report(connection, groups, *, cancel_event=None):
     """只使用同一快照中的来源、当前类型和确切绑定事件，不用项目状态补任务。"""
     if not groups:
@@ -470,6 +520,50 @@ def export_pending_projects(db, destination, *, cancel_event=None, progress=None
                 # 分开写入普通文本段，避免 Excel 将名称中的字面量解释为字符转义。
                 value = CellRichText(re.split(r'(?<=_)(?=x[0-9A-Fa-f]{4}_)', value))
             sheet.cell(index, 1, value).data_type = 's'
+    return result
+
+
+def export_project_table(db, destination, *, project_ids, scope_label='', cancel_event=None, progress=None,
+                         replace_existing=False, expected_target_identity=None):
+    """把明确的筛选/勾选范围导出成项目表，沿用原有安全发布与覆盖确认。"""
+    if not isinstance(scope_label, str) or len(scope_label) > 4096:
+        raise ValueError('导出范围说明过长或无效。')
+    # 不保留调用方可变列表，排队期间也不会扩大范围。
+    if isinstance(project_ids, list):
+        project_ids = tuple(project_ids)
+
+    def literal(value):
+        if not isinstance(value, str):
+            return value
+        if re.search(r'[\r\ufffe\uffff]', value):
+            raise ValueError('内容含有 XLSX 无法原样保存的字符，未导出。')
+        value = _text(value)
+        if re.search(r'_x[0-9A-Fa-f]{4}_', value):
+            return CellRichText(re.split(r'(?<=_)(?=x[0-9A-Fa-f]{4}_)', value))
+        return value
+
+    columns = (('project_name', '项目名称', 42), ('status', '当前状态', 16),
+               ('project_type_name', '项目类型', 20), ('added_on', '首次新增日期', 18),
+               ('intake_batch_codes', '收件批次编号', 32), ('urgent', '加急', 10),
+               ('due_date', '截止日期', 16), ('notes', '备注', 48),
+               ('visibility', '项目范围', 16), ('project_id', '项目编号', 22))
+    with _workbook_export(db, destination, partial(collect_project_table, project_ids=project_ids),
+                         cancel_event=cancel_event, progress=progress, replace_existing=replace_existing,
+                         expected_target_identity=expected_target_identity) as (book, report, result):
+        book.remove(book.active)
+        # 编号是身份而非计量值；Excel 数值会舍入较长的 SQLite 整数。
+        rows = [{key: literal(str(row[key]) if key == 'project_id' else row.get(key))
+                 for key, _, _ in columns} for row in report['projects']]
+        _sheet(book, '项目清单', columns, rows, cancel_event=cancel_event)
+        notes = [('导出范围', scope_label or '明确选定的项目'), ('项目数', report['project_count']),
+                 ('导出时间（北京时间）', datetime.now(DELIVERY_TIMEZONE).isoformat(timespec='seconds')),
+                 ('日期口径', '项目首次新增日期（北京时间）；重复收件不改变日期。'),
+                 ('范围口径', '项目编号在点击导出时固定，状态、类型等字段取开始导出时的同一只读快照。'),
+                 ('批次口径', '收件批次编号可有多个，整批进度不代表本次筛选或导出数量。')]
+        if report['batch_warnings']:
+            notes.append(('批次来源提示', '\n'.join(report['batch_warnings'])))
+        _sheet(book, '导出说明', (('name', '项目', 28), ('value', '说明', 88)),
+               [dict(name=key, value=literal(value)) for key, value in notes], cancel_event=cancel_event)
     return result
 
 
