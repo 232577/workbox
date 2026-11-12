@@ -8,14 +8,33 @@ import { handleRequest, release, releases } from './worker.mjs';
 const html = siteHtml;
 const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
 const siteReadme = await readFile(new URL('./README.md', import.meta.url), 'utf8');
-const source = '50596bde66e7116dff3f1f4efc7df328c8919848';
-const expected = { version: '1.0.0', tag: 'v1.0.0.20261111.1', edition: '正式安装版',
-  date: '2026-11-11', filename: 'WorkBox-1.0.0-Setup-x64-20261111-r1.exe', size: 42282708,
-  sha256: 'aac9e27652139630657a7ab79d502d15aabd06e44c8e5aee820507dfdf071e80' };
+const releaseNotes = await readFile(new URL('../RELEASE_NOTES.md', import.meta.url), 'utf8');
+const source = '6a0eec6325281b02c8d9f67aca69f83d382620be';
+const expected = { version: '1.0.0', tag: 'v1.0.0.20261112.1', edition: '正式安装版',
+  date: '2026-11-12', filename: 'WorkBox-1.0.0-Setup-x64-20261112-r1.exe', size: 42279986,
+  sha256: '917d04327cfc75e7599b3ff0b05503913ad19310dc54cf9b80ca3a0a320055e4' };
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 
-test('11月11日r1目录、首页与稳定清单使用同一准确安装包和桌面来源', async () => {
+test('11月12日r1收件身份修复独立发布，并逐字保留此前全部29项下载目录', async () => {
+  assert.equal(release.tag, 'v1.0.0.20261112.1');
+  assert.equal(releases.length, 30);
+  assert.equal(digest(JSON.stringify(releases.slice(1))), '4f3c58620c320c0978bf067fcc21e87dcc6c74ccdb735ad3f4297f2504c757d7');
+  const metadata = await (await handleRequest(new Request('https://example.com/updates/stable.json'), {})).json();
+  for (const text of [html, readme, siteReadme, metadata.body]) {
+    assert.match(text, /项目列表支持 APP 名称/);
+    assert.match(text, /下划线后的任意附注/);
+    assert.match(text, /APP 前的空白和大小写/);
+    assert.match(text, /新项目名称不会按任意附注自动裁剪/);
+    assert.match(text, /保留原显示名、编号和工作目录/);
+    assert.match(text, /不自动合并/);
+  }
+  assert.match(documents['/releases.html'], /href="\/download\/WorkBox-1\.0\.0-Setup-x64-20261111-r1\.exe">历史正式安装版/);
+});
+
+test('11月12日r1目录、首页与稳定清单使用同一准确安装包和桌面来源', async () => {
   assert.deepEqual(release, expected);
+  for (const value of [expected.filename, expected.sha256, source]) assert.ok(releaseNotes.includes(value));
+  assert.ok(releaseNotes.includes('7760e997ded567dd5c1aec4435f023b82b64664ae757e249568999aac4f690fc'));
   const metadata = await (await handleRequest(new Request('https://example.com/updates/stable.json'), {})).json();
   assert.equal(metadata.tag_name, expected.tag);
   assert.ok(metadata.body.includes(`来源提交 ${source}。`));
@@ -23,7 +42,7 @@ test('11月11日r1目录、首页与稳定清单使用同一准确安装包和�
     digest: `sha256:${expected.sha256}`,
     browser_download_url: `https://github.com/232577/workbox/releases/download/${expected.tag}/${expected.filename}` }]);
   for (const text of [html, readme, siteReadme]) {
-    for (const value of [expected.filename, expected.sha256, source, '42,282,708']) assert.ok(text.includes(value), value);
+    for (const value of [expected.filename, expected.sha256, source, '42,279,986']) assert.ok(text.includes(value), value);
   }
   const primary = [...documents['/index.html'].matchAll(/class="[^"]*download-link[^"]*" href="([^"#]+)"/g)].map(match => match[1]);
   assert.equal(primary.filter(value => value === `/download/${expected.filename}`).length, 2);
@@ -80,17 +99,17 @@ test('r7待完成显示零与总数，日期和旧稿规则在各入口一致', 
   assert.match(migration, /备份并迁移[^。]*已登记历史文稿目录/);
 });
 
-test('11月11日r1保留全部28历史路由、r7与更早目录和原58媒体字节及归属', async () => {
-  assert.equal(releases.length, 29);
-  assert.equal(digest(JSON.stringify(releases.slice(1))), '47dc35631d6353174b5dc167db1ae11b7826284a2215ecb4ffbc3d79e6f0c3eb');
-  assert.deepEqual(releases[1], {version:'1.0.0',tag:'v1.0.0.20261109.7',edition:'正式安装版',
+test('11月12日r1保留全部29历史路由、r7与更早目录和原58媒体字节及归属', async () => {
+  assert.equal(releases.length, 30);
+  assert.equal(digest(JSON.stringify(releases.slice(2))), '47dc35631d6353174b5dc167db1ae11b7826284a2215ecb4ffbc3d79e6f0c3eb');
+  assert.deepEqual(releases[2], {version:'1.0.0',tag:'v1.0.0.20261109.7',edition:'正式安装版',
     date:'2026-11-09',filename:'WorkBox-1.0.0-Setup-x64-20261109-r7.exe',size:42226464,
     sha256:'240a816e8c5049e028060994002a5907ba59c58762ac6ff10c89eb4ce8f2d855'});
-  assert.equal(digest(JSON.stringify(releases.slice(2))), '2a2393cc3bf6a086d80998e6f767efca3a1a17f32610311ce948f95947cb3871');
-  assert.equal(releases[2].tag, 'v1.0.0.20261109.6');
-  assert.equal(digest(JSON.stringify(releases.slice(3))), 'a67157fa9bac8f292ff8b1a84a116e86f58edf3880565217d0e06d94f34925d1');
-  assert.equal(digest(JSON.stringify(releases.slice(4))), '6227a923fd6c12b67dd9311e09e1266ea077f7d22557b9cb18a3d373b02d07ff');
-  for (const item of releases.slice(1)) assert.ok(html.includes(`/download/${item.filename}`));
+  assert.equal(digest(JSON.stringify(releases.slice(3))), '2a2393cc3bf6a086d80998e6f767efca3a1a17f32610311ce948f95947cb3871');
+  assert.equal(releases[3].tag, 'v1.0.0.20261109.6');
+  assert.equal(digest(JSON.stringify(releases.slice(4))), 'a67157fa9bac8f292ff8b1a84a116e86f58edf3880565217d0e06d94f34925d1');
+  assert.equal(digest(JSON.stringify(releases.slice(5))), '6227a923fd6c12b67dd9311e09e1266ea077f7d22557b9cb18a3d373b02d07ff');
+  for (const item of releases.slice(2)) assert.ok(html.includes(`/download/${item.filename}`));
   assert.match(html, /href="\/download\/WorkBox-1\.0\.0-Setup-x64-20261109-r4\.exe">历史正式安装版/);
   const raw = await readFile(new URL('./MEDIA.json', import.meta.url));
   assert.equal(digest(raw), 'e69a2afc0b26271772fff0c5ad1e5f0f933c001a0df3709557ca31ad3d4bf93f');
