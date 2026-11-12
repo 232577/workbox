@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import re
-import unicodedata
 from pathlib import Path
 
+from project_names import normalized_project_name as _normalized
 
 # 先解析语言文字，再做名称比较；C++、C#、C#+Python 不得丢失符号。
 _LANGUAGE = r'[A-Za-z][A-Za-z0-9.+#/ -]*'
@@ -26,11 +26,6 @@ _RELEASE_SUFFIX = re.compile(
     re.IGNORECASE,
 )
 _EDITION_SUFFIX = re.compile(r'(?P<name>.+?)[ _.-]+[^ _./\\-]{1,20}版$')
-
-
-def _normalized(value: str) -> str:
-    # 保留词间空格及全部标点，只统一全半角、空白和大小写。
-    return ' '.join(unicodedata.normalize('NFKC', value).split())
 
 
 def new_file_project_name(filename: str) -> str:
@@ -101,7 +96,7 @@ def match_work_file_projects(filename: str, projects: list[dict], *, include_ann
         ):
             match = rule.fullmatch(stem)
             if match:
-                stem = match.group('name').strip()
+                stem = _normalized(match.group('name'))
                 basis.append(reason)
                 break
         else:
