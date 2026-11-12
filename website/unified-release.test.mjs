@@ -1,3 +1,4 @@
+import { siteHtml } from './public-documents.test-helper.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -5,7 +6,7 @@ import {createHash} from 'node:crypto';
 import {handleRequest,releases} from './worker.mjs';
 
 test('首页、文档与更新说明保留项目批次、全量导出与文件处理边界',async()=>{
-  const html=await readFile(new URL('./public/index.html',import.meta.url),'utf8');
+  const html = siteHtml;
   const readme=await readFile(new URL('../README.md',import.meta.url),'utf8');
   const siteReadme=await readFile(new URL('./README.md',import.meta.url),'utf8');
   for(const item of releases) assert.ok(html.includes(`/download/${item.filename}`));

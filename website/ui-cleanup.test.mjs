@@ -1,10 +1,11 @@
+import { siteHtml } from './public-documents.test-helper.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { handleRequest, release, releases } from './worker.mjs';
 
-const html = await readFile(new URL('./public/index.html', import.meta.url), 'utf8');
+const html = siteHtml;
 const registry = JSON.parse(await readFile(new URL('./MEDIA.json', import.meta.url), 'utf8'));
 const digest = value => createHash('sha256').update(value).digest('hex');
 

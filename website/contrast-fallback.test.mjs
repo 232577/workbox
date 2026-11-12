@@ -1,9 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { documents } from './public-documents.test-helper.mjs';
 
 const css = await readFile(new URL('./public/release-page.css', import.meta.url), 'utf8');
 const homepageCss = await readFile(new URL('./public/homepage.css', import.meta.url), 'utf8');
+const baseCss = await readFile(new URL('./public/styles.css', import.meta.url), 'utf8');
+const themeCss = await readFile(new URL('./public/theme.css', import.meta.url), 'utf8');
 
 function contrast(first, second) {
   const luminance = color => {
@@ -103,9 +106,12 @@ test('浅深主题的示例ZIP标签及免责声明均按小字达到4.5对比�
 test('跳转链接在浅深主题的正常和悬停状态可读，焦点层高于粘性导航', () => {
   const normal = style(['.home-page a', '.home-page .skip']);
   const hover = style(['.home-page a', '.home-page .skip', '.home-page a:hover', '.home-page .skip:hover']);
-  const header = style(['.wb-header', '.home-page .wb-header'], [...rules(homepageCss).filter(rule => !rule.media.length), ...normalRules]);
-  assert.ok(Number.isFinite(Number(header['z-index'])));
-  assert.ok(Number(normal['z-index']) > Number(header['z-index']));
+  assert.ok(Object.values(documents).every(html => /<header\b[^>]*class="site-header"/.test(html)));
+  const header = style(['.site-header', '.home-page .site-header'], [...rules(homepageCss).filter(rule => !rule.media.length), ...normalRules]);
+  if (['sticky', 'fixed'].includes(header.position)) {
+    assert.ok(Number.isFinite(Number(header['z-index'])), '固定的实际导航层级必须明确');
+    assert.ok(Number(normal['z-index']) > Number(header['z-index']), '跳转入口应显示在实际导航上方');
+  }
   assert.ok(normal.background, 'The skip link needs an opaque backing surface');
   for (const [appearance, tokens] of Object.entries(appearances)) {
     assertReadable(`${appearance} skip`, colors(tokens, normal));
@@ -127,5 +133,18 @@ test('无脚本系统深色与显式深色的全部主题token和覆盖等价，
   assert.deepEqual(fallbackTokens, appearances.dark);
   for (const key of Object.keys(fallbackTokens)) {
     assert.equal(resolve(fallbackTokens[key], fallbackTokens), resolve(appearances.dark[key], appearances.dark), `Resolved ${key} differs`);
+  }
+});
+
+test('窄屏指南和版本目录的首个章节入口仍可见', () => {
+  for (const width of [320, 700, 760, 1024]) {
+    const activeRules = [baseCss, homepageCss, themeCss, css].flatMap(source => rules(source))
+      .filter(rule => rule.media.every(query => {
+        const maximum = query.match(/^@media\s*\(max-width:\s*(\d+)px\)$/);
+        return maximum ? width <= Number(maximum[1]) : false;
+      }));
+    const firstChapter = style(['a', 'nav a', 'nav a:first-child', '.home-page a', '.docs-index a',
+      '.docs-page .docs-index a', '.home-page .docs-index a', 'nav.docs-index a'], activeRules);
+    assert.notEqual(firstChapter.display, 'none', `${width}px: 安装与升级/当前版本不能被旧导航规则隐藏`);
   }
 });

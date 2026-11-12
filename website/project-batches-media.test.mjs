@@ -1,10 +1,11 @@
+import { siteHtml, documents } from './public-documents.test-helper.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 
 const registry = JSON.parse(await readFile(new URL('./MEDIA.json', import.meta.url), 'utf8'));
-const html = await readFile(new URL('./public/index.html', import.meta.url), 'utf8');
+const html = siteHtml;
 const images = [
   ['workbox-project-batches-light-20261105-r3.png', 1186, 843, 'a003caf665bfcf54fcd026f38572e0a42440aaf74d29ded9b201d0fdf616e30a'],
   ['workbox-project-batches-narrow-dark-20261105-r3.png', 662, 512, 'd99997d9741a85eff5e8bf41b4807e80b45fdff4227ef02a5f9ea51182532aaa'],
@@ -33,10 +34,10 @@ test('宽浅主图与窄深对照分别呈现，窄图不冒充宽主题替换',
   assert.match(html, /data-preview-mode="single"/);
   assert.match(html, /id="narrow-project-preview"/);
   assert.match(html, /窄窗深色对照/);
-  const stage = html.match(/<div\b[^>]*data-desktop-stage[^>]*>([\s\S]*?)<figcaption>/)?.[1];
+  const stage = documents['/index.html'].match(/<figure\b[^>]*data-desktop-stage[^>]*>([\s\S]*?)<\/figure>/)?.[1];
   assert.match(stage, /data-desktop-image="light"/);
   const narrow = html.match(/<figure\b[^>]*id="narrow-project-preview"[^>]*>[\s\S]*?<img\b[^>]*src="([^"]+)"/)?.[1];
   assert.ok(narrow);
   assert.ok(!stage.includes(narrow));
-  assert.doesNotMatch(html.match(/<section\b[^>]*id="actual-ui"[^>]*>([\s\S]*?)<\/section>/)?.[1], /workbox-task-groups-/);
+  assert.doesNotMatch(stage, /workbox-task-groups-/);
 });

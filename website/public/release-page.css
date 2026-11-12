@@ -38,84 +38,6 @@ html[data-theme="dark"] .home-page {
 .home-page p { text-wrap:pretty; }
 .home-page .wb-kicker,.home-page .wb-eyebrow,.home-page .wb-release-pill { display:none; }
 
-/* Solid header, ordinary controls, one consistent action color. */
-.home-page .wb-header { background:var(--release-bg); border-bottom:1px solid var(--release-line); backdrop-filter:none; }
-.home-page .wb-header-inner { height:80px; min-height:80px; flex-wrap:nowrap; gap:24px; padding-block:0; }
-.home-page .wb-brand { color:var(--release-ink); gap:10px; }
-.home-page .wb-brand>span { font-size:24px; letter-spacing:-.025em; }
-.home-page .wb-brand small { display:none; }
-.home-page .wb-nav { order:initial; flex-basis:auto; gap:24px; margin-left:auto; }
-.home-page .wb-nav a { min-height:44px; display:inline-flex; align-items:center; padding-block:8px; color:var(--release-muted); font-size:14px; font-weight:500; }
-.home-page .wb-nav a:hover { color:var(--release-ink); }
-.home-page .wb-theme-control { gap:0; margin-left:0; }
-.home-page .wb-theme-control label { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
-.home-page .wb-theme-control select { min-height:44px; height:44px; max-width:112px; border:1px solid var(--release-line); border-radius:8px; background:var(--release-surface); color:var(--release-ink); font-size:13px; }
-.home-page .wb-theme-control select:hover { background:var(--release-soft); }
-.home-page .wb-button,.home-page .wb-nav-download { min-height:48px; border-radius:8px; padding:11px 19px; font-size:15px; line-height:1.6; box-shadow:none; font-weight:600; transition:background-color .15s,color .15s; }
-.home-page .wb-nav-download { min-height:44px; padding:9px 16px; font-size:14px; }
-.home-page .wb-button-primary,.home-page .wb-nav-download,.home-page .wb-button-light { background:var(--release-action); border:1px solid var(--release-action); color:var(--release-action-ink); box-shadow:none; }
-.home-page .wb-button-primary:hover,.home-page .wb-nav-download:hover,.home-page .wb-button-light:hover { background:var(--release-action-hover); border-color:var(--release-action-hover); color:var(--release-action-ink); box-shadow:none; }
-.home-page .wb-button-plain { background:transparent; border:1px solid var(--release-line); color:var(--release-ink); }
-.home-page .wb-button-plain:hover { color:var(--release-ink); background:var(--release-soft); }
-
-/* A box's inset handle becomes the single geometric motif around the real window. */
-.home-page .wb-hero { display:grid; grid-template-columns:minmax(0,.72fr) minmax(0,1.28fr); align-items:center; gap:44px; min-height:0; padding-block:68px 64px; }
-.home-page .wb-hero-copy { display:block; min-width:0; max-width:none; }
-.home-page .wb-hero h1 { font-size:clamp(60px,5.3vw,76px); line-height:1.18; letter-spacing:-.035em; font-weight:750; margin:0 0 26px; }
-.home-page .wb-hero h1 em { color:inherit; background:none; -webkit-text-fill-color:currentColor; font-style:normal; }
-.home-page .wb-hero-copy .wb-lead { font-size:16px; line-height:1.95; max-width:31em; margin:0 0 28px; color:var(--release-muted); }
-.home-page .wb-hero-actions { display:flex; flex-wrap:wrap; gap:10px; }
-.home-page .wb-meta { margin:15px 0 0; font-size:13px; line-height:1.8; color:var(--release-muted); }
-.home-page .wb-assurances { margin:18px 0 0; padding:0; font-size:13px; color:var(--release-muted); gap:12px; }
-.home-page .wb-assurances li::before { content:none; }
-.home-page .wb-assure { margin:18px 0 0; font-size:13px; color:var(--release-muted); }
-.home-page .wb-first-use { margin:18px 0 0; padding:0; border:0; font-size:13px; color:var(--release-muted); }
-.home-page .wb-hero>.wb-actual-ui { width:100%; min-width:0; padding:0; margin:0; }
-.home-page .wb-showcase-heading { display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin-bottom:12px; }
-.home-page .wb-showcase-heading h2 { font-size:15px; line-height:1.6; font-weight:600; letter-spacing:0; }
-.home-page .wb-showcase-heading span { color:var(--release-muted); font-size:13px; }
-.home-page .wb-desktop-showcase { position:relative; width:100%; max-width:none; margin:0; padding:30px 14px 14px; background:#102d40; border:0; border-radius:12px; box-shadow:none; }
-.home-page .wb-desktop-showcase::before { content:""; position:absolute; top:0; right:32px; width:86px; height:12px; border-radius:0 0 6px 6px; background:var(--release-bg); }
-.home-page .wb-preview-stage { aspect-ratio:1102/792; min-height:0; background:var(--release-surface); border:0; border-radius:4px; box-shadow:none; }
-.home-page .wb-preview-stage:not([data-light-ready="true"]) { min-height:400px; }
-.home-page .wb-desktop-image-link,.home-page .wb-desktop-image-link img { border-radius:4px; }
-.home-page .wb-desktop-image-link img { width:100%; height:100%; object-fit:contain; }
-.home-page .wb-desktop-image-link:focus-visible { outline-color:#a0dfd2; outline-offset:5px; }
-.home-page .wb-desktop-showcase figcaption { min-height:0; margin:0; padding:12px 2px 0; font-size:12px; line-height:1.8; text-align:left; justify-content:flex-start; color:#cfdee7; }
-.home-page .wb-preview-stage .wb-preview-fallback { border-radius:4px; background:var(--release-soft); }
-.home-page .wb-scene-grid { display:none; }
-.home-page .wb-input,.home-page .wb-archive-slip,.home-page .wb-folder-front { box-shadow:none; transform:none; }
-.home-page .wb-folder-back,.home-page .wb-folder-paper { transform:none; }
-.home-page .wb-media-notes,.home-page .wb-narrow-details { margin-top:12px; border-bottom:1px solid var(--release-line); }
-.home-page .wb-media-notes summary,.home-page .wb-narrow-details summary { min-height:44px; padding:9px 24px 9px 0; font-size:13px; color:var(--release-muted); cursor:pointer; }
-.home-page .wb-media-notes summary:hover,.home-page .wb-narrow-details summary:hover { color:var(--release-ink); }
-.home-page .wb-media-notes p { font-size:13px; line-height:1.85; overflow-wrap:anywhere; color:var(--release-muted); }
-.home-page .wb-media-notes h2 { font-size:18px; letter-spacing:0; }
-.home-page .wb-centered-heading { text-align:left; margin:0; }
-.home-page .wb-centered-heading>p:last-child { margin:12px 0; font-size:13px; color:var(--release-muted); }
-.home-page .wb-narrow-project-preview { width:min(100%,662px); margin:16px auto; }
-.home-page .wb-narrow-project-preview a { display:block; border:1px solid var(--release-line); border-radius:8px; overflow:hidden; }
-.home-page .wb-narrow-project-preview img { display:block; width:100%; height:auto; }
-.home-page .wb-narrow-project-preview figcaption { margin-top:10px; color:var(--release-muted); font-size:13px; line-height:1.8; }
-/* The verified light screenshot is intentionally shared by both website appearances. */
-.home-page .wb-preview-stage[data-preview-mode="single"][data-light-ready="true"] [data-desktop-link="light"] { visibility:visible; }
-.home-page .wb-preview-stage[data-preview-mode="single"][data-light-ready="true"] .wb-preview-fallback { visibility:hidden; }
-.home-page .wb-desktop-showcase:has([data-preview-mode="single"][data-light-ready="true"]) .wb-preview-image-caption { display:inline; }
-.home-page .wb-desktop-showcase:has([data-preview-mode="single"][data-light-ready="true"]) .wb-preview-flow-caption { display:none; }
-
-/* Product facts are editorial rows, rather than repeated cards. */
-.home-page .wb-product-story { border-top:1px solid var(--release-line); padding-block:54px 62px; display:grid; grid-template-columns:minmax(0,.72fr) minmax(0,1.28fr); gap:44px; }
-.home-page .wb-story-heading p { max-width:28em; color:var(--release-muted); margin:18px 0 0; }
-.home-page .wb-story-list { min-width:0; }
-.home-page .wb-story-list article { padding:22px 0; border-bottom:1px solid var(--release-line); display:grid; grid-template-columns:minmax(140px,.6fr) minmax(0,1.4fr); gap:6px 30px; }
-.home-page .wb-story-list article:first-child { padding-top:0; }
-.home-page .wb-story-list h3 { margin:0; font-size:19px; }
-.home-page .wb-story-list p { margin:0; color:var(--release-muted); font-size:15px; }
-.home-page .wb-story-list .wb-inline-link { grid-column:2; min-height:32px; font-size:13px; }
-.home-page .wb-demo-section { display:grid; grid-template-columns:minmax(0,.72fr) minmax(0,1.28fr); align-items:center; gap:44px; padding-block:54px 72px; border-top:1px solid var(--release-line); }
-.home-page .wb-demo-intro p { max-width:29em; color:var(--release-muted); margin:20px 0 22px; }
-.home-page .wb-demo-intro>.wb-inline-link { display:flex; width:fit-content; }
-.home-page .wb-inline-link { min-height:44px; color:var(--release-action); }
 .home-page .wb-demo { width:100%; min-width:0; margin:0; color:var(--release-ink); background:var(--release-surface); border:1px solid var(--release-line); border-radius:12px; box-shadow:none; transform:none; overflow:hidden; }
 .home-page .wb-demo-top { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:17px 24px; background:var(--release-soft); border-bottom:1px solid var(--release-line); font-size:14px; font-weight:600; }
 .home-page .wb-demo-top>span:first-child { display:flex; align-items:center; gap:10px; }
@@ -155,48 +77,6 @@ html[data-theme="dark"] .home-page {
 .home-page .wb-demo-disclaimer { font-size:13px; text-align:center; margin:0; padding:12px 16px; border-top:1px solid var(--release-line); color:var(--release-muted); background:var(--release-soft); }
 .home-page .wb-demo noscript { font-size:13px; }
 
-/* Download is a calm destination, with complete provenance close to the action. */
-.home-page .wb-download-section { padding-block:60px; background:var(--release-soft); color:var(--release-ink); border:0; }
-.home-page .wb-download-heading { padding-bottom:26px; border-bottom:1px solid var(--release-line); }
-.home-page .wb-download-heading>div>p:last-child { color:var(--release-muted); font-size:14px; margin-top:14px; }
-.home-page .wb-download-heading img { width:60px; height:60px; border-radius:12px; }
-.home-page .wb-download-grid { grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:64px; padding-top:30px; }
-.home-page .wb-download-grid>div { min-width:0; }
-.home-page .wb-release-notes { overflow-wrap:anywhere; }
-.home-page .wb-download-main>p,.home-page .wb-download-details p,.home-page .wb-download-details li { color:var(--release-muted); font-size:14px; }
-.home-page .wb-download-main .wb-package-name { font-size:13px; color:var(--release-muted); overflow-wrap:anywhere; }
-.home-page .wb-download-details { padding:0; background:transparent; border:0; border-radius:0; color:var(--release-ink); }
-.home-page .wb-download-details h3 { color:var(--release-ink); font-size:18px; }
-.home-page .wb-download-section a:not(.wb-button),.home-page .wb-download-fallback,.home-page .wb-release-history summary { color:var(--release-action); }
-.home-page .wb-download-section a:not(.wb-button):hover { color:var(--release-action-hover); text-decoration:underline; }
-.home-page .wb-release-notes,.home-page .wb-release-history { border-top:1px solid var(--release-line); padding-top:6px; margin-top:20px; }
-.home-page .wb-release-notes summary,.home-page .wb-release-history summary { min-height:44px; padding:9px 24px 9px 0; font-size:14px; cursor:pointer; }
-.home-page .wb-release-links { margin-top:8px; gap:8px 20px; }
-.home-page .wb-release-links a { min-height:40px; min-width:0; max-width:100%; overflow-wrap:anywhere; font-size:13px; }
-.home-page .wb-checksum-details { border-color:var(--release-line); }
-.home-page .wb-checksum-details summary,.home-page .wb-checksum-details summary::after { color:var(--release-action); }
-.home-page .wb-checksum-details summary { font-size:14px; min-height:44px; }
-.home-page .wb-hash-content code { background:var(--release-surface); color:var(--release-ink); padding:10px 12px; border-radius:4px; font-size:13px; overflow-wrap:anywhere; word-break:break-all; }
-.home-page .wb-hash-content .copy-button { min-height:44px; border:1px solid var(--release-line); background:var(--release-surface); color:var(--release-action); border-radius:6px; }
-.home-page .wb-hash-content .copy-button:hover { background:var(--release-selection); color:var(--release-action-hover); }
-.home-page .wb-hash-content .copy-status { color:var(--release-muted); min-height:44px; font-size:13px; }
-
-/* An on-demand manual, compact sections and dividers instead of nested cards. */
-.home-page .wb-guide { margin-block:56px 64px; border-block:1px solid var(--release-line); }
-.home-page .wb-guide>summary { position:relative; display:flex; align-items:center; justify-content:space-between; gap:24px; min-height:116px; padding:26px 44px 26px 0; cursor:pointer; list-style:none; color:var(--release-ink); }
-.home-page .wb-guide>summary::-webkit-details-marker { display:none; }
-.home-page .wb-guide>summary::after { content:"+"; position:absolute; right:0; top:50%; transform:translateY(-50%); font-size:30px; font-weight:400; line-height:1; color:var(--release-action); }
-.home-page .wb-guide[open]>summary::after { content:"−"; }
-.home-page .wb-guide>summary:hover { color:var(--release-action); }
-.home-page .wb-guide>summary h2 { color:inherit; font-size:28px; }
-.home-page .wb-guide>summary span { max-width:34em; color:var(--release-muted); font-size:14px; }
-.home-page .wb-guide-content { padding-bottom:16px; }
-.home-page .wb-guide-content .wb-wrap { width:100%; }
-.home-page .wb-guide-content .wb-section,.home-page .wb-guide-content .wb-video-section,.home-page .wb-guide-content .wb-features-section { padding-block:36px; border-top:1px solid var(--release-line); border-bottom:0; background:transparent; }
-.home-page .wb-guide-content h2 { font-size:28px; }
-.home-page .wb-guide-content .wb-section-heading { margin-bottom:24px; gap:32px; }
-.home-page .wb-guide-content .wb-section-heading>p { max-width:45em; color:var(--release-muted); font-size:14px; }
-.home-page .wb-guide-content .wb-video-section { display:grid; grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr); gap:44px; align-items:center; }
 .home-page .wb-video-intro { text-align:left; margin:0; max-width:none; }
 .home-page .wb-video-intro>p:not(.wb-kicker) { color:var(--release-muted); font-size:15px; }
 .home-page .wb-video-frame { width:100%; border:0; border-radius:8px; box-shadow:none; }
@@ -213,6 +93,7 @@ html[data-theme="dark"] .home-page {
 .home-page .wb-flow-panel { min-height:0; padding:30px 0; gap:36px; }
 .home-page .wb-flow-art { background:var(--release-soft); border-radius:8px; padding:24px; }
 .home-page .wb-message-note,.home-page .wb-document-row,.home-page .wb-version-file,.home-page .wb-count-pair>div { background:var(--release-surface); border-color:var(--release-line); box-shadow:none; transform:none; }
+.home-page .wb-message-note { background:transparent; border:0; border-radius:0; padding:0; }
 .home-page .wb-features-grid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:28px 36px; }
 .home-page .wb-features-grid article { border:0; border-top:1px solid var(--release-line); padding:20px 0 0; background:transparent; border-radius:0; }
 .home-page .wb-features-grid h3 { font-size:18px; margin-bottom:10px; }
@@ -237,143 +118,148 @@ html[data-theme="dark"] .home-page {
 .home-page .wb-destination strong,.home-page .wb-version-file strong { min-width:0; overflow-wrap:anywhere; }
 .home-page .wb-folder-front span,.home-page .wb-art-label,.home-page .wb-art-note,.home-page .wb-version-row small,.home-page .wb-count-pair small,.home-page .wb-archive-slip small { font-size:12px; line-height:1.6; }
 .home-page .wb-file-type { font-size:11px; min-width:30px; }
-.home-page .wb-footer { background:var(--release-bg); border-top:1px solid var(--release-line); padding-block:26px 20px; }
-.home-page .wb-footer-links { gap:10px 24px; }
-.home-page .wb-footer-links a { min-height:40px; font-size:13px; color:var(--release-muted); }
-.home-page .wb-footer>div>p { font-size:13px; color:var(--release-muted); }
-html:has(.home-page) { scrollbar-color:var(--site-muted) var(--site-canvas); }
-.home-page ::-webkit-scrollbar-track { background:var(--release-soft); }
-.home-page ::-webkit-scrollbar-thumb { background:var(--release-muted); border-color:var(--release-soft); }
-.home-page ::-webkit-scrollbar-thumb:hover { background:var(--release-ink); }
 
-@media(max-width:1200px) {
-  .home-page .wb-wrap { width:calc(100% - 64px); }
-  .home-page .wb-header-inner { gap:16px; }
-  .home-page .wb-nav { gap:18px; }
-  .home-page .wb-hero,.home-page .wb-product-story,.home-page .wb-demo-section { gap:32px; grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr); }
-  .home-page .wb-hero h1 { font-size:60px; }
-  .home-page .wb-hero-actions .wb-button { padding-inline:15px; font-size:14px; }
-  .home-page .wb-story-list article { grid-template-columns:1fr; gap:8px; }
-  .home-page .wb-story-list .wb-inline-link { grid-column:1; }
+/* Shared page frame: a quiet header, one reading surface, and an unobtrusive footer. */
+.home-page .site-width { width:min(1040px,calc(100% - 64px)); margin-inline:auto; }
+.home-page main [id] { scroll-margin-top:28px; }
+.site-header { background:var(--release-bg); }
+.site-header-inner { display:flex; align-items:center; justify-content:space-between; min-height:80px; gap:24px; }
+.home-page .site-brand { display:inline-flex; align-items:center; gap:10px; color:var(--release-ink); text-decoration:none; font-size:21px; font-weight:650; letter-spacing:-.025em; }
+.site-brand img { flex:none; }
+.site-header nav { display:flex; align-items:center; gap:28px; }
+.site-header nav a { display:inline-flex; align-items:center; min-height:44px; color:var(--release-muted); text-decoration:none; font-size:14px; }
+.site-header nav a:hover,.site-header nav a[aria-current="page"],.site-header nav .nav-download { color:var(--release-action); }
+.site-header nav a[aria-current="page"] { text-decoration:underline; text-underline-offset:7px; }
+.home-intro { text-align:center; padding:55px 0 28px; }
+.home-intro h1 { margin:0 auto; font-size:clamp(38px,4.7vw,64px); line-height:1.3; font-weight:650; }
+.home-intro .home-lead { max-width:38em; margin:23px auto 27px; color:var(--release-muted); font-size:18px; line-height:1.8; }
+.home-page .site-button { display:inline-flex; align-items:center; justify-content:center; gap:10px; min-height:48px; border:1px solid transparent; border-radius:8px; padding:10px 21px; font-size:16px; font-weight:600; line-height:1.6; color:var(--release-action-ink); background:var(--release-action); text-decoration:none; transition:background-color .15s ease; }
+.home-page .site-button:hover { color:var(--release-action-ink); background:var(--release-action-hover); }
+.site-button:active { transform:translateY(1px); }
+.home-intro .home-platform { margin:13px 0 0; font-size:13px; color:var(--release-muted); }
+.home-intro .home-assurance { margin:5px 0 0; font-size:14px; color:var(--release-muted); }
+.home-page .home-preview { position:relative; max-width:840px; margin-top:25px; margin-bottom:0; }
+.home-screenshot-link { display:block; border-radius:10px; overflow:hidden; box-shadow:0 12px 40px #00000012; }
+.home-screenshot-link img { display:block; width:100%; height:auto; }
+.home-preview figcaption { display:flex; flex-wrap:wrap; justify-content:center; gap:5px 18px; margin-top:19px; font-size:13px; color:var(--release-muted); }
+.home-preview .home-preview-fallback { display:none; position:absolute; inset:35% 16px auto; text-align:center; color:var(--release-muted); }
+.home-preview[data-light-ready="false"] .home-preview-fallback { display:block; }
+.home-preview[data-light-ready="false"] .home-screenshot-link { visibility:hidden; }
+.home-benefits { padding-block:85px 76px; }
+.home-benefits h2 { margin:0 0 30px; font-size:30px; }
+.home-benefit-list { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:44px; }
+.home-benefit-list h3 { margin:0 0 12px; font-size:19px; }
+.home-benefit-list p { margin:0; color:var(--release-muted); }
+.home-page .site-text-link { display:inline-flex; align-items:center; gap:8px; min-height:44px; font-size:14px; }
+.home-benefits>.site-text-link { margin-top:20px; }
+.home-download { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.3fr); gap:64px; border-top:1px solid var(--release-line); padding-block:50px 60px; }
+.home-download h2 { margin:0 0 12px; font-size:30px; }
+.home-download-heading p { margin:0; color:var(--release-muted); font-size:14px; }
+.home-download-body { min-width:0; }
+.home-download-body>p { margin:14px 0 0; color:var(--release-muted); font-size:14px; }
+.download-actions { display:flex; flex-wrap:wrap; align-items:center; gap:12px 22px; }
+.download-fallback { min-height:44px; display:inline-flex; align-items:center; font-size:14px; }
+.home-page details>summary { cursor:pointer; color:var(--release-ink); }
+.package-details { margin:18px 0 8px; border:0; border-bottom:1px solid var(--release-line); }
+.home-page .package-details>summary { min-height:48px; padding:13px 30px 13px 0; font-size:14px; font-weight:500; }
+.package-content { padding:0 0 16px; overflow-wrap:anywhere; }
+.home-page .package-content p { padding:0; font-size:14px; }
+.package-content code { display:block; padding:16px; background:var(--release-soft); color:var(--release-ink); border-radius:8px; word-break:break-all; font:14px/1.8 Consolas,monospace; user-select:all; }
+.home-page .copy-button { min-height:44px; margin-top:12px; padding:8px 16px; border:1px solid var(--release-line); border-radius:8px; color:var(--release-action); background:transparent; font-size:14px; }
+.home-page .copy-button:hover { background:var(--release-soft); }
+.home-page .copy-status { min-height:0; margin:8px 0 0; color:var(--release-muted); font-size:14px; }
+.copy-status:empty { display:none; }
+.site-footer { border-top:1px solid var(--release-line); padding-block:28px 30px; }
+.site-footer-top { display:flex; align-items:center; justify-content:space-between; gap:20px; margin-bottom:20px; }
+.site-footer nav { display:flex; flex-wrap:wrap; gap:4px 24px; }
+.site-footer nav a { display:inline-flex; align-items:center; min-height:36px; font-size:13px; color:var(--release-muted); }
+.site-footer>p { margin:13px 0 0; max-width:62em; color:var(--release-muted); font-size:13px; }
+.site-footer .wb-theme-control { display:flex; gap:10px; align-items:center; }
+.site-footer .wb-theme-control label { display:block; position:static; width:auto; height:auto; overflow:visible; clip-path:none; font-size:13px; color:var(--release-muted); }
+.site-footer .wb-theme-control select { width:auto; min-height:40px; padding:7px 25px 7px 10px; border:1px solid var(--release-line); border-radius:8px; background:var(--release-bg); color:var(--release-ink); font-size:13px; }
+/* The guide and release archive have their own reading column and real contents links. */
+.home-page .docs-main { max-width:920px; }
+.docs-intro { margin:46px 0 30px; }
+.docs-intro h1 { margin:0 0 16px; font-size:44px; line-height:1.35; font-weight:650; }
+.docs-intro p { max-width:42em; margin:0; color:var(--release-muted); font-size:17px; }
+.docs-index { display:flex; flex-wrap:wrap; gap:4px 24px; padding:17px 0; border-block:1px solid var(--release-line); margin-bottom:48px; }
+.docs-page .docs-index a { display:inline-flex; align-items:center; min-height:40px; font-size:14px; }
+.docs-page main>.wb-wrap,.docs-page .guide-chapters>.wb-wrap { width:100%; }
+.docs-page .wb-section,.docs-page .wb-video-section,.docs-page .wb-demo-section,.docs-page .doc-install,.docs-page .media-source,.docs-page .release-notes,.docs-page .release-history,.docs-page .current-release { display:block; padding:0; margin:0 0 64px; background:transparent; border:0; }
+.docs-page .wb-section-heading,.docs-page .wb-faq { display:block; }
+.docs-page h2 { font-size:28px; margin:0 0 20px; }
+.docs-page .wb-section p,.docs-page .wb-section li,.docs-page .doc-install p,.docs-page .wb-video-section p,.docs-page .release-notes p,.docs-page .current-release p { color:var(--release-muted); font-size:16px; line-height:1.85; }
+.docs-page .wb-section-heading>p { max-width:none; }
+.docs-page .wb-section-heading br,.docs-page h2 br { display:none; }
+.docs-page .wb-inbox-materials,.docs-page .wb-inbox-details { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:28px; margin:25px 0; }
+.docs-page .wb-boundary { padding:16px 0; background:transparent; border:0; border-radius:0; }
+.docs-page .wb-demo-intro { margin-bottom:24px; }
+.docs-page .wb-demo-intro p { max-width:none; margin:14px 0; }
+.docs-page .wb-demo-intro>.wb-inline-link { margin-right:24px; }
+.docs-page .wb-demo { max-width:620px; margin:28px auto; }
+.docs-page .wb-workflow-tabs { margin:20px 0; }
+.docs-page .wb-flow-copy,.docs-page .wb-flow-art { min-width:0; }
+.docs-page .wb-flow-copy>p,.docs-page .wb-flow-copy li { font-size:16px; }
+.docs-page .wb-faq-list { margin-top:24px; }
+.docs-page .wb-faq-list details>p { color:var(--release-muted); font-size:16px; padding-right:0; }
+.docs-page .wb-release-links { display:grid; grid-template-columns:1fr; gap:0; }
+.docs-page .wb-release-links a { min-height:48px; display:flex; align-items:center; padding:10px 0; border-bottom:1px solid var(--release-line); font-size:15px; overflow-wrap:anywhere; }
+.docs-page .wb-release-history { width:100%; margin-bottom:64px; }
+.docs-page .wb-narrow-project-preview { max-width:662px; margin:20px auto; }
+.docs-page .wb-narrow-project-preview img { width:100%; height:auto; display:block; }
+.docs-page figcaption { margin-top:12px; color:var(--release-muted); font-size:14px; }
+.docs-page .wb-video-frame { margin-top:24px; }
+.docs-page .wb-video-frame video { width:100%; height:auto; }
+.docs-page .wb-inline-link { min-height:44px; color:var(--release-action); }
+.docs-page .wb-media-notes p { color:var(--release-muted); font-size:15px; overflow-wrap:anywhere; }
+.docs-page .current-release code,.docs-page .release-notes p { overflow-wrap:anywhere; }
+.docs-page .wb-narrow-details>summary,.docs-page .wb-media-notes>summary { min-height:48px; }
+@media(max-width:760px) {
+  .home-page .site-width { width:calc(100% - 40px); }
+  .site-header-inner { min-height:72px; gap:16px; }
+  .site-header nav { gap:18px; }
+  .home-intro { padding-top:42px; }
+  .home-intro .home-lead { font-size:17px; }
+  .home-benefits { padding-block:60px 46px; }
+  .home-benefit-list { grid-template-columns:1fr; gap:25px; }
+  .home-benefit-list article { max-width:38em; }
+  .home-benefit-list h3 { margin-bottom:7px; }
+  .home-download { grid-template-columns:1fr; gap:26px; padding-block:36px 44px; }
+  .docs-page .wb-inbox-materials,.docs-page .wb-inbox-details,.docs-page .wb-features-grid { grid-template-columns:1fr; gap:22px; }
+  .docs-page .wb-flow-panel { grid-template-columns:1fr; gap:20px; }
+  .docs-page .wb-workflow-tabs { flex-wrap:wrap; }
+  .docs-page .wb-workflow-tabs button { flex:1 1 40%; }
+  .docs-intro { margin-top:32px; }
+  .docs-intro h1 { font-size:36px; }
+  .docs-index { gap:4px 20px; }
 }
-@media(max-width:960px) {
-  .home-page main [id] { scroll-margin-top:144px; }
-  .home-page .wb-header-inner { min-height:76px; height:auto; padding-block:12px; flex-wrap:wrap; gap:12px; }
-  .home-page .wb-nav { order:4; flex-basis:100%; margin:0; justify-content:flex-start; gap:28px; }
-  .home-page .wb-theme-control { margin-left:auto; }
-  .home-page .wb-nav a { min-height:40px; padding:4px 0; }
-  .home-page .wb-hero { grid-template-columns:1fr; padding-block:48px; gap:36px; }
-  .home-page .wb-hero-copy { max-width:650px; }
-  .home-page .wb-hero h1 { font-size:68px; }
-  .home-page .wb-hero-copy .wb-lead { max-width:38em; }
-  .home-page .wb-desktop-showcase { padding:32px 18px 16px; }
-  .home-page .wb-product-story,.home-page .wb-demo-section { grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr); }
-  .home-page .wb-story-heading h2,.home-page .wb-demo-intro h2 { font-size:30px; }
-  .home-page .wb-demo-body { padding:22px; }
-  .home-page .wb-download-grid { gap:36px; }
-  .home-page .wb-guide>summary { align-items:flex-start; flex-direction:column; gap:8px; }
-  .home-page .wb-guide-content .wb-video-section { grid-template-columns:1fr; gap:24px; }
-  .home-page .wb-flow-panel { grid-template-columns:1fr; min-height:0; }
-  .home-page .wb-flow-art { width:100%; max-width:620px; justify-self:start; }
-  .home-page .wb-features-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .home-page .wb-settings,.home-page .wb-faq { grid-template-columns:1fr; gap:24px; }
-}
-@media(max-width:700px) {
-  .home-page .wb-wrap { width:calc(100% - 40px); }
-  .home-page .wb-header-inner { gap:10px; }
-  .home-page .wb-brand>span { font-size:21px; }
-  .home-page .wb-brand img { width:32px; height:32px; }
-  .home-page .wb-nav-download { min-height:44px; padding:9px 12px; font-size:13px; }
-  .home-page .wb-nav-download .wb-icon { display:none; }
-  .home-page .wb-theme-control select { width:92px; max-width:92px; min-height:44px; font-size:12px; }
-  .home-page .wb-nav { justify-content:space-between; gap:12px; }
-  .home-page .wb-nav a { min-height:40px; font-size:13px; }
-  .home-page .wb-nav .wb-source { display:none; }
-  .home-page .wb-hero { padding-block:38px 42px; gap:30px; }
-  .home-page .wb-hero h1 { font-size:clamp(48px,10.8vw,64px); letter-spacing:-.03em; margin-bottom:22px; }
-  .home-page .wb-hero-copy .wb-lead { font-size:16px; margin-bottom:24px; }
-  .home-page .wb-hero-actions .wb-button { min-height:48px; padding-inline:16px; font-size:14px; }
-  .home-page .wb-meta,.home-page .wb-assure { font-size:13px; }
-  .home-page .wb-desktop-showcase { padding:26px 10px 12px; border-radius:8px; }
-  .home-page .wb-desktop-showcase::before { width:64px; height:10px; right:24px; border-radius:0 0 4px 4px; }
-  .home-page .wb-preview-stage { min-height:0; }
-  .home-page .wb-desktop-showcase figcaption { font-size:12px; padding-top:10px; }
-  .home-page .wb-product-story,.home-page .wb-demo-section { grid-template-columns:1fr; gap:26px; padding-block:36px 42px; }
-  .home-page .wb-story-heading h2,.home-page .wb-demo-intro h2 { font-size:28px; }
-  .home-page .wb-story-heading p,.home-page .wb-demo-intro p { max-width:none; margin-top:14px; }
-  .home-page .wb-story-list article { padding:19px 0; gap:8px; }
-  .home-page .wb-story-list h3 { font-size:19px; }
-  .home-page .wb-story-list p { font-size:15px; }
-  .home-page .wb-demo-top { padding:15px 18px; }
-  .home-page .wb-demo-body { padding:20px 18px; }
-  .home-page .wb-demo-project { gap:8px; align-items:flex-start; }
-  .home-page .wb-demo-project h2 { font-size:19px; }
-  .home-page .wb-demo-state { font-size:12px; }
-  .home-page .wb-demo-files { gap:10px; }
-  .home-page .wb-demo-files>div { font-size:13px; }
-  .home-page .wb-demo-status { min-height:70px; }
-  .home-page .wb-demo-steps { gap:5px; }
-  .home-page .wb-demo-steps button { font-size:12px; }
-  .home-page .wb-demo-result span { font-size:12px; }
-  .home-page .wb-download-section { padding-block:38px; }
-  .home-page .wb-download-heading { padding-bottom:23px; align-items:flex-start; gap:16px; }
-  .home-page .wb-download-heading h2 { font-size:28px; }
-  .home-page .wb-download-heading img { width:48px; height:48px; border-radius:8px; }
-  .home-page .wb-download-grid { grid-template-columns:minmax(0,1fr); padding-top:24px; gap:28px; }
-  .home-page .wb-download-main>p,.home-page .wb-download-details p,.home-page .wb-download-details li { font-size:14px; }
-  .home-page .wb-guide { margin-block:36px 42px; }
-  .home-page .wb-guide>summary { padding-block:23px; min-height:112px; }
-  .home-page .wb-guide>summary h2 { font-size:26px; }
-  .home-page .wb-guide>summary span { font-size:13px; }
-  .home-page .wb-guide-content .wb-section,.home-page .wb-guide-content .wb-video-section,.home-page .wb-guide-content .wb-features-section { padding-block:28px; }
-  .home-page .wb-guide-content h2 { font-size:26px; }
-  .home-page .wb-guide-content .wb-section-heading { display:block; margin-bottom:22px; }
-  .home-page .wb-guide-content .wb-section-heading>p { margin-top:14px; }
-  .home-page .wb-inbox-materials,.home-page .wb-inbox-details { grid-template-columns:1fr; gap:24px; }
-  .home-page .wb-workflow-tabs { gap:4px; }
-  .home-page .wb-workflow-tabs button { min-height:44px; font-size:12px; gap:3px; padding:8px 4px; }
-  .home-page .wb-workflow-tabs button span { display:none; }
-  .home-page .wb-flow-panel { display:block; padding:24px 0; min-height:0; }
-  .home-page .wb-flow-art { margin-top:24px; padding:20px 12px; }
-  .home-page .wb-flow-copy>p,.home-page .wb-check-list { font-size:14px; }
-  .home-page .wb-features-grid { grid-template-columns:1fr; gap:20px; }
-  .home-page .wb-features-grid article { grid-template-columns:28px 1fr; gap:0 14px; }
-  .home-page .wb-feature-icon { margin-top:3px; }
-  .home-page .wb-feature-caption { font-size:13px; }
-  .home-page .wb-settings-sheet dt { font-size:14px; }
-  .home-page .wb-settings-sheet dt small { font-size:13px; }
-  .home-page .wb-footer-links { gap:8px 20px; }
-  .home-page .wb-footer>div>p { font-size:13px; }
-}
-@media(max-width:370px) {
-  .home-page .wb-wrap { width:calc(100% - 32px); }
-  .home-page .wb-header-inner { column-gap:8px; }
-  .home-page .wb-brand { gap:6px; }
-  .home-page .wb-brand>span { font-size:17px; }
-  .home-page .wb-brand img { width:26px; height:26px; }
-  .home-page .wb-theme-control select { width:76px; max-width:76px; padding-inline:5px; }
-  .home-page .wb-nav-download { padding-inline:9px; font-size:12px; }
-  .home-page .wb-nav a { font-size:12px; }
-  .home-page .wb-hero h1 { font-size:48px; }
-  .home-page .wb-hero-actions { gap:8px; }
-  .home-page .wb-hero-actions .wb-button { padding-inline:13px; font-size:13px; }
-  .home-page .wb-demo-body { padding-inline:14px; }
-  .home-page .wb-demo-project h2 { font-size:18px; }
-  .home-page .wb-demo-steps button span { display:block; }
-  .home-page .wb-demo-status { min-height:72px; }
-  .home-page .wb-tree-art { gap:9px; padding-inline:10px; }
-  .home-page .wb-directory { min-width:100px; }
+@media(max-width:420px) {
+  .home-page .site-width { width:calc(100% - 32px); }
+  .home-page .site-brand { font-size:18px; gap:7px; }
+  .site-brand img { width:27px; height:27px; }
+  .site-header nav { gap:12px; }
+  .site-header nav a { font-size:13px; }
+  .site-header nav .nav-download { display:none; }
+  .home-intro h1 { max-width:7em; font-size:38px; }
+  .home-intro .home-lead { font-size:16px; margin-block:20px 24px; }
+  .home-lead br { display:none; }
+  .home-preview figcaption { gap:2px 12px; }
+  .site-footer-top { flex-wrap:wrap; }
+  .site-footer nav { gap:4px 20px; }
+  .home-page .site-footer .wb-theme-control { margin:0; }
+  .docs-page .wb-demo-body { padding:16px; }
+  .docs-page .wb-demo-project { gap:10px; }
+  .docs-page .wb-demo-project h2 { font-size:18px; }
+  .docs-page .wb-demo-steps { grid-template-columns:1fr; }
+  .docs-page .wb-demo-steps button { text-align:left; padding-inline:12px; }
 }
 @media(prefers-reduced-motion:reduce) {
   .home-page *,.home-page *::before,.home-page *::after { scroll-behavior:auto!important; animation:none!important; transition:none!important; }
 }
 @media(forced-colors:active) {
-  .home-page { --release-ink:CanvasText; --release-muted:CanvasText; --release-bg:Canvas; --release-surface:Canvas; --release-soft:Canvas; --release-line:CanvasText; --release-action:LinkText; --release-action-hover:LinkText; --release-action-ink:Canvas; }
-  .home-page .wb-desktop-showcase { background:Canvas; border:1px solid CanvasText; }
-  .home-page .wb-desktop-showcase figcaption { color:CanvasText; }
-  .home-page .wb-demo,.home-page .wb-demo-file { border:1px solid ButtonText; }
-  .home-page .wb-button,.home-page .wb-button:hover,.home-page .wb-nav-download,.home-page .wb-nav-download:hover,.home-page .wb-demo-next,.home-page .wb-demo-steps button { background:ButtonFace; color:ButtonText; border:1px solid ButtonText; forced-color-adjust:none; }
+  .home-page { --release-bg:Canvas; --release-surface:Canvas; --release-soft:Canvas; --release-ink:CanvasText; --release-muted:CanvasText; --release-line:CanvasText; --release-action:LinkText; --release-action-hover:LinkText; --release-action-ink:Canvas; --release-selection:Highlight; }
+  .home-page .site-button,.home-page .copy-button { background:ButtonFace; color:ButtonText; border:1px solid ButtonText; forced-color-adjust:none; }
   .home-page .wb-demo-steps button[aria-pressed="true"],.home-page .wb-workflow-tabs button[aria-selected="true"] { background:Highlight; color:HighlightText; border-color:Highlight; forced-color-adjust:none; }
-  .home-page .wb-hero h1 em { color:CanvasText; background:none; }
   .home-page :focus-visible { outline-color:Highlight; }
+  .home-screenshot-link { box-shadow:none; }
 }

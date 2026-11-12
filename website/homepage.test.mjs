@@ -1,10 +1,11 @@
+import { siteHtml, documents, parseTags } from './public-documents.test-helper.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { release, releases } from './worker.mjs';
 
-const html = await readFile(new URL('./public/index.html', import.meta.url), 'utf8');
+const html = siteHtml;
 const source = await readFile(new URL('./public/homepage.js', import.meta.url), 'utf8').catch(() => '');
 const themeSource = await readFile(new URL('./public/theme.js', import.meta.url), 'utf8').catch(() => '');
 const tags = [...html.matchAll(/<([a-z][\w-]*)\b([^>]*)>/gi)].map(([, name, raw]) => {
@@ -101,13 +102,16 @@ test('宽浅与窄深截图显示共同构建来源，明确旧教程和合并�
     '同名项目先预览再确认合并', '原材料和历史交付记录保留', '不会在启动时自动合并']) assert.ok(html.includes(phrase), phrase);
 });
 
-test('首页使用中文、唯一主标题且每个内部锚点都指向唯一元素', () => {
-  assert.equal(tags.find(tag => tag.name === 'html').attrs.lang, 'zh-CN');
-  assert.equal(tags.filter(tag => tag.name === 'h1').length, 1);
-  const ids = tags.filter(tag => has(tag, 'id')).map(tag => tag.attrs.id);
-  assert.equal(new Set(ids).size, ids.length, 'id 不得重复');
-  for (const tag of tags.filter(tag => tag.attrs.href?.startsWith('#'))) {
-    assert.equal(ids.filter(id => id === tag.attrs.href.slice(1)).length, 1, tag.attrs.href);
+test('每页使用中文、唯一主标题且每个同页锚点都指向唯一元素', () => {
+  for (const [path, document] of Object.entries(documents)) {
+    const pageTags = parseTags(document);
+    assert.equal(pageTags.find(tag => tag.name === 'html')?.attrs.lang, 'zh-CN', path);
+    assert.equal(pageTags.filter(tag => tag.name === 'h1').length, 1, path);
+    const ids = pageTags.filter(tag => has(tag, 'id')).map(tag => tag.attrs.id);
+    assert.equal(new Set(ids).size, ids.length, `${path} id 不得重复`);
+    for (const tag of pageTags.filter(tag => tag.attrs.href?.startsWith('#'))) {
+      assert.equal(ids.filter(id => id === tag.attrs.href.slice(1)).length, 1, `${path}: ${tag.attrs.href}`);
+    }
   }
 });
 
@@ -121,14 +125,15 @@ test('新旧安装包和 GitHub 备用源保持发布目录中的真实地址，
   for (const id of ['copy-checksum', 'copy-status']) assert.ok(tags.some(tag => tag.attrs.id === id), id);
   assert.ok(Number.isSafeInteger(release.size) && release.size > 0);
   assert.ok(html.includes(`${release.size.toLocaleString('en-US')} 字节`));
-  assert.match(html, /WorkBox 工作箱 1\.0\.0 正式安装版/);
+  assert.match(html, /WorkBox 工作箱/);
+  assert.match(html, /1\.0\.0 正式安装版/);
   assert.match(html, /历史正式安装版 · 10月29日（类型统计）/);
   assert.match(html, /历史正式安装版 · 10月28日（双主题）/);
-  assert.match(html, /下载正式安装版/);
+  assert.match(documents['/index.html'], /下载 Windows 版/);
   assert.doesNotMatch(html.match(/class="wb-release-pill"[^>]*>([\s\S]*?)<\/a>/)?.[1] ?? '', /增强版|修正版/);
   for (const [, text] of html.matchAll(/<a\b[^>]*href="(?:\/download\/|https:\/\/github\.com\/232577\/workbox\/releases\/download\/)[^"]*"[^>]*>([\s\S]*?)<\/a>/g)) {
     assert.doesNotMatch(text, /增强版|修正版/);
-    assert.match(text, /正式安装版/);
+    assert.match(text, /正式安装版|下载 Windows 版|GitHub 备用下载/);
   }
   assert.ok(links.includes('https://github.com/232577/workbox/blob/main/LICENSE'));
 });
@@ -330,7 +335,7 @@ test('所有者统计接入同一外观选择，保留私密登录与空数据�
   assert.match(html,/href="https:\/\/github\.com\/232577\/workbox\/blob\/main\/THIRD_PARTY_NOTICES\.md"[^>]*>第三方许可<\/a>/);
 });
 
-test('主宽图与窄窗对照原图尺寸准确，主图保留文件夹流程图后备', async () => {
+test('主宽图与指南窄窗对照原图尺寸准确，首页展示真实软件并保留可读后备', async () => {
   assert.notEqual(mainImage?.attrs.src, narrowImagePath);
   for (const path of [mainImage?.attrs.src, narrowImagePath]) {
     assert.match(path, /^\/media\//);
@@ -340,11 +345,11 @@ test('主宽图与窄窗对照原图尺寸准确，主图保留文件夹流程�
     assert.ok(tags.some(tag=>tag.name==='a'&&tag.attrs.href===path));
   }
   assert.ok(tags.some(tag=>has(tag,'data-desktop-stage')));
-  assert.match(html,/实际界面 · 示例资料/);
-  assert.match(html,/点击图片查看原图/);
-  assert.match(html,/wb-preview-fallback/);
-  assert.match(html,/wb-folder-front/);
-  assert.match(html,/功能流程示意/);
+  assert.ok(mainImage?.attrs.alt, '主截图保留完整替代说明');
+  const home = documents['/index.html'];
+  assert.match(home, /href="\/guide\.html#media-source"/);
+  assert.doesNotMatch(home, /wb-preview-fallback|wb-folder-front/);
+  assert.match(home, /界面预览暂不可用/);
 });
 
 function setupPreview({cached=false}={}) {

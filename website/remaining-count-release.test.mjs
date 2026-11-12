@@ -1,10 +1,11 @@
+import { siteHtml, documents } from './public-documents.test-helper.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { handleRequest, release, releases } from './worker.mjs';
 
-const html = await readFile(new URL('./public/index.html', import.meta.url), 'utf8');
+const html = siteHtml;
 const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
 const siteReadme = await readFile(new URL('./README.md', import.meta.url), 'utf8');
 const source = '50596bde66e7116dff3f1f4efc7df328c8919848';
@@ -24,9 +25,9 @@ test('11月11日r1目录、首页与稳定清单使用同一准确安装包和�
   for (const text of [html, readme, siteReadme]) {
     for (const value of [expected.filename, expected.sha256, source, '42,282,708']) assert.ok(text.includes(value), value);
   }
-  const primary = [...html.matchAll(/class="[^"]*download-link[^"]*" href="([^"#]+)"/g)].map(match => match[1]);
+  const primary = [...documents['/index.html'].matchAll(/class="[^"]*download-link[^"]*" href="([^"#]+)"/g)].map(match => match[1]);
   assert.equal(primary.filter(value => value === `/download/${expected.filename}`).length, 2);
-  assert.match(html, /<p class="wb-meta">Windows 10 \/ 11 · x64 · 42\.3 MB<\/p>/);
+  assert.match(documents['/index.html'], /Windows 10[^<]*11[^<]*x64[^<]*42\.3 MB/);
   assert.ok(html.includes(`href="https://github.com/232577/workbox/releases/download/${expected.tag}/${expected.filename}"`));
   for (const text of [html, readme, siteReadme, metadata.body]) {
     assert.match(text, /Studio/);
@@ -62,7 +63,7 @@ test('r7待完成显示零与总数，日期和旧稿规则在各入口一致', 
     assert.match(text, /归档只包含当前文件/);
   }
   assert.doesNotMatch(html, /余2”表示还有 2 个项目未交付/);
-  const download = html.match(/<section\b[^>]*id="download"[^>]*>([\s\S]*?)<\/section>/)?.[1];
+  const download = documents['/releases.html'];
   assert.match(download, /待完成4，共5.*待完成0，共1.*待完成只计待开发和开发中/);
   assert.doesNotMatch(download, /余N|r5 修正批次余量/);
   const filters = html.match(/<details><summary>项目筛选和操作在哪里？<\/summary>([\s\S]*?)<\/details>/)?.[1];
@@ -73,7 +74,7 @@ test('r7待完成显示零与总数，日期和旧稿规则在各入口一致', 
     assert.match(text, /已登记历史文稿目录[^。\n]*原工作位置/);
     assert.match(text, /迁移后核验路径与历史文件可读性/);
   }
-  const backup = html.match(/<li>升级前备份([\s\S]*?)<\/li>/)?.[1];
+  const backup = documents['/guide.html'].match(/<p>升级前请备份([\s\S]*?)<\/p>/)?.[1];
   assert.match(backup, /全部已登记历史文稿目录.*原工作位置/);
   const migration = html.match(/<details><summary>下载失败，或换一台电脑使用怎么办？<\/summary>([\s\S]*?)<\/details>/)?.[1];
   assert.match(migration, /备份并迁移[^。]*已登记历史文稿目录/);
@@ -105,9 +106,9 @@ test('11月11日r1保留全部28历史路由、r7与更早目录和原58媒体�
 });
 
 test('沿用r4实拍准确标注历史构建，不把既有照片改称新版', () => {
-  const section = html.match(/<section\b[^>]*id="actual-ui"[^>]*>([\s\S]*?)<\/section>/)?.[1];
+  const section = documents['/guide.html'];
   assert.match(section, /v1\.0\.0\.20261109\.4/);
   assert.match(section, /2432b7e237db6424bd70e01f9a96f7567c5e644e/);
-  assert.match(section, /r7.*数量.*日期.*文字说明/);
+  assert.match(section, /r7.*数量.*日期.*规则/);
   assert.doesNotMatch(section, /r[567]\.png|v1\.0\.0\.20261109\.[567][^<]*实拍/);
 });

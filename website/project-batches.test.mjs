@@ -1,10 +1,11 @@
+import { siteHtml, documents } from './public-documents.test-helper.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { releases } from './worker.mjs';
 
-const html = await readFile(new URL('./public/index.html', import.meta.url), 'utf8');
+const html = siteHtml;
 const section = html.match(/<section\b[^>]*id="project-batches"[^>]*>([\s\S]*?)<\/section>/)?.[1];
 const daily = html.match(/<section\b[^>]*id="daily-workbench"[^>]*>([\s\S]*?)<\/section>/)?.[1];
 
@@ -18,9 +19,9 @@ test('项目批次说明保留四个原状态与原排序，一项目多批仍�
 });
 
 test('主要入口说明沿用项目流程与全部交付表，不引入任务交接步骤', () => {
-  const nav = html.match(/<nav\b[^>]*class="wb-nav"[^>]*>([\s\S]*?)<\/nav>/)?.[1];
-  assert.match(nav, /href="#guide"/);
-  const guideNav = html.match(/<nav\b[^>]*class="wb-guide-nav"[^>]*>([\s\S]*?)<\/nav>/)?.[1];
+  const nav = documents['/index.html'].match(/<nav\b[^>]*aria-label="主要导航"[^>]*>([\s\S]*?)<\/nav>/)?.[1];
+  assert.match(nav, /href="\/guide\.html(?:#guide)?"/);
+  const guideNav = documents['/guide.html'].match(/<nav\b[^>]*aria-label="使用指南目录"[^>]*>([\s\S]*?)<\/nav>/)?.[1];
   assert.match(guideNav, /href="#project-batches"/);
   assert.doesNotMatch(nav, /任务组/);
   assert.ok(daily?.includes('全部交付表'));

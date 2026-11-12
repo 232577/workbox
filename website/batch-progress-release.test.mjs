@@ -1,10 +1,11 @@
+import { siteHtml, documents } from './public-documents.test-helper.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { handleRequest, release, releases } from './worker.mjs';
 
-const html = await readFile(new URL('./public/index.html', import.meta.url), 'utf8');
+const html = siteHtml;
 const registry = JSON.parse(await readFile(new URL('./MEDIA.json', import.meta.url), 'utf8'));
 const digest = value => createHash('sha256').update(value).digest('hex');
 const source = '67fab09d4e5392018eb2ae23e67f8573f1fd19c3';
@@ -21,7 +22,7 @@ test('批次余量按整批当前状态，筛选和个人工作量不影响数�
 });
 
 test('已安装用户可主动检查一次，再使用更新并重启', () => {
-  const download = html.match(/<section\b[^>]*id="download"[^>]*>([\s\S]*?)<\/section>/)?.[1];
+  const download = documents['/guide.html'];
   assert.match(download, /高级设置 → 检查更新/);
   assert.match(download, /检查一次.*“更新并重启”/);
   assert.match(download, /校验安装包.*备份数据库.*重新打开/);
