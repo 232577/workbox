@@ -1,10 +1,11 @@
+import { siteHtml, documents } from './public-documents.test-helper.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { releases } from './worker.mjs';
 
-const html = await readFile(new URL('./public/index.html', import.meta.url), 'utf8');
+const html = siteHtml;
 const section = html.match(/<section\b[^>]*id="task-groups"[^>]*>([\s\S]*?)<\/section>/)?.[1];
 
 test('旧任务功能说明折叠保留并标明历史构建，不作为主要导航', () => {
@@ -13,7 +14,7 @@ test('旧任务功能说明折叠保留并标明历史构建，不作为主要�
   assert.match(html, /id="task-groups"[^>]*data-release-state="historical"/);
   assert.match(html, /id="legacy-task-groups"/);
   assert.match(section, /v1\.0\.0\.20261105\.2/);
-  const nav = html.match(/<nav\b[^>]*class="wb-nav"[^>]*>([\s\S]*?)<\/nav>/)?.[1];
+  const nav = documents['/index.html'].match(/<nav\b[^>]*aria-label="主要导航"[^>]*>([\s\S]*?)<\/nav>/)?.[1];
   assert.doesNotMatch(nav, /href="#task-groups"/);
   assert.doesNotMatch(section, /<(?:input|button|video|img)\b/);
 });

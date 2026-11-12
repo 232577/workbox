@@ -1,3 +1,4 @@
+import { siteHtml, documents } from './public-documents.test-helper.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -13,7 +14,7 @@ test('稳定清单返回当前安装包的实际摘要与大小', async () => {
 });
 
 test('下载页明确说明只退出未升级的恢复办法和原目录数据保留', async () => {
-  const html=await readFile(new URL('./public/index.html',import.meta.url),'utf8');
+  const html = siteHtml;
   assert.match(html,/id="update-recovery"/);
   assert.match(html,/只退出/);
   assert.match(html,/原安装目录/);
@@ -23,15 +24,15 @@ test('下载页明确说明只退出未升级的恢复办法和原目录数据�
 });
 
 test('页面明确只修复悬浮球置顶，展开管理窗口不置顶', async () => {
-  const html=await readFile(new URL('./public/index.html',import.meta.url),'utf8');
+  const html = siteHtml;
   assert.match(html,/小悬浮球/);
   assert.match(html,/展开的管理窗口不置顶/);
   assert.match(html,/不抢输入焦点/);
 });
 
 test('中性实机项目截图保留准确r4来源，当前更新清单单独绑定新构建', async () => {
-  const html=await readFile(new URL('./public/index.html',import.meta.url),'utf8');
-  const actualUi=html.match(/<section\b[^>]*id="actual-ui"[^>]*>([\s\S]*?)<\/section>/)?.[1];
+  const html = siteHtml;
+  const actualUi=documents['/guide.html'];
   assert.ok(actualUi?.includes('来自 v1.0.0.20261109.4 的同一隔离实例'));
   const stable = await handleRequest(new Request('https://workbox.ltxiangzi.dpdns.org/updates/stable.json'), {});
   const source = (await stable.json()).body.match(/来源提交 ([a-f0-9]{40})。/)?.[1];
