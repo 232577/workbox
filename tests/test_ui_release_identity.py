@@ -56,8 +56,13 @@ def test_app_name_intake_build_can_upgrade_the_published_audit_release():
 
 
 def test_bulk_urgency_build_can_upgrade_the_published_name_intake_release():
-    assert update_client.CURRENT_TAG == 'v1.0.0.20261112.2'
+    assert update_client.build_key(update_client.CURRENT_TAG) >= update_client.build_key('v1.0.0.20261112.2')
     assert update_client.build_key(update_client.CURRENT_TAG) > update_client.build_key('v1.0.0.20261112.1')
+
+
+def test_cube_brand_build_can_upgrade_the_published_bulk_urgency_release():
+    assert update_client.CURRENT_TAG == 'v1.0.0.20261112.3'
+    assert update_client.build_key(update_client.CURRENT_TAG) > update_client.build_key('v1.0.0.20261112.2')
 
 
 def test_build_probe_reports_release_without_creating_business_data(tmp_path):
@@ -84,6 +89,7 @@ def test_build_probe_reports_release_without_creating_business_data(tmp_path):
     ('v1.0.0.20261111.1', 'v1.0.0.20261110.4', 'WorkBox-1.0.0-Setup-x64-20261111-r1.exe'),
     ('v1.0.0.20261112.1', 'v1.0.0.20261111.1', 'WorkBox-1.0.0-Setup-x64-20261112-r1.exe'),
     ('v1.0.0.20261112.2', 'v1.0.0.20261112.1', 'WorkBox-1.0.0-Setup-x64-20261112-r2.exe'),
+    ('v1.0.0.20261112.3', 'v1.0.0.20261112.2', 'WorkBox-1.0.0-Setup-x64-20261112-r3.exe'),
 ])
 def test_release_upgrades_previous_without_reoffering_installed_or_older(tag, previous, filename):
     payload = {'tag_name': tag, 'draft': False, 'prerelease': False,
