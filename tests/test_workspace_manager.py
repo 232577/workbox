@@ -121,7 +121,7 @@ def copy_paths(tmp_path, monkeypatch):
     monkeypatch.setattr('workspace_manager.uuid.uuid4', lambda: identifier)
     source = tmp_path / 'source.txt'
     source.write_bytes(b'original material')
-    return source, tmp_path / 'target.txt', tmp_path / f'.{identifier.hex}.partial'
+    return source, tmp_path / 'target.txt', tmp_path / f'~$workbox-{identifier.hex}.partial'
 
 
 def test_copy_does_not_remove_an_existing_temporary_file(copy_paths):
