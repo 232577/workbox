@@ -203,7 +203,8 @@ class ChecklistDialog(QDialog):
         if self.worker is not job:return
         job.wait();self.worker=None;self.progress.hide()
         if self._closing:
-            job.deleteLater();super().reject();return
+            self.notice.setText('已取消本次操作，保留上次结果；未修改项目和文件。');self.notice.setTone('neutral')
+            self._sync();job.deleteLater();super().reject();return
         if job.error:
             self.notice.setText('本次核对未完成，保留上次结果：'+job.error);self.notice.setTone('error')
         elif job.cancelled:
