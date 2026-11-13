@@ -34,7 +34,7 @@ WorkBox 是 Windows 项目材料与交付工作台：收进项目文字和材料
 | 窗口与首次配置 | `floating.py`、`floating_settings.py`、`window_environment.py`、`window_zorder.py`、`global_shortcut.py`、`shortcut_settings.py`、`first_run.py`、`onboarding_ui.py` | 悬浮/托盘/窗口恢复、尺寸和快捷键、首次目录选择；收件是用户主动动作 |
 | 视觉与控件 | `theme.py`、`studio_design.py`、`control_styles.py`、`ui_components.py`、`fluent_views.py`、`branding.py`、`date_edit.py`、`dialog_chrome.py`、`dialog_lifecycle.py` | 主题和语义样式、Fluent 适配、原生控件、对话框安全释放；修改共享层影响多页 |
 | 更新与安装 | `update_client.py`、`update_install.py`、`update_ui.py`、`scripts/`、`packaging/` | 受限下载来源、摘要与长度校验、安全退出、原目录升级、构建身份和数据保留 |
-| 历史界面 | `ui.py`、`task_groups_ui.py` | `ui.MainWindow` 不是当前主入口，但 FileJob/工具仍被复用；不能按“旧页面”整文件删除 |
+| 共用界面工具 | `ui.py` | 保留当前页面使用的 FileJob、按钮、标签、图标和大小格式化接口；旧 MainWindow、CaptureDialog 和独立任务组页面已于 2026-11-13 清理，任务组后台及历史导出仍保留 |
 | 官网 | `website/worker.mjs`、`admin.mjs`、`analytics.mjs`、`public/` | 下载目录/更新清单、统计认证、独立统计对象和静态内容；与桌面数据库无共享通道 |
 
 ```mermaid

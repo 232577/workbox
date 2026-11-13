@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import stat
 import threading
 from contextlib import ExitStack
@@ -91,7 +92,7 @@ class ProjectDeliveryArchive:
         return root, tuple(sorted(excluded, key=str)), archive_root
 
     @staticmethod
-    def _files(root, excluded=(), *, cancel_event=None):
+    def _files(root, excluded=(), *, cancel_event=None, include_temporary=False):
         root = plain_path(root)
         if not root.is_dir():
             raise ValueError('材料目录不存在，未确认交付。')
@@ -113,7 +114,7 @@ class ProjectDeliveryArchive:
             dirs[:] = sorted(allowed, key=lambda value: (value.casefold(), value))
             for name in names:
                 cancelled(cancel_event)
-                if name.startswith('~$'):
+                if name.startswith('~$') and not include_temporary:
                     continue
                 child = plain_path(Path(directory) / name)
                 if not stat.S_ISREG(child.lstat().st_mode):
@@ -123,9 +124,9 @@ class ProjectDeliveryArchive:
                                                value.relative_to(root).as_posix()))
 
     @classmethod
-    def _snapshot(cls, root, excluded=(), *, cancel_event=None):
+    def _snapshot(cls, root, excluded=(), *, cancel_event=None, include_temporary=False):
         manifest, identities = [], {}
-        for path in cls._files(root, excluded, cancel_event=cancel_event):
+        for path in cls._files(root, excluded, cancel_event=cancel_event, include_temporary=include_temporary):
             cancelled(cancel_event)
             with ZipLease(path, movable=False) as lease:
                 initial = identity(os.fstat(lease.stream.fileno()))
@@ -185,7 +186,7 @@ class ProjectDeliveryArchive:
         target.mkdir(exist_ok=False)
         return target
 
-    def _attempt(self, project_id, root, archive_root, signature, manifest):
+    def _attempt(self, project_id, root, archive_root, signature, manifest, *, cancel_event=None):
         with self.db.connect() as connection:
             pending = connection.execute('''SELECT * FROM project_delivery_archive_attempts
                 WHERE project_id=? AND source_root=? AND signature=? AND state!='registered'
@@ -201,6 +202,20 @@ class ProjectDeliveryArchive:
             if target.exists():
                 if not target.is_dir():
                     raise ValueError('待恢复材料归档位置不是普通目录。')
+                expected = {row['path']: row for row in manifest}
+                actual, _ = self._snapshot(target, cancel_event=cancel_event, include_temporary=True)
+                interrupted = False
+                for row in actual:
+                    if row['path'] in expected:
+                        if expected[row['path']] != row:
+                            raise ValueError('待恢复材料副本有未知或变化文件，不覆盖或混合归档。')
+                    elif re.fullmatch(r'(?:~\$workbox-|\.)[0-9a-f]{32}\.partial', Path(row['path']).name):
+                        interrupted = True
+                    else:
+                        raise ValueError('待恢复材料副本有未知或变化文件，不覆盖或混合归档。')
+                if interrupted:
+                    # 只改选独立副本；暂存名不能证明文件归属，原目录和日志完整保留。
+                    continue
                 return attempt['id'], target
         target = self._target(archive_root, project_id, signature)
         operation = uuid4().hex
@@ -265,7 +280,8 @@ class ProjectDeliveryArchive:
                 target = plain_path(existing['path'])
                 self._verify_archive(target, manifest, cancel_event=cancel_event)
             else:
-                operation, target = self._attempt(project_id, root, archive_root, signature, manifest)
+                operation, target = self._attempt(project_id, root, archive_root, signature, manifest,
+                                                  cancel_event=cancel_event)
             try:
                 if not existing:
                     self._copy(root, target, manifest, cancel_event=cancel_event, progress=progress)

@@ -141,7 +141,7 @@ def copy_verified(source, target, *, cancel_event=None, progress=None, require_z
         raise FileExistsError('目标已存在，不覆盖已有文件。')
     target.parent.mkdir(parents=True, exist_ok=True)
     _path(target.parent)
-    temporary = target.parent / ('.' + uuid.uuid4().hex + '.partial')
+    temporary = target.parent / ('~$workbox-' + uuid.uuid4().hex + '.partial')
     created_identity = None
     try:
         with ZipLease(source, movable=False) as lease:

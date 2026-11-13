@@ -1,10 +1,13 @@
 """Application service independent of Qt; usable from tests and the GUI."""
 
 from dataclasses import asdict
+from contextlib import nullcontext
+import os
 from pathlib import Path
 from concurrent.futures import CancelledError
 
 from database import Database
+from native_files import ZipLease
 from parser import ParsedProject, parse_message
 from zip_manager import inspect_zip, match_projects
 
@@ -114,10 +117,15 @@ class WorkBox:
             raise ValueError('组合包尚待核对，请完整匹配项目后再确认交付。')
         if project["status"] != "待交付" or not self.db.zip_belongs_to_project(zip_id, project_id):
             raise ValueError("仅可确认待交付项目下已关联的 ZIP。")
-        info = inspect_zip(record["path"], cancel_event=cancel_event, progress=progress)
-        if info.size != record["size"] or info.sha256 != record["sha256"]:
-            raise ValueError("ZIP 内容已变化，请重新拖入并选择新的记录确认交付。")
         if cancel_event is not None and cancel_event.is_set():
             raise CancelledError("已取消交付确认。")
-        self.db.complete_delivery(project_id, zip_id, asdict(info))
+        # Windows 内容锁覆盖读取及数据库提交，防止校验后被覆盖、删除或替换。
+        with (ZipLease(record["path"], movable=False) if os.name == 'nt' else nullcontext()) as lease:
+            verified = (lease.inspect(cancel_event=cancel_event, progress=progress) if lease is not None
+                        else asdict(inspect_zip(record["path"], cancel_event=cancel_event, progress=progress)))
+            if verified['size'] != record["size"] or verified['sha256'] != record["sha256"]:
+                raise ValueError("ZIP 内容已变化，请重新拖入并选择新的记录确认交付。")
+            if cancel_event is not None and cancel_event.is_set():
+                raise CancelledError("已取消交付确认。")
+            self.db.complete_delivery(project_id, zip_id, verified)
         return self.get_project(project_id)
