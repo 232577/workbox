@@ -43,3 +43,31 @@ test('指南、版本页、两份说明与稳定更新准确解释导出范围�
   const legacy = documents['/guide.html'].match(/<details\b[^>]*id="pending-project-export"[^>]*>([\s\S]*?)<\/details>/)?.[1];
   assert.match(legacy, /导出项目表.*菜单.*“全部待开发名单（仅名称）”.*“导出名单”/);
 });
+
+test('新说明用两段操作指引交代导出和合并，不向访客展开实现细节', async () => {
+  const guide = documents['/guide.html'];
+  const exportDetails = guide.match(/<details\b[^>]*id="project-table-export"[^>]*>([\s\S]*?)<\/details>/)?.[1];
+  const mergeDetails = guide.match(/<details><summary>合并后怎样保留原批次？<\/summary>([\s\S]*?)<\/details>/)?.[1];
+  assert.equal([...exportDetails.matchAll(/<p>/g)].length, 2);
+  assert.equal([...mergeDetails.matchAll(/<p>/g)].length, 2);
+  const metadata = await (await handleRequest(new Request('https://example.com/updates/stable.json'), {})).json();
+  for (const text of [exportDetails, documents['/releases.html'], metadata.body]) {
+    assert.match(text, /状态、类型、首次新增日期和批次筛选.*导出项目表.*当前筛选结果/);
+    assert.match(text, /批量选择.*勾选.*已勾选项目/);
+    assert.match(text, /显示项目数/);
+    assert.match(text, /无勾选.*不可用.*不会导出全部/);
+    assert.match(text, /首次新增日期不随重复收件或状态变更改变/);
+    assert.match(text, /名称、状态、类型、首次新增日期、收件批次编号、加急、截止日期、备注和范围说明/);
+    assert.match(text, /全部待开发名单（仅名称）/);
+  }
+  for (const text of [mergeDetails, documents['/releases.html'], metadata.body]) {
+    assert.match(text, /原建项批次不会被新收件批次遮住/);
+    assert.match(text, /刷新.*恢复原批次.*无须重做合并/);
+    assert.match(text, /连续合并/);
+    assert.match(text, /同批按项目只计一次/);
+    assert.match(text, /首次新增日期沿用保留项目/);
+  }
+  for (const text of [exportDetails, mergeDetails, documents['/releases.html'], metadata.body]) {
+    assert.doesNotMatch(text, /同一只读快照|各原项目分别保留有效收件和任务来源|最终项目身份/);
+  }
+});
