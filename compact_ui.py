@@ -524,7 +524,8 @@ class CompactPanel(DropSurface, QWidget):
         self.status_segments.setAccessibleName('项目状态筛选')
         for index, state in enumerate((None, *STATUSES)):
             route = state or 'all'
-            item = self.status_segments.addItem(route, (state or '全部') + '\n0')
+            item = self.status_segments.addItem(route, (state or '全部') + '\n—')
+            item.setAccessibleDescription('件数尚未读取。')
             setCustomStyleSheet(item, control_style('light', 'segments'), control_style('dark', 'segments'))
             item.setObjectName('statusFilterItem')
             item.setCheckable(True)

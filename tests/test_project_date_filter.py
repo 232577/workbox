@@ -37,6 +37,7 @@ def run_dialog(picker, text, callback):
         dialog = QApplication.activeModalWidget()
         try:
             assert isinstance(dialog, QDialog)
+            assert QTest.qWaitForWindowExposed(dialog, 1000)
             callback(dialog)
         except BaseException as error:
             failures.append(error)

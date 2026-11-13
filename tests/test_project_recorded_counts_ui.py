@@ -48,6 +48,20 @@ def test_range_and_status_counts_share_the_list_scope(panel):
     assert '当前状态' in panel.status_segments.accessibleDescription()
 
 
+def test_initial_read_failure_does_not_present_unknown_counts_as_zero(panel, monkeypatch):
+    def failed(*args, **kwargs):
+        raise OSError('匿名读取失败')
+    monkeypatch.setattr(panel.service, 'project_workbench_snapshot', failed)
+    failed_panel = CompactPanel(panel.service)
+    try:
+        assert failed_panel._project_read_error
+        assert all(control.text().endswith('\n—') for control in failed_panel.status_buttons.values())
+        assert not failed_panel.project_export_filtered_action.isEnabled()
+    finally:
+        failed_panel.document_pane.shutdown()
+        failed_panel.hide()
+
+
 def test_secondary_filters_collapsed_but_active_batch_is_clearable(panel):
     assert panel.added_date_filter.isVisible()
     assert not panel.type_filter.isVisible() and not panel.batch_filter.isVisible()
