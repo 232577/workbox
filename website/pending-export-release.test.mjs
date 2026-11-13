@@ -13,7 +13,7 @@ const r4Source = '2432b7e237db6424bd70e01f9a96f7567c5e644e';
 
 test('待开发名单入口、导出范围和工作簿内容有明确说明', () => {
   const details = html.match(/<details\b[^>]*id="pending-project-export"[^>]*>([\s\S]*?)<\/details>/)?.[1];
-  assert.match(details, /选择“待开发”.*“导出名单”/);
+  assert.match(details, /“导出项目表”菜单.*“全部待开发名单（仅名称）”.*原“导出名单”功能/);
   assert.match(details, /全部未归档、未删除的待开发项目/);
   assert.match(details, /搜索、批次和其他筛选只影响当前清单/);
   assert.match(details, /只有“项目名称”一列.*每个项目一行/);

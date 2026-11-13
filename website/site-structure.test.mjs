@@ -59,9 +59,9 @@ test('指南独立承载原演示、操作与来源，历史页面承载全部�
     assert.ok(parseTags(history).some(tag => tag.attrs.id === id), id);
   }
   const links = parseTags(history).filter(tag => tag.name === 'a').map(tag => tag.attrs.href);
-  assert.equal(releases.length, 33, '当前正式版及32个历史版');
+  assert.equal(releases.length, 34, '当前正式版及33个历史版');
   for (const item of releases) assert.ok(links.includes(`/download/${item.filename}`), item.filename);
-  assert.ok(history.includes(release.sourceCommit ?? '8b09af66f20932eb305fd0272ea648cf8dfc42a1'));
+  assert.ok(history.includes(release.sourceCommit ?? '6278c1c3319468e4f0658e0cf1b086d756bd44d2'));
 });
 
 test('安装指南保留首次安装和平台支持的事实边界', () => {

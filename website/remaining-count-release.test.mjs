@@ -9,10 +9,10 @@ const html = siteHtml;
 const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
 const siteReadme = await readFile(new URL('./README.md', import.meta.url), 'utf8');
 const releaseNotes = await readFile(new URL('../RELEASE_NOTES.md', import.meta.url), 'utf8');
-const source = '8b09af66f20932eb305fd0272ea648cf8dfc42a1';
-const expected = { version: '1.0.0', tag: 'v1.0.0.20261112.4', edition: '正式安装版',
-  date: '2026-11-12', filename: 'WorkBox-1.0.0-Setup-x64-20261112-r4.exe', size: 39415647,
-  sha256: 'bf45029cab5b7a67b0c88deba0df0a5514ee5482e265fd8b5d83340c938013ed' };
+const source = '6278c1c3319468e4f0658e0cf1b086d756bd44d2';
+const expected = { version: '1.0.0', tag: 'v1.0.0.20261113.1', edition: '正式安装版',
+  date: '2026-11-13', filename: 'WorkBox-1.0.0-Setup-x64-20261113-r1.exe', size: 42422935,
+  sha256: 'fb6c2b5f29df4af3b6858d79676d9e2cce2310b6f00e16971a78d190fa34c19d' };
 // The r2-era snapshots remain byte-exact; r4 and r3 have independent identity tests.
 const historicalStart = releases.findIndex(item => item.tag === 'v1.0.0.20261112.2');
 assert.ok(historicalStart >= 0, '历史 r2 目录必须存在');
@@ -62,7 +62,7 @@ test('11月12日r1收件身份修复独立发布，并逐字保留此前全部29
   assert.match(documents['/releases.html'], /href="\/download\/WorkBox-1\.0\.0-Setup-x64-20261111-r1\.exe">历史正式安装版/);
 });
 
-test('11月12日r4目录、首页与稳定清单使用同一准确安装包和桌面来源', async () => {
+test('11月13日r1目录、首页与稳定清单使用同一准确安装包和桌面来源', async () => {
   assert.deepEqual(release, expected);
   for (const value of [expected.filename, expected.sha256, source]) assert.ok(releaseNotes.includes(value));
   assert.ok(releaseNotes.includes('7760e997ded567dd5c1aec4435f023b82b64664ae757e249568999aac4f690fc'));
@@ -73,11 +73,11 @@ test('11月12日r4目录、首页与稳定清单使用同一准确安装包和�
     digest: `sha256:${expected.sha256}`,
     browser_download_url: `https://github.com/232577/workbox/releases/download/${expected.tag}/${expected.filename}` }]);
   for (const text of [html, readme, siteReadme]) {
-    for (const value of [expected.filename, expected.sha256, source, '39,415,647']) assert.ok(text.includes(value), value);
+    for (const value of [expected.filename, expected.sha256, source, '42,422,935']) assert.ok(text.includes(value), value);
   }
   const primary = [...documents['/index.html'].matchAll(/class="[^"]*download-link[^"]*" href="([^"#]+)"/g)].map(match => match[1]);
   assert.equal(primary.filter(value => value === `/download/${expected.filename}`).length, 2);
-  assert.match(documents['/index.html'], /Windows 10[^<]*11[^<]*x64[^<]*39\.4 MB/);
+  assert.match(documents['/index.html'], /Windows 10[^<]*11[^<]*x64[^<]*42\.4 MB/);
   assert.ok(html.includes(`href="https://github.com/232577/workbox/releases/download/${expected.tag}/${expected.filename}"`));
   for (const text of [html, readme, siteReadme, metadata.body]) {
     assert.match(text, /Studio/);
