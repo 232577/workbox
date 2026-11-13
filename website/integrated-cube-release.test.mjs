@@ -1,3 +1,4 @@
+import { archivedReadmes } from './public-documents.test-helper.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -9,7 +10,7 @@ test('r4 历史目录保持且当前更新保留品牌和恢复修复说明', as
   const metadata = await (await handleRequest(new Request('https://example.com/updates/stable.json'), {})).json();
   assert.equal(metadata.tag_name, release.tag);
   assert.ok(metadata.body.includes('来源提交 6278c1c3319468e4f0658e0cf1b086d756bd44d2。'));
-  for (const text of [metadata.body, await readFile(new URL('../README.md', import.meta.url), 'utf8'),
+  for (const text of [metadata.body, archivedReadmes.product,
     await readFile(new URL('./public/releases.html', import.meta.url), 'utf8')]) {
     for (const feature of ['恢复阻断', '嵌套 ZIP', '桌面队列', '48×48', '32、40、48、56、64']) assert.ok(text.includes(feature));
   }

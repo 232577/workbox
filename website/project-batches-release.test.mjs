@@ -1,3 +1,4 @@
+import { archivedReadmes } from './public-documents.test-helper.mjs';
 import { siteHtml, documents } from './public-documents.test-helper.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -20,7 +21,7 @@ test('r3保留带原标签和摘要的历史说明及下载链接', async () => 
   const html = siteHtml;
   const history = documents['/releases.html'].match(/<section\b[^>]*id="release-history"[^>]*>([\s\S]*?)<\/section>/)?.[1];
   assert.match(history, /href="\/download\/WorkBox-1\.0\.0-Setup-x64-20261105-r3\.exe"/);
-  const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
+  const readme = archivedReadmes.product;
   const notes = readme.match(/<details><summary>11月5日 r3历史发布说明<\/summary>([\s\S]*?)<\/details>/)?.[1];
   assert.ok(notes);
   for (const fact of ['v1.0.0.20261105.3', 'WorkBox-1.0.0-Setup-x64-20261105-r3.exe', '40,609,504',

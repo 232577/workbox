@@ -429,7 +429,8 @@ class CompactPanel(DropSurface, QWidget):
         self.sync_theme_menu()
         top.addStretch()
         top.addWidget(self.paste_button)
-        top.addWidget(self.checklist_button)
+        self.checklist_button.setParent(self.header_surface)
+        self.checklist_button.hide()
         top.addWidget(self.files_button)
         self.nav_controls.append((self.settings_button, '高级设置'))
         self.appearance_button.setIcon(FluentIcon.PALETTE)
@@ -840,7 +841,8 @@ class CompactPanel(DropSurface, QWidget):
         self.update_button.setAccessibleName('检查更新')
         self.update_button.setToolTip('检查新版本，选择更新后自动下载、备份并重启。')
         self.update_button.clicked.connect(self.update_requested)
-        footer.insertWidget(0, self.update_button)
+        self.update_button.setParent(self.footer_surface)
+        self.update_button.hide()
         self.setTabOrder(self.today_button, self.settings_button)
         self.setTabOrder(self.settings_button, self.search)
         self.help_button = button('使用指南')
@@ -910,14 +912,19 @@ class CompactPanel(DropSurface, QWidget):
             action.triggered.connect(lambda _checked=False: callback())
             self.advanced_actions[key] = action
 
+        # 普通禁用项保留 Windows 原生菜单里的分组标题；section 文字可能被样式隐藏。
+        self.advanced_menu.addAction('工作与规则').setEnabled(False)
         add('settings', '工作设置…', lambda: self.edit_directories() if not self.business_page_busy() else None)
         add('classification', '归档分类', lambda: self.classification_requested.emit() if not self.business_page_busy() else None)
         self.advanced_menu.addSeparator()
-        add('zip', 'ZIP 归档库', self.nav_zip.click)
+        self.advanced_menu.addAction('核对与记录').setEnabled(False)
+        add('checklist', '名单核对', self.checklist_button.click)
         add('review', '待核对', self.nav_review.click)
         add('intake_log', '收录记录', self.intake_log_button.click)
+        add('zip', 'ZIP 归档库', self.nav_zip.click)
         add('sources', '监视详情', self.sources_button.click)
         self.advanced_menu.addSeparator()
+        self.advanced_menu.addAction('应用').setEnabled(False)
         theme_menu.setTitle('外观')
         self.advanced_menu.addMenu(theme_menu)
         add('help', '使用指南', self.help_button.click)
@@ -955,6 +962,7 @@ class CompactPanel(DropSurface, QWidget):
                     available = hasattr(self.service, 'archive_classification')
                 actions[key].setEnabled(not busy and available)
         for key, control in (('zip', self.nav_zip), ('review', self.nav_review),
+                             ('checklist', self.checklist_button),
                              ('intake_log', self.intake_log_button), ('sources', self.sources_button),
                              ('help', self.help_button), ('update', self.update_button)):
             if key in actions:
@@ -1011,7 +1019,7 @@ class CompactPanel(DropSurface, QWidget):
         self.project_filter_button.setVisible(index == 0)
         self.clear_project_filters.setVisible(index == 0 and any(
             not chip.isHidden() for chip in self.project_filter_chips.values()))
-        for control in (self.search, self.paste_button, self.checklist_button, self.files_button):
+        for control in (self.search, self.paste_button, self.files_button):
             control.setVisible(intake_page)
         self._sync_project_layout()
         self.sync_notice_visibility()

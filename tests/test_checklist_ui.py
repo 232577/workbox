@@ -3,7 +3,8 @@ from importlib import util, import_module
 import time
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from desktop_service import DesktopService
@@ -64,17 +65,35 @@ def test_theme_changes_preserve_inputs_and_widths(app,tmp_path):
         d.shutdown();d.close();d.deleteLater();app.processEvents()
 
 
-def test_main_entry_is_visible_and_does_not_restore_task_groups(app,tmp_path):
+@pytest.mark.parametrize('activation', ['mouse', 'keyboard'])
+def test_main_native_menu_entry_opens_checklist_without_restoring_task_groups(app,tmp_path,activation):
     from compact_ui import CompactPanel
     s=DesktopService(tmp_path/'data/db.sqlite');install_theme(s);p=CompactPanel(s)
     try:
         p.resize(1180,760);p.show();app.processEvents()
-        assert hasattr(p,'checklist_button'), 'Native checklist entry missing'
-        assert p.checklist_button.text()=='名单核对'
-        assert p.checklist_button.isVisible()
+        action=p.advanced_actions['checklist']
+        assert action.text()=='名单核对' and action.isEnabled()
+        observed=[]
+        def choose_checklist():
+            menu=p.advanced_menu
+            observed.append(menu.isVisible())
+            if activation=='mouse':
+                QTest.mouseClick(menu,Qt.LeftButton,pos=menu.actionGeometry(action).center())
+            else:
+                menu.setActiveAction(action)
+                QTest.keyClick(menu,Qt.Key_Return)
+        QTimer.singleShot(80,choose_checklist)
+        p.settings_button.click()
+        QTest.qWait(30)
+        assert observed==[True]
+        assert p.checklist_dialog is not None and p.checklist_dialog.isVisible()
+        assert p.checklist_dialog.service is s
+        assert not p.advanced_menu.isVisible() and p.checklist_button.isHidden()
         assert p.task_groups_page is None
         assert not hasattr(p,'nav_task_groups')
     finally:
+        if p.checklist_dialog is not None:
+            p.checklist_dialog.shutdown();p.checklist_dialog.close()
         p.document_pane.shutdown()
         if p.today_dialog is not None:p.today_dialog.shutdown()
         p.close();p.deleteLater();app.processEvents()
