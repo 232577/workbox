@@ -63,23 +63,23 @@ test('11月12日r1收件身份修复独立发布，并逐字保留此前全部29
   assert.match(documents['/releases.html'], /href="\/download\/WorkBox-1\.0\.0-Setup-x64-20261111-r1\.exe">历史正式安装版/);
 });
 
-test('11月13日r1目录、首页与稳定清单使用同一准确安装包和桌面来源', async () => {
-  assert.deepEqual(release, expected);
+test('11月13日r1历史身份保留，首页与稳定清单继续绑定当前构建', async () => {
+  assert.deepEqual(releases.find(item => item.tag === expected.tag), expected);
   for (const value of [expected.filename, expected.sha256, source]) assert.ok(releaseNotes.includes(value));
   assert.ok(releaseNotes.includes('7760e997ded567dd5c1aec4435f023b82b64664ae757e249568999aac4f690fc'));
   const metadata = await (await handleRequest(new Request('https://example.com/updates/stable.json'), {})).json();
-  assert.equal(metadata.tag_name, expected.tag);
-  assert.ok(metadata.body.includes(`来源提交 ${source}。`));
-  assert.deepEqual(metadata.assets, [{ name: expected.filename, size: expected.size, state: 'uploaded',
-    digest: `sha256:${expected.sha256}`,
-    browser_download_url: `https://github.com/232577/workbox/releases/download/${expected.tag}/${expected.filename}` }]);
-  for (const text of [html, readme, siteReadme]) {
+  assert.equal(metadata.tag_name, release.tag);
+  assert.ok(metadata.body.includes('来源提交 ff4a336d66adb65c6cfedfb5b258067c703dee69。'));
+  assert.deepEqual(metadata.assets, [{ name: release.filename, size: release.size, state: 'uploaded',
+    digest: `sha256:${release.sha256}`,
+    browser_download_url: `https://github.com/232577/workbox/releases/download/${release.tag}/${release.filename}` }]);
+  for (const text of [readme, siteReadme]) {
     for (const value of [expected.filename, expected.sha256, source, '42,422,935']) assert.ok(text.includes(value), value);
   }
   const primary = [...documents['/index.html'].matchAll(/class="[^"]*download-link[^"]*" href="([^"#]+)"/g)].map(match => match[1]);
-  assert.equal(primary.filter(value => value === `/download/${expected.filename}`).length, 2);
-  assert.match(documents['/index.html'], /Windows 10[^<]*11[^<]*x64[^<]*42\.4 MB/);
-  assert.ok(html.includes(`href="https://github.com/232577/workbox/releases/download/${expected.tag}/${expected.filename}"`));
+  assert.equal(primary.filter(value => value === `/download/${release.filename}`).length, 2);
+  assert.ok(documents['/index.html'].includes(`${(release.size / 1000000).toFixed(1)} MB`));
+  assert.ok(html.includes(`href="https://github.com/232577/workbox/releases/download/${release.tag}/${release.filename}"`));
   for (const text of [html, readme, siteReadme, metadata.body]) {
     assert.match(text, /Studio/);
     assert.match(text, /窗口位置.*最大化/);

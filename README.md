@@ -24,17 +24,17 @@
 
 支持 Windows 10 1809+ / Windows 11 x64。安装版自带运行环境，尚无商业代码签名。
 
-当前正式构建为 **2026-11-13 r1**，软件版本 **1.0.0**。[GitHub 备用下载](https://github.com/232577/workbox/releases/tag/v1.0.0.20261113.1)。
+当前正式构建为 **2026-11-13 r2**，软件版本 **1.0.0**。[GitHub 备用下载](https://github.com/232577/workbox/releases/tag/v1.0.0.20261113.2)。
 
 升级前备份 data、工作目录、归档目录及全部已登记历史文稿目录。已有安装可从“高级设置 → 检查更新”更新；遇到问题按[更新恢复说明](docs/UPDATE-RECOVERY.md)处理，保留原安装目录和数据。
 
 <details>
 <summary>当前安装包与校验信息</summary>
 
-- 文件：`WorkBox-1.0.0-Setup-x64-20261113-r1.exe`
-- 大小：42,422,935 字节
-- SHA-256：`fb6c2b5f29df4af3b6858d79676d9e2cce2310b6f00e16971a78d190fa34c19d`
-- 来源提交：`6278c1c3319468e4f0658e0cf1b086d756bd44d2`
+- 文件：`WorkBox-1.0.0-Setup-x64-20261113-r2.exe`
+- 大小：40,841,667 字节
+- SHA-256：`dfc965b73f2d26e081f16d813e839bf729a79020ee2b5e4ae8b1190210f7d314`
+- 来源提交：`ff4a336d66adb65c6cfedfb5b258067c703dee69`
 - 验收范围以该 Release 的 `PUBLIC_BUILD_INFO.json` 为准。
 
 </details>

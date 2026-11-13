@@ -11,17 +11,13 @@ const expected = { version: '1.0.0', tag: 'v1.0.0.20261113.1', edition: '正式�
   filename: 'WorkBox-1.0.0-Setup-x64-20261113-r1.exe', size: 42422935,
   sha256: 'fb6c2b5f29df4af3b6858d79676d9e2cce2310b6f00e16971a78d190fa34c19d' };
 
-test('11月13日r1当前下载与更新清单绑定同一已核验构建，33个旧安装包逐字保留', async () => {
-  assert.deepEqual(release, expected);
-  assert.equal(releases.length, 34);
-  assert.equal(createHash('sha256').update(JSON.stringify(releases.slice(1))).digest('hex'),
+test('11月13日r1历史安装身份及此前33个安装包逐字保留', () => {
+  const index = releases.findIndex(item => item.tag === expected.tag);
+  assert.ok(index >= 0);
+  assert.deepEqual(releases[index], expected);
+  assert.equal(releases.length - index, 34);
+  assert.equal(createHash('sha256').update(JSON.stringify(releases.slice(index + 1))).digest('hex'),
     'f7d6550b01a7bca7f04fa5c6b1704e0abcc06138df93d9c3debce6aafbf5e76a');
-  const metadata = await (await handleRequest(new Request('https://example.com/updates/stable.json'), {})).json();
-  assert.equal(metadata.tag_name, expected.tag);
-  assert.ok(metadata.body.includes(`来源提交 ${source}。`));
-  assert.deepEqual(metadata.assets, [{ name: expected.filename, size: expected.size, state: 'uploaded',
-    digest: `sha256:${expected.sha256}`,
-    browser_download_url: `https://github.com/232577/workbox/releases/download/${expected.tag}/${expected.filename}` }]);
 });
 
 test('指南、版本页、两份说明与稳定更新准确解释导出范围和合并原批次', async () => {
@@ -38,7 +34,8 @@ test('指南、版本页、两份说明与稳定更新准确解释导出范围�
   }
   assert.doesNotMatch(readme, /尚不包含在上面的 r4 安装包中/);
   const notes = await readFile(new URL('../RELEASE_NOTES.md', import.meta.url), 'utf8');
-  const current = notes.split('\n---\n')[0];
+  const current = notes.replaceAll('\r\n', '\n').split('# WorkBox 工作箱 1.0.0 正式安装版 · 2026-11-13 r1')[1]?.split('\n---\n')[0];
+  assert.ok(current, 'r1原发布说明仍完整保留');
   for (const value of [source, expected.filename, expected.sha256]) assert.ok(current.includes(value));
   assert.doesNotMatch(current, /发布准备|待本构建|第二台物理设备.*通过/);
   const legacy = documents['/guide.html'].match(/<details\b[^>]*id="pending-project-export"[^>]*>([\s\S]*?)<\/details>/)?.[1];
