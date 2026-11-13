@@ -74,6 +74,8 @@ class TodayDeliveryDialog(QDialog):
         self._following_today = True
         self._external_busy = False
         self._choosing_type = False
+        self._choosing_export = False
+        self._export_generation = 0
         self._correction_dialog = None
         self._reason_drafts = {}
         self.worker = None
@@ -711,11 +713,20 @@ class TodayDeliveryDialog(QDialog):
     def export_projects(self):
         if not self._actions_available():
             return
+        generation = self._export_generation
+        self._choosing_export = True
+        self._update_open_action()
         try:
             from export_ui import choose_workbook_destination
             chosen = choose_workbook_destination(self)
         except (OSError, ValueError) as error:
             self._set_status('导出未完成：' + str(error))
+            return
+        finally:
+            self._choosing_export = False
+            self._update_open_action()
+        # 保存窗口运行嵌套事件循环；关页或停机后不能启动旧请求的写入。
+        if generation != self._export_generation:
             return
         if chosen is None:
             self._set_status('已取消导出。',temporary=True)
@@ -765,7 +776,8 @@ class TodayDeliveryDialog(QDialog):
     @property
     def business_busy(self):
         # 只反映本页占用的工作槽，外部排队任务不能让自己一直等待。
-        return self.worker is not None or self._choosing_type or self._correction_dialog is not None
+        return (self.worker is not None or self._choosing_type or self._choosing_export
+                or self._correction_dialog is not None)
 
     def set_busy(self, busy):
         if self._external_busy != busy:
@@ -1052,6 +1064,7 @@ class TodayDeliveryDialog(QDialog):
         return super().heightForWidth(width)
 
     def shutdown(self):
+        self._export_generation += 1
         if self._correction_dialog is not None:
             self._correction_dialog.reject()
         self.timer.stop()
@@ -1112,4 +1125,5 @@ class TodayDeliveryDialog(QDialog):
     def reject(self):
         # Escape 仍可关闭子确认框，但不能把主窗口当前内容页关成空白。
         if not self.embedded:
+            self._export_generation += 1
             super().reject()
