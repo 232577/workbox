@@ -4,6 +4,8 @@ This repository is the canonical shared source for WorkBox. Every machine and ag
 
 ## Collaboration
 
+For this project, device A coordinates integration and releases; device B collaborates and independently verifies handoffs. Before editing, inspect Concord work and claim a stable task with its exact file scope. Resolve overlapping claims with the actual other session before editing that scope. Use independent Git branches and push commits; Concord carries coordination, not source synchronization. Handoffs must include commit SHA, changed files, executed tests, risks and remaining work, and the recipient's actual acknowledgement. Do not upload production databases, customer materials, credentials or private logs. Delivery capability and immediate wake-up must be established by actual receipts, never inferred from an installed adapter. Existing release authorization and repository checks still apply.
+
 Run `python scripts/dev.py doctor`, inspect current status and fetch before work. Use `python scripts/dev.py start feat/task-name` from a clean checkout; each concurrent task uses its own clone or worktree. Do not alter another task's files or switch its active checkout. Use explicit file staging, meaningful commits, a feature-branch push and a pull request. Read CI results before merging. Never force-push main, rewrite release tags, auto-stash, reset, or overwrite conflicts. An unfinished task must leave its branch, commit, test evidence and remaining work recorded.
 
 Run `python scripts/dev.py setup` once per clone. Hooks are local guardrails; server-side protection and CI are authoritative. Do not bypass them merely to publish faster. See CONTRIBUTING.md and docs/RELEASING.md.
@@ -41,3 +43,51 @@ Never commit data, archives, backups, credentials, private screenshots, local ab
 Keep the checkout lean. Reuse a suitable checkout, dependency environment and one task-local test output directory; do not create a new clone or a full fixture copy for every verification pass. Retain concise results, source identities and checksums separately from rebuildable payloads. Inventory and verify ownership before removing generated artifacts; never treat working materials, archives, recovery points or unfinished journals as disposable caches. Storage changes must avoid generating redundant copies without silently dropping historical material or delivery records.
 
 Release only from reviewed commits on main. Tags and already-published assets are immutable. Installers, source snapshots and website deployments must have explicit source commits and SHA-256 evidence. Test status does not prove a second physical device was tested. Keep local OAuth credentials out of CI and never expose secrets to pull-request code.
+
+<!-- concord:start -->
+## Concord — shared work-state for coding agents
+
+<!-- concord:workflow-version=7 -->
+
+This project uses Concord MCP. Keep coordination to the five workflow tools:
+
+- **Before editing**, call `start_work` with the task, your agent kind, and
+  expected files or modules. It registers presence, accepts assigned work when
+  appropriate, claims the scope, and returns overlap warnings. Concord derives
+  your `agent_id` from your session — omit it unless your client told you one.
+- Use `inspect_work` to read the workspace, one task, one agent, or one message
+  thread. Use `update_work` for durable progress and for live prompts/replies
+  to another promptable workspace agent, including while that agent is busy.
+- Use `transfer_work` for assignment, acceptance, decline, release,
+  reassignment, evidence-bearing handoff offers, and reopening.
+- **Before finishing**, call `finish_work` once with the outcome, changed
+  files, tests, assumptions, decisions, risks, guardrails, and provenance. It
+  records evidence and can mark work review-ready or terminal.
+- Before handing work to cloud Devin, use `transfer_work` to hand off or
+  release your local claim; cloud Devin cannot access this local Concord state.
+
+Keep each claim small and resolve reported overlaps before editing. Concord
+regenerates human-readable review artifacts in `.concord/`.
+
+Enforcement remains client-dependent. `concord doctor` reports setup and
+workflow adoption; optional hooks can block exact-file collisions.
+
+Replace <agent-id> with the id the SessionStart hook printed for this session.
+A monitor may not inherit the session's environment, so it cannot work the id out itself.
+
+In Grok Build, keep this session reachable while idle by starting one persistent
+monitor for `concord inbox watch --agent <agent-id> --provider grok`. Do not start a duplicate when that monitor is active.
+
+In Cursor, start exactly one Cursor background Shell task for `concord inbox watch --agent <agent-id> --provider cursor --once`.
+Leave it active when the turn ends. When Cursor resumes you with its completion,
+answer the emitted peer message and immediately start a fresh background monitor.
+
+In Gemini CLI, start the exact monitor command supplied by the SessionStart hook
+(`concord inbox watch --agent <agent-id> --provider gemini --once`) with `run_shell_command` and `is_background: true`. Project
+settings inject background completion into the agent. Answer the peer message,
+then immediately start a fresh background monitor.
+
+In Antigravity, start exactly one background command for `concord inbox watch --agent <agent-id> --provider antigravity --once`
+and end the turn without waiting on it. Its completion wakes the idle session:
+answer the peer message, then immediately start a fresh background monitor.
+<!-- concord:end -->
