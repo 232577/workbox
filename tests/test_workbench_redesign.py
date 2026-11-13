@@ -46,7 +46,7 @@ def test_common_window_gives_files_six_complete_rows_and_keeps_filters_reachable
     assert files.rowCount() == 12
     assert files.viewport().height() >= 6 * files.rowHeight(0)
     assert panel.project_list.viewport().height() >= 350
-    for control in (panel.batch_filter, panel.bulk_mode, panel.project_filter_button):
+    for control in (panel.added_date_filter, panel.bulk_mode, panel.project_filter_button):
         assert control.isVisible()
     panel.project_filter_button.click()
     for control in (panel.archive_filter, panel.due_filter, panel.type_filter, panel.urgent_filter):

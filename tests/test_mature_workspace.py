@@ -103,7 +103,7 @@ def test_dragging_project_split_keeps_all_filters_readable(panel):
     QTest.mouseMove(handle, start - QPoint(600, 0))
     QTest.mouseRelease(handle, Qt.LeftButton, pos=start - QPoint(600, 0))
     QApplication.processEvents()
-    controls = [*panel.status_buttons.values(), panel.batch_filter,
+    controls = [*panel.status_buttons.values(), panel.added_date_filter,
                 panel.project_filter_button, panel.clear_project_filters]
     for control in controls:
         owner = panel.header_surface if control in (panel.project_filter_button, panel.clear_project_filters) else panel.project_side
