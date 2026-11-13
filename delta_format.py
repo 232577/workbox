@@ -390,6 +390,8 @@ def stage_package(package: Path, destination: Path, *, expected_sha256: str, exp
             with target.open('xb') as output:
                 _read_member(archive, infos['payload/' + name], size=record['size'],
                              expected_sha256=record['sha256'], destination=output)
+                output.flush()
+                os.fsync(output.fileno())
         current = plain_path(destination).stat()
         _require((current.st_dev, current.st_ino) == (identity.st_dev, identity.st_ino), 'staging 目录标识改变。')
         actual = set()

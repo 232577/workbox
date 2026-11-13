@@ -30,6 +30,16 @@ ALLOWED_HOSTS = frozenset({'workbox.ltxiangzi.dpdns.org', 'api.github.com', 'git
 
 
 @dataclass(frozen=True)
+class DeltaAsset:
+    from_tag: str
+    to_tag: str
+    filename: str
+    size: int
+    sha256: str
+    url: str
+
+
+@dataclass(frozen=True)
 class Release:
     tag: str
     filename: str
@@ -37,6 +47,7 @@ class Release:
     sha256: str
     url: str
     notes: str
+    delta: DeltaAsset | None = None
 
 
 def build_key(tag: str) -> tuple[int, int]:
@@ -78,7 +89,27 @@ def parse_release(payload: dict, *, current_tag: str = CURRENT_TAG) -> Release |
     notes = payload.get('body') or '此版本未提供发行说明。'
     if not isinstance(notes, str):
         raise ValueError('发行说明格式无效。')
-    return Release(tag, filename, size, digest[7:], url, notes[:12000])
+    delta = _optional_delta(assets, current_tag, tag, size)
+    return Release(tag, filename, size, digest[7:], url, notes[:12000], delta)
+
+
+def _optional_delta(assets, from_tag, to_tag, full_size):
+    # 完整安装包已独立校验；缺失、损坏或重复的可选资产只影响增量选择。
+    if not any(isinstance(item, dict) and str(item.get('name', '')).endswith('.wbdelta') for item in assets):
+        return None
+    from delta_format import delta_filename
+    filename = delta_filename(from_tag, to_tag)
+    matches = [item for item in assets if isinstance(item, dict) and item.get('name') == filename]
+    if len(matches) != 1:
+        return None
+    item = matches[0]
+    size, digest = item.get('size'), item.get('digest')
+    url = RELEASE_ROOT + f'download/{to_tag}/{filename}'
+    if (type(size) is not int or not 2 <= size < full_size
+            or item.get('state') != 'uploaded' or item.get('browser_download_url') != url
+            or not isinstance(digest, str) or not re.fullmatch(r'sha256:[a-f0-9]{64}', digest)):
+        return None
+    return DeltaAsset(from_tag, to_tag, filename, size, digest[7:], url)
 
 
 def validate_transport_url(url: str) -> None:

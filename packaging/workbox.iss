@@ -5,6 +5,9 @@
 #ifndef OutputDir
   #error 必须指定独立的输出目录。
 #endif
+#if !FileExists(PayloadDir + "\WorkBoxUpdater.exe")
+  #error 新安装载荷必须包含已校验的独立更新助手。
+#endif
 
 [Setup]
 AppId={{94062298-8991-4FF2-9E56-6B837B20A5FD}

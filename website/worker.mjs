@@ -283,6 +283,50 @@ export const releases = Object.freeze([Object.freeze({
 })]);
 export const release = releases[0];
 
+function deltaBuildKey(tag) {
+  if(typeof tag !== 'string') throw new Error('Invalid delta tag');
+  const match=/^v1\.0\.0\.(20[0-9]{2})([0-9]{2})([0-9]{2})(?:\.([1-9][0-9]{0,3}))?$/.exec(tag);
+  if(!match) throw new Error('Invalid delta tag');
+  const year=Number(match[1]), month=Number(match[2]), day=Number(match[3]);
+  const value=new Date(Date.UTC(year,month-1,day));
+  if(value.getUTCFullYear()!==year || value.getUTCMonth()!==month-1 || value.getUTCDate()!==day)
+    throw new Error('Invalid delta date');
+  return [year*10000+month*100+day,Number(match[4]||0)];
+}
+
+function optionalDeltaAsset(item, delta) {
+  if(delta===null || typeof delta!=='object' || Array.isArray(delta)) throw new Error('Invalid delta descriptor');
+  const fields=['from_tag','to_tag','name','size','sha256','url','state'];
+  if(Object.keys(delta).length!==fields.length || !fields.every(key=>Object.hasOwn(delta,key)))
+    throw new Error('Invalid delta fields');
+  const old=deltaBuildKey(delta.from_tag), next=deltaBuildKey(delta.to_tag);
+  if(delta.to_tag!==item.tag || !(next[0]>old[0] || (next[0]===old[0] && next[1]>old[1])))
+    throw new Error('Invalid delta versions');
+  const suffix=key=>String(key[0])+(key[1]?`-r${key[1]}`:'');
+  const name=`WorkBox-1.0.0-Delta-x64-${suffix(old)}-to-${suffix(next)}.wbdelta`;
+  const url=`https://github.com/232577/workbox/releases/download/${item.tag}/${name}`;
+  if(delta.name!==name || delta.url!==url || delta.state!=='uploaded'
+      || !Number.isSafeInteger(delta.size) || delta.size<2 || delta.size>=item.size || delta.size>256*1024*1024
+      || typeof delta.sha256!=='string' || !/^[0-9a-f]{64}$/.test(delta.sha256))
+    throw new Error('Invalid delta asset');
+  return {name,size:delta.size,state:'uploaded',digest:`sha256:${delta.sha256}`,browser_download_url:url};
+}
+
+export function releaseAssets(item) {
+  const full={name:item.filename,size:item.size,state:'uploaded',digest:`sha256:${item.sha256}`,
+    browser_download_url:`https://github.com/232577/workbox/releases/download/${item.tag}/${item.filename}`};
+  // 可选目录缺失、格式错误或来源重复时只关闭增量，完整包始终保持兼容。
+  if(!Array.isArray(item.deltas) || item.deltas.length>100) return [full];
+  const assets=[], names=new Set();
+  for(const delta of item.deltas) {
+    let asset;
+    try { asset=optionalDeltaAsset(item,delta); } catch { continue; }
+    if(names.has(asset.name)) return [full];
+    names.add(asset.name);assets.push(asset);
+  }
+  return [full,...assets];
+}
+
 const safeHeaders = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin' };
 const transientDownloadStatuses = new Set([408, 429, 500, 502, 503, 504]);
 
@@ -342,9 +386,7 @@ export async function handleRequest(request, env, fetcher = fetch, context = nul
       tag_name: release.tag, draft: false, prerelease: false,
       html_url: `https://github.com/232577/workbox/releases/tag/${release.tag}`,
       body: `WorkBox ${release.version} 正式安装版 · ${release.date}。来源提交 ff4a336d66adb65c6cfedfb5b258067c703dee69。工作台整理了低频入口：名单核对、检查更新进入按用途分组的“高级设置”原生菜单。常用收件、项目筛选与导出继续直达，忙碌取消、错误、筛选提示、后台运行与退出保留。此次入口调整不改变原数据、材料、交付事实和工作量规则，历史版本继续保留。先按状态、类型、首次新增日期和批次筛选，再打开“导出项目表”，选择“当前筛选结果”。需要挑选项目时，开启“批量选择”并勾选，再选择“已勾选项目”。两种范围适用于全部项目状态，两项都显示项目数；无勾选时“已勾选项目”不可用，不会导出全部。首次新增日期不随重复收件或状态变更改变。Excel 包含名称、状态、类型、首次新增日期、收件批次编号、加急、截止日期、备注和范围说明。原单列待开发名单继续保留：先选择“待开发”，再打开“导出项目表”菜单，选择“全部待开发名单（仅名称）”。导出可取消，不改变项目和材料。误建项目改名并确认合并后，原建项批次不会被新收件批次遮住，两个批次都可查到这个项目。之前已合并的项目，刷新即可恢复原批次，无须重做合并。连续合并同样适用；同批按项目只计一次，首次新增日期沿用保留项目，不改写历史材料和交付记录。同时包含最新恢复阻断、嵌套 ZIP 归属和桌面队列修复：恢复待处理时暂停存储写入；嵌套已登记项目的 ZIP 不串入父项目；主列表读取失败保留上次结果并可重试，任务队列不会卡住。已有历史关联和交付事实不自动改写。统一立方体与白色 W 标志。悬浮窗默认 48×48 逻辑像素，右键可选 32、40、48、56、64，重启保留尺寸；保存失败时保持原尺寸。应用、托盘、工作台和网页图标同源，保留拖放、点击打开与窗口恢复。批量选择后，可在已选项目的右键菜单中统一“标记加急”或“取消加急”。菜单显示所选数量，操作对象固定为打开菜单时的选择；混合加急状态也可一次统一设置。单选和右击未选项目仍只处理当前项目，多选菜单的其他操作继续只作用于“当前项目”。文字项目列表支持 APP 名称；已登记项目的文件、ZIP 和目录可带下划线后的任意附注，完整项目名优先。匹配统一项目名末尾 APP 前的空白和大小写，保留原显示名、编号和工作目录。新项目名称不会按任意附注自动裁剪；历史同名编号、已归档或已删除项目仍需核对，不自动合并。保留 Studio 与名单核对，恢复窗口位置与最大化状态，保持模态窗口优先和悬浮入口可用。全局快捷键默认关闭，可在工作设置中启用。保留四项修复：批量选择项目时减少重复读取；ZIP 或待核对信息读取失败后清单与详情保持同步，不可用详情清空并保留重试提示；项目搜索最多 1000 个字符；退出时保存设置或升级时备份数据库失败后，已启用的全局快捷键仍可使用。r6 优化项目较多时的搜索、筛选和项目切换，减少重复刷新与 ZIP 列表查询。顶部横向导航提供“项目”和“今日工作量”，搜索和筛选入口位于项目清单上方。先选择“待开发”，再打开“导出项目表”菜单，选择“全部待开发名单（仅名称）”，沿用原待开发“导出名单”功能，将全部未归档、未删除的待开发项目写入 Excel，只有“项目名称”一列，每个项目一行。搜索和筛选只影响当前清单。导出文件保存前复核目标位置，覆盖时校验已确认的文件。宽窗并排显示项目清单和详情。窄窗点击项目打开详情，点击“返回项目清单”回到原阅读位置。批次编号后显示待完成与总数。5 个项目中有 1 个进入待交付，显示“待完成4，共5”；1 个项目进入待交付，显示“待完成0，共1”。待完成只计待开发和开发中。选择批次可查看待交付、已交付明细。待完成按整批项目的当前状态统计，个人工作量单独统计。首次新增日期按项目最初进入工作箱的北京时间日期筛选，重复收件不改变日期。工作目录只保留当前文件，旧稿移到同一磁盘上的独立历史区。已有旧稿须明确选择后确认整理，不会按文件名自动清理。归档只包含当前文件，既有交付归档和记录保留。项目沿用四种原项目状态、原排序和一项目一行，一个项目可属于多个批次。交付页保留日期、搜索、各类型数量和全部交付表。从高级设置主动检查一次，有新版时选择“更新并重启”。程序下载校验、备份数据库，在原目录安装成功后重新打开。归档分类按最近有效交付的单项目文件数判断，新安装预设恰好 16 个文件归为“可运行”，其他已知数量归为“生成材料”，数量未知时保留原类型。新安装的自动分类默认关闭，升级沿用原配置，旧规则仍按“至少”比较。ZIP 自动交付的独立初始门槛为每项目 4 个实际文件。升级前请备份 data、工作和归档目录及全部已登记历史文稿目录（可能仍在原工作位置）。迁移后核验路径与历史文件可读性。安装包尚无商业代码签名。`,
-      assets: [{name: release.filename, size: release.size, state: 'uploaded',
-        digest: `sha256:${release.sha256}`,
-        browser_download_url: `https://github.com/232577/workbox/releases/download/${release.tag}/${release.filename}`}],
+      assets: releaseAssets(release),
     };
     return new Response(request.method === 'HEAD' ? null : JSON.stringify(metadata), {
       headers: {...safeHeaders, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store'},

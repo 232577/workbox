@@ -16,7 +16,7 @@ def default_data_dir() -> Path:
     return base / "data"
 
 
-def main(argv: list[str] | None = None) -> int:
+def _main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="WorkBox 工作箱 v1.0 · 项目收件与 ZIP 持续归档")
     parser.add_argument("--version", action="version", version=f"WorkBox {VERSION}")
     parser.add_argument("--build-info", action="store_true", help="输出构建标识，不打开数据或联网")
@@ -90,6 +90,32 @@ def main(argv: list[str] | None = None) -> int:
                 controller.launch_pending_update()
             except (OSError, ValueError, RuntimeError) as error:
                 QMessageBox.critical(None, '升级未执行', str(error) + '\n下载和数据库恢复点已保留，请重新启动WorkBox检查。')
+
+
+def _startup_error(message):
+    """未打开业务数据库时也能说明恢复边界，不依赖 Qt 运行库可用。"""
+    if sys.platform == 'win32':
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(None, message, 'WorkBox 程序更新恢复', 0x10)
+    elif sys.stderr is not None:
+        print(message, file=sys.stderr)
+
+
+def main(argv: list[str] | None = None) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    read_only = any(value in arguments for value in ('--build-info', '--version', '--help', '-h'))
+    if not getattr(sys, 'frozen', False) or read_only:
+        return _main(arguments)
+    from incremental_apply import runtime_guard, has_pending_update
+    app_dir = Path(sys.executable).resolve().parent
+    try:
+        with runtime_guard(app_dir):
+            if has_pending_update(app_dir):
+                raise RuntimeError('检测到尚未完成的程序更新。请运行程序目录中的 WorkBoxUpdater.exe 进行恢复。')
+            return _main(arguments)
+    except (OSError, ValueError, RuntimeError) as error:
+        _startup_error(str(error) + '\n未打开、重置或覆盖业务数据。')
+        return 1
 
 
 if __name__ == "__main__":

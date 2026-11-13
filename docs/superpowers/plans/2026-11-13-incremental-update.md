@@ -29,7 +29,7 @@
 ## Tasks
 
 1. **公共包格式**：A 子代理，`delta_format.py`、`tests/test_delta_format.py`。先验证格式缺失失败，再实现规范、校验和 staging；覆盖所有边界。
-2. **增量生成及发布描述**：B，`scripts/build_incremental_update.py`、构建/安装脚本、网站可选资产及专用测试。按公共接口写匿名红测，实现确定性包并自验。提供精确 SHA 和 CI 后由 A 集成。
+2. **增量生成及发布描述**：由当前 Concord 认领方负责，`scripts/build_incremental_update.py`、构建/安装脚本、网站可选资产及专用测试。按公共接口写匿名红测，实现确定性包并自验。交接使用精确 SHA 和 CI，未认领的工作按实时协作状态分配，不并行覆盖。
 3. **下载选择与兜底**：A 子代理，`update_client.py`、`incremental_update.py`、`tests/test_incremental_update.py`。先验证现有完整流程兼容，再做增量/全量/取消分支。
 4. **更新界面及停机契约**：A 子代理，`update_ui.py`、`desktop_controller.py`、`tests/test_incremental_ui.py`。复用现有单次后台作业和数据库恢复点，清楚显示增量及兜底结果。
 5. **替换、恢复与助手**：A 根代理，`incremental_apply.py`、`update_helper_main.py`、`update_install.py`、`main.py` 及专用回归。先失败注入、恢复冲突与数据哨兵测试，再实现逐项替换及独立进程入口。

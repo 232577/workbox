@@ -246,6 +246,16 @@ def test_staged_disk_bytes_are_rechecked_before_success(monkeypatch, tmp_path):
         stage_package(path, tmp_path / 'stage', **kwargs(path))
 
 
+def test_stage_flush_failure_cannot_report_files_ready(monkeypatch, tmp_path):
+    import delta_format
+    path, _ = package(tmp_path)
+    def fail_flush(fd):
+        raise OSError('anonymous disk flush failure')
+    monkeypatch.setattr(delta_format.os, 'fsync', fail_flush)
+    with pytest.raises(OSError, match='flush'):
+        stage_package(path, tmp_path / 'stage', **kwargs(path))
+
+
 def test_stage_rejects_link_parent(tmp_path):
     path, _ = package(tmp_path)
     actual = tmp_path / 'actual'; actual.mkdir()
