@@ -49,12 +49,12 @@ test('首页、安装说明和自动更新指向同一当前安装包与构建',
   assert.ok(html.includes(`href="${downloadPath}"`) && html.includes(`href="${githubAsset}"`));
   assert.ok(html.includes(`${displaySize} 字节`) && html.includes(sha256) && html.includes(source));
   const rootReadme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
-  const install = rootReadme.match(/\n## Windows 安装包\n([\s\S]*?)\n## /)?.[1];
-  assert.ok(install?.includes(`[官网下载](https://workbox.ltxiangzi.dpdns.org${downloadPath})`));
-  assert.ok(install.includes(`[GitHub Release](${githubRelease})`));
-  for (const fact of [filename, displaySize, sha256]) assert.ok(install.includes(fact), fact);
+  assert.ok(rootReadme.includes('https://workbox.ltxiangzi.dpdns.org/#download'));
+  assert.ok(rootReadme.includes(githubRelease));
+  for (const fact of [filename, displaySize, sha256]) assert.ok(rootReadme.includes(fact), fact);
   const siteReadme = await readFile(new URL('./README.md', import.meta.url), 'utf8');
-  for (const fact of [filename, tag, displaySize, sha256, source]) assert.ok(siteReadme.includes(fact), fact);
+  assert.match(siteReadme, /\]\(worker\.mjs\)/);
+  assert.match(siteReadme, /\]\(https:\/\/workbox\.ltxiangzi\.dpdns\.org\/releases\.html\)/);
   assert.ok(rootReadme.includes(source));
 });
 

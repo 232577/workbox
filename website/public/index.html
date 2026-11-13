@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="/homepage.css?v=20261110-product-story">
   <link rel="stylesheet" href="/support.css">
   <link rel="stylesheet" href="/theme.css?v=20261028-fluent">
-  <link rel="stylesheet" href="/release-page.css?v=20261112-clear-home-r2">
+  <link rel="stylesheet" href="/release-page.css?v=20261113-product-entry">
   <script src="/script.js" defer></script>
   <script src="/homepage.js?v=20261112-clear-home" defer></script>
   <script type="module" src="/support.js"></script>
@@ -37,26 +37,29 @@
     <nav aria-label="主要导航"><a href="/guide.html" >使用指南</a><a href="/releases.html" >版本记录</a><a href="#download" class="nav-download">下载</a></nav>
   </div></header>
   <main id="main">
-    <section class="home-intro site-width" aria-labelledby="hero-title">
-      <h1 id="hero-title">项目归位，交付有数。</h1>
-      <p class="home-lead">把项目消息、工作文件和交付记录放在一起。<br>WorkBox 是你在 Windows 上的项目工作箱。</p>
+    <div class="home-hero site-width">
+    <section class="home-intro" aria-labelledby="hero-title">
+      <h1 id="hero-title">项目归位，<br>交付有数。</h1>
+      <p class="home-lead">WorkBox 是 Windows 上的个人项目工作箱。收好材料、留下旧稿，看清每一批的交付进度。</p>
       <a class="site-button download-link" href="/download/WorkBox-1.0.0-Setup-x64-20261113-r1.exe"><svg class="wb-icon" aria-hidden="true"><use href="#i-download"/></svg>免费下载 Windows 版</a>
       <p class="home-platform">Windows 10 / 11 · x64 · 42.4 MB</p>
       <p class="home-assurance">无需账号，项目数据保存在本机。</p>
     </section>
-    <figure id="actual-ui" class="home-preview site-width" data-desktop-stage data-preview-mode="single">
+    <figure id="actual-ui" class="home-preview" data-desktop-stage data-preview-mode="single">
       <a class="home-screenshot-link" data-desktop-link="light" href="/media/workbox-pending-export-light-20261109-r4.png" target="_blank" rel="noopener" aria-label="查看项目工作台原图，在新标签页打开"><img data-desktop-image="light" src="/media/workbox-pending-export-light-20261109-r4.png" width="1102" height="792" alt="WorkBox v1.0.0.20261109.4 浅色宽窗实拍：左侧项目清单与导出名单入口，右侧为所选项目详情。" decoding="async" fetchpriority="high"></a>
       <p class="home-preview-fallback">界面预览暂不可用。<a href="/guide.html">查看使用指南</a></p>
-      <figcaption>项目工作台 · 11月9日 r4 示例界面 <a href="/guide.html#media-source">界面说明与原图</a></figcaption>
+      <figcaption><span>真实项目工作台 · 11月9日 r4 示例界面</span><a href="/guide.html#media-source">界面说明与原图</a></figcaption>
     </figure>
-    <section id="overview" class="home-benefits site-width" aria-labelledby="overview-title">
-      <h2 id="overview-title">从材料，到交付。</h2>
+    </div><!-- /home-hero -->
+    <section id="overview" class="home-benefits" aria-labelledby="overview-title">
+      <div class="site-width home-benefits-layout">
+      <div class="home-benefits-heading"><h2 id="overview-title">从材料，<br>到交付。</h2><p>少在文件夹之间来回找。<br>围绕项目，继续手头的工作。</p><a class="site-text-link" href="/guide.html">了解怎样使用 <svg class="wb-icon" aria-hidden="true"><use href="#i-arrow"/></svg></a></div>
       <div class="home-benefit-list">
         <article><h3>材料有归处</h3><p>拖入消息、文件或文件夹，核对后收进对应项目，原件留在原处。</p></article>
         <article><h3>只看当前文件</h3><p>当前文件与旧稿分开，交付只归档当前文件，每次交付都能回查。</p></article>
         <article><h3>进度看得清</h3><p>按状态、批次或新增日期找到项目，整批还有多少待完成，一眼清楚。</p></article>
       </div>
-      <a class="site-text-link" href="/guide.html">了解怎样使用 <svg class="wb-icon" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+      </div>
     </section>
     <section id="download" class="home-download site-width" aria-labelledby="download-title">
       <div class="home-download-heading"><h2 id="download-title">把工作收好。</h2><p>1.0.0 正式安装版 · 2026 年 11 月 13 日</p></div>

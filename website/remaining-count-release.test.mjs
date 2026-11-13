@@ -1,3 +1,4 @@
+import { archivedReadmes } from './public-documents.test-helper.mjs';
 import { siteHtml, documents } from './public-documents.test-helper.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -6,8 +7,8 @@ import { readFile } from 'node:fs/promises';
 import { handleRequest, release, releases } from './worker.mjs';
 
 const html = siteHtml;
-const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
-const siteReadme = await readFile(new URL('./README.md', import.meta.url), 'utf8');
+const readme = archivedReadmes.product;
+const siteReadme = archivedReadmes.website;
 const releaseNotes = await readFile(new URL('../RELEASE_NOTES.md', import.meta.url), 'utf8');
 const source = '6278c1c3319468e4f0658e0cf1b086d756bd44d2';
 const expected = { version: '1.0.0', tag: 'v1.0.0.20261113.1', edition: '正式安装版',

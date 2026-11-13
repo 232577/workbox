@@ -33,13 +33,13 @@ def test_daily_navigation_and_advanced_tools_remain_reachable(panel):
     assert panel.settings_button.menu() is panel.advanced_menu
     assert [control.accessibleName() for control, _ in panel.nav_controls
             if control.isVisible()] == ['项目', '今日工作量', '高级设置']
-    assert panel.update_button.isVisible() and panel.footer_surface.isAncestorOf(panel.update_button)
+    assert panel.update_button.isHidden() and panel.advanced_actions['update'].isEnabled()
     for control in (panel.nav_zip, panel.appearance_button, panel.help_button,
                     panel.material_check_button, panel.intake_log_button):
         assert control.isHidden()
     captions = {item.text() for item in panel.advanced_menu.actions() if not item.isSeparator()}
-    assert captions == {'工作设置…', '归档分类', 'ZIP 归档库', '待核对', '收录记录',
-                        '监视详情', '外观', '使用指南', '检查更新'}
+    assert captions == {'工作与规则', '工作设置…', '归档分类', '核对与记录', '名单核对',
+                        'ZIP 归档库', '待核对', '收录记录', '监视详情', '应用', '外观', '使用指南', '检查更新'}
     assert action(panel, '外观').menu() is panel.appearance_button.menu()
     assert set(panel.theme_actions.values()) == set(action(panel, '外观').menu().actions())
     action(panel, 'ZIP 归档库').trigger()
@@ -269,7 +269,7 @@ def test_busy_and_resize_do_not_restore_hidden_tools(panel):
             for control in (panel.nav_zip, panel.appearance_button, panel.help_button,
                             panel.material_check_button, panel.intake_log_button):
                 assert control.isHidden()
-            assert panel.update_button.isVisible()
+            assert panel.update_button.isHidden() and panel.checklist_button.isHidden()
             assert panel.background_button.isVisible() and panel.exit_button.isVisible()
             assert panel.settings_button.accessibleName() == '高级设置'
 
@@ -286,7 +286,7 @@ def test_busy_keeps_native_advanced_menu_and_read_only_tools_openable(panel):
     assert observed == [True]
     for caption in ('工作设置…', '归档分类'):
         assert not action(panel, caption).isEnabled()
-    for caption in ('ZIP 归档库', '待核对', '收录记录', '监视详情', '使用指南', '检查更新', '外观'):
+    for caption in ('名单核对', 'ZIP 归档库', '待核对', '收录记录', '监视详情', '使用指南', '检查更新', '外观'):
         assert action(panel, caption).isEnabled()
 
 

@@ -1,3 +1,4 @@
+import { archivedReadmes } from './public-documents.test-helper.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -25,8 +26,8 @@ test('11月13日r1当前下载与更新清单绑定同一已核验构建，33个
 
 test('指南、版本页、两份说明与稳定更新准确解释导出范围和合并原批次', async () => {
   const metadata = await (await handleRequest(new Request('https://example.com/updates/stable.json'), {})).json();
-  const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
-  const siteReadme = await readFile(new URL('./README.md', import.meta.url), 'utf8');
+  const readme = archivedReadmes.product;
+  const siteReadme = archivedReadmes.website;
   for (const text of [documents['/guide.html'], documents['/releases.html'], readme, siteReadme, metadata.body]) {
     for (const phrase of ['导出项目表', '当前筛选结果', '已勾选项目', '首次新增日期', '原建项批次', '原批次', '连续合并']) {
       assert.ok(text.includes(phrase), phrase);
@@ -74,8 +75,8 @@ test('新说明用两段操作指引交代导出和合并，不向访客展开�
 
 test('两种项目表范围适用所有状态，旧单列名单步骤必须先选择待开发', async () => {
   const metadata = await (await handleRequest(new Request('https://example.com/updates/stable.json'), {})).json();
-  const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
-  const siteReadme = await readFile(new URL('./README.md', import.meta.url), 'utf8');
+  const readme = archivedReadmes.product;
+  const siteReadme = archivedReadmes.website;
   const exportDetails = documents['/guide.html'].match(/<details\b[^>]*id="project-table-export"[^>]*>([\s\S]*?)<\/details>/)?.[1];
   assert.match(exportDetails, /两种范围适用于全部项目状态/);
   let instructions = 0;

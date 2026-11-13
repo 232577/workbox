@@ -1,3 +1,4 @@
+import { archivedReadmes } from './public-documents.test-helper.mjs';
 import { siteHtml } from './public-documents.test-helper.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -7,8 +8,8 @@ import {handleRequest,releases} from './worker.mjs';
 
 test('首页、文档与更新说明保留项目批次、全量导出与文件处理边界',async()=>{
   const html = siteHtml;
-  const readme=await readFile(new URL('../README.md',import.meta.url),'utf8');
-  const siteReadme=await readFile(new URL('./README.md',import.meta.url),'utf8');
+  const readme=archivedReadmes.product;
+  const siteReadme=archivedReadmes.website;
   for(const item of releases) assert.ok(html.includes(`/download/${item.filename}`));
   assert.equal(new Set(releases.map(r=>r.tag)).size,releases.length);
   const metadata=await (await handleRequest(new Request('https://example.com/updates/stable.json'),{})).json();

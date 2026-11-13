@@ -14,11 +14,11 @@
   <link rel="stylesheet" href="/homepage.css?v=20261110-product-story">
   <link rel="stylesheet" href="/support.css">
   <link rel="stylesheet" href="/theme.css?v=20261028-fluent">
-  <link rel="stylesheet" href="/release-page.css?v=20261112-clear-home-r2">
+  <link rel="stylesheet" href="/release-page.css?v=20261113-product-entry">
   <script src="/script.js" defer></script>
   <script src="/homepage.js?v=20261112-clear-home" defer></script>
   <script type="module" src="/support.js"></script>
-</head><body id="top" class="home-page docs-page">
+</head><body id="top" class="home-page docs-page releases-page">
   <a class="skip" href="#main">跳到主要内容</a>
   <svg class="wb-symbols" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
     <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"/></symbol>
@@ -37,10 +37,16 @@
     <nav aria-label="主要导航"><a href="/guide.html" >使用指南</a><a href="/releases.html" aria-current="page">版本记录</a><a href="/#download" class="nav-download">下载</a></nav>
   </div></header>
   <main id="main" class="docs-main site-width">
-    <header class="docs-intro"><h1>版本与下载</h1><p>当前安装包、更新内容和所有历史版本，都在这里。</p></header>
-    <nav class="docs-index" aria-label="版本目录"><a href="#current-release">当前版本</a><a href="#release-notes">更新与工作规则</a><a href="#release-history">历史安装包</a><a href="#legacy-task-groups">历史功能说明</a></nav>
+    <header class="docs-intro"><h1>版本与下载</h1><p>下载当前版本，或回查以前的安装包。</p></header>
+    <nav class="docs-index" aria-label="版本目录"><a href="#current-release">当前版本</a><a href="#release-notes">本次更新</a><a href="#release-history">历史安装包</a></nav>
     <section id="current-release" class="current-release"><h2>1.0.0 正式安装版</h2><p>2026 年 11 月 13 日 · v1.0.0.20261113.1</p><div class="download-actions"><a class="site-button download-link" href="/download/WorkBox-1.0.0-Setup-x64-20261113-r1.exe"><svg class="wb-icon" aria-hidden="true"><use href="#i-download"/></svg>下载 Windows 版</a><a class="download-fallback" href="https://github.com/232577/workbox/releases/download/v1.0.0.20261113.1/WorkBox-1.0.0-Setup-x64-20261113-r1.exe">GitHub 备用下载</a></div><p>安装包未做商业代码签名；升级前先备份数据与材料，详见<a href="/guide.html#installation">安装与升级说明</a>。</p><p>来源提交 <a href="https://github.com/232577/workbox/commit/6278c1c3319468e4f0658e0cf1b086d756bd44d2"><code>6278c1c3319468e4f0658e0cf1b086d756bd44d2</code></a>。</p><details class="package-details"><summary>安装包与 SHA-256 校验值</summary><div class="package-content"><p>WorkBox-1.0.0-Setup-x64-20261113-r1.exe<br>42,422,935 字节（约 42.4 MB）</p><code id="checksum">fb6c2b5f29df4af3b6858d79676d9e2cce2310b6f00e16971a78d190fa34c19d</code><button id="copy-checksum" class="copy-button" type="button">复制校验值</button><p id="copy-status" class="copy-status" role="status" aria-live="polite"></p></div></details></section>
-    <section id="release-notes" class="release-notes"><h2>当前版本与工作规则</h2>
+    <section id="release-notes" class="release-notes"><h2>这次更新了什么</h2>
+      <ul class="release-highlights">
+        <li><h3>按需要导出项目表</h3><p>按当前筛选结果，或明确勾选的项目导出。原来的待开发名单仍可用。</p><a href="/guide.html#project-table-export">查看导出方法</a></li>
+        <li><h3>合并后，原批次仍可查</h3><p>保留项目的原建项批次；此前已合并的项目，刷新即可恢复原批次。</p><a href="/guide.html#project-batches">了解批次归属</a></li>
+        <li><h3>收件与工作台更稳妥</h3><p>包含恢复阻断、嵌套 ZIP 归属与桌面队列修复，沿用统一立方标志。</p><a href="#release-details">查看完整说明</a></li>
+      </ul>
+      <details id="release-details" class="release-details"><summary>完整更新与工作规则</summary><div class="release-details-content">
 <p>先按状态、类型、首次新增日期和批次筛选，再打开“导出项目表”，选择“当前筛选结果”。需要挑选项目时，开启“批量选择”并勾选，再选择“已勾选项目”。两种范围适用于全部项目状态，两项都显示项目数；无勾选时“已勾选项目”不可用，不会导出全部。首次新增日期不随重复收件或状态变更改变。</p><p>Excel 包含名称、状态、类型、首次新增日期、收件批次编号、加急、截止日期、备注和范围说明。原单列待开发名单继续保留：先选择“待开发”，再打开“导出项目表”菜单，选择“全部待开发名单（仅名称）”。导出可取消，不改变项目和材料。</p>
 <p>误建项目改名并确认合并后，原建项批次不会被新收件批次遮住，两个批次都可查到这个项目。</p><p>之前已合并的项目，刷新即可恢复原批次，无须重做合并。连续合并同样适用；同批按项目只计一次，首次新增日期沿用保留项目，不改写历史材料和交付记录。</p>
 <p>构建 v1.0.0.20261113.1，来源提交 6278c1c3319468e4f0658e0cf1b086d756bd44d2。统一立方体与白色 W 标志。同时包含最新恢复阻断、嵌套 ZIP 归属和桌面队列修复：恢复待处理时暂停存储写入；嵌套已登记项目的 ZIP 不串入父项目；主列表读取失败保留上次结果并可重试，任务队列不会卡住。已有历史关联和交付事实不自动改写。悬浮窗默认 48×48 逻辑像素，右键可选 32、40、48、56、64，重启保留尺寸；保存失败时保持原尺寸。应用、托盘、工作台和网页图标同源，保留拖放、点击打开与窗口恢复。批量选择后，可在已选项目的右键菜单中统一“标记加急”或“取消加急”。菜单显示所选数量，操作对象固定为打开菜单时的选择；混合加急状态也可一次统一设置。单选和右击未选项目仍只处理当前项目，多选菜单的其他操作继续只作用于“当前项目”。</p>
@@ -51,8 +57,8 @@
         <p>新安装的归档分类预设按最近有效交付的单项目归档判断，恰好 16 个文件归为“可运行”，其他已知数量归为“生成材料”，数量未知时保留原分类。自动分类默认关闭，升级沿用原配置。ZIP 自动交付另按自动模式的门槛判断。</p>
         <p>小悬浮球保持置顶，不抢输入焦点，展开的管理窗口不置顶。项目改名同步登记目录，同名项目先预览再确认合并，原材料和历史交付记录保留，不会在启动时自动合并。</p>
         <p>Fluent 项目列表、文档表格、状态筛选和设置卡片支持浅色、深色外观。新项目默认归为“生成材料”，可在“高级设置 → 工作设置 → 管理项目类型 → 新项目默认类型”修改；旧项目类型、交付记录和原有配置保持。项目总览与今日交付的“修改类型…”支持单选、多选和类型管理，今日交付按当前类型汇总，显示各类型数量和合计，改分类不改变总数。旧项目保持未分类时不自动补分，首次交付、补交、排除与撤销规则保持。宽窗保留左侧项目、右侧文档分栏与项目右键菜单，横向导航显示今日工作量。</p>
-        </section>
-    <section id="release-history" class="release-history"><h2>历史正式安装版</h2><p>以下保留原始安装包及下载地址。日常使用请选择当前版本。</p><div class="wb-release-links">
+        </div></details></section>
+    <section id="release-history" class="release-history"><h2>以前的版本</h2><p>历史包保留原文件与下载地址。日常使用建议选择当前版本。</p><details id="historical-downloads" class="historical-downloads"><summary>查看 33 个历史安装包</summary><div class="wb-release-links">
           <a class="download-link" href="/download/WorkBox-1.0.0-Setup-x64-20261112-r4.exe">历史正式安装版 · 11月12日 r4（恢复阻断、嵌套 ZIP 与桌面队列修复）</a>
           <a class="download-link" href="/download/WorkBox-1.0.0-Setup-x64-20261112-r3.exe">历史正式安装版 · 11月12日 r3（立方 Logo 与五档悬浮窗）</a>
           <a class="download-link" href="/download/WorkBox-1.0.0-Setup-x64-20261112-r2.exe">历史正式安装版 · 11月12日 r2（批量加急与取消加急）</a>
@@ -78,7 +84,7 @@
           <a class="download-link" href="/download/WorkBox-1.0.0-Setup-x64-20261102.exe">历史正式安装版 · 11月2日（紧凑工作台）</a>
           <a class="download-link" href="/download/WorkBox-1.0.0-Setup-x64-20261030.exe">历史正式安装版 · 10月30日（Fluent工作台）</a>
           <a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-Types-20261029-Setup-x64.exe">历史正式安装版 · 10月29日（类型统计）</a><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-Sidebar-20261029-Setup-x64.exe">历史正式安装版 · 10月29日（侧栏）</a><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-Layout-20261029-Setup-x64.exe">历史正式安装版 · 10月29日（布局）</a><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-Workbench-20261029-Setup-x64.exe">历史正式安装版 · 10月29日（工作台）</a><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-Fluent-20261028-Setup-x64.exe">历史正式安装版 · 10月28日（Fluent）</a><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-UI-20261028-Setup-x64.exe">历史正式安装版 · 10月28日（双主题）</a><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-20261028-Setup-x64.exe">历史正式安装版 · 10月28日（引导）</a><a class="download-link" href="/download/WorkBox-1.0.0-Enhanced-20261027-Setup-x64.exe">历史正式安装版 · 10月27日（收件）</a><a class="download-link" href="/download/WorkBox-1.0.0-Setup-x64.exe">历史正式安装版 · 10月26日（初版）</a><a href="https://github.com/232577/workbox/releases">版本记录 ↗</a><a href="https://github.com/232577/workbox">公开源码 ↗</a>
-        </div></section>
+        </div></details></section>
     <details id="legacy-task-groups" class="wb-section wb-wrap wb-release-history"><summary>查看11月5日 r2历史任务组说明</summary>
     <section id="task-groups" class="wb-faq" aria-labelledby="task-groups-title" data-release-state="historical">
       <div><h2 id="task-groups-title">11月5日 r2<br>任务组流程。</h2><p>以下保留 v1.0.0.20261105.2 的任务组、材料版本与人工交接说明，供旧版本使用者回查。</p></div>

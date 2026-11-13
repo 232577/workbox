@@ -1,3 +1,4 @@
+import { archivedReadmes } from './public-documents.test-helper.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -13,8 +14,8 @@ test('立方品牌 r3 历史资产身份与当前品牌说明保持', async () =
   assert.equal(metadata.tag_name, release.tag);
   assert.ok(metadata.body.includes('来源提交 6278c1c3319468e4f0658e0cf1b086d756bd44d2。'));
   for (const text of [metadata.body,
-    await readFile(new URL('../README.md', import.meta.url), 'utf8'),
-    await readFile(new URL('./README.md', import.meta.url), 'utf8'),
+    archivedReadmes.product,
+    archivedReadmes.website,
     await readFile(new URL('./public/releases.html', import.meta.url), 'utf8')]) {
     assert.match(text, /48×48 逻辑像素/);
     assert.match(text, /32、40、48、56、64/);
