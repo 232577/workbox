@@ -251,4 +251,3 @@ Cloudflare 静态资源单文件上限低于本安装包大小，所以安装包
 实际界面图为 `workbox-pending-export-light-20261109-r4.png` 和 `workbox-pending-export-narrow-dark-20261109-r4.png`。原有 56 项媒体保留原始字节及各自来源，包括 11月9日 r2 的[浅色原图](../../website/public/media/workbox-pending-export-light-20261109-r2.png)与[窄窗深色原图](../../website/public/media/workbox-pending-export-narrow-dark-20261109-r2.png)、11月9日 r1 两张项目图及 `workbox-official-20261030` 历史视频、海报和字幕。教程图注标明原构建日期。
 MP4请求先经过Worker，声明字节范围并正确返回206/416，以支持浏览器拖动进度；
 教程读取不进入安装包下载统计。媒体大小限制为25 MiB，其他静态资源仍由Assets处理。
-
