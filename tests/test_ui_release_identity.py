@@ -71,8 +71,13 @@ def test_integrated_cube_and_recovery_fixes_upgrade_the_published_cube_release()
 
 
 def test_project_table_and_original_batch_fix_upgrade_the_published_r4():
-    assert update_client.CURRENT_TAG == 'v1.0.0.20261113.1'
+    assert update_client.build_key(update_client.CURRENT_TAG) >= update_client.build_key('v1.0.0.20261113.1')
     assert update_client.build_key(update_client.CURRENT_TAG) > update_client.build_key('v1.0.0.20261112.4')
+
+
+def test_simplified_product_entry_has_a_new_identity_after_published_r1():
+    assert update_client.CURRENT_TAG == 'v1.0.0.20261113.2'
+    assert update_client.build_key(update_client.CURRENT_TAG) > update_client.build_key('v1.0.0.20261113.1')
 
 
 def test_build_probe_reports_release_without_creating_business_data(tmp_path):
@@ -102,6 +107,7 @@ def test_build_probe_reports_release_without_creating_business_data(tmp_path):
     ('v1.0.0.20261112.3', 'v1.0.0.20261112.2', 'WorkBox-1.0.0-Setup-x64-20261112-r3.exe'),
     ('v1.0.0.20261112.4', 'v1.0.0.20261112.3', 'WorkBox-1.0.0-Setup-x64-20261112-r4.exe'),
     ('v1.0.0.20261113.1', 'v1.0.0.20261112.4', 'WorkBox-1.0.0-Setup-x64-20261113-r1.exe'),
+    ('v1.0.0.20261113.2', 'v1.0.0.20261113.1', 'WorkBox-1.0.0-Setup-x64-20261113-r2.exe'),
 ])
 def test_release_upgrades_previous_without_reoffering_installed_or_older(tag, previous, filename):
     payload = {'tag_name': tag, 'draft': False, 'prerelease': False,
