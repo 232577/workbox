@@ -31,7 +31,7 @@ test('新版横向工作台说明与导航和两种导出按钮一致', () => {
   assert.match(workbench, /顶部横向导航.*“项目”.*“今日工作量”.*“高级设置”/);
   assert.match(workbench, /搜索和“筛选”在清单上方/);
   assert.match(workbench, /点击“导出全部”可获取全部交付表/);
-  assert.match(html, /从窗口底部或“高级设置 → 检查更新”主动检查一次/);
+  assert.match(html, /从“高级设置 → 检查更新”主动检查一次/);
 });
 
 test('11月9日r4历史下载保持原安装包与构建，稳定清单继续提供横向工作台说明', async () => {
