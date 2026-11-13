@@ -71,3 +71,21 @@ test('新说明用两段操作指引交代导出和合并，不向访客展开�
     assert.doesNotMatch(text, /同一只读快照|各原项目分别保留有效收件和任务来源|最终项目身份/);
   }
 });
+
+test('两种项目表范围适用所有状态，旧单列名单步骤必须先选择待开发', async () => {
+  const metadata = await (await handleRequest(new Request('https://example.com/updates/stable.json'), {})).json();
+  const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
+  const siteReadme = await readFile(new URL('./README.md', import.meta.url), 'utf8');
+  const exportDetails = documents['/guide.html'].match(/<details\b[^>]*id="project-table-export"[^>]*>([\s\S]*?)<\/details>/)?.[1];
+  assert.match(exportDetails, /两种范围适用于全部项目状态/);
+  let instructions = 0;
+  for (const text of [documents['/guide.html'], documents['/releases.html'], metadata.body, readme, siteReadme]) {
+    const steps = text.split(/[。！？]/).filter(sentence => sentence.includes('全部待开发名单（仅名称）'));
+    assert.ok(steps.length > 0, '每个当前说明入口都应有旧名单操作指引');
+    for (const step of steps) {
+      assert.match(step, /先选择“待开发”，再打开“导出项目表”菜单，选择“全部待开发名单（仅名称）”/);
+      instructions++;
+    }
+  }
+  assert.equal(instructions, 8, '指南两处、版本页两处、更新说明两处、两份README各一处');
+});
