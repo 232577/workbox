@@ -117,8 +117,9 @@ test('r7待完成显示零与总数，日期和旧稿规则在各入口一致', 
   assert.match(download, /待完成4，共5.*待完成0，共1.*待完成只计待开发和开发中/);
   assert.doesNotMatch(download, /余N|r5 修正批次余量/);
   const filters = html.match(/<details><summary>项目筛选和操作在哪里？<\/summary>([\s\S]*?)<\/details>/)?.[1];
-  assert.match(filters, /首次新增日期.*批次下方.*常驻/);
-  assert.doesNotMatch(filters, /展开筛选区[^。]*首次新增日期/);
+  assert.match(filters, /首次新增日期和类型下拉位于批次下方，常驻显示/);
+  assert.match(filters, /点击“筛选”展开筛选区，可按归档范围、截止日期或加急查找/);
+  assert.doesNotMatch(filters, /展开筛选区[^。]*(?:首次新增日期|类型)/);
   for (const text of [html, readme, siteReadme]) {
     assert.match(text, /(?:备份|迁移)[^。\n]*已登记历史文稿目录/);
     assert.match(text, /已登记历史文稿目录[^。\n]*原工作位置/);
