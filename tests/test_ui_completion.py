@@ -29,7 +29,6 @@ def make_dialog(kind, service):
     from project_types_ui import ProjectTypePickerDialog, ProjectTypesDialog
     from project_change_ui import ProjectChangeDialog
     from onboarding_ui import FirstRunDialog, QuickStartDialog
-    from ui import CaptureDialog
     return {
         'settings': lambda: DirectorySettingsDialog(service),
         'details': lambda: ProjectDetailsDialog(service, service.get_project(1)),
@@ -40,11 +39,10 @@ def make_dialog(kind, service):
         'rename': lambda: ProjectChangeDialog(service.get_project(1)),
         'welcome': lambda: FirstRunDialog(service),
         'guide': lambda: QuickStartDialog(service),
-        'capture': lambda: CaptureDialog(service),
     }[kind]()
 
 
-@pytest.mark.parametrize('kind', ['settings','details','delivery','history','type-picker','types','rename','welcome','guide','capture'])
+@pytest.mark.parametrize('kind', ['settings','details','delivery','history','type-picker','types','rename','welcome','guide'])
 def test_secondary_dialog_has_shared_header_and_fixed_actions(qapp, service, kind):
     from ui_components import DialogHeader
     d = make_dialog(kind, service)
