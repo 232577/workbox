@@ -17,7 +17,7 @@ def test_queue_tools_stay_with_the_queue_and_update_is_keyboard_reachable_in_men
     QTest.qWait(100)
     try:
         queue = panel.project_splitter.widget(0)
-        for control in (panel.project_list_heading, panel.batch_filter, panel.bulk_mode):
+        for control in (panel.project_list_heading, panel.added_date_filter, panel.bulk_mode):
             assert queue.isAncestorOf(control)
             assert control.isVisible()
             position = control.mapTo(queue, QPoint(0, 0))

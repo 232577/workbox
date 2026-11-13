@@ -274,8 +274,9 @@ class ProjectListDelegate(WrappedFluentListDelegate):
     batchHeight = 16
     verticalPadding = 5
 
-    def __init__(self, parent):
+    def __init__(self, parent, *, show_batch_progress=True):
         super().__init__(parent)
+        self.show_batch_progress = show_batch_progress
         self._painting_background = False
 
     def _idle_row_color(self, colors):
@@ -337,6 +338,9 @@ class ProjectListDelegate(WrappedFluentListDelegate):
         detail_top = name[1] + self.blockSpacing
         height = detail_top + detail[1] if detail[1] else name[1]
         markers = index.data(PROJECT_BATCH_MARKERS_ROLE) or []
+        if not self.show_batch_progress:
+            # 仅简化绘制；模型、工具提示及批次筛选保留原始进度事实。
+            markers = [dict(marker, remaining_count=None) for marker in markers]
         badge_line = None
         if markers:
             font = QFont(self.parent().font())

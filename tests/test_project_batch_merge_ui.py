@@ -80,7 +80,7 @@ def test_original_batch_survives_file_intake_and_confirmed_merge_with_combined_f
                 original['delivered_count']) == (2, 2, 1, 0)
         assert service.get_project(target)['batch_id'] == batch_id
 
-        panel.added_date_filter.setCurrentIndex(panel.added_date_filter.findData('2026-11-06'))
+        panel.added_date_filter.set_day('2026-11-06')
         assert visible_ids(panel) == (target,)
         panel.status_buttons['待交付'].click()
         assert visible_ids(panel) == (target,)
@@ -89,7 +89,7 @@ def test_original_batch_survives_file_intake_and_confirmed_merge_with_combined_f
         panel.status_buttons['待开发'].click()
         assert visible_ids(panel) == () and panel.empty.isVisible()
         assert panel.batch_progress_summary.text() == '待完成1，共2'
-        panel.added_date_filter.setCurrentIndex(panel.added_date_filter.findData('2026-11-07'))
+        panel.added_date_filter.set_day('2026-11-07')
         assert visible_ids(panel) == (sibling,)
         assert panel.batch_filter.currentData() == original_key
         assert panel.batch_progress_summary.text() == '待完成1，共2'

@@ -25,6 +25,7 @@ from fluent_views import (WorkbenchListWidget, WorkbenchTableWidget, configure_n
                           batch_progress_summary, batch_progress_details, ProjectListDelegate, PROJECT_NAME_ROLE,
                           PROJECT_DETAIL_ROLE, PROJECT_BATCH_MARKERS_ROLE)
 from database import STATUSES
+from project_date_filter import ProjectDateFilter
 from floating import DropSurface
 from parser import ParsedProject
 from ui import human_size, app_icon
@@ -104,9 +105,9 @@ class ProjectList(WorkbenchListWidget):
     """用实际右击行或键盘焦点行定位菜单，空白区域不借用旧选择。"""
     project_context_requested = Signal(int, object)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, show_batch_progress=True):
         super().__init__(parent)
-        self.setItemDelegate(ProjectListDelegate(self))
+        self.setItemDelegate(ProjectListDelegate(self, show_batch_progress=show_batch_progress))
         self.setWordWrap(True)
         self.setTextElideMode(Qt.ElideNone)
         # Width changes are reflowed below; height-only changes must not remeasure every row.
@@ -141,6 +142,42 @@ class ProjectList(WorkbenchListWidget):
                 self.scrollToItem(item, QAbstractItemView.PositionAtTop)
                 offset = max(anchor_top, 1 - self.visualItemRect(item).height())
                 self.verticalScrollBar().setValue(self.verticalScrollBar().value() - offset)
+
+
+class ProjectFilterPanel(QFrame):
+    """附加条件使用 Qt 弹出窗口，避免压缩小窗口中的项目清单。"""
+
+    def __init__(self, parent, trigger):
+        super().__init__(parent, Qt.Popup)
+        self.trigger = trigger
+        self.setObjectName('surface')
+        self.setAccessibleName('更多筛选')
+        self.setWindowTitle('更多筛选')
+        self.setAttribute(Qt.WA_NoMouseReplay)
+        apply_to(self)
+
+    def showEvent(self, event):
+        self.setFixedWidth(min(480, self.parentWidget().width() - 24))
+        self.adjustSize()
+        bounds = self.parentWidget().rect()
+        origin = self.parentWidget().mapToGlobal(bounds.topLeft())
+        anchor = self.trigger.mapToGlobal(QPoint(0, self.trigger.height()))
+        x = min(max(origin.x() + 12, anchor.x()), origin.x() + bounds.width() - self.width() - 12)
+        y = min(anchor.y() + 4, origin.y() + bounds.height() - self.height() - 12)
+        self.move(x, max(origin.y() + 12, y))
+        super().showEvent(event)
+
+    def hideEvent(self, event):
+        with QSignalBlocker(self.trigger):
+            self.trigger.setChecked(False)
+        super().hideEvent(event)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape:
+            self.hide()
+            event.accept()
+        else:
+            super().keyPressEvent(event)
 
 
 def standard_list_scrolling(widget):
@@ -477,8 +514,7 @@ class CompactPanel(DropSurface, QWidget):
         self.project_scope_tools = QWidget()
         scope_tools = QVBoxLayout(self.project_scope_tools)
         scope_tools.setContentsMargins(0, 0, 0, 0)
-        scope_tools.setSpacing(8)
-        filters = self.project_batch_row = QHBoxLayout()
+        scope_tools.setSpacing(4)
         self.status_group = QButtonGroup(self)
         self.status_buttons = {}
         self.status_segments = StatusSegments()
@@ -488,7 +524,7 @@ class CompactPanel(DropSurface, QWidget):
         self.status_segments.setAccessibleName('项目状态筛选')
         for index, state in enumerate((None, *STATUSES)):
             route = state or 'all'
-            item = self.status_segments.addItem(route, state or '全部')
+            item = self.status_segments.addItem(route, (state or '全部') + '\n0')
             setCustomStyleSheet(item, control_style('light', 'segments'), control_style('dark', 'segments'))
             item.setObjectName('statusFilterItem')
             item.setCheckable(True)
@@ -508,29 +544,23 @@ class CompactPanel(DropSurface, QWidget):
         self.batch_filter.setMinimumWidth(0)
         self.batch_filter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.batch_filter.setAccessibleName('批次筛选')
-        self.project_filter_button = button('筛选', 'filter')
+        self.project_filter_button = button('更多筛选', 'filter')
         self.project_filter_button.setObjectName('projectFilterToggle')
-        self.project_filter_button.setToolTip('筛选归档范围、截止日期和加急项目')
-        filters.addWidget(self.batch_filter, 1)
+        self.project_filter_button.setToolTip('筛选批次、类型、归档范围、截止日期和加急项目')
         top.insertWidget(2, self.project_filter_button)
         self.clear_project_filters = button('清除')
         self.clear_project_filters.setObjectName('clearProjectFilters')
         self.clear_project_filters.setAccessibleName('清除附加项目筛选')
-        self.clear_project_filters.setToolTip('清除归档范围、截止日期、类型和加急筛选')
+        self.clear_project_filters.setToolTip('清除批次、归档范围、截止日期、类型和加急筛选')
         self.clear_project_filters.hide()
         top.insertWidget(3, self.clear_project_filters)
-        scope_tools.addLayout(filters)
-        self.added_date_filter = QComboBox()
-        self.added_date_filter.setAccessibleName('新增日期筛选')
-        self.added_date_filter.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
-        self.added_date_filter.setMinimumContentsLength(8)
-        self.added_date_filter.setMinimumWidth(0)
-        self.added_date_filter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.added_date_filter.setToolTip('按项目首次新增日期筛选（北京时间）；与截止日期、批次独立。')
-        date_type_row = QHBoxLayout()
-        date_type_row.setSpacing(8)
-        date_type_row.addWidget(self.added_date_filter, 1)
-        scope_tools.addLayout(date_type_row)
+        self.added_date_filter = ProjectDateFilter(self)
+        date_row = QHBoxLayout()
+        date_row.setSpacing(8)
+        self.project_count_context = label('首次记录\n日常项目', 'subtle')
+        date_row.addWidget(self.project_count_context)
+        date_row.addWidget(self.added_date_filter, 1)
+        scope_tools.insertLayout(0, date_row)
         self.project_list_heading = label('项目清单', 'queueHeader')
         self.pending_export_button = button('导出名单')
         self.pending_export_button.setObjectName('pendingProjectExport')
@@ -557,10 +587,9 @@ class CompactPanel(DropSurface, QWidget):
         self.project_export_menu.aboutToShow.connect(self.sync_project_export_actions)
         self.bulk_mode = QCheckBox('批量选择')
         self.bulk_mode.setAccessibleName('批量选择')
-        self.project_filter_panel = QWidget()
-        self.project_filter_panel.setObjectName('projectFilterPanel')
+        self.project_filter_panel = ProjectFilterPanel(self, self.project_filter_button)
         views = QGridLayout(self.project_filter_panel)
-        views.setContentsMargins(0, 0, 0, 0)
+        views.setContentsMargins(12, 12, 12, 12)
         views.setSpacing(8)
         self.archive_filter = QComboBox()
         self.archive_filter.setAccessibleName('项目归档筛选')
@@ -574,17 +603,16 @@ class CompactPanel(DropSurface, QWidget):
         self.type_filter = QComboBox()
         self.type_filter.setAccessibleName('项目类型筛选')
         self.type_filter.setMinimumWidth(0)
-        self.type_filter.setMaximumWidth(170)
         self.type_filter.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.type_filter.setMinimumContentsLength(5)
         self.type_filter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.type_filter.setToolTip('项目类型；与首次新增日期、状态和批次共同筛选。')
         self.type_filter.currentIndexChanged.connect(self._refresh_project_filters)
-        date_type_row.addWidget(self.type_filter, 1)
-        views.addWidget(self.archive_filter, 0, 0)
-        views.addWidget(self.due_filter, 0, 1)
-        views.addWidget(self.urgent_filter, 1, 0)
-        scope_tools.addWidget(self.project_filter_panel)
+        views.addWidget(self.batch_filter, 0, 0)
+        views.addWidget(self.type_filter, 0, 1)
+        views.addWidget(self.archive_filter, 1, 0)
+        views.addWidget(self.due_filter, 1, 1)
+        views.addWidget(self.urgent_filter, 2, 0)
         self.project_filter_panel.hide()
         self.project_filter_button.toggled.connect(self.project_filter_panel.setVisible)
         self.clear_project_filters.clicked.connect(self.reset_project_filters)
@@ -606,7 +634,7 @@ class CompactPanel(DropSurface, QWidget):
         self.intake_log_button.setAccessibleName('收录记录')
         self.intake_log_button.setToolTip('查看普通文件收录结果、所属项目与判断依据')
         self.intake_log_button.clicked.connect(self.show_intake_log)
-        self.project_list = ProjectList()
+        self.project_list = ProjectList(show_batch_progress=False)
         self.project_list.setObjectName('projectList')
         self.project_list.setMinimumHeight(72)
         self.project_list.setAccessibleName('项目列表')
@@ -643,7 +671,7 @@ class CompactPanel(DropSurface, QWidget):
         active_filters.setContentsMargins(0, 0, 0, 0)
         active_filters.setSpacing(4)
         self.project_filter_chips = {}
-        for number, key in enumerate(('archive', 'due', 'urgent', 'type')):
+        for number, key in enumerate(('batch', 'archive', 'due', 'urgent', 'type')):
             chip = button('')
             chip.setObjectName('filterChip')
             chip.setMinimumWidth(0)
@@ -657,7 +685,7 @@ class CompactPanel(DropSurface, QWidget):
         self.batch_progress_summary = label('', 'subtle', True)
         self.batch_progress_summary.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.batch_progress_summary.hide()
-        queue_tools.addWidget(self.batch_progress_summary)
+        views.addWidget(self.batch_progress_summary, 3, 0, 1, 2)
         project_layout.addWidget(self.project_queue_tools)
         self.intake_log_button.setParent(project_side)
         self.intake_log_button.hide()
@@ -874,7 +902,7 @@ class CompactPanel(DropSurface, QWidget):
         self.cancel_button.clicked.connect(self.cancel_requested)
         self.search.textChanged.connect(self._search_changed)
         self.batch_filter.currentIndexChanged.connect(self._refresh_project_filters)
-        self.added_date_filter.currentIndexChanged.connect(self._refresh_project_filters)
+        self.added_date_filter.changed.connect(self._refresh_project_filters)
         self.unmatched.toggled.connect(self.refresh)
         self.project_list.itemSelectionChanged.connect(self.select_project)
         self.project_list.itemClicked.connect(self.show_project_detail)
@@ -1005,6 +1033,8 @@ class CompactPanel(DropSurface, QWidget):
 
     def sync_navigation(self, *_):
         index = self.tabs.currentIndex()
+        if index != 0:
+            self.project_filter_panel.hide()
         is_classification = getattr(self, 'archive_classification_page', None) is self.tabs.currentWidget()
         self.header_surface.setVisible(
             self.tabs.currentWidget() is not getattr(self, 'delivery_page_container', None))
@@ -1054,7 +1084,9 @@ class CompactPanel(DropSurface, QWidget):
 
     def reset_project_filters(self):
         with (QSignalBlocker(self.archive_filter), QSignalBlocker(self.due_filter),
-              QSignalBlocker(self.type_filter), QSignalBlocker(self.urgent_filter)):
+              QSignalBlocker(self.type_filter), QSignalBlocker(self.urgent_filter),
+              QSignalBlocker(self.batch_filter)):
+            self.batch_filter.setCurrentIndex(0)
             self.archive_filter.setCurrentIndex(0)
             self.due_filter.setCurrentIndex(0)
             self.type_filter.setCurrentIndex(0)
@@ -1063,7 +1095,7 @@ class CompactPanel(DropSurface, QWidget):
         self._refresh_project_filters(preserve_project_position=True)
 
     def clear_project_filter(self, key):
-        control = {'archive': self.archive_filter, 'due': self.due_filter,
+        control = {'batch': self.batch_filter, 'archive': self.archive_filter, 'due': self.due_filter,
                    'type': self.type_filter, 'urgent': self.urgent_filter}[key]
         with QSignalBlocker(control):
             if key == 'urgent':
@@ -1078,7 +1110,8 @@ class CompactPanel(DropSurface, QWidget):
         blockers = [QSignalBlocker(control) for control in controls]
         self.search.clear()
         self.status_buttons[None].setChecked(True)
-        for control in (self.batch_filter, self.added_date_filter, self.archive_filter,
+        self.added_date_filter.clear()
+        for control in (self.batch_filter, self.archive_filter,
                         self.due_filter, self.type_filter):
             control.setCurrentIndex(0)
         self.urgent_filter.setChecked(False)
@@ -1118,8 +1151,7 @@ class CompactPanel(DropSurface, QWidget):
             return
         title = '已勾选项目' if mode == 'checked' else '当前筛选结果'
         state = next((state for state, control in self.status_buttons.items() if control.isChecked()), None)
-        day = self.added_date_filter.currentData()
-        date_caption = ('日期未知' if day == 'unknown' else day) if day is not None else '所有日期'
+        date_caption = self.added_date_filter.caption()
         details = [f'{title}（{len(project_ids)}项）', f'状态：{state or "全部"}',
                    f'首次新增日期（北京时间）：{date_caption}', '类型：' + self.type_filter.currentText(),
                    '批次：' + self.batch_filter.currentText(), self.archive_filter.currentText()]
@@ -1133,6 +1165,7 @@ class CompactPanel(DropSurface, QWidget):
 
     def _sync_filter_chips(self, scope):
         values = (
+            ('batch', scope[2] is not None, self.batch_filter.currentText()),
             ('archive', scope[3] is not False, self.archive_filter.currentText()),
             ('due', scope[4] is not None, self.due_filter.currentText()),
             ('urgent', scope[5], '只看加急'),
@@ -1175,12 +1208,12 @@ class CompactPanel(DropSurface, QWidget):
                     self.refresh_type_controls()
                 batch = self.batch_filter.currentData()
                 status = next((s for s, b in self.status_buttons.items() if b.isChecked()), None)
-                scope = (self.search.text(), status, batch, self.archive_filter.currentData(), self.due_filter.currentData(), self.urgent_filter.isChecked(), self.type_filter.currentData(), self.added_date_filter.currentData())
+                scope = (self.search.text(), status, batch, self.archive_filter.currentData(), self.due_filter.currentData(), self.urgent_filter.isChecked(), self.type_filter.currentData(), self.added_date_filter.selection())
                 deleted_view = scope[3] == 'deleted'
                 snapshot = self.service.project_workbench_snapshot(
                     scope[0], scope[1], scope[2], scope[5],
                     archived=None if deleted_view else scope[3], due_filter=scope[4],
-                    deleted=deleted_view, type_id=scope[6], added_on=scope[7])
+                    deleted=deleted_view, type_id=scope[6], **self.added_date_filter.filter_kwargs())
                 active_batch = next((item for item in snapshot['batch_options'] if item['key'] == batch), None)
                 if batch is not None and active_batch is None:
                     batch = None
@@ -1188,7 +1221,7 @@ class CompactPanel(DropSurface, QWidget):
                     snapshot = self.service.project_workbench_snapshot(
                         scope[0], scope[1], None, scope[5],
                         archived=None if deleted_view else scope[3], due_filter=scope[4],
-                        deleted=deleted_view, type_id=scope[6], added_on=scope[7])
+                        deleted=deleted_view, type_id=scope[6], **self.added_date_filter.filter_kwargs())
             except (OSError, RuntimeError, sqlite3.Error, ValueError) as error:
                 self._project_read_error = ('项目清单读取失败，保留上次结果；请调整搜索或筛选重试。\n'
                                             + str(error))
@@ -1199,7 +1232,6 @@ class CompactPanel(DropSurface, QWidget):
                 self._project_read_error = ''
                 self._render_notice()
             self.refresh_batch_filter(snapshot['batch_options'], batch)
-            self.refresh_added_date_filter(snapshot.get('added_date_choices', []), scope[7])
             if deleted_view and self.bulk_mode.isChecked():
                 self.bulk_mode.setChecked(False)
             rows = snapshot['projects']
@@ -1216,15 +1248,16 @@ class CompactPanel(DropSurface, QWidget):
                 self.show_notice('批次来源存在异常：\n' + '\n'.join(warnings))
             self._batch_warnings = warnings
             active_labels = [caption for active, caption in (
+                (scope[2] is not None, self.batch_filter.currentText()),
                 (scope[3] is not False, self.archive_filter.currentText()),
                 (scope[4] is not None, self.due_filter.currentText()),
                 (scope[5], '只看加急'),
                 (scope[6] is not None, self.type_filter.currentText()),
             ) if active]
             active_filters = len(active_labels)
-            self.project_filter_button.setText(f'筛选 {active_filters}' if active_filters else '筛选')
+            self.project_filter_button.setText(f'更多筛选 {active_filters}' if active_filters else '更多筛选')
             filter_description = ('生效筛选：' + '、'.join(active_labels) if active_labels
-                                  else '筛选归档范围、截止日期和加急项目')
+                                  else '筛选批次、类型、归档范围、截止日期和加急项目')
             self.project_filter_button.setToolTip(filter_description)
             self.project_filter_button.setAccessibleDescription(filter_description)
             self.clear_project_filters.setVisible(active_filters > 0)
@@ -1239,8 +1272,18 @@ class CompactPanel(DropSurface, QWidget):
                 self.empty.setText('没有匹配的项目。可调整搜索或筛选。' if self.service.db.counts()['projects']
                                    else '还没有项目。点击「粘贴消息」开始收录。')
             self.deleted_note.setVisible(deleted_view)
-            self.project_list_heading.setText(f'项目清单 · {len(rows)}项')
-            self.project_list_heading.setAccessibleDescription(f'当前筛选结果 {len(rows)} 项')
+            self.project_list_heading.setText(f'项目清单 · {len(rows)}件')
+            self.project_list_heading.setAccessibleDescription(f'当前筛选结果 {len(rows)} 个项目')
+            self.project_status_counts = snapshot['status_counts']
+            for state, control in self.status_buttons.items():
+                count = snapshot['total_count'] if state is None else self.project_status_counts[state]
+                caption = state or '全部'
+                control.setText(f'{caption}\n{count}')
+                control.setAccessibleName(f'{caption} {count}件')
+                control.setAccessibleDescription('所选首次记录日期及其他筛选范围内，项目的当前状态件数。')
+            self.status_segments.setAccessibleDescription('按项目首次记录日期统计，分类显示当前状态；不是历史状态或剩余工作量。')
+            self.project_count_context.setText('首次记录\n' + self.archive_filter.currentText())
+            self.project_count_context.setToolTip('按北京时间的首次记录日期筛选项目，各状态显示当前件数。更改文件或状态不会改变首次记录日期。')
             if not _project_only:
                 try:
                     self._refresh_other_views()
@@ -1300,32 +1343,6 @@ class CompactPanel(DropSurface, QWidget):
                 self.batch_filter.setItemData(index, description, Qt.AccessibleDescriptionRole)
             self.batch_filter.setCurrentIndex(max(0, self.batch_filter.findData(batch)))
         self._batch_filter_signature = signature
-
-    def refresh_added_date_filter(self, options, added_on):
-        values = tuple((item['added_on'], item['label'], item['total_count']) for item in options)
-        missing = added_on if added_on is not None and all(value[0] != added_on for value in values) else None
-        signature = (values, missing)
-        if signature != getattr(self, '_added_date_filter_signature', None):
-            with QSignalBlocker(self.added_date_filter):
-                self.added_date_filter.clear()
-                self.added_date_filter.addItem('所有新增日期', None)
-                for day, caption, count in values:
-                    self.added_date_filter.addItem(caption, day)
-                    index = self.added_date_filter.count() - 1
-                    details = f'{caption} 首次新增 · 全状态 {count} 项'
-                    self.added_date_filter.setItemData(index, details, Qt.ToolTipRole)
-                    self.added_date_filter.setItemData(index, details, Qt.AccessibleDescriptionRole)
-                if missing is not None:
-                    caption = '日期未知' if missing == 'unknown' else missing
-                    self.added_date_filter.addItem(caption, missing)
-                    self.added_date_filter.setItemData(self.added_date_filter.count() - 1,
-                        f'{caption}（当前范围无项目）', Qt.ToolTipRole)
-                self.added_date_filter.setCurrentIndex(max(0, self.added_date_filter.findData(added_on)))
-            self._added_date_filter_signature = signature
-        description = (self.added_date_filter.currentData(Qt.ToolTipRole) or self.added_date_filter.currentText()) \
-            + '\n按项目首次新增日期（北京时间）；统计含全状态，与当前结果数、截止日期、批次独立。更新文件或状态不会改变此日期。'
-        self.added_date_filter.setToolTip(description)
-        self.added_date_filter.setAccessibleDescription(description)
 
     def sync_zip_navigation(self):
         review_count = getattr(self, '_zip_review_count', 0)
@@ -1437,7 +1454,7 @@ class CompactPanel(DropSurface, QWidget):
         self.urgent_filter.setChecked(False)
         self.archive_filter.setCurrentIndex(2 if any(all_projects[pid].get('archived_at') for pid in ids) else 0)
         self.batch_filter.setCurrentIndex(0)
-        self.added_date_filter.setCurrentIndex(0)
+        self.added_date_filter.clear()
         self.bulk_mode.setChecked(False)
         del blockers
         self.status_segments.setCurrentItem('all')
@@ -2153,6 +2170,10 @@ class CompactPanel(DropSurface, QWidget):
         self.hide()
         event.ignore()
 
+    def hideEvent(self, event):
+        self.project_filter_panel.hide()
+        super().hideEvent(event)
+
     def sync_theme_menu(self, *_):
         for mode, action in self.theme_actions.items():
             action.setChecked(mode == current_mode())
@@ -2212,7 +2233,8 @@ class CompactPanel(DropSurface, QWidget):
                                                    8 if compact else 14, 6 if compact else 10)
         self.project_page_layout.setSpacing(4 if compact else 8)
         self.project_card_layout.setContentsMargins(0, 0, 6 if compact else 12, 0)
-        self.project_card_layout.setSpacing(4 if compact else 8)
+        self.project_card_layout.setSpacing(2 if compact else 8)
+        self.project_scope_tools.layout().setSpacing(0 if compact else 4)
         self.document_card_layout.setContentsMargins(8 if compact else 14, 4 if compact else 8,
                                                      8 if compact else 14, 4 if compact else 8)
         self.document_card_layout.setSpacing(4 if compact else 6)
@@ -2263,7 +2285,7 @@ class CompactPanel(DropSurface, QWidget):
         if not hasattr(self, '_project_narrow'):
             return
         margins = self.project_card_layout.contentsMargins()
-        filter_width = self.batch_filter.minimumSizeHint().width()
+        filter_width = self.added_date_filter.minimumSizeHint().width() + 70
         self.project_side.setMinimumWidth(
             max(self.status_segments.sizeHint().width(), filter_width)
             + margins.left() + margins.right())
@@ -2278,6 +2300,8 @@ class CompactPanel(DropSurface, QWidget):
         self.project_side.setVisible(not narrow or not detail)
         self.document_side.setVisible(not self.bulk_mode.isChecked() and (not narrow or detail))
         detail_command = self.tabs.currentIndex() == 0 and narrow and detail
+        if detail_command:
+            self.project_filter_panel.hide()
         self.project_back_button.setVisible(detail_command)
         if self.tabs.currentIndex() in (0, 1):
             self.search.setVisible(not detail_command)
@@ -2288,14 +2312,6 @@ class CompactPanel(DropSurface, QWidget):
             self.files_button.setProperty('contextSecondary', detail_command)
             self.files_button.style().unpolish(self.files_button)
             self.files_button.style().polish(self.files_button)
-        inline_scope = narrow and (self.status_segments.minimumSizeHint().width()
-                                   + self.batch_filter.minimumSizeHint().width() + 12
-                                   <= self.workbench.width() - 40)
-        if inline_scope:
-            if self.project_batch_row.indexOf(self.status_segments) < 0:
-                self.project_batch_row.insertWidget(0, self.status_segments, 2)
-        elif self.project_scope_tools.layout().indexOf(self.status_segments) < 0:
-            self.project_scope_tools.layout().insertWidget(0, self.status_segments)
         if changed and not narrow and self._project_wide_sizes:
             self.project_splitter.setSizes(self._project_wide_sizes)
 
