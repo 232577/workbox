@@ -1089,12 +1089,12 @@ class FloatingController(QObject):
 
     def prepare_update_install(self, release, installer):
         import sys
-        from update_client import verify_installer
         if sys.platform != 'win32' or not getattr(sys, 'frozen', False):
             raise ValueError('只有Windows安装版可以退出并安装；源码运行不会替换开发目录。')
         if self.closed or self.quitting or self.busy or self.storage_blocked:
             raise RuntimeError('仍有文件任务或恢复事项未完成，请处理完毕后再升级。')
-        verify_installer(installer, release)
+        from incremental_update import verify_downloaded_update
+        verify_downloaded_update(installer, release, Path(sys.executable).resolve().parent)
         delivery = getattr(self.panel, 'today_dialog', None)
         delivery_visible = delivery is not None and delivery.isVisible()
         self.pending_update = (release, installer)

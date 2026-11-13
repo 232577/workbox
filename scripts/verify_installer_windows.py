@@ -37,9 +37,8 @@ def validate_identity(tag: str, installer_sha: str, source: str, info: dict) -> 
         raise ValueError('Candidate identity mismatch')
 
 
-def verify_installed_payload(root: Path, manifest: str, app_sha: str) -> int:
-    root = plain_path(root)
-    seen = set()
+def _manifest_records(manifest: str) -> dict:
+    records, seen = {}, set()
     for line in manifest.splitlines():
         match = re.fullmatch(r'([0-9a-f]{64})  (.+)', line)
         if match is None:
@@ -49,12 +48,55 @@ def verify_installed_payload(root: Path, manifest: str, app_sha: str) -> int:
         if name.casefold() in seen:
             raise ValueError('Duplicate payload path')
         seen.add(name.casefold())
+        records[name] = expected
+    return records
+
+
+def verify_installed_payload(root: Path, manifest: str, app_sha: str, *, require_updater=False) -> int:
+    root = plain_path(root)
+    records = _manifest_records(manifest)
+    for name, expected in records.items():
         path = plain_path(root / name)
         if not path.is_relative_to(root) or digest(path) != expected:
             raise ValueError('Installed payload digest mismatch')
-    if 'workbox.exe' not in seen or digest(root / 'WorkBox.exe') != app_sha:
+    if 'WorkBox.exe' not in records or digest(root / 'WorkBox.exe') != app_sha:
         raise ValueError('Installed application digest mismatch')
-    return len(seen)
+    helpers = [name for name in records if name.casefold() == 'workboxupdater.exe']
+    if require_updater or helpers:
+        if helpers != ['WorkBoxUpdater.exe']:
+            raise ValueError('Installed updater is missing or has an ambiguous name')
+        with plain_path(root / 'WorkBoxUpdater.exe').open('rb') as stream:
+            if stream.read(2) != b'MZ':
+                raise ValueError('Installed updater is not a Windows executable')
+    return len(records)
+
+
+def source_requires_updater(source: str) -> bool:
+    """仅以已核验提交的树判断能力，不读取工作树的新增或缺失文件。"""
+    if not isinstance(source, str) or not re.fullmatch(r'[0-9a-f]{40}', source):
+        raise ValueError('Invalid source commit identity')
+    output = subprocess.check_output(['git', 'ls-tree', source, '--', 'update_helper_main.py'],
+                                     text=True, encoding='utf-8')
+    if not output.strip():
+        return False
+    if re.fullmatch(r'100(?:644|755) blob [0-9a-f]{40}\tupdate_helper_main\.py\n?', output) is None:
+        raise ValueError('Ambiguous updater capability in exact source tree')
+    return True
+
+
+def verify_updater_self_check(root: Path, expected_sha256: str) -> None:
+    helper = plain_path(root / 'WorkBoxUpdater.exe')
+    if (not isinstance(expected_sha256, str) or not re.fullmatch(r'[0-9a-f]{64}', expected_sha256)
+            or digest(helper) != expected_sha256):
+        raise ValueError('Updater digest mismatch before self-check')
+    with helper.open('rb') as stream:
+        if stream.read(2) != b'MZ':
+            raise ValueError('Updater is not a Windows executable')
+    result = subprocess.run([str(helper), '--self-check', '--noninteractive'],
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        timeout=45, creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+    if result.returncode != 0 or digest(helper) != expected_sha256:
+        raise ValueError('Updater self-check failed or executable changed')
 
 
 def registration_exists() -> bool:
@@ -108,6 +150,9 @@ def main(argv=None) -> int:
         raise ValueError('Checked-out source identity mismatch')
     info = json.loads((candidate / 'BUILD_PROVENANCE.json').read_text(encoding='utf-8'))
     validate_identity(args.expected_tag, args.expected_sha, source, info)
+    subprocess.run(['git', 'merge-base', '--is-ancestor', source, 'origin/main'], check=True,
+                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    require_updater = source_requires_updater(source)
     date, revision = build_key(args.expected_tag)
     filename = f'WorkBox-1.0.0-Setup-x64-{date}' + (f'-r{revision}' if revision else '') + '.exe'
     installer = plain_path(candidate / filename)
@@ -117,6 +162,13 @@ def main(argv=None) -> int:
     if digest(manifest_file) != info['payload_manifest_sha256']:
         raise ValueError('Candidate manifest digest mismatch')
     manifest = manifest_file.read_text(encoding='utf-8')
+    records = _manifest_records(manifest)
+    if require_updater and 'WorkBoxUpdater.exe' not in records:
+        raise ValueError('New source requires an updater in the candidate manifest')
+    if ('updater_sha256' in info and (not isinstance(info['updater_sha256'], str)
+            or not re.fullmatch(r'[0-9a-f]{64}', info['updater_sha256'])
+            or info['updater_sha256'] != records.get('WorkBoxUpdater.exe'))):
+        raise ValueError('Candidate updater digest evidence mismatch')
     old = json.loads((previous / 'release.json').read_text(encoding='utf-8-sig'))
     if (old['tag_name'] != args.previous_tag or old['draft'] or old['prerelease']
             or build_key(args.previous_tag) >= build_key(args.expected_tag)):
@@ -144,8 +196,10 @@ def main(argv=None) -> int:
     protected = {database: digest(database), sentinel: digest(sentinel)}
     install(installer, target, out / 'candidate-install.log', upgrade=True)
     assert all(digest(path) == value for path, value in protected.items()), 'Installer changed anonymous data'
-    count = verify_installed_payload(target, manifest, info['app_sha256'])
+    count = verify_installed_payload(target, manifest, info['app_sha256'], require_updater=require_updater)
     assert count == info['payload_files']
+    if require_updater:
+        verify_updater_self_check(target, records['WorkBoxUpdater.exe'])
     runtime = probe(target / 'WorkBox.exe', out / 'candidate-probe.json')
     assert runtime['release_tag'] == args.expected_tag and runtime['version'] == '1.0.0'
     assert Path(runtime['data_dir']).resolve() == data.resolve()
@@ -163,6 +217,7 @@ def main(argv=None) -> int:
         'fresh_previous_install': True, 'candidate_upgrade': True, 'runtime_identity_verified': True,
         'uninstall_verified': True, 'anonymous_database_and_material_preserved': True,
         'initial_and_final_app_registration_absent': True, 'production_data_accessed': False,
+        'updater_required_by_source': require_updater, 'updater_self_check_verified': require_updater,
         'physical_device_claimed': False}
     (out / 'acceptance.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(json.dumps(report))

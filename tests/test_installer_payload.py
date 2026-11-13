@@ -12,6 +12,7 @@ def build_inputs(tmp_path):
     project, built = tmp_path/'project', tmp_path/'built'
     built.mkdir()
     (built/'WorkBox.exe').write_bytes(b'isolated frozen executable')
+    (built/'WorkBoxUpdater.exe').write_bytes(b'MZ isolated updater executable')
     for name in ('python311.dll', 'PySide6/Qt6Core.dll', 'PySide6/plugins/platforms/qwindows.dll'):
         path = built/'_internal'/name
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -31,10 +32,12 @@ def test_payload_contains_runtime_and_not_project_personal_files(build_inputs, t
     output = tmp_path/'payload'
     manifest = prepare_payload(project, built, output, digest)
     assert (output/'WorkBox.exe').read_bytes() == (built/'WorkBox.exe').read_bytes()
+    assert (output/'WorkBoxUpdater.exe').read_bytes() == (built/'WorkBoxUpdater.exe').read_bytes()
     assert (output/'_internal/PySide6/plugins/platforms/qwindows.dll').is_file()
     assert (output/'安装说明.txt').is_file() and (output/'licenses/LICENSE.txt').is_file()
     assert not (output/'data').exists()
-    assert 'WorkBox.exe' in manifest and all(not name.endswith('.db') for name in manifest)
+    assert {'WorkBox.exe', 'WorkBoxUpdater.exe'} <= manifest.keys()
+    assert all(not name.endswith('.db') for name in manifest)
 
 
 @pytest.mark.parametrize('extra', ['data/workbox.db', '客户资料.docx', '_internal/private.db'])

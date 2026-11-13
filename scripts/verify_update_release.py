@@ -11,13 +11,16 @@ import stat
 import sys
 
 from native_files import plain_path
-from scripts.build_installer import PRIVATE_NAMES, PRIVATE_SUFFIXES, REQUIRED_RUNTIME
+from scripts.build_installer import PRIVATE_NAMES, PRIVATE_SUFFIXES
 from update_client import MAX_INSTALLER, RELEASE_ROOT, build_key
 
 MAX_JSON_BYTES = 1024 * 1024
 MAX_PAYLOAD_FILES = 20000
 MAX_PAYLOAD_BYTES = 1024 * 1024 * 1024
 CONTENTS = 'PACKAGE_CONTENTS.sha256'
+# 历史正式载荷不含更新助手；离线重验不能套用新构建器的必需项。
+BASE_REQUIRED_RUNTIME = ('WorkBox.exe', '_internal/python311.dll', '_internal/PySide6/Qt6Core.dll',
+                         '_internal/PySide6/plugins/platforms/qwindows.dll')
 RESERVED_NAME = re.compile(r'(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?', re.I)
 
 
@@ -187,9 +190,17 @@ def verify_release(manifest: dict, build_info: dict, runtime_info: dict,
     require(payload.is_dir(), 'Payload root is not a directory.')
     records = payload_records(payload)
     require(len(records) == build_info['payload_files'], 'Payload count does not match build report.')
-    require(set(REQUIRED_RUNTIME) | {'安装说明.txt', 'THIRD_PARTY_NOTICES.md'} <= records.keys()
+    require(set(BASE_REQUIRED_RUNTIME) | {'安装说明.txt', 'THIRD_PARTY_NOTICES.md'} <= records.keys()
             and any(n.startswith('licenses/') and n.endswith('.txt') for n in records),
             'Required runtime or license/installation documents are missing.')
+    helper_names = [name for name in records if name.casefold() == 'workboxupdater.exe']
+    incremental_ready = bool(helper_names) or 'updater_sha256' in build_info
+    if incremental_ready:
+        require(helper_names == ['WorkBoxUpdater.exe']
+                and isinstance(build_info.get('updater_sha256'), str)
+                and re.fullmatch(r'[0-9a-f]{64}', build_info['updater_sha256']) is not None
+                and build_info['updater_sha256'] == records['WorkBoxUpdater.exe'],
+                'Build report updater mismatch or updater is missing.')
     require(_payload_inventory(payload) == set(records) | {CONTENTS},
             'Payload has missing or unlisted files.')
     total = 0
@@ -200,6 +211,8 @@ def verify_release(manifest: dict, build_info: dict, runtime_info: dict,
         require(actual == expected, 'Payload file digest mismatch.')
         if name == 'WorkBox.exe':
             require(prefix == b'MZ', 'Application is not a Windows executable.')
+        elif name == 'WorkBoxUpdater.exe':
+            require(prefix == b'MZ', 'Updater is not a Windows executable.')
     require(_payload_inventory(payload) == set(records) | {CONTENTS},
             'Payload inventory changed during verification.')
     require(build_info.get('app_sha256') == records['WorkBox.exe'], 'Build report application mismatch.')
@@ -209,6 +222,7 @@ def verify_release(manifest: dict, build_info: dict, runtime_info: dict,
     return dict(status='passed', scope='offline-artifact-consistency', release_tag=expected_tag,
                 installer_filename=filename, installer_size=size, installer_sha256=sha,
                 app_sha256=records['WorkBox.exe'], payload_files=len(records),
+                incremental_ready=incremental_ready,
                 runtime_executed=False, installation_verified=False, source_provenance_verified=False)
 
 

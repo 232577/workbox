@@ -15,7 +15,7 @@ from native_files import plain_path
 PRIVATE_SUFFIXES = {'.db', '.db-wal', '.db-shm', '.sqlite', '.sqlite3', '.csv',
                     '.json', '.log', '.ini', '.doc', '.docx', '.xls', '.xlsx', '.pdf'}
 PRIVATE_NAMES = {'data', 'state', 'logs', '.local', '.git', '.env', '.codex', 'backups'}
-REQUIRED_RUNTIME = ('WorkBox.exe', '_internal/python311.dll', '_internal/PySide6/Qt6Core.dll',
+REQUIRED_RUNTIME = ('WorkBox.exe', 'WorkBoxUpdater.exe', '_internal/python311.dll', '_internal/PySide6/Qt6Core.dll',
                     '_internal/PySide6/plugins/platforms/qwindows.dll')
 
 
@@ -52,13 +52,18 @@ def prepare_payload(project, built, output, expected_exe_sha256):
         raise ValueError('安装载荷不能放入构建源目录内。')
     if not re.fullmatch('[0-9a-fA-F]{64}', expected_exe_sha256):
         raise ValueError('必须提供经过验证的 EXE SHA256。')
-    if {path.name for path in built.iterdir()} != {'WorkBox.exe', '_internal'}:
-        raise ValueError('构建目录必须仅含 WorkBox.exe 和 _internal，不得带入用户数据。')
+    if {path.name for path in built.iterdir()} != {'WorkBox.exe', 'WorkBoxUpdater.exe', '_internal'}:
+        raise ValueError('构建目录必须仅含 WorkBox.exe、WorkBoxUpdater.exe 和 _internal，不得带入用户数据。')
     for name in REQUIRED_RUNTIME:
         if not plain_path(built/name).is_file():
             raise ValueError('缺少必要运行时：' + name)
     if sha256(built/'WorkBox.exe') != expected_exe_sha256.casefold():
         raise ValueError('EXE 与已验证版本不一致。')
+    helper = plain_path(built/'WorkBoxUpdater.exe')
+    with helper.open('rb') as stream:
+        if stream.read(2) != b'MZ':
+            raise ValueError('独立更新助手不是 Windows 程序。')
+    verified_hashes = {'WorkBox.exe': expected_exe_sha256.casefold(), 'WorkBoxUpdater.exe': sha256(helper)}
     sources = []
     for path in checked_files(built):
         relative = path.relative_to(built)
@@ -82,7 +87,11 @@ def prepare_payload(project, built, output, expected_exe_sha256):
     output.mkdir(parents=True)
     manifest = {}
     for source, relative in sources:
-        expected = sha256(source)
+        expected = verified_hashes.get(relative.as_posix())
+        if expected is None:
+            expected = sha256(source)
+        elif sha256(source) != expected:
+            raise RuntimeError('已核实的程序在复制前发生变化。')
         target = output/relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
@@ -115,6 +124,7 @@ def build(project, built, destination, compiler, expected_exe_sha256):
         raise RuntimeError('编译器未生成预期安装包。')
     report = dict(installer=str(installer), installer_sha256=sha256(installer),
                   installer_size=installer.stat().st_size, app_sha256=manifest['WorkBox.exe'],
+                  updater_sha256=manifest['WorkBoxUpdater.exe'],
                   payload_files=len(manifest), contains_user_data=False,
                   target='Windows 10 1809+ / Windows 11 x64', install_mode='current-user',
                   data_location='安装目录/data', runtime_validation='pending')
