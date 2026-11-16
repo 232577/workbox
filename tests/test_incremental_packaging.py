@@ -64,3 +64,25 @@ def test_installer_preprocessor_requires_helper_without_user_data_deletion():
     assert '#if !FileExists(PayloadDir + "\\WorkBoxUpdater.exe")' in script
     assert 'Source: "{#PayloadDir}\\*"' in script
     assert '[InstallDelete]' not in script and '[UninstallDelete]' not in script
+
+
+def test_installer_calls_verified_helper_before_copy_and_after_install():
+    script = (ROOT / 'packaging/workbox.iss').read_text(encoding='utf-8')
+    assert '#ifndef PayloadManifestSHA256' in script
+    assert '#ifndef UpdaterSHA256' in script
+    assert "ExtractTemporaryFile('WorkBoxUpdater.exe')" in script
+    assert '--preflight-full-install' in script and '--finalize-full-install' in script
+    assert script.count('--expected-manifest-sha256') == 2
+    assert '--install-report' in script and 'LoadStringFromFile' in script
+    assert "'{#PayloadManifestSHA256}'" in script
+    assert "'{#UpdaterSHA256}'" in script and 'GetSHA256OfFile' in script
+    assert 'CurStep = ssPostInstall' in script
+    assert 'ewWaitUntilTerminated' in script
+
+
+def test_incomplete_runtime_finalization_reports_failure_and_prevents_auto_launch():
+    script = (ROOT / 'packaging/workbox.iss').read_text(encoding='utf-8')
+    assert 'Check: CanLaunchWorkBox' in script
+    assert 'Result := RuntimeFinalized and not IsOnlineUpdate;' in script
+    assert 'function GetCustomSetupExitCode: Integer;' in script
+    assert 'if RuntimeFinalized then' in script and 'Result := 20;' in script

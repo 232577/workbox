@@ -64,3 +64,34 @@ def test_unverified_build_and_existing_output_are_never_overwritten(build_inputs
     with pytest.raises(FileExistsError):
         prepare_payload(project, built, output, digest)
     assert sentinel.read_text(encoding='utf-8') == 'keep'
+
+
+@pytest.mark.parametrize('helper_bytes', [b'MZ anonymous first updater', b'MZ anonymous second updater'])
+def test_compiler_receives_exact_prepared_manifest_and_updater_digests(build_inputs, tmp_path, monkeypatch, helper_bytes):
+    from types import SimpleNamespace
+    from scripts import build_installer
+
+    project, built, app_sha = build_inputs
+    (built / 'WorkBoxUpdater.exe').write_bytes(helper_bytes)
+    compiler = tmp_path / 'anonymous-compiler.exe'
+    compiler.write_bytes(b'anonymous compiler placeholder; never executed')
+    destination = tmp_path / 'installer'
+    calls = []
+
+    def compile_fixture(command, **options):
+        calls.append(command)
+        output = Path(next(value.removeprefix('/DOutputDir=') for value in command
+                           if value.startswith('/DOutputDir=')))
+        (output / 'WorkBox-1.0.0-Setup-x64.exe').write_bytes(b'MZ anonymous inert installer')
+        return SimpleNamespace(returncode=0, stdout=b'anonymous compiler output')
+
+    monkeypatch.setattr(build_installer.subprocess, 'run', compile_fixture)
+    report = build_installer.build(project, built, destination, compiler, app_sha)
+    manifest_sha = hashlib.sha256((destination / 'payload/PACKAGE_CONTENTS.sha256').read_bytes()).hexdigest()
+    updater_sha = hashlib.sha256(helper_bytes).hexdigest()
+    assert len(calls) == 1
+    assert calls[0].count('/DPayloadManifestSHA256=' + manifest_sha) == 1
+    assert calls[0].count('/DUpdaterSHA256=' + updater_sha) == 1
+    assert report['payload_manifest_sha256'] == manifest_sha
+    assert report['updater_sha256'] == updater_sha
+    assert report['runtime_validation'] == 'pending'
