@@ -27,6 +27,42 @@ def test_installer_acceptance_checks_actual_installed_payload_bytes(tmp_path):
         acceptance().verify_installed_payload(tmp_path, manifest, digest)
 
 
+@pytest.mark.parametrize('leftover', ['_internal/libcrypto-3.dll', '_internal/libssl-3.dll',
+    '_internal/setuptools/_vendor/old_package/obsolete.py', 'licenses/old-license.txt',
+    'WorkBoxUpdater.exe'])
+def test_installer_acceptance_rejects_unlisted_program_files(tmp_path, leftover):
+    app = tmp_path / 'WorkBox.exe'
+    app.write_bytes(b'MZ anonymous application, never executed')
+    sha = hashlib.sha256(app.read_bytes()).hexdigest()
+    extra = tmp_path / leftover
+    extra.parent.mkdir(parents=True, exist_ok=True)
+    extra.write_bytes(b'anonymous obsolete program bytes')
+    with pytest.raises(ValueError, match='inventory'):
+        acceptance().verify_installed_payload(tmp_path, f'{sha}  WorkBox.exe\n', sha)
+    assert extra.read_bytes() == b'anonymous obsolete program bytes'
+
+
+def test_installer_acceptance_exact_inventory_preserves_non_program_boundaries(tmp_path):
+    app = tmp_path / 'WorkBox.exe'
+    app.write_bytes(b'MZ anonymous application, never executed')
+    runtime = tmp_path / '_internal/python311.dll'
+    runtime.parent.mkdir()
+    runtime.write_bytes(b'anonymous runtime bytes')
+    sha = hashlib.sha256(app.read_bytes()).hexdigest()
+    runtime_sha = hashlib.sha256(runtime.read_bytes()).hexdigest()
+    manifest = f'{sha}  WorkBox.exe\n{runtime_sha}  _internal/python311.dll\n'
+    (tmp_path / 'PACKAGE_CONTENTS.sha256').write_text(manifest, encoding='utf-8')
+    preserved = ['data/workbox.db', 'data/materials/original.txt', 'personal.txt',
+                 'unins000.exe', 'unins000.dat', 'unins000.msg', '.workbox-update.lock']
+    for name in preserved:
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b'anonymous owner bytes; not opened as a database or program')
+    assert acceptance().verify_installed_payload(tmp_path, manifest, sha) == 2
+    for name in preserved:
+        assert (tmp_path / name).read_bytes() == b'anonymous owner bytes; not opened as a database or program'
+
+
 def test_old_installed_payload_is_allowed_but_new_source_requires_helper(tmp_path):
     app = tmp_path / 'WorkBox.exe'; app.write_bytes(b'MZ anonymous application')
     sha = hashlib.sha256(app.read_bytes()).hexdigest()
@@ -148,6 +184,244 @@ def test_installer_cli_refuses_a_workstation_without_creating_output(tmp_path, m
             '--expected-tag', 'v1.0.0.20261112.3', '--previous-tag', 'v1.0.0.20261112.2',
             '--expected-sha', 'a' * 64, '--expected-source', 'b' * 40, '--output', str(output)])
     assert not output.exists()
+
+
+@pytest.mark.parametrize('exit_code,change', [(7, None), (0, None), (20, None),
+    (7, 'program'), (7, 'manifest'), (7, 'extra-runtime'), (7, 'child-exits')])
+def test_legacy_busy_gate_requires_preparing_failure_and_unchanged_program(tmp_path, monkeypatch, exit_code, change):
+    tool = acceptance()
+    output = tmp_path / 'evidence'
+    output.mkdir()
+    target = output / 'installed'
+    target.mkdir()
+    app_bytes = b'MZ anonymous old application, never executed'
+    (target / 'WorkBox.exe').write_bytes(app_bytes)
+    app_sha = hashlib.sha256(app_bytes).hexdigest()
+    manifest = f'{app_sha}  WorkBox.exe\n'
+    (target / 'PACKAGE_CONTENTS.sha256').write_text(manifest, encoding='utf-8')
+
+    class OwnedFixture:
+        alive, terminated, waited = True, False, False
+        def poll(self):
+            return None if self.alive else 0
+        def terminate(self):
+            self.terminated, self.alive = True, False
+        def wait(self, *, timeout):
+            assert timeout <= 30
+            self.waited = True
+            return 0
+
+    owned = OwnedFixture()
+    calls = []
+    def launch(command, **options):
+        calls.append(command)
+        assert command == [str(target / 'WorkBox.exe'), '--panel', '--no-tray',
+                           '--data-dir', str(output / 'legacy-busy-data')]
+        assert options['env']['QT_QPA_PLATFORM'] == 'offscreen'
+        assert options.get('shell', False) is False
+        return owned
+    def attempt(installer, app, log, *, upgrade=False):
+        assert app == target and upgrade is True and owned.alive
+        if change == 'program':
+            (target / 'WorkBox.exe').write_bytes(b'changed anonymous program')
+        elif change == 'manifest':
+            (target / 'PACKAGE_CONTENTS.sha256').write_bytes(b'changed anonymous manifest')
+        elif change == 'extra-runtime':
+            (target / '_internal').mkdir()
+            (target / '_internal/extra.dll').write_bytes(b'unknown anonymous runtime')
+        elif change == 'child-exits':
+            owned.alive = False
+        if exit_code:
+            raise tool.subprocess.CalledProcessError(exit_code, ['anonymous inert installer'])
+    monkeypatch.setattr(tool.subprocess, 'Popen', launch)
+    monkeypatch.setattr(tool, 'install', attempt)
+    arguments = (tmp_path / 'anonymous-inert-installer.exe', target, manifest, app_sha, output)
+    if exit_code == 7 and change is None:
+        report = tool._verify_legacy_busy_upgrade(*arguments)
+        assert report['legacy_busy_upgrade_refused'] is True
+        assert report['legacy_busy_installer_exit_code'] == 7
+        assert report['legacy_busy_program_bytes_preserved'] is True
+        assert report['legacy_busy_fixture_ui_verified'] is False
+        assert report['legacy_busy_fixture_cleanup'] == 'owned-process-terminate-and-wait'
+    else:
+        with pytest.raises(ValueError):
+            tool._verify_legacy_busy_upgrade(*arguments)
+    assert len(calls) == 1 and owned.waited and not owned.alive
+    assert owned.terminated is (change != 'child-exits')
+
+
+@pytest.mark.parametrize('damage', [None, 'missing-old-manifest', 'missing-history',
+    'incomplete-history', 'wrong-manifest', 'changed-retired-bytes', 'lost-on-uninstall'])
+def test_installer_gate_requires_recoverable_old_runtime_through_uninstall(tmp_path, monkeypatch, damage):
+    import json
+    from types import SimpleNamespace
+    import installer_runtime as runtime
+
+    tool = acceptance()
+    source, old_tag, new_tag = 'a' * 40, 'v1.0.0.20261113.2', 'v1.0.0.20261116'
+    old_bytes, new_bytes = b'MZ anonymous old app', b'MZ anonymous new app'
+    helper_bytes, retired_bytes = b'MZ anonymous updater', b'anonymous retired runtime'
+    sha = lambda value: hashlib.sha256(value).hexdigest()
+    obsolete = '_internal/obsolete.dll'
+    monkeypatch.setitem(runtime.KNOWN_OBSOLETE, obsolete, frozenset({sha(retired_bytes)}))
+    candidate, previous = tmp_path / 'candidate', tmp_path / 'previous'
+    candidate.mkdir(); previous.mkdir()
+    name = 'WorkBox-1.0.0-Setup-x64-20261116.exe'
+    old_name = 'WorkBox-1.0.0-Setup-x64-20261113-r2.exe'
+    (candidate / name).write_bytes(b'MZ anonymous inert candidate installer')
+    (previous / old_name).write_bytes(b'MZ anonymous inert previous installer')
+    manifest = f'{sha(new_bytes)}  WorkBox.exe\n{sha(helper_bytes)}  WorkBoxUpdater.exe\n'
+    manifest_sha = sha(manifest.encode('utf-8'))
+    (candidate / 'PACKAGE_CONTENTS.sha256').write_text(manifest, encoding='utf-8', newline='\n')
+    info = dict(release_tag=new_tag, source_commit=source, installer_name=name,
+        installer_sha256=tool.digest(candidate / name), payload_manifest_sha256=manifest_sha,
+        app_sha256=sha(new_bytes), updater_sha256=sha(helper_bytes), payload_files=2)
+    (candidate / 'BUILD_PROVENANCE.json').write_text(json.dumps(info), encoding='utf-8')
+    (previous / 'release.json').write_text(json.dumps(dict(tag_name=old_tag, draft=False, prerelease=False,
+        assets=[dict(name=old_name, digest='sha256:' + tool.digest(previous / old_name),
+                     size=(previous / old_name).stat().st_size)])), encoding='utf-8')
+    monkeypatch.setenv('GITHUB_ACTIONS', 'true')
+    monkeypatch.setenv('GITHUB_REPOSITORY', '232577/workbox')
+    monkeypatch.setattr(tool, 'registration_exists', lambda: False)
+    monkeypatch.setattr(tool, 'source_requires_updater', lambda value: True)
+    monkeypatch.setattr(tool.subprocess, 'check_output', lambda *args, **options: source)
+    saved_files = []
+    child = {'alive': False}
+
+    class OwnedFixture:
+        def poll(self):
+            return None if child['alive'] else 0
+        def terminate(self):
+            child['alive'] = False
+        def wait(self, *, timeout):
+            return 0
+
+    def launch_fixture(*args, **options):
+        child['alive'] = True
+        return OwnedFixture()
+
+    monkeypatch.setattr(tool.subprocess, 'Popen', launch_fixture)
+
+    def install_fixture(installer, target, log, *, upgrade=False):
+        if upgrade and child['alive']:
+            raise tool.subprocess.CalledProcessError(7, ['anonymous inert installer'])
+        if not upgrade:
+            target.mkdir()
+            (target / 'WorkBox.exe').write_bytes(old_bytes)
+            old_file = target / obsolete
+            old_file.parent.mkdir()
+            old_file.write_bytes(retired_bytes)
+            (target / 'unins000.exe').write_bytes(b'anonymous inert uninstaller')
+            if damage != 'missing-old-manifest':
+                (target / 'PACKAGE_CONTENTS.sha256').write_text(
+                    f'{sha(old_bytes)}  WorkBox.exe\n{sha(retired_bytes)}  {obsolete}\n', encoding='utf-8')
+            return
+        (target / 'WorkBox.exe').write_bytes(new_bytes)
+        (target / 'WorkBoxUpdater.exe').write_bytes(helper_bytes)
+        (target / 'PACKAGE_CONTENTS.sha256').write_text(manifest, encoding='utf-8')
+        if damage == 'missing-history':
+            (target / obsolete).unlink()
+            return
+        history = target / runtime.HISTORY / ('b' * 32)
+        saved = history / 'files' / obsolete
+        saved.parent.mkdir(parents=True)
+        (target / obsolete).rename(saved)
+        saved_files.append(saved)
+        app_info, file_info = target.stat(), saved.stat()
+        plan = dict(format=runtime.PLAN_FORMAT, app_dir=str(target),
+            app_identity=[app_info.st_dev, app_info.st_ino],
+            manifest_sha256='c' * 64 if damage == 'wrong-manifest' else manifest_sha,
+            files={obsolete: dict(sha256=sha(retired_bytes), size=len(retired_bytes),
+                identity=[file_info.st_dev, file_info.st_ino], zone_sha256=None)})
+        (history / 'plan.json').write_text(json.dumps(plan), encoding='utf-8')
+        if damage != 'incomplete-history':
+            (history / 'receipt.json').write_text(json.dumps(dict(format=runtime.RECEIPT_FORMAT,
+                manifest_sha256=plan['manifest_sha256'], plan_sha256=tool.digest(history / 'plan.json'),
+                retired=1)), encoding='utf-8')
+        if damage == 'changed-retired-bytes':
+            saved.write_bytes(b'changed anonymous retained bytes')
+
+    def run_fixture(command, **options):
+        if command[0] == 'git' or '--self-check' in command:
+            return SimpleNamespace(returncode=0)
+        if '--check' in command:
+            (tmp_path / 'result/installed/data').mkdir()
+        elif '--build-info' in command:
+            output = command[command.index('--build-info-output') + 1]
+            program = tmp_path / 'result/installed/WorkBox.exe'
+            value = dict(version='1.0.0', release_tag=old_tag if program.read_bytes() == old_bytes else new_tag,
+                         data_dir=str(program.parent / 'data'))
+            from pathlib import Path
+            Path(output).write_text(json.dumps(value), encoding='utf-8')
+        elif command[0].endswith('unins000.exe'):
+            if damage == 'lost-on-uninstall':
+                saved_files[0].unlink()
+        else:
+            pytest.fail('unexpected executable invocation')
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(tool, 'install', install_fixture)
+    monkeypatch.setattr(tool.subprocess, 'run', run_fixture)
+    arguments = ['--candidate-dir', str(candidate), '--previous-dir', str(previous), '--expected-tag', new_tag,
+        '--previous-tag', old_tag, '--expected-sha', info['installer_sha256'],
+        '--expected-source', source, '--output', str(tmp_path / 'result')]
+    if damage:
+        with pytest.raises((OSError, ValueError, AssertionError),
+                           match='runtime|obsolete|retired|history|PACKAGE_CONTENTS|恢复|运行库'):
+            tool.main(arguments)
+    else:
+        assert tool.main(arguments) == 0
+        report = json.loads((tmp_path / 'result/acceptance.json').read_text(encoding='utf-8'))
+        assert report['exact_program_inventory_verified'] is True
+        assert report['obsolete_runtime_recoverably_preserved'] is True
+        assert report['retired_runtime_files'] == 1
+        assert report['runtime_history_preserved_on_uninstall'] is True
+        assert report['legacy_busy_upgrade_refused'] is True
+        assert report['physical_device_claimed'] is False
+        assert saved_files[0].read_bytes() == retired_bytes
+
+
+@pytest.mark.parametrize('stage', ['plan', 'receipt'])
+def test_installer_gate_accepts_core_retry_with_unpublished_partial_metadata(tmp_path, monkeypatch, stage):
+    import installer_runtime as runtime
+
+    app = tmp_path / 'app'
+    app.mkdir()
+    records = {}
+    for name in sorted(runtime.fmt.REQUIRED_FILES - {runtime.CONTENTS}):
+        path = app / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(('anonymous unused program marker: ' + name).encode())
+        records[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    manifest = ''.join(f'{value}  {name}\n' for name, value in sorted(records.items()))
+    (app / runtime.CONTENTS).write_text(manifest, encoding='utf-8', newline='\n')
+    manifest_sha = hashlib.sha256(manifest.encode('utf-8')).hexdigest()
+    obsolete, old_bytes = '_internal/obsolete.dll', b'anonymous old runtime bytes'
+    old_sha = hashlib.sha256(old_bytes).hexdigest()
+    (app / obsolete).write_bytes(old_bytes)
+    monkeypatch.setitem(runtime.KNOWN_OBSOLETE, obsolete, frozenset({old_sha}))
+    expected_format = runtime.PLAN_FORMAT if stage == 'plan' else runtime.RECEIPT_FORMAT
+    original_dump = runtime.json.dump
+
+    def partial_write(value, stream, **options):
+        if value.get('format') == expected_format:
+            stream.write('{')
+            raise OSError('anonymous partial metadata write')
+        return original_dump(value, stream, **options)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(runtime.json, 'dump', partial_write)
+        with pytest.raises(OSError, match='partial metadata'):
+            runtime.finalize_full_install(app, manifest_sha)
+    history = app / runtime.HISTORY
+    partial = {path: path.read_bytes() for path in history.rglob('*')
+               if path.is_file() and path.read_bytes() == b'{'}
+    assert len(partial) == 1
+    assert runtime.finalize_full_install(app, manifest_sha)['status'] == 'verified'
+    protected = acceptance().verify_runtime_history(app, {obsolete: old_sha}, manifest_sha)
+    assert all(protected[path] == hashlib.sha256(value).hexdigest() for path, value in partial.items())
+    assert all(path.read_bytes() == value for path, value in partial.items())
+    assert any(path.name == 'obsolete.dll' and value == old_sha for path, value in protected.items())
 
 
 def test_draft_download_permissions_are_isolated_from_installer_execution():

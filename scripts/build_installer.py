@@ -111,9 +111,12 @@ def build(project, built, destination, compiler, expected_exe_sha256):
         raise FileNotFoundError('找不到已安装的 Inno Setup 编译器。')
     payload = destination/'payload'
     manifest = prepare_payload(project, built, payload, expected_exe_sha256)
+    manifest_sha256 = sha256(payload/'PACKAGE_CONTENTS.sha256')
     output = destination/'output'
     output.mkdir()
     command = [str(compiler), '/Qp', '/DPayloadDir='+str(payload), '/DOutputDir='+str(output),
+               '/DPayloadManifestSHA256='+manifest_sha256,
+               '/DUpdaterSHA256='+manifest['WorkBoxUpdater.exe'],
                '/DAppIcon='+str(project/'build/WorkBox.ico'), str(project/'packaging/workbox.iss')]
     result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     (destination/'compiler.log').write_bytes(result.stdout)
@@ -125,6 +128,7 @@ def build(project, built, destination, compiler, expected_exe_sha256):
     report = dict(installer=str(installer), installer_sha256=sha256(installer),
                   installer_size=installer.stat().st_size, app_sha256=manifest['WorkBox.exe'],
                   updater_sha256=manifest['WorkBoxUpdater.exe'],
+                  payload_manifest_sha256=manifest_sha256,
                   payload_files=len(manifest), contains_user_data=False,
                   target='Windows 10 1809+ / Windows 11 x64', install_mode='current-user',
                   data_location='安装目录/data', runtime_validation='pending')

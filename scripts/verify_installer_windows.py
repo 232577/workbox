@@ -17,7 +17,7 @@ import subprocess
 import time
 
 from native_files import plain_path
-from scripts.verify_update_release import payload_name
+from scripts.verify_update_release import CONTENTS, payload_name
 from update_client import build_key
 
 APP_KEY = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\{94062298-8991-4FF2-9E56-6B837B20A5FD}_is1'
@@ -53,8 +53,13 @@ def _manifest_records(manifest: str) -> dict:
 
 
 def verify_installed_payload(root: Path, manifest: str, app_sha: str, *, require_updater=False) -> int:
+    from incremental_apply import _inventory
+
     root = plain_path(root)
     records = _manifest_records(manifest)
+    # 与后续增量基线使用相同程序边界；清单自身不列入清单，data/卸载项/用户根文件不参与。
+    if _inventory(root) - {CONTENTS} != set(records):
+        raise ValueError('Installed program inventory differs from payload manifest')
     for name, expected in records.items():
         path = plain_path(root / name)
         if not path.is_relative_to(root) or digest(path) != expected:
@@ -69,6 +74,41 @@ def verify_installed_payload(root: Path, manifest: str, app_sha: str, *, require
             if stream.read(2) != b'MZ':
                 raise ValueError('Installed updater is not a Windows executable')
     return len(records)
+
+
+def verify_runtime_history(root: Path, obsolete: dict, manifest_sha256: str) -> dict[Path, str]:
+    """核对旧、新清单差集的可恢复保留，并返回卸载后必须保留的记录及文件摘要。"""
+    import installer_runtime as runtime
+
+    root = plain_path(root)
+    if runtime._histories(root, manifest_sha256):
+        raise ValueError('Unfinished obsolete runtime history')
+    protected, recovered = {}, {}
+    history = plain_path(root / runtime.HISTORY)
+    if history.exists():
+        for transaction in history.iterdir():
+            if re.fullmatch(r'\.prepare-[a-f0-9]{32}', transaction.name):
+                # 未发布目录只保留有限普通元数据的字节证据，不解析为有效恢复计划。
+                for count, path in enumerate(transaction.iterdir(), 1):
+                    if count > runtime.MAX_HISTORY + 3:
+                        raise ValueError('Unpublished runtime metadata exceeds acceptance limit')
+                    protected[path] = runtime._bounded_record(path, runtime.fmt.MAX_MANIFEST_SIZE)['sha256']
+                continue
+            plan = runtime._read_json(transaction / 'plan.json')
+            for name, entry in plan['files'].items():
+                protected[transaction / 'files' / name] = entry['sha256']
+                if plan['manifest_sha256'] == manifest_sha256:
+                    if name in recovered:
+                        raise ValueError('Duplicate obsolete runtime history record')
+                    recovered[name] = entry['sha256']
+            for name in ('plan.json', 'receipt.json'):
+                path = transaction / name
+                protected[path] = digest(path)
+            for path in transaction.glob('.pending-receipt-*'):
+                protected[path] = runtime._bounded_record(path, runtime.fmt.MAX_MANIFEST_SIZE)['sha256']
+    if recovered != obsolete:
+        raise ValueError('Obsolete runtime history differs from previous payload')
+    return protected
 
 
 def source_requires_updater(source: str) -> bool:
@@ -124,6 +164,51 @@ def install(installer: Path, target: Path, log: Path, *, upgrade=False) -> None:
     if upgrade:
         command.append('/WORKBOXUPDATE=1')
     subprocess.run(command, check=True, timeout=240)
+
+
+def _verify_legacy_busy_upgrade(installer: Path, target: Path, manifest: str,
+                                app_sha: str, output: Path) -> dict:
+    """仅供已验证的隔离 runner 主流程调用；不用于真实安装或原生 UI 验收。"""
+    target, output = plain_path(target), plain_path(output)
+    if target != output / 'installed':
+        raise ValueError('Legacy busy fixture must belong to this disposable output')
+    verify_installed_payload(target, manifest, app_sha)
+    manifest_sha = digest(target / CONTENTS)
+    data = output / 'legacy-busy-data'
+    data.mkdir(exist_ok=False)
+    environment = dict(os.environ, QT_QPA_PLATFORM='offscreen', PYINSTALLER_RESET_ENVIRONMENT='1')
+    terminated = False
+    with (output / 'legacy-busy-process.log').open('xb') as process_log:
+        process = subprocess.Popen([str(target / 'WorkBox.exe'), '--panel', '--no-tray', '--data-dir', str(data)],
+            cwd=target, env=environment, shell=False, close_fds=True,
+            stdin=subprocess.DEVNULL, stdout=process_log, stderr=subprocess.STDOUT,
+            creationflags=subprocess.CREATE_NO_WINDOW)
+        try:
+            if process.poll() is not None:
+                raise ValueError('Legacy busy fixture exited before the upgrade attempt')
+            exit_code = 0
+            try:
+                install(installer, target, output / 'legacy-busy-install.log', upgrade=True)
+            except subprocess.CalledProcessError as error:
+                exit_code = error.returncode
+            # Inno Setup: 7 means Preparing to Install refused to proceed.
+            # https://jrsoftware.org/inno-setup/documentation/topic_setupexitcodes.htm
+            if exit_code != 7:
+                raise ValueError('Busy legacy upgrade did not stop at Preparing to Install: ' + str(exit_code))
+            verify_installed_payload(target, manifest, app_sha)
+            if digest(target / CONTENTS) != manifest_sha:
+                raise ValueError('Busy legacy upgrade changed the installed manifest')
+            if process.poll() is not None:
+                raise ValueError('Busy upgrade stopped the legacy fixture process')
+        finally:
+            # Only this Popen-owned anonymous fixture is terminated, never a name/PID search.
+            if process.poll() is None:
+                process.terminate()
+                terminated = True
+            process.wait(timeout=30)
+    return dict(legacy_busy_upgrade_refused=True, legacy_busy_installer_exit_code=exit_code,
+        legacy_busy_program_bytes_preserved=True, legacy_busy_fixture_ui_verified=False,
+        legacy_busy_fixture_cleanup='owned-process-terminate-and-wait' if terminated else 'owned-process-wait')
 
 
 def main(argv=None) -> int:
@@ -184,6 +269,11 @@ def main(argv=None) -> int:
     install(old_installer, target, out / 'previous-install.log')
     if probe(target / 'WorkBox.exe', out / 'previous-probe.json')['release_tag'] != args.previous_tag:
         raise ValueError('Previous runtime identity mismatch')
+    old_manifest = (target / CONTENTS).read_text(encoding='utf-8')
+    old_records = _manifest_records(old_manifest)
+    verify_installed_payload(target, old_manifest, old_records.get('WorkBox.exe', ''))
+    obsolete = {name: value for name, value in old_records.items() if name not in records}
+    legacy_busy = _verify_legacy_busy_upgrade(installer, target, old_manifest, old_records['WorkBox.exe'], out)
     data = target / 'data'
     subprocess.run([str(target / 'WorkBox.exe'), '--check', '--data-dir', str(data)], check=True, timeout=45)
     database = data / 'workbox.db'
@@ -198,6 +288,8 @@ def main(argv=None) -> int:
     assert all(digest(path) == value for path, value in protected.items()), 'Installer changed anonymous data'
     count = verify_installed_payload(target, manifest, info['app_sha256'], require_updater=require_updater)
     assert count == info['payload_files']
+    runtime_history = verify_runtime_history(target, obsolete, info['payload_manifest_sha256'])
+    protected.update(runtime_history)
     if require_updater:
         verify_updater_self_check(target, records['WorkBoxUpdater.exe'])
     runtime = probe(target / 'WorkBox.exe', out / 'candidate-probe.json')
@@ -210,15 +302,19 @@ def main(argv=None) -> int:
     while registration_exists() and time.monotonic() < deadline:
         time.sleep(.25)
     assert not registration_exists(), 'Anonymous uninstall registration remains'
-    assert all(digest(path) == value for path, value in protected.items()), 'Uninstaller changed anonymous data'
+    assert all(digest(path) == value for path, value in protected.items()), 'Uninstaller changed anonymous data or runtime history'
+    assert verify_runtime_history(target, obsolete, info['payload_manifest_sha256']) == runtime_history, 'Runtime history changed on uninstall'
     report = {'status': 'passed', 'scope': 'exact installer on disposable Windows runner',
         'source_commit': source, 'release_tag': args.expected_tag, 'previous_tag': args.previous_tag,
         'installer_sha256': args.expected_sha, 'app_sha256': info['app_sha256'], 'payload_files': count,
         'fresh_previous_install': True, 'candidate_upgrade': True, 'runtime_identity_verified': True,
         'uninstall_verified': True, 'anonymous_database_and_material_preserved': True,
+        'exact_program_inventory_verified': True, 'obsolete_runtime_recoverably_preserved': True,
+        'retired_runtime_files': len(obsolete), 'runtime_history_preserved_on_uninstall': True,
         'initial_and_final_app_registration_absent': True, 'production_data_accessed': False,
         'updater_required_by_source': require_updater, 'updater_self_check_verified': require_updater,
         'physical_device_claimed': False}
+    report.update(legacy_busy)
     (out / 'acceptance.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(json.dumps(report))
     return 0

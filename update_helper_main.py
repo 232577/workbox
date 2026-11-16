@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import nullcontext
 import ctypes
 import hashlib
 import json
@@ -11,6 +12,7 @@ import re
 import stat
 import subprocess
 import sys
+import tempfile
 import uuid
 
 from delta_format import MAX_PACKAGE_SIZE, delta_filename
@@ -27,6 +29,8 @@ MAX_PLAN = 16 * 1024
 USAGE = ('WorkBox 程序更新助手：\n'
          '--plan <incremental-plan.json> 执行已确认的增量更新\n'
          '--recover <事务目录> --app-dir <程序目录> 显式恢复程序文件\n'
+         '--preflight-full-install --app-dir <程序目录> 检查全量安装能否开始\n'
+         '--finalize-full-install --app-dir <程序目录> --expected-manifest-sha256 <摘要> 整理已核验旧运行库\n'
          '--self-check 检查助手入口；--noninteractive 仅关闭提示对话框。')
 
 
@@ -395,6 +399,46 @@ class _Parser(argparse.ArgumentParser):
         raise ValueError('助手参数无效：' + message)
 
 
+def _run_full_install(root, pin, *, preflight, report_path):
+    """安装器只读取诊断文字；实际成功始终以本次调用结果和退出码为准。"""
+    report = nullcontext(None)
+    if report_path is not None:
+        path = _local_path(report_path)
+        temporary = _local_path(tempfile.gettempdir())
+        # Inno may spell the same Temp directory with Windows 8.3 names.
+        # Compare the direct parent directory identity, not its spelling.
+        if (not path.parent.parent.samefile(temporary)
+                or re.fullmatch(r'workbox-full-install-[1-9][0-9]{0,5}\.json', path.name) is None):
+            raise ValueError('安装诊断只允许写入安装器独立临时目录中的新记录。')
+        # 新建且始终写入同一个打开的文件；不覆盖已有输出，不用诊断记录授权文件移动。
+        report = path.open('x', encoding='utf-8', newline='\n')
+    phase = 'preflight' if preflight else 'finalize'
+    with report as stream:
+        try:
+            if preflight:
+                from installer_runtime import preflight_full_install
+                result = preflight_full_install(root, pin)
+                expected_status = 'ready'
+            else:
+                from installer_runtime import finalize_full_install
+                result = finalize_full_install(root, pin)
+                expected_status = 'verified'
+            if not isinstance(result, dict) or result.get('status') != expected_status:
+                raise RuntimeError('全量安装核验未返回明确的完成结果。')
+        except Exception as error:
+            if stream is not None:
+                json.dump({'phase': phase, 'status': 'failed', 'error': str(error)[:2000]}, stream, ensure_ascii=False)
+                stream.flush()
+                os.fsync(stream.fileno())
+            raise
+        if stream is not None:
+            json.dump(dict(result, phase=phase), stream, ensure_ascii=False)
+            stream.flush()
+            os.fsync(stream.fileno())
+    _output(result)
+    return 0
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     noninteractive = '--noninteractive' in argv
@@ -403,18 +447,39 @@ def main(argv=None):
         group = parser.add_mutually_exclusive_group()
         group.add_argument('--plan')
         group.add_argument('--recover')
+        group.add_argument('--preflight-full-install', action='store_true')
+        group.add_argument('--finalize-full-install', action='store_true')
         group.add_argument('--self-check', action='store_true')
         group.add_argument('--help', '-h', action='store_true')
         parser.add_argument('--app-dir')
+        parser.add_argument('--expected-manifest-sha256')
+        parser.add_argument('--install-report')
         parser.add_argument('--noninteractive', action='store_true')
         args = parser.parse_args(argv)
-        if args.app_dir is not None and args.recover is None:
-            raise ValueError('--app-dir 只用于显式恢复。')
+        full_install = args.preflight_full_install or args.finalize_full_install
+        if args.app_dir is not None and args.recover is None and not full_install:
+            raise ValueError('--app-dir 只用于显式恢复或全量安装核验。')
+        if args.expected_manifest_sha256 is not None and not full_install:
+            raise ValueError('清单摘要只用于全量安装核验。')
+        if args.install_report is not None and not full_install:
+            raise ValueError('安装诊断只用于全量安装核验。')
         if args.self_check:
             return 0
         if args.help:
             _output(USAGE)
             return 0
+        if full_install:
+            if args.app_dir is None:
+                raise ValueError('全量安装核验必须提供 --app-dir。')
+            root = _local_path(args.app_dir)
+            pin = args.expected_manifest_sha256
+            if not isinstance(pin, str) or re.fullmatch('[a-f0-9]{64}', pin) is None:
+                raise ValueError('全量安装必须提供准确的新载荷清单 SHA-256。')
+            if (args.finalize_full_install and getattr(sys, 'frozen', False)
+                    and _local_path(sys.executable) != root / 'WorkBoxUpdater.exe'):
+                raise ValueError('全量安装完成核验必须由目标目录中的同包助手执行。')
+            return _run_full_install(root, pin, preflight=args.preflight_full_install,
+                                     report_path=args.install_report)
         if args.plan is not None:
             return _run_plan(args.plan, noninteractive=noninteractive)
         if args.recover is not None:

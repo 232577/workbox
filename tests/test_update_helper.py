@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -502,3 +503,137 @@ def test_cached_helper_changed_during_confirmation_cannot_recover(cached_recover
     assert h.main([]) != 0
     assert messages and '摘要' in messages[0]
     assert Path(config['data_dir'], 'workbox.db').read_bytes() == b'private sentinel; not a database'
+
+
+@pytest.mark.parametrize('mode', ['preflight', 'finalize'])
+def test_full_install_cli_uses_explicit_target_without_opening_business_data(tmp_path, monkeypatch, mode):
+    h = helper()
+    target = tmp_path / 'app'
+    calls = []
+    api = SimpleNamespace(
+        preflight_full_install=lambda app, pin: calls.append(('preflight', app, pin)) or {'status': 'ready'},
+        finalize_full_install=lambda app, pin: calls.append(('finalize', app, pin)) or {'status': 'verified'},
+    )
+    monkeypatch.setitem(sys.modules, 'installer_runtime', api)
+    monkeypatch.setattr(h, '_scan_pending', lambda *a: pytest.fail('No implicit recovery scan'))
+    monkeypatch.setattr(h, 'relaunch', lambda *a: pytest.fail('Installer finalization must not launch business'))
+    arguments = ['--' + mode + '-full-install', '--app-dir', str(target), '--noninteractive']
+    arguments += ['--expected-manifest-sha256', 'a' * 64]
+    assert h.main(arguments) == 0
+    assert calls == [(mode, target, 'a' * 64)]
+    assert not target.exists()
+
+
+@pytest.mark.parametrize('arguments', [
+    ['--finalize-full-install'],
+    ['--finalize-full-install', '--app-dir', 'relative'],
+    ['--preflight-full-install', '--expected-manifest-sha256', 'a' * 64],
+    ['--self-check', '--expected-manifest-sha256', 'a' * 64],
+])
+def test_full_install_cli_rejects_incomplete_or_unrelated_arguments(arguments, monkeypatch):
+    h = helper()
+    forbidden = lambda *a: pytest.fail('Invalid full-install arguments must not reach file operations')
+    monkeypatch.setitem(sys.modules, 'installer_runtime', SimpleNamespace(
+        preflight_full_install=forbidden, finalize_full_install=forbidden))
+    assert h.main(arguments + ['--noninteractive']) != 0
+
+
+def test_full_install_failure_is_reported_without_relaunch(tmp_path, monkeypatch):
+    h = helper()
+    messages = []
+
+    def fail(*args):
+        raise ValueError('Anonymous obsolete runtime differs; keep original bytes')
+
+    monkeypatch.setitem(sys.modules, 'installer_runtime', SimpleNamespace(finalize_full_install=fail))
+    monkeypatch.setattr(h, '_failure', lambda message, *args: messages.append(message))
+    monkeypatch.setattr(h, 'relaunch', lambda *a: pytest.fail('Failure must not launch'))
+    assert h.main(['--finalize-full-install', '--app-dir', str(tmp_path),
+                   '--expected-manifest-sha256', 'b' * 64, '--noninteractive']) != 0
+    assert messages and 'Anonymous obsolete runtime differs' in messages[0]
+
+
+def test_full_install_frozen_finalizer_must_be_the_installed_helper(tmp_path, monkeypatch):
+    h = helper()
+    target = tmp_path / 'app'
+    target.mkdir()
+    outside = tmp_path / 'elsewhere' / 'WorkBoxUpdater.exe'
+    monkeypatch.setattr(sys, 'frozen', True, raising=False)
+    monkeypatch.setattr(sys, 'executable', str(outside))
+    monkeypatch.setitem(sys.modules, 'installer_runtime', SimpleNamespace(
+        finalize_full_install=lambda *a: pytest.fail('Do not finalize another installation')))
+    assert h.main(['--finalize-full-install', '--app-dir', str(target),
+                   '--expected-manifest-sha256', 'b' * 64, '--noninteractive']) != 0
+
+
+def test_full_install_preflight_requires_target_manifest_before_call(tmp_path, monkeypatch):
+    h = helper()
+    monkeypatch.setitem(sys.modules, 'installer_runtime', SimpleNamespace(
+        preflight_full_install=lambda *a: pytest.fail('Missing pin cannot reach preflight')))
+    assert h.main(['--preflight-full-install', '--app-dir', str(tmp_path), '--noninteractive']) != 0
+
+
+@pytest.mark.parametrize('failure', [False, True])
+def test_full_install_windowed_helper_keeps_a_new_diagnostic_report(tmp_path, monkeypatch, failure):
+    h = helper()
+    report_dir = tmp_path / 'installer-temp'
+    report_dir.mkdir()
+    report = report_dir / 'workbox-full-install-1.json'
+    monkeypatch.setattr('tempfile.gettempdir', lambda: str(tmp_path))
+
+    def finalize(*args):
+        if failure:
+            raise ValueError('Unknown anonymous runtime: _internal/keep.dll')
+        return {'status': 'verified', 'retired': 2, 'recovery_dir': '.workbox-runtime-history/anonymous'}
+
+    monkeypatch.setitem(sys.modules, 'installer_runtime', SimpleNamespace(finalize_full_install=finalize))
+    code = h.main(['--finalize-full-install', '--app-dir', str(tmp_path / 'app'),
+                   '--expected-manifest-sha256', 'a' * 64, '--install-report', str(report), '--noninteractive'])
+    assert code == (1 if failure else 0)
+    result = json.loads(report.read_text(encoding='utf-8'))
+    assert result['phase'] == 'finalize' and result['status'] == ('failed' if failure else 'verified')
+    if failure:
+        assert '_internal/keep.dll' in result['error']
+    else:
+        assert result['retired'] == 2
+
+
+def test_full_install_report_must_be_new_and_inside_installer_temp(tmp_path, monkeypatch):
+    h = helper()
+    report_dir = tmp_path / 'installer-temp'
+    report_dir.mkdir()
+    report = report_dir / 'workbox-full-install-1.json'
+    report.write_bytes(b'anonymous pre-existing output')
+    monkeypatch.setattr('tempfile.gettempdir', lambda: str(tmp_path))
+    monkeypatch.setitem(sys.modules, 'installer_runtime', SimpleNamespace(
+        finalize_full_install=lambda *a: pytest.fail('Rejected report must stop before mutation')))
+    prefix = ['--finalize-full-install', '--app-dir', str(tmp_path / 'app'),
+              '--expected-manifest-sha256', 'a' * 64, '--noninteractive']
+    assert h.main(prefix + ['--install-report', str(report)]) != 0
+    assert report.read_bytes() == b'anonymous pre-existing output'
+    assert h.main(prefix + ['--install-report', str(tmp_path.parent / 'workbox-full-install-2.json')]) != 0
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows installer short-path aliases')
+def test_full_install_report_accepts_same_temporary_directory_short_name(tmp_path, monkeypatch):
+    import ctypes
+
+    h = helper()
+    report_dir = tmp_path / 'installer temporary directory'
+    report_dir.mkdir()
+    api = ctypes.WinDLL('kernel32', use_last_error=True).GetShortPathNameW
+    api.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint]
+    api.restype = ctypes.c_uint
+    buffer = ctypes.create_unicode_buffer(32768)
+    length = api(str(report_dir), buffer, len(buffer))
+    assert 0 < length < len(buffer)
+    short_dir = Path(buffer.value)
+    if short_dir.is_relative_to(tmp_path):
+        pytest.skip('This volume does not expose a distinct temporary-root short alias')
+    monkeypatch.setattr('tempfile.gettempdir', lambda: str(tmp_path))
+    monkeypatch.setitem(sys.modules, 'installer_runtime', SimpleNamespace(
+        preflight_full_install=lambda *a: {'status': 'ready'}))
+    assert h.main(['--preflight-full-install', '--app-dir', str(tmp_path / 'app'),
+                   '--expected-manifest-sha256', 'a' * 64, '--install-report',
+                   str(short_dir / 'workbox-full-install-1.json'), '--noninteractive']) == 0
+    assert json.loads((report_dir / 'workbox-full-install-1.json').read_text(encoding='utf-8'))['status'] == 'ready'
