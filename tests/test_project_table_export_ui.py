@@ -63,7 +63,7 @@ def test_export_menu_is_available_in_every_status_and_single_highlight_is_not_ch
 
 def test_filtered_export_freezes_date_type_status_and_order_before_save_picker(controller, tmp_path, monkeypatch):
     panel = controller.panel
-    panel.added_date_filter.setCurrentIndex(panel.added_date_filter.findData('2026-11-06'))
+    panel.added_date_filter.set_day('2026-11-06')
     panel.type_filter.setCurrentIndex(panel.type_filter.findData(0))
     panel.status_buttons['待开发'].click()
     expected = ids(panel)
@@ -123,7 +123,7 @@ def test_checked_export_uses_only_explicit_checks_and_never_falls_back(controlle
 
 def test_empty_results_can_clear_all_filters_and_cannot_export(controller, monkeypatch):
     panel = controller.panel
-    panel.added_date_filter.setCurrentIndex(1)
+    panel.added_date_filter.set_day('2026-11-06')
     panel.batch_filter.setCurrentIndex(1)
     panel.type_filter.setCurrentIndex(1)
     panel.status_buttons['已交付'].click()
@@ -134,27 +134,38 @@ def test_empty_results_can_clear_all_filters_and_cannot_export(controller, monke
     panel.empty_clear_filters_button.click()
     assert len(ids(panel)) == 5
     assert panel.status_buttons[None].isChecked() and panel.search.text() == ''
-    assert all(control.currentData() is None for control in (panel.batch_filter, panel.type_filter, panel.added_date_filter))
+    assert all(control.currentData() is None for control in (panel.batch_filter, panel.type_filter))
+    assert panel.added_date_filter.selection() is None
     assert not panel.empty_clear_filters_button.isVisible()
 
 
-def test_type_and_first_added_day_are_visible_with_global_counts_at_both_widths(controller):
+def test_first_added_day_and_status_counts_stay_direct_with_types_in_more_filters(controller):
     panel = controller.panel
     for width in (660, 1200):
         panel.resize(width, 640)
         QApplication.processEvents()
         assert not panel.project_filter_panel.isVisible()
-        assert panel.type_filter.isVisible() and panel.added_date_filter.isVisible()
-        assert not panel.type_filter.geometry().intersects(panel.added_date_filter.geometry())
+        assert not panel.type_filter.isVisible() and not panel.batch_filter.isVisible()
+        assert panel.added_date_filter.isVisible() and panel.status_segments.isVisible()
+        assert panel.project_count_context.text() == '首次记录\n日常项目'
+        panel.project_filter_button.click()
+        QApplication.processEvents()
+        assert panel.type_filter.isVisible() and panel.batch_filter.isVisible()
+        assert panel.project_filter_panel.isAncestorOf(panel.type_filter)
+        assert panel.project_filter_panel.isAncestorOf(panel.batch_filter)
+        assert not panel.type_filter.geometry().intersects(panel.batch_filter.geometry())
         assert panel.type_filter.width() >= panel.type_filter.minimumSizeHint().width()
         assert panel.project_queue_header.rect().contains(panel.project_export_button.geometry())
+        panel.project_filter_button.click()
+        QApplication.processEvents()
     panel.status_buttons['待交付'].click()
     picker = panel.added_date_filter
-    picker.setCurrentIndex(picker.findData('2026-11-06'))
-    assert picker.currentText() == '2026-11-06'
-    assert '全状态 3 项' in picker.toolTip() and '全状态 3 项' in picker.accessibleDescription()
-    assert '全状态 3 项' in picker.itemData(picker.currentIndex(), Qt.ToolTipRole)
-    assert '1项' in panel.project_list_heading.text()
+    picker.set_day('2026-11-06')
+    assert picker.caption() == '2026-11-06'
+    assert panel.status_buttons[None].text() == '全部\n3'
+    assert panel.status_buttons['待开发'].text() == '待开发\n2'
+    assert panel.status_buttons['待交付'].text() == '待交付\n1'
+    assert panel.project_list_heading.text() == '项目清单 · 1件'
 
 
 def test_failed_read_disables_new_export_until_successful_refresh(controller, monkeypatch):
@@ -227,7 +238,7 @@ def test_snapshot_validation_error_is_persistent_and_retry_keeps_frozen_scope(co
 def test_real_ui_export_reads_back_exact_ids_date_state_type_and_scope(controller, tmp_path, monkeypatch):
     from openpyxl import load_workbook
     panel = controller.panel
-    panel.added_date_filter.setCurrentIndex(panel.added_date_filter.findData('2026-11-06'))
+    panel.added_date_filter.set_day('2026-11-06')
     panel.type_filter.setCurrentIndex(panel.type_filter.findData(0))
     panel.status_buttons['待开发'].click()
     expected = ids(panel)

@@ -1,6 +1,7 @@
 """通过高级设置真实入口展开原生菜单，保留外观子菜单。"""
 import ctypes
 import sys
+from time import monotonic
 
 if sys.platform == 'win32':
     ctypes.windll.kernel32.SetErrorMode(0x0001 | 0x0002)
@@ -38,18 +39,22 @@ def test_advanced_button_opens_native_menu_through_its_activation(qapp, tmp_path
     menu = button.menu()
     shown = QSignalSpy(menu.aboutToShow)
     observed = []
+    deadline = monotonic() + 2
 
     def observe_and_close():
+        # aboutToShow 早于原生窗口就绪；等待实际可见且活动，超时仍记录失败。
+        if not (menu.isVisible() and qapp.activePopupWidget() is menu) and monotonic() < deadline:
+            return
+        observer.stop()
         observed.append((menu.isVisible(), qapp.activePopupWidget() is menu,
                          [action.text() for action in menu.actions()]))
         menu.close()
 
     observer = QTimer(menu)
-    observer.setSingleShot(True)
     observer.timeout.connect(observe_and_close)
     try:
         button.setFocus()
-        observer.start(80)
+        observer.start(10)
         if activation == 'mouse':
             QTest.mouseClick(button, Qt.LeftButton)
         elif activation == 'space':
@@ -61,7 +66,7 @@ def test_advanced_button_opens_native_menu_through_its_activation(qapp, tmp_path
             actions = interface.actionInterface()
             assert QAccessibleActionInterface.showMenuAction() in actions.actionNames()
             actions.doAction(QAccessibleActionInterface.showMenuAction())
-        for _ in range(50):
+        while monotonic() < deadline + .1:
             if observed:
                 break
             QTest.qWait(20)

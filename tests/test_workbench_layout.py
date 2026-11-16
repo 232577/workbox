@@ -1,5 +1,5 @@
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import QApplication
 
 from compact_ui import CompactPanel
@@ -70,8 +70,9 @@ def test_narrow_workbench_keeps_horizontal_labels_and_controls_inside(qapp, tmp_
         assert panel.brand_label.text() == 'WorkBox'
         assert not panel.archive_filter.isVisible()
         rectangles = []
-        for control in (panel.project_filter_button, panel.batch_filter,
-                        panel.added_date_filter, panel.type_filter):
+        assert not panel.batch_filter.isVisible() and not panel.type_filter.isVisible()
+        for control in (panel.project_filter_button, panel.added_date_filter,
+                        panel.status_segments, panel.project_count_context):
             assert control.isVisible()
             rect = control.rect()
             rect.moveTopLeft(control.mapTo(panel, rect.topLeft()))
@@ -82,19 +83,36 @@ def test_narrow_workbench_keeps_horizontal_labels_and_controls_inside(qapp, tmp_
         qapp.processEvents()
         rectangles = []
         for control in (panel.search, panel.files_button, panel.background_button,
-                        panel.exit_button, panel.archive_filter, panel.type_filter,
-                        panel.added_date_filter):
+                        panel.exit_button, panel.project_filter_button, panel.added_date_filter,
+                        panel.status_segments, panel.project_count_context):
             assert control.isVisible()
             rect = control.rect()
-            rect.moveTopLeft(control.mapTo(panel, rect.topLeft()))
+            rect.moveTopLeft(panel.mapFromGlobal(control.mapToGlobal(QPoint(0, 0))))
             assert panel.rect().contains(rect), (control.accessibleName(), rect)
-            assert all(not rect.intersects(other) for other in rectangles)
-            rectangles.append(rect)
+            assert all(not rect.intersects(other) for _, other in rectangles), (
+                control.accessibleName(), rect, rectangles)
+            rectangles.append((control.accessibleName(), rect))
+        popup = panel.project_filter_panel
+        assert popup.isVisible() and popup.width() <= 480
+        popup_rect = popup.rect()
+        popup_rect.moveTopLeft(panel.mapFromGlobal(popup.mapToGlobal(QPoint(0, 0))))
+        assert panel.rect().contains(popup_rect), (panel.rect(), popup_rect)
+        rectangles = []
+        for control in (panel.archive_filter, panel.type_filter, panel.batch_filter,
+                        panel.due_filter, panel.urgent_filter):
+            assert control.isVisible()
+            rect = control.rect()
+            rect.moveTopLeft(popup.mapFromGlobal(control.mapToGlobal(QPoint(0, 0))))
+            assert popup.rect().contains(rect), (control.accessibleName(), rect)
+            assert all(not rect.intersects(other) for _, other in rectangles), (
+                control.accessibleName(), rect, rectangles)
+            rectangles.append((control.accessibleName(), rect))
         panel.project_filter_button.click()
         qapp.processEvents()
         assert not panel.archive_filter.isVisible()
         rectangles = []
-        for control in (panel.added_date_filter, panel.type_filter):
+        assert not panel.batch_filter.isVisible() and not panel.type_filter.isVisible()
+        for control in (panel.added_date_filter, panel.status_segments, panel.project_count_context):
             assert control.isVisible()
             rect = control.rect()
             rect.moveTopLeft(control.mapTo(panel, rect.topLeft()))

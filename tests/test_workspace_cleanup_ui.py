@@ -40,7 +40,9 @@ def wait_for_reader(pane):
 def test_closed_filters_show_active_count_and_clear_without_touching_primary_scope(panel):
     panel.search.setText('匿名')
     panel.status_buttons['待开发'].click()
-    assert panel.batch_filter.isVisible() and panel.bulk_mode.isVisible()
+    assert not panel.batch_filter.isVisible() and panel.bulk_mode.isVisible()
+    panel.added_date_filter.set_day(panel.service.project_workbench_snapshot()['projects'][0]['added_on'])
+    day = panel.added_date_filter.selection()
     panel.batch_filter.setCurrentIndex(1)
     assert not panel.due_filter.isVisible()
     QTest.keyClick(panel.project_filter_button, Qt.Key_Space)
@@ -51,7 +53,7 @@ def test_closed_filters_show_active_count_and_clear_without_touching_primary_sco
     assert item is not None
     QTest.keyClick(panel.project_filter_button, Qt.Key_Space)
     assert not panel.due_filter.isVisible()
-    assert '1' in panel.project_filter_button.text() and panel.clear_project_filters.isVisible()
+    assert '2' in panel.project_filter_button.text() and panel.clear_project_filters.isVisible()
     assert '未设日期' in panel.project_filter_button.accessibleDescription()
     batch = panel.batch_filter
     option = QStyleOptionComboBox()
@@ -62,7 +64,8 @@ def test_closed_filters_show_active_count_and_clear_without_touching_primary_sco
     panel.clear_project_filters.click()
     assert panel.due_filter.currentData() is None and not panel.clear_project_filters.isVisible()
     assert panel.search.text() == '匿名' and panel.status_buttons['待开发'].isChecked()
-    assert panel.batch_filter.currentIndex() == 1
+    assert panel.batch_filter.currentIndex() == 0
+    assert panel.added_date_filter.selection() == day
     assert panel.project_list.currentItem() is item and item.isSelected()
     assert panel.width() == 660 and panel.height() == 480
 
@@ -152,9 +155,10 @@ def test_delivery_shell_hides_intake_controls_and_preserves_persistent_notice(pa
     assert not panel.paste_button.isVisible() and not panel.files_button.isVisible()
     panel.nav_projects.click()
     panel._notice_timer.setInterval(10)
+    expired = QSignalSpy(panel._notice_timer.timeout)
     panel.show_notice('匿名文件已收录', kind='intake-success')
     assert panel.notice.isVisible()
-    QTest.qWait(30)
+    assert expired.wait(1000)
     assert not panel.notice.isVisible()
     panel.show_notice('匿名文件已收录', kind='intake-success')
     panel.tabs.setCurrentWidget(delivery)

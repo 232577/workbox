@@ -103,6 +103,8 @@ def test_all_pending_batch_stays_pending_on_every_status_page(qt_app, tmp_path):
     panel.show()
     try:
         key = f"receipt:{receipt['receipt_id']}"
+        panel.project_filter_button.click()
+        qt_app.processEvents()
         panel.batch_filter.setCurrentIndex(panel.batch_filter.findData(key))
         expected = '待完成0，共2'
         for status in ('待开发', '开发中', '待交付', '已交付'):
@@ -148,12 +150,17 @@ def test_delivery_and_void_refresh_filtered_workbench_in_place(qt_app, tmp_path)
         assert not panel.batch_progress_summary.isVisible()
         panel.search.setText('匿名检修')
         panel.status_buttons['待开发'].click()
+        panel.project_filter_button.click()
+        qt_app.processEvents()
         panel.batch_filter.setFocus()
         QTest.keyClick(panel.batch_filter, Qt.Key_Down)
         qt_app.processEvents()
         assert panel.batch_progress_summary.isVisible()
         assert panel.batch_progress_summary.text() == '待完成24，共24'
         batch_key = panel.batch_filter.currentData()
+        panel.project_filter_button.click()
+        qt_app.processEvents()
+        assert not panel.batch_progress_summary.isVisible()
         projects = panel.project_list
         ids = [projects.item(i).data(Qt.UserRole) for i in range(projects.count())]
         assert len(ids) == 23
@@ -195,6 +202,9 @@ def test_delivery_and_void_refresh_filtered_workbench_in_place(qt_app, tmp_path)
                     set_theme(mode, persist=False)
                     qt_app.processEvents()
                     assert panel.grab().save(str(tmp_path / f'batch-progress-660-{mode}.png'))
+        panel.project_filter_button.click()
+        qt_app.processEvents()
+        panel.batch_filter.setFocus()
         QTest.keyClick(panel.batch_filter, Qt.Key_Up)
         assert not panel.batch_progress_summary.isVisible()
     finally:
