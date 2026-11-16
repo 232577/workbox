@@ -14,20 +14,20 @@ Windows 上的个人项目工作箱：收材料、找文件、核对交付。数
 
 ## 安装与更新
 
-支持 Windows 10 1809+ / Windows 11 x64，自带运行环境，未做商业代码签名。当前版本 **1.0.0**，正式构建 **2026-11-13 r2**。
+支持 Windows 10 1809+ / Windows 11 x64，自带运行环境，未做商业代码签名。当前版本 **1.0.0**，正式构建 **2026-11-16 r1**。
 
 升级前备份 data、工作目录、归档目录及全部已登记历史文稿目录，再从“高级设置 → 检查更新”操作。[安装指南](https://workbox.ltxiangzi.dpdns.org/guide.html#installation) · [更新恢复](docs/UPDATE-RECOVERY.md)
 
 <details>
 <summary>当前安装包与校验信息</summary>
 
-[GitHub 备用下载](https://github.com/232577/workbox/releases/tag/v1.0.0.20261113.2)
+[GitHub 备用下载](https://github.com/232577/workbox/releases/tag/v1.0.0.20261116.1)
 
-- 文件：`WorkBox-1.0.0-Setup-x64-20261113-r2.exe`
-- 大小：40,841,667 字节
-- SHA-256：`dfc965b73f2d26e081f16d813e839bf729a79020ee2b5e4ae8b1190210f7d314`
-- 来源提交：`ff4a336d66adb65c6cfedfb5b258067c703dee69`
-- 验收范围以该 Release 的 `PUBLIC_BUILD_INFO.json` 为准。
+- 文件：`WorkBox-1.0.0-Setup-x64-20261116-r1.exe`
+- 大小：47,442,596 字节
+- SHA-256：`fcc0ba390b4d057be8f42eb4cb9b0516fc7d694a4051777f1e90b18dc73e0694`
+- 来源提交：`afe99d53107346a24751bb923fffa7692f385ada`
+- 来源信息见该 Release 的 `PUBLIC_BUILD_INFO.json`；最终安装与原生验证范围见发布说明及所列 CI。
 
 </details>
 
