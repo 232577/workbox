@@ -29,7 +29,7 @@ MAX_PLAN = 16 * 1024
 USAGE = ('WorkBox 程序更新助手：\n'
          '--plan <incremental-plan.json> 执行已确认的增量更新\n'
          '--recover <事务目录> --app-dir <程序目录> 显式恢复程序文件\n'
-         '--preflight-full-install --app-dir <程序目录> 检查全量安装能否开始\n'
+         '--preflight-full-install --app-dir <程序目录> --expected-manifest-sha256 <摘要> 检查全量安装能否开始\n'
          '--finalize-full-install --app-dir <程序目录> --expected-manifest-sha256 <摘要> 整理已核验旧运行库\n'
          '--self-check 检查助手入口；--noninteractive 仅关闭提示对话框。')
 

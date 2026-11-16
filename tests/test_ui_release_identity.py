@@ -80,8 +80,10 @@ def test_simplified_product_entry_has_a_new_identity_after_published_r1():
     assert update_client.build_key(update_client.CURRENT_TAG) > update_client.build_key('v1.0.0.20261113.1')
 
 
-def test_first_incremental_ready_build_has_a_new_identity_after_published_r2():
-    assert update_client.CURRENT_TAG == 'v1.0.0.20261116'
+def test_runtime_baseline_fix_has_a_new_identity_after_the_held_candidate():
+    # The first incremental-ready candidate is held; its tag/assets stay immutable.
+    assert update_client.CURRENT_TAG == 'v1.0.0.20261116.1'
+    assert update_client.build_key(update_client.CURRENT_TAG) > update_client.build_key('v1.0.0.20261116')
     assert update_client.build_key(update_client.CURRENT_TAG) > update_client.build_key('v1.0.0.20261113.2')
 
 
@@ -114,6 +116,8 @@ def test_build_probe_reports_release_without_creating_business_data(tmp_path):
     ('v1.0.0.20261113.1', 'v1.0.0.20261112.4', 'WorkBox-1.0.0-Setup-x64-20261113-r1.exe'),
     ('v1.0.0.20261113.2', 'v1.0.0.20261113.1', 'WorkBox-1.0.0-Setup-x64-20261113-r2.exe'),
     ('v1.0.0.20261116', 'v1.0.0.20261113.2', 'WorkBox-1.0.0-Setup-x64-20261116.exe'),
+    ('v1.0.0.20261116.1', 'v1.0.0.20261113.2', 'WorkBox-1.0.0-Setup-x64-20261116-r1.exe'),
+    ('v1.0.0.20261116.1', 'v1.0.0.20261116', 'WorkBox-1.0.0-Setup-x64-20261116-r1.exe'),
 ])
 def test_release_upgrades_previous_without_reoffering_installed_or_older(tag, previous, filename):
     payload = {'tag_name': tag, 'draft': False, 'prerelease': False,
