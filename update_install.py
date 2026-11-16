@@ -96,11 +96,51 @@ try {
             '-EncodedCommand', base64.b64encode(script.encode('utf-16le')).decode()]
 
 
+def delta_handoff_command(package: Path, release: Release, app_dir: Path, parent_pid: int,
+                          data_dir: Path) -> list[str]:
+    """复制已核实的独立助手，运行副本避免锁住被更新的安装载荷。"""
+    from incremental_update import _validated_release
+    from delta_format import read_manifest
+    from incremental_apply import verify_tree, has_pending_update, _copy_checked
+    package, app_dir, data_dir = map(plain_path, (package, app_dir, data_dir))
+    checked = _validated_release(release)
+    delta = checked.delta
+    if (delta is None or package.name != delta.filename or type(parent_pid) is not int
+            or not 0 < parent_pid <= 0xFFFFFFFF):
+        raise ValueError('增量更新交接信息无效。')
+    if has_pending_update(app_dir):
+        raise RuntimeError('上次程序更新尚未恢复，未覆盖现场。')
+    manifest = read_manifest(package, expected_sha256=delta.sha256, expected_size=delta.size,
+                             from_tag=delta.from_tag, to_tag=delta.to_tag)
+    verify_tree(app_dir, manifest['base'])
+    cache = plain_path(package.parent)
+    if {path.name for path in cache.iterdir()} != {package.name}:
+        raise ValueError('本次更新缓存含既有交接或未知文件，请重新下载。')
+    helper = plain_path(app_dir / 'WorkBoxUpdater.exe')
+    with helper.open('rb') as stream:
+        if stream.read(2) != b'MZ':
+            raise ValueError('独立更新助手不是有效的 Windows 程序。')
+    value = dict(format='workbox-incremental-plan-v1', app_dir=str(app_dir), data_dir=str(data_dir),
+                 parent_pid=parent_pid, package=str(package), expected_sha256=delta.sha256,
+                 expected_size=delta.size, from_tag=delta.from_tag, to_tag=delta.to_tag)
+    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True).encode('utf-8')
+    if len(encoded) > 16384:
+        raise ValueError('更新交接计划超过允许大小。')
+    copied = cache / ('updater-' + uuid.uuid4().hex + '.exe')
+    _copy_checked(helper, copied, manifest['base']['WorkBoxUpdater.exe'])
+    plan = plain_path(cache / 'incremental-plan.json')
+    with plan.open('xb') as stream:
+        stream.write(encoded)
+        stream.flush()
+        os.fsync(stream.fileno())
+    return [str(copied), '--plan', str(plan)]
+
+
 def launch_installer(installer: Path, release: Release, data_dir: Path):
     if sys.platform != 'win32' or not getattr(sys, 'frozen', False):
         raise ValueError('仅支持Windows安装版内执行升级；源码运行不会替换开发目录。')
-    command = handoff_command(installer, release, Path(sys.executable).resolve().parent,
-                              os.getpid(), data_dir)
+    prepare = delta_handoff_command if Path(installer).suffix.casefold() == '.wbdelta' else handoff_command
+    command = prepare(installer, release, Path(sys.executable).resolve().parent, os.getpid(), data_dir)
     # Windows PowerShell can exit 0 without running an EncodedCommand when it
     # inherits DETACHED_PROCESS from a windowless parent. Keep a hidden console
     # subsystem instead; the helper must outlive this process and run its script.

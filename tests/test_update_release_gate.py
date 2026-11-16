@@ -61,6 +61,42 @@ def snapshot(root):
     return {p.relative_to(root).as_posix(): p.read_bytes() for p in root.rglob('*') if p.is_file()}
 
 
+def add_updater(candidate, data=b'MZ anonymous standalone updater'):
+    root = candidate['payload']
+    (root / 'WorkBoxUpdater.exe').write_bytes(data)
+    contents = root / 'PACKAGE_CONTENTS.sha256'
+    contents.write_text(contents.read_text(encoding='utf-8') + digest(data) + '  WorkBoxUpdater.exe\n', encoding='utf-8')
+    candidate['build_info']['payload_files'] += 1
+    candidate['build_info']['updater_sha256'] = digest(data)
+
+
+def test_historical_payload_does_not_require_new_updater(candidate):
+    assert not (candidate['payload'] / 'WorkBoxUpdater.exe').exists()
+    result = gate().verify_release(**candidate)
+    assert result['incremental_ready'] is False
+
+
+def test_new_payload_reports_verified_helper_without_executing_it(candidate):
+    add_updater(candidate)
+    before = snapshot(candidate['payload'].parent)
+    result = gate().verify_release(**candidate)
+    assert result['incremental_ready'] is True
+    assert result['runtime_executed'] is False
+    assert snapshot(candidate['payload'].parent) == before
+
+
+@pytest.mark.parametrize('failure', ['missing-file', 'missing-report', 'wrong-hash', 'non-program'])
+def test_updater_advertisement_is_complete_and_matches_actual_bytes(candidate, failure):
+    if failure == 'missing-file':
+        candidate['build_info']['updater_sha256'] = 'a' * 64
+    else:
+        add_updater(candidate, b'not executable' if failure == 'non-program' else b'MZ anonymous helper')
+        if failure == 'missing-report': candidate['build_info'].pop('updater_sha256')
+        elif failure == 'wrong-hash': candidate['build_info']['updater_sha256'] = '0' * 64
+    with pytest.raises(ValueError):
+        gate().verify_release(**candidate)
+
+
 def test_valid_candidate_is_read_only_and_does_not_claim_deployment(candidate):
     tool = gate()
     root = candidate['payload'].parent

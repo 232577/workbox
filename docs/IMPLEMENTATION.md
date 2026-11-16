@@ -1,3 +1,100 @@
+# 2026-11-16 implementation evidence
+
+## Committed-update duplicate consolidation and final fixture correction
+
+Review identified redundant copies of changed/removed old program files in both
+`backup/` and `retired/`. The update now retains the fixed recovery backup and journal,
+and consolidates only this transaction's explicitly registered retired duplicates
+after the committed journal is durable. Creation/move handle identities, both full
+digests and origin streams are verified while parent and file handles remain held.
+Missing, changed or unverified files remain untouched. Historical and unfinished
+transactions are not scanned. Consolidation is outside the rollback exception path;
+its failure retains duplicate bytes without rolling back the installed target.
+Bounded removed/retained counts travel in the existing successful helper receipt;
+the receipt mechanism and journal format are unchanged.
+
+The new ordinary cases failed before implementation (11 missing-behavior/API failures;
+one additional local native-rename WinError 6 was an environment failure, not a valid
+feature assertion). Direct primitive/copy cases subsequently passed 11 tests. The two
+new apply cases plus corrected handoff tests passed 9 tests on the normal Windows
+execution channel, without changing native assertions. Helper receipt count cases
+also failed before implementation and are included in the final affected-module run.
+
+Candidate `ce1f1ff` CI `43789645854` had five successful jobs and two test failures in
+the remaining desktop job: old anonymous r2/r3 protocol fixtures were implicitly
+using the new production CURRENT_TAG. That run had 3337 passed, 2 failed, 2 explicit
+UNC skips and 5977 warnings; it is not recorded as passed. A named fixture now scopes
+the simulated old-client identity to the three relevant cases. Production downgrade
+checks remain unchanged; added same/older rejection cases retain the files unchanged.
+The corrected handoff module passed 7 tests.
+
+Final affected modules (`update_file_ops`, `incremental_apply`, `incremental_handoff`,
+`update_helper`, `delta_format`, `incremental_package`, `ui_release_identity`,
+`incremental_update`) passed **327 tests**, with one expected duplicate-ZIP warning.
+Independent static review found no blocker. The next complete CI and frozen/installer
+gates must use this new candidate, not the earlier failed run.
+
+## Incremental package compatibility and staging
+
+The package path allowlist now accepts only the exact PyInstaller runtime path
+`_internal/base_library.zip` as an opaque file. Other ZIP names, locations and case
+variants remain rejected. The inner archive is never inspected or extracted.
+
+Staging now uses handle-relative exclusive creation. The initial staging root
+identity is checked against the acquired root handle before creating child entries;
+parent handles remain held through writing and flushing. Collisions never overwrite
+files and failures retain their partial staging evidence.
+
+The inherited uncommitted safe-create patch was preserved before modification in a
+read-only local checkpoint, SHA-256
+`1a4d33ffa6cc0e25183f319cce7318279945fa21e50b9958e162dfcfa2bdc670`.
+An additional uncommitted last-instant reparse experiment was not run and is not
+included in this change. Its text remains in that checkpoint. No existing baseline
+test or assertion was removed or weakened. No claim is made for that extra coverage.
+
+Regression evidence, using isolated anonymous temporary fixtures and
+`python -m scripts.run_tests`:
+
+| Change | Before implementation | After implementation |
+| --- | --- | --- |
+| Exact runtime ZIP and exclusive staging integration | 4 failed, 6 passed | Same 10 passed |
+| Expected root identity before creation | 2 failed | Included in 41 passed ordinary regression selection |
+| Expanded ordinary creation, collision, failure retention and builder/read/stage checks | — | 41 passed |
+
+The ordinary selection did not execute symlink, junction or race experiments.
+Full collection and frozen/installer validation are separate gates; these targeted
+results do not establish them. Real databases, working materials, archive files and
+existing installations were not accessed for these tests.
+
+The subsequent affected-module run covered `test_delta_format.py`,
+`test_incremental_package.py`, `test_update_file_ops.py`,
+`test_incremental_update.py` and `test_ui_release_identity.py`: **217 passed**, with
+one expected duplicate-ZIP-entry warning. The omitted extra experiment was not
+present in this collection. Independent contract and implementation reviews found
+no blocker; their checks are not a claim of a complete security audit.
+
+## Independent release identity
+
+The candidate identifies itself as `v1.0.0.20261116`; the software version remains
+`1.0.0`. Identity regressions failed before the change and then passed: 34 identity
+cases and three related metadata/build-probe compatibility cases. They verify that
+the current r2 release can be offered this new full installer and that the new build
+does not recommend itself as an update.
+
+The current public r2 payload has no update helper. This release must therefore be
+installed as a full package and becomes the first possible real incremental base.
+No r2-to-candidate delta is generated or advertised. A source candidate is not a
+completed build, installation or public release.
+
+## Public presentation already delivered
+
+PR #105 was squash-merged at `3406f7d71ba259702a49f6a3289aa43881d4740a` after all six
+jobs of CI run `43786975628` passed. The website was deployed from that clean main
+commit as Cloudflare version `34751182-ff24-4229-be9b-f027a11efea2`. Website tests:
+162 passed. Local and public Chromium checks: 29 passed each. Public HTTP checks:
+13 passed, including the full existing r2 installer hash, ranges and statistics
+access restrictions. Existing Cloudflare beacon injection remains accounted for;
+HTML is not described as byte-identical. The installer was unchanged by that deploy.
 # 项目记录件数与筛选简化
 
 2026-11-13 的需求确认：「件」指项目条目，按某天或一段时间首次记录的项目统计，并查看其当前状态。
@@ -32,3 +129,5 @@
 首次读取失败的未读取标记已补先失败后通过的测试；日期控件、项目件数、单日筛选及导出整组 53 项通过。日期弹窗的原生鼠标测试先等待窗口实际显示，再操作日历。
 
 完整测试按 `scripts/ci_tests.py` 分四组覆盖全部文件。本机整组运行曾出现原生窗口诊断及焦点提交、固定定时采样失败；失败记录保留，不能将它们归为组件弃用提示。菜单测试改为有界等待实际可见且活动，仍严格检查内容和全部激活路径，超时仍失败。最终完整结果以对应提交的 CI 和本机验收记录为准。此记录不表示已安装或发布。
+
+2026-11-16 接续：日期编辑无效输入按 Esc 恢复后重新校验应用按钮，覆盖单日、区间起点及终点三种情况。新增三例先失败后通过，相关 97 项通过（708 条依赖警告），实际 Windows Qt 菜单入口验证恢复后可以应用。最终候选 `639099725e6f50ce6681591c4f6a2b8c5ac8c0fa` 与独立复验来源树相同；CI `43788829548` 六项全部成功，PR #103 合入 `6e6231eae0b8d36b6ea6430f2a596bd5d983c120`。源码合并不表示新安装包已发布。

@@ -3,7 +3,7 @@ from pathlib import Path
 import os
 import sys
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QVBoxLayout, QPlainTextEdit, QProgressBar
 
 from theme import apply_to
@@ -13,12 +13,23 @@ from ui_components import DialogHeader, StatusBanner
 from qfluentwidgets import FluentIcon
 
 
+class _UpdateJob(FileJob):
+    """下载器只报告文本，由主线程接收并更新界面。"""
+    status_changed = Signal(str)
+
+    def __init__(self, operation, parent=None, *, report_status=False):
+        super().__init__(operation, parent)
+        if report_status:
+            self.operation = lambda **kwargs: operation(status=self.status_changed.emit, **kwargs)
+
+
 class UpdateDialog(QDialog):
     def __init__(self, parent=None, *, cache_root=None):
         super().__init__(parent)
         self.worker = None
         self.release = self.installer = None
         self._job_kind = ''
+        self._download_status = ''
         self._close_pending = self._closed = False
         self._can_install = sys.platform == 'win32' and getattr(sys, 'frozen', False)
         self.cache_root = Path(cache_root) if cache_root is not None else Path(
@@ -83,13 +94,14 @@ class UpdateDialog(QDialog):
         self.notes_heading.setVisible(available)
         self.notes.setVisible(available)
 
-    def _start(self, kind, operation):
+    def _start(self, kind, operation, *, report_status=False):
         if self.worker is not None or self._closed:
             return
         self._job_kind = kind
         self.status_label.setTone('busy')
-        self.worker = FileJob(operation, self)
+        self.worker = _UpdateJob(operation, self, report_status=report_status)
         self.worker.progress_changed.connect(self._show_progress)
+        self.worker.status_changed.connect(self._show_download_status, Qt.QueuedConnection)
         self.worker.finished.connect(self._finished)
         self.progress.setRange(0, 0 if kind == 'check' else 100)
         self.progress.setValue(0)
@@ -109,15 +121,39 @@ class UpdateDialog(QDialog):
         if self.release is None or self.installer is not None or self.worker is not None or self._closed:
             return
         release = self.release
-        self.status_label.setText('正在下载并校验安装包…')
-        self._start('download', lambda **kw: download_release(release, self.cache_root, **kw))
+        self._download_status = ('正在下载并校验增量更新包…' if self._offered_delta() is not None
+                                 else '正在下载并校验安装包…')
+        self.status_label.setText(self._download_status)
+        if self._can_install:
+            from incremental_update import download_update
+            app_dir = Path(sys.executable).resolve().parent
+            self._start('download', lambda **kw: download_update(
+                release, self.cache_root, app_dir=app_dir, **kw), report_status=True)
+        else:
+            self._start('download', lambda **kw: download_release(release, self.cache_root, **kw))
+
+    def _offered_delta(self):
+        delta = getattr(self.release, 'delta', None)
+        if (not self._can_install or delta is None
+                or delta.from_tag != CURRENT_TAG or delta.to_tag != self.release.tag
+                or type(delta.size) is not int or not 0 < delta.size < self.release.size):
+            return None
+        return delta
+
+    @Slot(str)
+    def _show_download_status(self, text):
+        if (self.sender() is not self.worker or self._close_pending or self._closed
+                or self._job_kind != 'download'):
+            return
+        self._download_status = text
+        self.status_label.setText(text)
 
     def _show_progress(self, percent):
-        if self.sender() is not self.worker or self._close_pending:
+        if self.sender() is not self.worker or self._close_pending or self._closed:
             return
         self.progress.setValue(percent)
         if self._job_kind == 'download':
-            self.status_label.setText(f'正在下载并校验安装包… {percent}%')
+            self.status_label.setText(f'{self._download_status} {percent}%')
 
     def _finished(self):
         worker = self.sender()
@@ -144,10 +180,14 @@ class UpdateDialog(QDialog):
                 self.status_label.setText('没有更新。')
             else:
                 self.status_label.setTone('neutral')
-                self.status_label.setText(f'可更新至 {self.release.tag} · {human_size(self.release.size)}')
+                delta = self._offered_delta()
+                size_note = (f'增量下载 {human_size(delta.size)} · 完整安装包 '
+                             f'{human_size(self.release.size)} 可作兜底' if delta is not None
+                             else human_size(self.release.size))
+                self.status_label.setText(f'可更新至 {self.release.tag} · {size_note}')
                 self.notes.setPlainText(self.release.notes)
         else:
-            self.installer = worker.result
+            self.installer = Path(worker.result)
             if self._can_install:
                 self.accept()
                 return
