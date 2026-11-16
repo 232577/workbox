@@ -33,7 +33,7 @@
 
 两张映射都必须包含 `WorkBox.exe`、`WorkBoxUpdater.exe`、`PACKAGE_CONTENTS.sha256`、`_internal/python311.dll`、`_internal/PySide6/Qt6Core.dll`、`_internal/PySide6/plugins/platforms/qwindows.dll`。没有更新助手的旧载荷不能成为可用增量基线。
 
-允许的根文件为上述两个 EXE、`PACKAGE_CONTENTS.sha256`、`安装说明.txt`、`THIRD_PARTY_NOTICES.md`；其他文件只能在 `_internal/` 或 `licenses/` 内，许可证限 `.txt`。拒绝业务数据后缀 `.db/.db-wal/.db-shm/.sqlite/.sqlite3/.csv/.doc/.docx/.xls/.xlsx/.pdf/.zip/.7z/.log`，任何层级的 data/backups/logs/.local/.git/.codex/工作项目/ZIP归档/升级恢复点 目录均拒绝。
+允许的根文件为上述两个 EXE、`PACKAGE_CONTENTS.sha256`、`安装说明.txt`、`THIRD_PARTY_NOTICES.md`；其他文件只能在 `_internal/` 或 `licenses/` 内，许可证限 `.txt`。拒绝业务数据后缀 `.db/.db-wal/.db-shm/.sqlite/.sqlite3/.csv/.doc/.docx/.xls/.xlsx/.pdf/.zip/.7z/.log`，任何层级的 data/backups/logs/.local/.git/.codex/工作项目/ZIP归档/升级恢复点 目录均拒绝。唯一 ZIP 例外是精确路径 `_internal/base_library.zip`：它是 PyInstaller 固定运行库，按普通程序文件核对完整字节的长度与 SHA-256；不打开、解压或执行其内部内容。大小写变体、其他目录和其他 ZIP 名称均不适用该例外。
 
 路径仅接受 NFC 正规化的相对 POSIX 路径。拒绝设备名、绝对/盘符/UNC/反斜线、空段、`.`/`..`、控制字符、ADS 冒号、结尾空格/句点；按 Windows 不区分大小写拒绝碰撞和文件/目录前缀冲突。拒绝 ZIP 重复条目、链接、加密、未知文件、声明外文件和大小不符。仅支持 Stored/Deflate。
 
@@ -41,7 +41,7 @@
 
 ## 公共模块接口（冻结）
 
-`delta_format.py` 只使用标准库和已有 `native_files.plain_path`，不得导入 Qt、业务服务或带当前构建号的模块，以便独立冻结助手。
+`delta_format.py` 只使用标准库、已有 `native_files.plain_path` 和 `update_file_ops` 的安全创建原语，不得导入 Qt、业务服务或带当前构建号的模块，以便独立冻结助手。
 
 - `build_key(tag: str) -> tuple[int, int]`：沿用现有正式 tag 规则。
 - `delta_filename(from_tag: str, to_tag: str) -> str`：仅严格递增版本。
@@ -49,7 +49,7 @@
 - `validate_manifest(value: object) -> dict`：严格结构、完整映射、限额，返回独立规范副本。
 - `changed_paths(manifest: dict) -> list[str]`、`removed_paths(manifest: dict) -> list[str]`：排序后的路径。
 - `read_manifest(package: Path, *, expected_sha256: str, expected_size: int, from_tag: str, to_tag: str) -> dict`：同一个打开文件句柄验证外层摘要、完整包结构和全部 payload 字节。
-- `stage_package(package: Path, destination: Path, *, expected_sha256: str, expected_size: int, from_tag: str, to_tag: str) -> dict`：上述完整验证后，写入新建、空的本地普通 staging 目录；拒绝已有目录/链接/重解析点。返回规范 manifest。只解包清单内程序文件，不调用 ZIP 的 extract/extractall。
+- `stage_package(package: Path, destination: Path, *, expected_sha256: str, expected_size: int, from_tag: str, to_tag: str) -> dict`：上述完整验证后，写入新建、空的本地普通 staging 目录；拒绝已有目录/链接/重解析点。暂存写入仅支持 Windows：先核对固定根目录句柄与初始 staging 身份一致，再相对于固定的父目录句柄独占创建各文件，父目录句柄保持至写入和刷新结束；已有目标不覆盖，失败保留暂存现场，不回退到普通路径创建或事后删除。返回规范 manifest。只解包清单内程序文件，不调用 ZIP 的 extract/extractall。
 
 ## 生成方
 

@@ -259,3 +259,134 @@ def test_unsupported_platform_refuses_before_filesystem(monkeypatch):
         api.move_checked(Path('absent'), Path('absent-target'), record(b'a'))
     with pytest.raises(OSError):
         api.swap_checked(Path('a'), Path('b'), record(b'a'), None, Path('c'))
+    with pytest.raises(OSError):
+        with api.create_new_file(Path('absent'), 'new.dll'):
+            pytest.fail('unsupported platform accepted')
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows exclusive staged file handles')
+def test_create_new_file_unicode_flush_and_parent_reuse(tmp_path):
+    root = tmp_path / 'stage'
+    root.mkdir()
+    for relative in ('内部/文件.dll', '内部/second.dll'):
+        with module().create_new_file(root, relative) as stream:
+            assert stream.writable()
+            stream.write(b'new staged bytes')
+            stream.flush()
+            assert os.fstat(stream.fileno()).st_size == len(b'new staged bytes')
+        assert stream.closed
+        assert (root / relative).read_bytes() == b'new staged bytes'
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows exclusive staged file handles')
+def test_create_new_file_requires_expected_root_identity_before_creation(tmp_path):
+    root = tmp_path / 'stage'
+    root.mkdir()
+    info = root.stat()
+    identity = (info.st_dev, info.st_ino)
+    with pytest.raises(ValueError, match='身份'):
+        with module().create_new_file(root, 'nested/created.dll',
+                                      expected_root_identity=(info.st_dev, info.st_ino + 1)):
+            pytest.fail('different directory identity accepted')
+    assert not list(root.iterdir())
+    with module().create_new_file(root, 'nested/created.dll', expected_root_identity=identity) as stream:
+        stream.write(b'expected directory bytes')
+    assert (root / 'nested/created.dll').read_bytes() == b'expected directory bytes'
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows exclusive staged file handles')
+@pytest.mark.parametrize('relative', ['../outside.dll', 'a/../../outside.dll', '/outside.dll',
+                                    'C:/outside.dll', 'a\\outside.dll', 'a//b.dll',
+                                    'a/./b.dll', 'a:stream', '', 'a/'])
+def test_create_new_file_rejects_noncanonical_paths_before_creation(tmp_path, relative):
+    root = tmp_path / 'stage'
+    root.mkdir()
+    with pytest.raises(ValueError):
+        with module().create_new_file(root, relative):
+            pytest.fail('unsafe relative path accepted')
+    assert not list(root.iterdir())
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows exclusive staged file handles')
+@pytest.mark.parametrize('occupied', ['file', 'directory', 'case-file'])
+def test_create_new_file_never_overwrites_exact_collisions(tmp_path, occupied):
+    root = tmp_path / 'stage'
+    root.mkdir()
+    target = root / ('CREATED.DLL' if occupied == 'case-file' else 'created.dll')
+    if occupied == 'directory':
+        target.mkdir()
+    else:
+        target.write_bytes(b'original occupant')
+    with pytest.raises((OSError, ValueError)):
+        with module().create_new_file(root, 'created.dll'):
+            pytest.fail('collision accepted')
+    assert target.is_dir() if occupied == 'directory' else target.read_bytes() == b'original occupant'
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows real junction operations')
+def test_create_new_file_rejects_directory_junction(tmp_path):
+    root, outside = tmp_path / 'stage', tmp_path / 'outside'
+    root.mkdir()
+    outside.mkdir()
+    link = root / 'linked'
+    link.mkdir()
+    _reparse(link, outside)
+    try:
+        with pytest.raises((OSError, ValueError)):
+            with module().create_new_file(root, 'linked/created.dll'):
+                pytest.fail('junction accepted')
+        assert not list(outside.iterdir())
+    finally:
+        _reparse(link)
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows directory symlink operations')
+def test_create_new_file_rejects_directory_symlink(tmp_path):
+    root, outside = tmp_path / 'stage', tmp_path / 'outside'
+    root.mkdir()
+    outside.mkdir()
+    link = root / 'linked'
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except OSError as error:
+        if error.winerror == 1314:
+            pytest.skip('Windows symlink privilege unavailable')
+        raise
+    with pytest.raises((OSError, ValueError)):
+        with module().create_new_file(root, 'linked/created.dll'):
+            pytest.fail('directory symlink accepted')
+    assert not list(outside.iterdir())
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows exclusive staged file handles')
+def test_create_new_file_requires_existing_directory_and_preserves_parent_collision(tmp_path):
+    root = tmp_path / 'absent-stage'
+    with pytest.raises((OSError, ValueError)):
+        with module().create_new_file(root, 'new.dll'):
+            pytest.fail('missing root accepted')
+    assert not root.exists()
+    root.mkdir()
+    (root / 'occupied').write_bytes(b'parent file')
+    with pytest.raises((OSError, ValueError)):
+        with module().create_new_file(root, 'occupied/new.dll'):
+            pytest.fail('file used as parent')
+    assert (root / 'occupied').read_bytes() == b'parent file'
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows handle ownership and cleanup')
+def test_create_new_file_writer_failure_closes_handles_without_deleting_bytes(tmp_path):
+    root = tmp_path / 'stage'
+    root.mkdir()
+    with pytest.raises(RuntimeError, match='writer stopped'):
+        with module().create_new_file(root, 'nested/partial.dll') as stream:
+            for path in (root, root / 'nested'):
+                with pytest.raises(OSError):
+                    path.rename(path.with_name(path.name + '-switched'))
+            stream.write(b'partial bytes retained')
+            raise RuntimeError('writer stopped')
+    assert stream.closed
+    retained = tmp_path / 'retained-stage'
+    root.rename(retained)
+    target = retained / 'nested/partial.dll'
+    assert target.read_bytes() == b'partial bytes retained'
+    target.rename(target.with_name('retained.dll'))

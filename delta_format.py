@@ -19,6 +19,7 @@ import zipfile
 import zlib
 
 from native_files import plain_path
+import update_file_ops
 
 MAX_FILES = 10000
 MAX_FILE_SIZE = 512 * 1024 * 1024
@@ -38,6 +39,7 @@ PRIVATE_PARTS = frozenset({'data', 'backups', 'logs', '.local', '.git', '.codex'
                            '工作项目', 'zip归档', '升级恢复点'})
 PRIVATE_SUFFIXES = frozenset({'.db', '.db-wal', '.db-shm', '.sqlite', '.sqlite3', '.csv',
                               '.doc', '.docx', '.xls', '.xlsx', '.pdf', '.zip', '.7z', '.log'})
+PYINSTALLER_RUNTIME_ZIP = '_internal/base_library.zip'
 SHA256 = re.compile(r'[0-9a-f]{64}')
 
 
@@ -82,7 +84,9 @@ def validate_path(value: str) -> str:
                  '程序路径不得使用设备名。')
     path = PurePosixPath(value)
     _require(not path.is_absolute() and path.as_posix() == value, '程序路径不是规范相对路径。')
-    _require(path.suffix.casefold() not in PRIVATE_SUFFIXES, '增量包不得包含业务数据文件。')
+    # PyInstaller 的固定运行库是一个不透明程序文件；不检查或解包其内部条目。
+    _require(value == PYINSTALLER_RUNTIME_ZIP or path.suffix.casefold() not in PRIVATE_SUFFIXES,
+             '增量包不得包含业务数据文件。')
     if len(parts) == 1:
         _require(value in ROOT_FILES, '增量包根文件不在允许清单内。')
     else:
@@ -382,12 +386,9 @@ def stage_package(package: Path, destination: Path, *, expected_sha256: str, exp
             plain_path(destination)
             current = destination.stat()
             _require((current.st_dev, current.st_ino) == (identity.st_dev, identity.st_ino), 'staging 目录标识改变。')
-            target = plain_path(destination / name)
-            _require(target.is_relative_to(destination), '增量输出路径越界。')
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target = plain_path(target)
             record = manifest['target'][name]
-            with target.open('xb') as output:
+            with update_file_ops.create_new_file(destination, name,
+                    expected_root_identity=(identity.st_dev, identity.st_ino)) as output:
                 _read_member(archive, infos['payload/' + name], size=record['size'],
                              expected_sha256=record['sha256'], destination=output)
                 output.flush()

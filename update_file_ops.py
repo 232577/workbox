@@ -86,6 +86,136 @@ def _parents_locked(paths):
         yield held
 
 
+def _plain_handle(handle, *, directory):
+    """按句柄检查重解析属性，不能用随后可能切换的路径代替。"""
+    from ctypes import wintypes as w
+    class AttributeTag(ctypes.Structure):
+        _fields_ = [('FileAttributes', w.DWORD), ('ReparseTag', w.DWORD)]
+    api = _api()
+    api.GetFileInformationByHandleEx.argtypes = [w.HANDLE, ctypes.c_int, ctypes.c_void_p, w.DWORD]
+    api.GetFileInformationByHandleEx.restype = w.BOOL
+    value = AttributeTag()
+    if not api.GetFileInformationByHandleEx(handle, 9, ctypes.byref(value), ctypes.sizeof(value)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    if value.FileAttributes & 0x400 or bool(value.FileAttributes & 0x10) != directory:
+        raise ValueError('暂存对象不是预期的普通目录或文件。')
+
+
+def _native_create_component(parent, leaf, *, directory):
+    """只解析一个名称，内核相对于已固定的父目录句柄打开或独占创建。"""
+    from ctypes import wintypes as w
+    class UnicodeString(ctypes.Structure):
+        _fields_ = [('Length', w.USHORT), ('MaximumLength', w.USHORT), ('Buffer', w.LPWSTR)]
+    class ObjectAttributes(ctypes.Structure):
+        _fields_ = [('Length', w.ULONG), ('RootDirectory', w.HANDLE),
+                    ('ObjectName', ctypes.POINTER(UnicodeString)), ('Attributes', w.ULONG),
+                    ('SecurityDescriptor', ctypes.c_void_p), ('SecurityQualityOfService', ctypes.c_void_p)]
+    class IoStatus(ctypes.Structure):
+        _fields_ = [('Status', ctypes.c_void_p), ('Information', ctypes.c_size_t)]
+    encoded = leaf.encode('utf-16-le')
+    if len(encoded) > 65532:
+        raise ValueError('暂存名称过长。')
+    name_buffer = ctypes.create_unicode_buffer(leaf)
+    name = UnicodeString(len(encoded), len(encoded) + 2, ctypes.cast(name_buffer, w.LPWSTR))
+    attrs = ObjectAttributes(ctypes.sizeof(ObjectAttributes), parent.handle, ctypes.pointer(name), 0x40, None, None)
+    native = ctypes.WinDLL('ntdll')
+    native.NtCreateFile.argtypes = [ctypes.POINTER(w.HANDLE), w.DWORD, ctypes.POINTER(ObjectAttributes),
+                                  ctypes.POINTER(IoStatus), ctypes.c_void_p, w.ULONG, w.ULONG,
+                                  w.ULONG, w.ULONG, ctypes.c_void_p, w.ULONG]
+    native.NtCreateFile.restype = w.LONG
+    native.RtlNtStatusToDosError.argtypes = [w.LONG]
+    native.RtlNtStatusToDosError.restype = w.ULONG
+    handle, result = w.HANDLE(), IoStatus()
+    # 目录允许共享写以支持内部创建，拒绝共享删除以固定名字。文件拒绝其他写入和删除。
+    status = native.NtCreateFile(ctypes.byref(handle), 0x80100000 if directory else 0x40100080,
+                                 ctypes.byref(attrs), ctypes.byref(result), None, 0x80,
+                                 3 if directory else 1, 3 if directory else 2,
+                                 0x00200020 | (1 if directory else 0x40), None, 0)
+    if status < 0:
+        raise ctypes.WinError(native.RtlNtStatusToDosError(status))
+    try:
+        io_status = ctypes.c_long((result.Status or 0) & 0xffffffff).value
+        if status == 0x103 or io_status < 0:
+            raise OSError('暂存对象创建没有同步完成。')
+        if not handle.value or handle.value == ctypes.c_void_p(-1).value:
+            raise OSError('暂存对象创建未返回有效句柄。')
+        if result.Information not in ((1, 2) if directory else (2,)):
+            raise OSError('暂存对象创建返回了未知结果。')
+        _plain_handle(handle, directory=directory)
+        return handle.value
+    except BaseException:
+        if handle.value and handle.value != ctypes.c_void_p(-1).value:
+            _api().CloseHandle(handle)
+        raise
+
+
+class _CreatedLease:
+    def __init__(self, parent, leaf, *, directory):
+        self.parent, self.leaf, self.directory = parent, leaf, directory
+        self.fd = None
+
+    def __enter__(self):
+        import msvcrt
+        handle = _native_create_component(self.parent, self.leaf, directory=self.directory)
+        try:
+            self.fd = msvcrt.open_osfhandle(handle, os.O_BINARY | (os.O_RDONLY if self.directory else os.O_WRONLY))
+        except BaseException:
+            _api().CloseHandle(handle)
+            raise
+        self.handle = handle
+        try:
+            info = os.fstat(self.fd)
+            if (not info.st_ino or (not self.directory and
+                    (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size != 0))):
+                raise ValueError('暂存对象身份或独占创建结果无效。')
+            return self
+        except BaseException:
+            self.__exit__()
+            raise
+
+    def __exit__(self, *args):
+        if self.fd is not None:
+            os.close(self.fd)
+            self.fd = None
+
+
+def _relative_components(relative):
+    if not isinstance(relative, str) or not relative or any(char in relative for char in '\\\x00:'):
+        raise ValueError('暂存路径必须是普通相对路径。')
+    parts = relative.split('/')
+    for part in parts:
+        if (part in ('', '.', '..') or part.endswith((' ', '.'))
+                or any(ord(char) < 32 or char in '<>"|?*' for char in part)
+                or re.fullmatch(r'(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?', part)):
+            raise ValueError('暂存路径包含不安全的名称。')
+    return parts
+
+
+@contextmanager
+def create_new_file(root: Path, relative: str, *, expected_root_identity=None):
+    """在现存普通暂存根中安全独占创建；所有父目录句柄保持到写入关闭。"""
+    _supported()
+    parts = _relative_components(relative)
+    root = plain_path(root)
+    # 包含根和它的全部祖先，避免根在初始句柄验证期间被改名替换。
+    with _parents_locked((root / parts[0],)) as held, ExitStack() as stack:
+        parent = held[root]
+        if expected_root_identity is not None and parent.identity != expected_root_identity:
+            raise ValueError('暂存根目录身份发生变化。')
+        directories = [parent]
+        _plain_handle(parent.handle, directory=True)
+        for leaf in parts[:-1]:
+            parent = stack.enter_context(_CreatedLease(parent, leaf, directory=True))
+            directories.append(parent)
+        target = stack.enter_context(_CreatedLease(parent, parts[-1], directory=False))
+        # fdopen 只借用 fd；外层 lease 负责唯一一次关闭，并在父目录之前释放。
+        with os.fdopen(target.fd, 'wb', closefd=False) as stream:
+            yield stream
+        for directory in directories:
+            _plain_handle(directory.handle, directory=True)
+        held[root].check()
+
+
 def _native_rename(lease, parent, leaf):
     """Nt API 接受相对 RootDirectory；Win32 包装器要求它为空，不能用于此处。"""
     from ctypes import wintypes as w

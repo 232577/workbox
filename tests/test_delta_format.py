@@ -78,6 +78,18 @@ def test_unsafe_paths(value):
         validate_path(value)
 
 
+def test_pyinstaller_runtime_zip_is_an_exact_path_exception():
+    assert validate_path('_internal/base_library.zip') == '_internal/base_library.zip'
+
+
+@pytest.mark.parametrize('value', ['base_library.zip', '_internal/other.zip',
+    '_internal/Base_Library.zip', '_internal/base_library.ZIP',
+    '_internal/nested/base_library.zip', 'licenses/base_library.zip'])
+def test_other_zip_paths_remain_rejected(value):
+    with pytest.raises(ValueError):
+        validate_path(value)
+
+
 def test_manifest_complete_independent_and_differences():
     original, _ = fixture()
     result = validate_manifest(original)
@@ -254,6 +266,38 @@ def test_stage_flush_failure_cannot_report_files_ready(monkeypatch, tmp_path):
     monkeypatch.setattr(delta_format.os, 'fsync', fail_flush)
     with pytest.raises(OSError, match='flush'):
         stage_package(path, tmp_path / 'stage', **kwargs(path))
+
+
+def test_stage_uses_exclusive_creator_and_preserves_failed_file(monkeypatch, tmp_path):
+    from contextlib import contextmanager
+    import delta_format
+    import update_file_ops
+    path, manifest = package(tmp_path)
+    destination = tmp_path / 'stage'
+    created = []
+    create = update_file_ops.create_new_file
+
+    @contextmanager
+    def tracked_create(root, relative, **options):
+        created.append((root, relative))
+        info = root.stat()
+        assert options.get('expected_root_identity') == (info.st_dev, info.st_ino)
+        with create(root, relative, **options) as output:
+            yield output
+
+    monkeypatch.setattr(update_file_ops, 'create_new_file', tracked_create)
+    def fail_flush(fd):
+        raise OSError('anonymous disk flush failure')
+    monkeypatch.setattr(delta_format.os, 'fsync', fail_flush)
+    with pytest.raises(OSError, match='flush'):
+        stage_package(path, destination, **kwargs(path))
+    first = changed_paths(manifest)[0]
+    assert created == [(destination, first)]
+    _, expected = fixture()
+    assert (destination / first).read_bytes() == expected[first]
+    with pytest.raises(FileExistsError):
+        stage_package(path, destination, **kwargs(path))
+    assert (destination / first).read_bytes() == expected[first]
 
 
 def test_stage_rejects_link_parent(tmp_path):

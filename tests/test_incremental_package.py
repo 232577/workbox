@@ -1,5 +1,6 @@
 """仅从匿名干净程序载荷生成增量包，不执行程序或访问业务目录。"""
 import hashlib
+import io
 import importlib
 import json
 import os
@@ -78,6 +79,39 @@ def test_identical_inputs_make_identical_zip_bytes_in_different_output_dirs(cand
     report = module().build_delta(base, target, other / output.name, from_tag=FROM, to_tag=TO)
     assert output.read_bytes() == (other / output.name).read_bytes()
     assert report['sha256'] == sha(output.read_bytes())
+
+
+@pytest.mark.parametrize('runtime_changed', [False, True])
+def test_pyinstaller_runtime_zip_build_read_stage_is_opaque(tmp_path, runtime_changed):
+    def runtime_zip(value):
+        stream = io.BytesIO()
+        with ZipFile(stream, 'w', compression=ZIP_DEFLATED) as archive:
+            archive.writestr('anonymous_module.pyc', value)
+        return stream.getvalue()
+
+    runtime = '_internal/base_library.zip'
+    records = {name: ('anonymous ' + name).encode() for name in fmt.REQUIRED_FILES if name != CONTENTS}
+    records[runtime] = runtime_zip(b'old anonymous bytecode')
+    updated = dict(records)
+    updated['WorkBox.exe'] = b'new anonymous executable bytes'
+    if runtime_changed:
+        updated[runtime] = runtime_zip(b'new anonymous bytecode')
+    base, target = tmp_path / 'base', tmp_path / 'target'
+    payload(base, records)
+    payload(target, updated)
+    original = snapshot(base), snapshot(target)
+    output = tmp_path / fmt.delta_filename(FROM, TO)
+    facts = build((base, target, output))
+    options = dict(expected_sha256=facts['sha256'], expected_size=facts['size'], from_tag=FROM, to_tag=TO)
+    manifest = fmt.read_manifest(output, **options)
+    assert manifest['base'][runtime] == {'size': len(records[runtime]), 'sha256': sha(records[runtime])}
+    assert manifest['target'][runtime] == {'size': len(updated[runtime]), 'sha256': sha(updated[runtime])}
+    assert (runtime in fmt.changed_paths(manifest)) is runtime_changed
+    destination = tmp_path / 'stage'
+    assert fmt.stage_package(output, destination, **options) == manifest
+    assert snapshot(destination) == {name: original[1][name] for name in fmt.changed_paths(manifest)}
+    assert not (destination / '_internal/anonymous_module.pyc').exists()
+    assert (snapshot(base), snapshot(target)) == original
 
 
 @pytest.mark.parametrize('damage', ['tampered', 'missing', 'extra', 'missing-helper', 'self', 'duplicate', 'case', 'bad-digest', 'unsafe', 'private-empty-dir'])
