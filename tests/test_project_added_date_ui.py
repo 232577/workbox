@@ -38,28 +38,34 @@ def ids(panel):
 def test_added_day_batch_and_status_intersect_without_changing_full_batch_total(panel):
     picker = panel.added_date_filter
     assert picker.accessibleName() == '新增日期筛选'
-    assert picker.itemData(0) is None
-    assert {picker.itemData(i) for i in range(1, picker.count())} == {'2026-11-06', '2026-11-07'}
-    picker.setCurrentIndex(picker.findData('2026-11-06'))
+    assert picker.selection() is None
+    picker.set_day('2026-11-06')
     assert ids(panel) == {1, 2, 3}
+    assert panel.project_status_counts == {'待开发': 2, '开发中': 0, '待交付': 1, '已交付': 0}
+    panel.project_filter_button.click()
     panel.batch_filter.setCurrentIndex(1)
     assert panel.batch_progress_summary.text() == '待完成4，共5'
     panel.status_buttons['待交付'].click()
     assert ids(panel) == {1}
     assert panel.batch_progress_summary.text() == '待完成4，共5'
     assert '待交付1' in panel.batch_filter.accessibleDescription()
-    picker.setCurrentIndex(picker.findData('2026-11-07'))
+    picker.set_day('2026-11-07')
     assert ids(panel) == set() and panel.empty.isVisible()
-    assert picker.currentData() == '2026-11-07'
+    assert picker.selection() == ('2026-11-07', '2026-11-07')
+    assert panel.status_buttons[None].text() == '全部\n2'
+    assert panel.status_buttons['待交付'].text() == '待交付\n0'
     panel.status_buttons[None].click()
     assert ids(panel) == {4, 5}
-    picker.setCurrentIndex(0)
+    picker.clear()
     assert ids(panel) == {1, 2, 3, 4, 5}
+    picker.set_range('2026-11-06', '2026-11-07')
+    assert ids(panel) == {1, 2, 3, 4, 5}
+    assert panel.project_status_counts == {'待开发': 4, '开发中': 0, '待交付': 1, '已交付': 0}
 
 
 def test_recorded_added_day_visible_and_unchanged_after_status_refresh(panel):
     picker = panel.added_date_filter
-    picker.setCurrentIndex(picker.findData('2026-11-06'))
+    picker.set_day('2026-11-06')
     row = next(panel.project_list.item(i) for i in range(panel.project_list.count())
                if panel.project_list.item(i).data(Qt.UserRole) == 1)
     panel.project_list.setCurrentItem(row)
@@ -69,28 +75,29 @@ def test_recorded_added_day_visible_and_unchanged_after_status_refresh(panel):
     panel.service.set_status(1, '开发中')
     panel.refresh()
     assert panel.project_list.currentItem() is row
-    assert picker.currentData() == '2026-11-06'
+    assert picker.selection() == ('2026-11-06', '2026-11-06')
     assert '新增：2026-11-06' in panel.project_metadata.text()
 
 
 def test_date_filter_refreshes_only_project_view_and_preserves_explicit_empty_date(panel, monkeypatch):
     monkeypatch.setattr(panel, '_refresh_other_views', lambda: pytest.fail('date change refreshed unrelated views'))
     picker = panel.added_date_filter
-    picker.setCurrentIndex(picker.findData('2026-11-07'))
+    picker.set_day('2026-11-07')
     panel.archive_filter.setCurrentIndex(panel.archive_filter.findData(True))
-    assert picker.currentData() == '2026-11-07'
+    assert picker.selection() == ('2026-11-07', '2026-11-07')
     assert ids(panel) == set()
-    assert picker.currentText() == '2026-11-07'
-    assert '无项目' in picker.toolTip()
-    picker.setCurrentIndex(0)
+    assert picker.caption() == '2026-11-07'
+    assert panel.project_list_heading.text() == '项目清单 · 0件'
+    assert all(count == 0 for count in panel.project_status_counts.values())
+    picker.clear()
     panel.archive_filter.setCurrentIndex(0)
     assert ids(panel) == {1, 2, 3, 4, 5}
 
 
 def test_receipt_view_clears_added_day_and_focuses_the_requested_project(panel):
     picker = panel.added_date_filter
-    picker.setCurrentIndex(picker.findData('2026-11-06'))
+    picker.set_day('2026-11-06')
     assert 4 not in ids(panel)
     assert panel.focus_projects([4]) is True
-    assert picker.currentData() is None
+    assert picker.selection() is None
     assert panel.project_list.currentItem().data(Qt.UserRole) == 4
