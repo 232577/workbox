@@ -69,7 +69,7 @@ test('11月13日r1历史身份保留，首页与稳定清单继续绑定当前�
   assert.ok(releaseNotes.includes('7760e997ded567dd5c1aec4435f023b82b64664ae757e249568999aac4f690fc'));
   const metadata = await (await handleRequest(new Request('https://example.com/updates/stable.json'), {})).json();
   assert.equal(metadata.tag_name, release.tag);
-  assert.ok(metadata.body.includes('来源提交 ff4a336d66adb65c6cfedfb5b258067c703dee69。'));
+  assert.ok(metadata.body.includes('来源提交 afe99d53107346a24751bb923fffa7692f385ada。'));
   assert.deepEqual(metadata.assets, [{ name: release.filename, size: release.size, state: 'uploaded',
     digest: `sha256:${release.sha256}`,
     browser_download_url: `https://github.com/232577/workbox/releases/download/${release.tag}/${release.filename}` }]);
@@ -118,7 +118,8 @@ test('r7待完成显示零与总数，日期和旧稿规则在各入口一致', 
   assert.match(download, /待完成4，共5.*待完成0，共1.*待完成只计待开发和开发中/);
   assert.doesNotMatch(download, /余N|r5 修正批次余量/);
   const filters = html.match(/<details><summary>项目筛选和操作在哪里？<\/summary>([\s\S]*?)<\/details>/)?.[1];
-  assert.match(filters, /首次新增日期和类型下拉位于批次下方，常驻显示/);
+  assert.match(filters, /首次新增日期入口在项目清单常驻显示，可选择某天或时间段/);
+  assert.match(filters, /日期、状态、类型与批次可组合筛选，重复收件不改变首次日期/);
   assert.match(filters, /点击“筛选”展开筛选区，可按归档范围、截止日期或加急查找/);
   assert.doesNotMatch(filters, /展开筛选区[^。]*(?:首次新增日期|类型)/);
   for (const text of [html, readme, siteReadme]) {
