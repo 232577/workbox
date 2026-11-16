@@ -1,5 +1,39 @@
 # 2026-11-16 implementation evidence
 
+## Committed-update duplicate consolidation and final fixture correction
+
+Review identified redundant copies of changed/removed old program files in both
+`backup/` and `retired/`. The update now retains the fixed recovery backup and journal,
+and consolidates only this transaction's explicitly registered retired duplicates
+after the committed journal is durable. Creation/move handle identities, both full
+digests and origin streams are verified while parent and file handles remain held.
+Missing, changed or unverified files remain untouched. Historical and unfinished
+transactions are not scanned. Consolidation is outside the rollback exception path;
+its failure retains duplicate bytes without rolling back the installed target.
+Bounded removed/retained counts travel in the existing successful helper receipt;
+the receipt mechanism and journal format are unchanged.
+
+The new ordinary cases failed before implementation (11 missing-behavior/API failures;
+one additional local native-rename WinError 6 was an environment failure, not a valid
+feature assertion). Direct primitive/copy cases subsequently passed 11 tests. The two
+new apply cases plus corrected handoff tests passed 9 tests on the normal Windows
+execution channel, without changing native assertions. Helper receipt count cases
+also failed before implementation and are included in the final affected-module run.
+
+Candidate `ce1f1ff` CI `43789645854` had five successful jobs and two test failures in
+the remaining desktop job: old anonymous r2/r3 protocol fixtures were implicitly
+using the new production CURRENT_TAG. That run had 3337 passed, 2 failed, 2 explicit
+UNC skips and 5977 warnings; it is not recorded as passed. A named fixture now scopes
+the simulated old-client identity to the three relevant cases. Production downgrade
+checks remain unchanged; added same/older rejection cases retain the files unchanged.
+The corrected handoff module passed 7 tests.
+
+Final affected modules (`update_file_ops`, `incremental_apply`, `incremental_handoff`,
+`update_helper`, `delta_format`, `incremental_package`, `ui_release_identity`,
+`incremental_update`) passed **327 tests**, with one expected duplicate-ZIP warning.
+Independent static review found no blocker. The next complete CI and frozen/installer
+gates must use this new candidate, not the earlier failed run.
+
 ## Incremental package compatibility and staging
 
 The package path allowlist now accepts only the exact PyInstaller runtime path

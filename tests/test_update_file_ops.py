@@ -62,10 +62,12 @@ def files(tmp_path):
 @pytest.mark.skipif(os.name != 'nt', reason='Windows handle operations')
 def test_swap_retains_old_identity_and_zone(files):
     source, destination, retired = files
-    identity = destination.stat().st_ino
+    info = destination.stat()
+    identity = info.st_ino
     Path(str(destination) + ':Zone.Identifier').write_bytes(b'old zone')
-    module().swap_checked(source, destination, record(b'new bytes'), record(b'old bytes'), retired,
+    returned_identity = module().swap_checked(source, destination, record(b'new bytes'), record(b'old bytes'), retired,
                           source_zone=None, destination_zone=b'old zone')
+    assert returned_identity == (info.st_dev, identity)
     assert destination.read_bytes() == b'new bytes'
     assert retired.read_bytes() == b'old bytes'
     assert retired.stat().st_ino == identity
@@ -100,7 +102,9 @@ def test_move_never_overwrites_and_new_target_can_be_created(files):
     with pytest.raises((ValueError, OSError)):
         module().move_checked(source, destination, record(b'new bytes'))
     assert source.read_bytes() == b'new bytes' and destination.read_bytes() == b'old bytes'
-    module().move_checked(source, retired, record(b'new bytes'))
+    info = source.stat()
+    returned_identity = module().move_checked(source, retired, record(b'new bytes'))
+    assert returned_identity == (info.st_dev, info.st_ino)
     assert retired.read_bytes() == b'new bytes' and not source.exists()
 
 
@@ -390,3 +394,55 @@ def test_create_new_file_writer_failure_closes_handles_without_deleting_bytes(tm
     target = retained / 'nested/partial.dll'
     assert target.read_bytes() == b'partial bytes retained'
     target.rename(target.with_name('retained.dll'))
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows handle-bound duplicate cleanup')
+def test_remove_duplicate_preserves_verified_keeper_and_origin(tmp_path):
+    duplicate, keeper = tmp_path / 'retired.dll', tmp_path / 'backup.dll'
+    expected = record(b'old anonymous program')
+    zone = b'[ZoneTransfer]\nZoneId=3\n'
+    for path in (duplicate, keeper):
+        path.write_bytes(b'old anonymous program')
+        Path(str(path) + ':Zone.Identifier').write_bytes(zone)
+    copy_info, keeper_info = duplicate.stat(), keeper.stat()
+    module().remove_duplicate_checked(duplicate, keeper, expected,
+        duplicate_identity=(copy_info.st_dev, copy_info.st_ino),
+        keeper_identity=(keeper_info.st_dev, keeper_info.st_ino), expected_zone=zone)
+    assert not duplicate.exists()
+    assert keeper.read_bytes() == b'old anonymous program'
+    assert keeper.stat().st_ino == keeper_info.st_ino
+    assert Path(str(keeper) + ':Zone.Identifier').read_bytes() == zone
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows handle-bound duplicate cleanup')
+@pytest.mark.parametrize('mismatch', ['missing-copy', 'missing-keeper', 'copy-bytes',
+    'keeper-bytes', 'copy-identity', 'keeper-identity', 'copy-zone', 'keeper-zone'])
+def test_remove_duplicate_refuses_unverified_copy_or_keeper(tmp_path, mismatch):
+    duplicate, keeper = tmp_path / 'retired.dll', tmp_path / 'backup.dll'
+    identities = {}
+    for label, path in (('copy', duplicate), ('keeper', keeper)):
+        if mismatch == 'missing-' + label:
+            identities[label] = (0, 0)
+            continue
+        path.write_bytes(b'unknown bytes' if mismatch == label + '-bytes' else b'old program')
+        info = path.stat()
+        identities[label] = (info.st_dev, info.st_ino + (mismatch == label + '-identity'))
+        if mismatch == label + '-zone':
+            Path(str(path) + ':Zone.Identifier').write_bytes(b'[ZoneTransfer]\nZoneId=4\n')
+    before = {path: path.read_bytes() for path in (duplicate, keeper) if path.exists()}
+    with pytest.raises((OSError, ValueError)):
+        module().remove_duplicate_checked(duplicate, keeper, record(b'old program'),
+            duplicate_identity=identities['copy'], keeper_identity=identities['keeper'], expected_zone=None)
+    assert {path: path.read_bytes() for path in (duplicate, keeper) if path.exists()} == before
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows handle-bound duplicate cleanup')
+def test_remove_duplicate_refuses_the_keeper_itself(tmp_path):
+    keeper = tmp_path / 'backup.dll'
+    keeper.write_bytes(b'old program')
+    info = keeper.stat()
+    with pytest.raises(ValueError):
+        module().remove_duplicate_checked(keeper, keeper, record(b'old program'),
+            duplicate_identity=(info.st_dev, info.st_ino),
+            keeper_identity=(info.st_dev, info.st_ino), expected_zone=None)
+    assert keeper.read_bytes() == b'old program'

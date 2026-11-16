@@ -75,6 +75,102 @@ def test_changed_added_removed_files_apply_and_probe_before_commit(candidate):
     preserved(app)
 
 
+def test_committed_update_retains_only_verified_backup_copies(candidate):
+    app, package, manifest, args = candidate
+    result = module().apply_update(package, app, **args, probe=lambda *a: None)
+    transaction = Path(result['transaction_dir'])
+    assert result['status'] == 'committed'
+    backups = {p.relative_to(transaction / 'backup').as_posix(): module()._record(p)
+               for p in (transaction / 'backup').rglob('*') if p.is_file()}
+    assert backups == {name: manifest['base'][name] for name in ('WorkBox.exe', '_internal/obsolete.dll')}
+    assert not any(p.is_file() for p in (transaction / 'retired').rglob('*'))
+    assert result['consolidation'] == {'removed': 2, 'retained': 0}
+    assert json.loads((transaction / 'journal.json').read_text(encoding='utf-8'))['phase'] == 'committed'
+    assert module().recover_update(transaction, app)['status'] == 'committed'
+    module().verify_tree(app, manifest['target'])
+    preserved(app)
+
+
+def test_consolidation_failure_keeps_committed_target_and_both_copies(candidate, monkeypatch):
+    app, package, manifest, args = candidate
+    attempts = []
+    def fail_cleanup(duplicate, keeper, *values, **options):
+        transaction, = app.glob('.workbox-update-*')
+        assert json.loads((transaction / 'journal.json').read_text(encoding='utf-8'))['phase'] == 'committed'
+        attempts.append((Path(duplicate), Path(keeper)))
+        raise OSError('anonymous cleanup unavailable')
+    monkeypatch.setattr(module(), 'remove_duplicate_checked', fail_cleanup)
+    def no_rollback(*values, **options):
+        pytest.fail('committed cleanup must not roll back')
+    monkeypatch.setattr(module(), '_rollback', no_rollback)
+    result = module().apply_update(package, app, **args, probe=lambda *a: None)
+    assert result['status'] == 'committed'
+    assert result['consolidation'] == {'removed': 0, 'retained': 2}
+    assert len(attempts) == 2
+    for duplicate, keeper in attempts:
+        assert duplicate.read_bytes() == keeper.read_bytes()
+    transaction = Path(result['transaction_dir'])
+    assert json.loads((transaction / 'journal.json').read_text(encoding='utf-8'))['phase'] == 'committed'
+    assert module().recover_update(transaction, app)['status'] == 'committed'
+    module().verify_tree(app, manifest['target'])
+    preserved(app)
+
+
+def test_backup_copy_identity_is_optional_and_uses_created_file(tmp_path):
+    source, first, second = tmp_path / 'source.dll', tmp_path / 'first.dll', tmp_path / 'second.dll'
+    source.write_bytes(b'old program')
+    expected = records({'source': b'old program'})['source']
+    assert module()._copy_checked(source, first, expected) is None
+    zone_hash, identity = module()._copy_checked(source, second, expected, with_identity=True)
+    info = second.stat()
+    assert zone_hash is None and identity == (info.st_dev, info.st_ino)
+    assert source.read_bytes() == first.read_bytes() == second.read_bytes() == b'old program'
+
+
+def test_uncommitted_update_does_not_consolidate_recovery_copies(candidate, monkeypatch):
+    app, package, manifest, args = candidate
+    def no_cleanup(*values, **options):
+        pytest.fail('uncommitted recovery copies cannot be consolidated')
+    monkeypatch.setattr(module(), 'remove_duplicate_checked', no_cleanup)
+    class Crash(BaseException):
+        pass
+    def interrupt(phase, name=None):
+        if phase == 'before-probe':
+            raise Crash()
+    with pytest.raises(Crash):
+        module().apply_update(package, app, **args, probe=lambda *a: None, _fault=interrupt)
+    transaction, = app.glob('.workbox-update-*')
+    assert (transaction / 'backup/WorkBox.exe').is_file()
+    assert (transaction / 'backup/_internal/obsolete.dll').is_file()
+    assert module().recover_update(transaction, app)['status'] == 'rolled-back'
+    module().verify_tree(app, manifest['base'])
+    preserved(app)
+
+
+def test_consolidation_ignores_history_and_unregistered_files(candidate):
+    app, package, manifest, args = candidate
+    history = app / ('.workbox-update-' + 'a' * 32)
+    history.mkdir()
+    info = app.stat()
+    old_journal = dict(format=module().JOURNAL_FORMAT, app_dir=str(app),
+        app_identity=[info.st_dev, info.st_ino], data_dir=str(args['data_dir']),
+        phase='rolled-back', manifest=manifest, error='', base_zone_hashes={})
+    module()._write_json(history / 'journal.json', old_journal)
+    (history / 'retained.dll').write_bytes(b'old unrelated recovery bytes')
+    before = {p.name: p.read_bytes() for p in history.iterdir()}
+    extra = []
+    def probe(*values):
+        transaction, = (p for p in app.glob('.workbox-update-*') if p != history)
+        unregistered = transaction / 'retired/unregistered.dll'
+        unregistered.write_bytes(b'unregistered bytes')
+        extra.append(unregistered)
+    result = module().apply_update(package, app, **args, probe=probe)
+    assert result['consolidation'] == {'removed': 2, 'retained': 0}
+    assert extra[0].read_bytes() == b'unregistered bytes'
+    assert {p.name: p.read_bytes() for p in history.iterdir()} == before
+    preserved(app)
+
+
 @pytest.mark.parametrize('changed', ['WorkBox.exe', '_internal/extra.dll'])
 def test_mismatched_or_extra_managed_files_refuse_before_mutation(candidate, changed):
     app, package, manifest, args = candidate

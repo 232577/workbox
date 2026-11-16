@@ -17,7 +17,7 @@ import uuid
 
 from delta_format import ROOT_FILES, changed_paths, removed_paths, read_manifest, stage_package, validate_manifest, validate_path, delta_filename
 from native_files import plain_path
-from update_file_ops import move_checked, swap_checked
+from update_file_ops import move_checked, swap_checked, remove_duplicate_checked
 
 JOURNAL_FORMAT = 'workbox-update-journal-v1'
 TRANSACTION_PREFIX = '.workbox-update-'
@@ -272,17 +272,21 @@ def has_pending_update(app_dir):
     return False
 
 
-def _copy_checked(source, destination, expected):
+def _copy_checked(source, destination, expected, *, with_identity=False):
     source, destination = plain_path(source), plain_path(destination)
     if _record(source) != expected:
         raise ValueError('备份源在更新期间发生变化。')
     destination.parent.mkdir(parents=True, exist_ok=True)
     plain_path(destination.parent)
+    copied_identity = None
     def copy_bytes(incoming, zone=None):
+        nonlocal copied_identity
         with destination.open('xb') as outgoing:
             shutil.copyfileobj(incoming, outgoing, 1024 * 1024)
             outgoing.flush()
             os.fsync(outgoing.fileno())
+            info = os.fstat(outgoing.fileno())
+            copied_identity = (info.st_dev, info.st_ino)
         if zone is not None:
             _write_zone(destination, zone)
     zone = None
@@ -297,6 +301,11 @@ def _copy_checked(source, destination, expected):
             copy_bytes(incoming)
     if _record(destination) != expected or _record(source) != expected:
         raise ValueError('旧程序备份未通过校验。')
+    info = plain_path(destination).stat()
+    if (info.st_dev, info.st_ino) != copied_identity:
+        raise ValueError('旧程序备份身份发生变化。')
+    if with_identity:
+        return _zone_hash(zone), copied_identity
     return _zone_hash(zone)
 
 
@@ -463,6 +472,7 @@ def apply_update(package, app_dir, *, expected_sha256, expected_size, from_tag, 
             raise FileExistsError('本次程序更新事务目录已存在，未覆盖。')
         _publish_transaction(preparation, transaction)
         fault = _fault or (lambda phase, name=None: None)
+        backup_identities, retired_paths = {}, {}
         try:
             staged = transaction / 'staged'
             stage_package(package, staged, expected_sha256=expected_sha256,
@@ -472,8 +482,10 @@ def apply_update(package, app_dir, *, expected_sha256, expected_size, from_tag, 
                 for name in changed:
                     _write_zone(_file(staged, name), origin)
             for name in backup_names:
-                journal['base_zone_hashes'][name] = _copy_checked(
-                    _file(root, name), _file(transaction / 'backup', name), manifest['base'][name])
+                zone_hash, identity = _copy_checked(_file(root, name),
+                    _file(transaction / 'backup', name), manifest['base'][name], with_identity=True)
+                journal['base_zone_hashes'][name] = zone_hash
+                backup_identities[name] = identity
             fault('after-backup')
             verify_tree(root, manifest['base'])
             journal['phase'] = 'prepared'
@@ -497,9 +509,11 @@ def apply_update(package, app_dir, *, expected_sha256, expected_size, from_tag, 
                             or _current(destination) != manifest['base'].get(name)):
                         raise ValueError('最终替换前程序文件发生变化：' + name)
                 retired = _retired(transaction, 'retired', name)
-                _retry_change(lambda: swap_checked(source, destination, manifest['target'][name],
+                retired_identity = _retry_change(lambda: swap_checked(source, destination, manifest['target'][name],
                     manifest['base'].get(name), retired, source_zone=_origin(manifest),
                     destination_zone=old_zone), check_replace)
+                if name in manifest['base']:
+                    retired_paths[name] = (retired, retired_identity, old_zone)
                 fault('after-replace', name)
             for name in removed:
                 path = _file(root, name)
@@ -510,8 +524,9 @@ def apply_update(package, app_dir, *, expected_sha256, expected_size, from_tag, 
                 if _zone_hash(old_zone) != journal['base_zone_hashes'][name]:
                     raise ValueError('旧程序备份的安全来源标记发生变化：' + name)
                 retired = _retired(transaction, 'retired', name)
-                _retry_change(lambda: move_checked(path, retired, manifest['base'][name],
+                retired_identity = _retry_change(lambda: move_checked(path, retired, manifest['base'][name],
                     expected_zone=old_zone), check_remove)
+                retired_paths[name] = (retired, retired_identity, old_zone)
                 fault('after-remove', name)
             verify_tree(root, manifest['target'])
             journal['phase'] = 'files-installed'
@@ -522,7 +537,6 @@ def apply_update(package, app_dir, *, expected_sha256, expected_size, from_tag, 
             verify_tree(root, manifest['target'])
             journal['phase'] = 'committed'
             _write_json(transaction / 'journal.json', journal)
-            return {'status': 'committed', 'transaction_dir': str(transaction), 'from_tag': from_tag, 'to_tag': to_tag}
         except Exception as error:
             journal['error'] = str(error)[:4000]
             try:
@@ -534,3 +548,15 @@ def apply_update(package, app_dir, *, expected_sha256, expected_size, from_tag, 
                     transaction_dir=transaction, rollback_complete=False) from recovery_error
             raise UpdateApplyError('增量更新未完成，旧程序文件已恢复。',
                 transaction_dir=transaction, rollback_complete=True) from error
+        # committed 已落盘，整理失败不能触发回滚，也不扫描过去的事务或猜测文件归属。
+        consolidation = {'removed': 0, 'retained': 0}
+        for name, (retired, identity, old_zone) in retired_paths.items():
+            try:
+                remove_duplicate_checked(retired, _file(transaction / 'backup', name), manifest['base'][name],
+                    duplicate_identity=identity, keeper_identity=backup_identities[name], expected_zone=old_zone)
+            except Exception:
+                consolidation['retained'] += 1
+            else:
+                consolidation['removed'] += 1
+        return {'status': 'committed', 'transaction_dir': str(transaction), 'from_tag': from_tag, 'to_tag': to_tag,
+                'consolidation': consolidation}

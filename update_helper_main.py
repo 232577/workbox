@@ -291,7 +291,12 @@ def _run_plan(path, *, noninteractive):
         committed = True
         result.check()
         pid = relaunch(plan['app_dir'], plan['data_dir'])
-        result.write('verified-relaunch-requested', pid=pid)
+        details = dict(pid=pid)
+        consolidation = applied.get('consolidation')
+        if (type(consolidation) is dict and set(consolidation) == {'removed', 'retained'}
+                and all(type(count) is int and 0 <= count <= 10000 for count in consolidation.values())):
+            details['consolidation'] = dict(consolidation)
+        result.write('verified-relaunch-requested', **details)
         _output(result.value)
         return 0
     except Exception as error:

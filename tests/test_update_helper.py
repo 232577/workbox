@@ -100,7 +100,18 @@ def test_plan_envelope_refuses_ambiguous_or_unowned_files(plan, tmp_path, kind):
         helper().load_plan(path)
 
 
-def test_successful_apply_boundary_is_not_a_frozen_end_to_end_test(plan, monkeypatch):
+@pytest.mark.parametrize('consolidation,recorded', [
+    (None, False),
+    ({'removed': 4, 'retained': 0}, True),
+    ({'removed': 3, 'retained': 1}, True),
+    ({'removed': 10000, 'retained': 0}, True),
+    ({'removed': True, 'retained': 0}, False),
+    ({'removed': -1, 'retained': 0}, False),
+    ({'removed': 0, 'retained': 10001}, False),
+    ({'removed': 0, 'retained': 0, 'extra': 1}, False),
+], ids=['legacy-result', 'removed-copies', 'retained-copies', 'count-boundary',
+        'noninteger-count', 'negative-count', 'count-over-limit', 'extra-field'])
+def test_successful_apply_boundary_is_not_a_frozen_end_to_end_test(plan, monkeypatch, consolidation, recorded):
     h = helper()
     path, config = plan
     calls = []
@@ -113,7 +124,10 @@ def test_successful_apply_boundary_is_not_a_frozen_end_to_end_test(plan, monkeyp
         assert kwargs == {key: (Path(value) if key == 'data_dir' else value) for key, value in config.items()
                           if key in {'expected_sha256', 'expected_size', 'from_tag', 'to_tag', 'data_dir'}}
         calls.append(('apply',))
-        return {'status': 'committed', 'transaction_dir': str(app_dir / ('.workbox-update-' + 'a' * 32))}
+        applied = {'status': 'committed', 'transaction_dir': str(app_dir / ('.workbox-update-' + 'a' * 32))}
+        if consolidation is not None:
+            applied['consolidation'] = consolidation
+        return applied
 
     monkeypatch.setattr(h, 'apply_update', apply)
     launched = []
@@ -123,6 +137,10 @@ def test_successful_apply_boundary_is_not_a_frozen_end_to_end_test(plan, monkeyp
     assert result['kind'] == 'delta' and result['release_tag'] == NEW
     assert result['delta_sha256'] == config['expected_sha256']
     assert result['status'] == 'verified-relaunch-requested' and result['pid'] == 12345
+    if recorded:
+        assert result['consolidation'] == consolidation
+    else:
+        assert 'consolidation' not in result
     args, kwargs = launched[0]
     assert args == [str(Path(config['app_dir']) / 'WorkBox.exe'), '--panel', '--data-dir=' + config['data_dir']]
     assert kwargs['env']['PYINSTALLER_RESET_ENVIRONMENT'] == '1'

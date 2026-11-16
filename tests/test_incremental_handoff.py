@@ -1,4 +1,5 @@
 """安装版增量助手复制与启动保护，不启动真实安装或业务程序。"""
+from dataclasses import replace
 import hashlib
 import json
 from pathlib import Path
@@ -7,9 +8,16 @@ import sys
 import pytest
 
 import main
+import update_client
 import update_install
 from update_client import Release, DeltaAsset, RELEASE_ROOT
 from test_incremental_apply import candidate, OLD, NEW, preserved
+
+
+@pytest.fixture
+def anonymous_old_client(monkeypatch):
+    # 只为固定 r2/r3 匿名协议夹具模拟旧客户端；正式构建身份保持不变。
+    monkeypatch.setattr(update_client, 'CURRENT_TAG', OLD)
 
 
 def selected(candidate):
@@ -25,7 +33,7 @@ def selected(candidate):
     return app, package, manifest, args, release
 
 
-def test_delta_handoff_copies_verified_helper_and_writes_bounded_plan(candidate):
+def test_delta_handoff_copies_verified_helper_and_writes_bounded_plan(candidate, anonymous_old_client):
     app, package, manifest, args, release = selected(candidate)
     command = update_install.delta_handoff_command(package, release, app, 2147483647, args['data_dir'])
     copied = Path(command[0])
@@ -44,7 +52,7 @@ def test_delta_handoff_copies_verified_helper_and_writes_bounded_plan(candidate)
     preserved(app)
 
 
-def test_changed_helper_or_unknown_cache_refuses_handoff(candidate):
+def test_changed_helper_or_unknown_cache_refuses_handoff(candidate, anonymous_old_client):
     app, package, manifest, args, release = selected(candidate)
     (app / 'WorkBoxUpdater.exe').write_bytes(b'unknown helper')
     with pytest.raises(ValueError):
@@ -53,7 +61,7 @@ def test_changed_helper_or_unknown_cache_refuses_handoff(candidate):
     preserved(app)
 
 
-def test_frozen_delta_launch_uses_hidden_independent_helper(candidate, monkeypatch):
+def test_frozen_delta_launch_uses_hidden_independent_helper(candidate, monkeypatch, anonymous_old_client):
     app, package, manifest, args, release = selected(candidate)
     monkeypatch.setattr(sys, 'frozen', True, raising=False)
     monkeypatch.setattr(sys, 'executable', str(app / 'WorkBox.exe'))
@@ -65,6 +73,20 @@ def test_frozen_delta_launch_uses_hidden_independent_helper(candidate, monkeypat
     assert options['env']['PYINSTALLER_RESET_ENVIRONMENT'] == '1'
     assert options['creationflags'] & update_install.subprocess.CREATE_NO_WINDOW
     assert options.get('shell', False) is False
+    preserved(app)
+
+
+@pytest.mark.parametrize('target_tag', [NEW, update_client.CURRENT_TAG], ids=['older-build', 'same-build'])
+def test_current_client_refuses_same_or_older_handoff_before_copy(candidate, target_tag):
+    app, package, manifest, args, release = selected(candidate)
+    date, revision = update_client.build_key(target_tag)
+    filename = f'WorkBox-1.0.0-Setup-x64-{date}' + (f'-r{revision}' if revision else '') + '.exe'
+    release = replace(release, tag=target_tag, filename=filename,
+                      url=RELEASE_ROOT + f'download/{target_tag}/{filename}')
+    with pytest.raises(ValueError, match='同构建或旧构建'):
+        update_install.delta_handoff_command(package, release, app, 2147483647, args['data_dir'])
+    assert list(package.parent.iterdir()) == [package]
+    assert hashlib.sha256((app / 'WorkBoxUpdater.exe').read_bytes()).hexdigest() == manifest['base']['WorkBoxUpdater.exe']['sha256']
     preserved(app)
 
 

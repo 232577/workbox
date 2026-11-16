@@ -307,7 +307,7 @@ def _same_volume(paths):
         raise ValueError('程序文件移动必须位于同一卷。')
 
 
-def move_checked(source: Path, destination: Path, expected: dict, *, expected_zone=ANY) -> None:
+def move_checked(source: Path, destination: Path, expected: dict, *, expected_zone=ANY) -> tuple[int, int]:
     """核对持有的源文件并按同一句柄移入空位置，绝不覆盖。"""
     _supported()
     source, destination = _paths(source, destination)
@@ -316,12 +316,14 @@ def move_checked(source: Path, destination: Path, expected: dict, *, expected_zo
         _absent(destination)
         with _MoveLease(source, parents) as lease:
             _verified(lease, expected, expected_zone)
+            identity = _identity(os.fstat(lease.stream.fileno()))
             lease.rename_to(destination)
+            return identity
 
 
 def swap_checked(source: Path, destination: Path, source_expected: dict,
                  destination_expected: dict | None, retired: Path, *,
-                 source_zone=ANY, destination_zone=ANY) -> None:
+                 source_zone=ANY, destination_zone=ANY) -> tuple[int, int] | None:
     """旧目标按原句柄保留，再发布来源；失败时仅向空目标恢复旧句柄。"""
     _supported()
     source, destination, retired = _paths(source, destination, retired)
@@ -336,6 +338,7 @@ def swap_checked(source: Path, destination: Path, source_expected: dict,
             return
         previous = stack.enter_context(_MoveLease(destination, parents))
         _verified(previous, destination_expected, destination_zone)
+        identity = _identity(os.fstat(previous.stream.fileno()))
         previous.rename_to(retired)
         try:
             incoming.rename_to(destination)
@@ -347,3 +350,30 @@ def swap_checked(source: Path, destination: Path, source_expected: dict,
                 except (OSError, ValueError, RuntimeError):
                     pass
             raise
+        return identity
+
+
+def remove_duplicate_checked(duplicate: Path, keeper: Path, expected: dict, *,
+                             duplicate_identity: tuple[int, int],
+                             keeper_identity: tuple[int, int], expected_zone: bytes | None) -> None:
+    """仅删除本次明确登记的重复程序文件；保留副本的句柄持续到删除完成。"""
+    _supported()
+    if expected_zone is not None and not isinstance(expected_zone, bytes):
+        raise ValueError('整理重复文件需要明确的安全来源标记。')
+    duplicate, keeper = _paths(duplicate, keeper)
+    with _parents_locked((duplicate, keeper)) as parents:
+        with ZipLease(keeper, movable=False) as retained, _MoveLease(duplicate, parents) as redundant:
+            actual_keeper = _identity(os.fstat(retained.stream.fileno()))
+            actual_duplicate = _identity(os.fstat(redundant.stream.fileno()))
+            if (actual_keeper != keeper_identity or actual_duplicate != duplicate_identity
+                    or actual_keeper == actual_duplicate):
+                raise ValueError('重复程序文件或保留副本身份不符。')
+            _verified(retained, expected, expected_zone)
+            _verified(redundant, expected, expected_zone)
+            for parent in parents.values():
+                _plain_handle(parent.handle, directory=True)
+                parent.check()
+            if _identity(plain_path(keeper).stat()) != actual_keeper:
+                raise ValueError('保留副本的位置发生变化。')
+            redundant._location(duplicate)
+            redundant.remove_after_verified_commit()
