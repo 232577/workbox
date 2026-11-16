@@ -10,7 +10,7 @@ const demo = await import('./public/demo.mjs').catch(() => ({}));
 
 test('首页优先呈现真实界面和下载，体验流程移到独立指南', () => {
   assert.ok(home.indexOf('id="actual-ui"') < home.indexOf('id="overview"'));
-  assert.ok(home.indexOf('id="overview"') < home.indexOf('id="download"'));
+  assert.ok(home.indexOf('id="download"') < home.indexOf('id="actual-ui"'));
   assert.doesNotMatch(home, /id="workbox-demo"|id="try-workbox"|src="\/demo\.mjs/);
   assert.match(guide, /id="workbox-demo"/);
   assert.match(guide, /示例演示，不读取或上传真实文件/);
