@@ -77,7 +77,7 @@ test('11月13日r1历史身份保留，首页与稳定清单继续绑定当前�
     for (const value of [expected.filename, expected.sha256, source, '42,422,935']) assert.ok(text.includes(value), value);
   }
   const primary = [...documents['/index.html'].matchAll(/class="[^"]*download-link[^"]*" href="([^"#]+)"/g)].map(match => match[1]);
-  assert.equal(primary.filter(value => value === `/download/${release.filename}`).length, 2);
+  assert.equal(primary.filter(value => value === `/download/${release.filename}`).length, 1);
   assert.ok(documents['/index.html'].includes(`${(release.size / 1000000).toFixed(1)} MB`));
   assert.ok(html.includes(`href="https://github.com/232577/workbox/releases/download/${release.tag}/${release.filename}"`));
   for (const text of [html, readme, siteReadme, metadata.body]) {

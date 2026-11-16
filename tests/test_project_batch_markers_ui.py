@@ -74,7 +74,8 @@ def test_workbench_uses_one_snapshot_and_has_no_task_page(tmp_path, monkeypatch)
     calls = []
     def snapshot(*args, **kwargs):
         calls.append((args, kwargs))
-        return {'projects': [dict(row, batch_markers=[marker])], 'batch_options': [marker], 'warnings': []}
+        return {'projects': [dict(row, batch_markers=[marker])], 'batch_options': [marker], 'warnings': [],
+                'status_counts': {'待开发': 1, '开发中': 0, '待交付': 0, '已交付': 0}, 'total_count': 1}
     monkeypatch.setattr(service, 'project_workbench_snapshot', snapshot, raising=False)
     panel = CompactPanel(service)
     try:

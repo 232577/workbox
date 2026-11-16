@@ -542,11 +542,16 @@ class ThemeManager(QObject):
                 or widget.windowFlags() & Qt.FramelessWindowHint or widget.windowHandle() is None):
             return
         try:
+            # WinIdChange also runs during destruction; winId() would recreate
+            # the dying native window and break its accessibility mapping.
+            existing_handle = int(widget.effectiveWinId())
+            if not existing_handle:
+                return
             dwm = ctypes.WinDLL('dwmapi')
             setter = dwm.DwmSetWindowAttribute
             setter.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p, ctypes.c_uint]
             setter.restype = ctypes.c_long
-            hwnd = ctypes.c_void_p(int(widget.winId()))
+            hwnd = ctypes.c_void_p(existing_handle)
             dark = ctypes.c_int(int(self.resolved == 'dark'))
             setter(hwnd, 20, ctypes.byref(dark), ctypes.sizeof(dark))
             colors = tokens(self.resolved)

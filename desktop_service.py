@@ -5,12 +5,13 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections import Counter
 from concurrent.futures import CancelledError
 from datetime import date, datetime, timezone
 from pathlib import Path
 
 from app import WorkBox
-from database import Database, DELIVERY_TIMEZONE
+from database import Database, DELIVERY_TIMEZONE, STATUSES
 from managed_archive import ManagedArchive
 from parser import MAX_MESSAGE_LENGTH, NUMBERED, PROJECT_LABEL, TITLE, TITLE_END, ParsedProject, parse_message
 from workspace_manager import WorkspaceManager, _path, _zip_structure
@@ -180,20 +181,35 @@ class DesktopService(WorkBox):
 
     def project_workbench_snapshot(self, query='', status=None, batch_key=None, urgent_only=False,
                                    *, archived=False, due_filter=None, today=None, deleted=False,
-                                   type_id=None, added_on=None):
+                                   type_id=None, added_on=None, added_from=None, added_to=None):
         """项目、批次和别名取自同一读取事务，沿用项目列表原排序与筛选。"""
         from project_batches import read_project_batch_index
         if not isinstance(query, str) or len(query) > 1000:
             raise ValueError('搜索文字过长。')
         if batch_key is not None and not isinstance(batch_key, str):
             raise ValueError('批次筛选编号无效。')
+        if status is not None and status not in STATUSES:
+            raise ValueError('无效的项目状态。')
+        has_range = added_from is not None or added_to is not None
+        if has_range:
+            if added_on is not None:
+                raise ValueError('单日新增日期与新增日期范围不能同时设置。')
+            try:
+                for value in (added_from, added_to):
+                    if not isinstance(value, str) or date.fromisoformat(value).isoformat() != value:
+                        raise ValueError
+            except (ValueError, TypeError):
+                raise ValueError('新增日期范围必须同时提供 YYYY-MM-DD 格式的开始和结束日期。') from None
+            if added_from > added_to:
+                raise ValueError('新增日期范围的开始日期不能晚于结束日期。')
         if added_on not in (None, 'unknown'):
             try:
                 if not isinstance(added_on, str) or date.fromisoformat(added_on).isoformat() != added_on:
                     raise ValueError
             except (ValueError, TypeError):
                 raise ValueError('新增日期筛选必须为 YYYY-MM-DD、日期未知或全部。') from None
-        filters = dict(status=status, urgent_only=urgent_only, archived=archived,
+        # 状态汇总与当前列表共用日期和其他条件，选中的状态仅决定显示哪些项目。
+        filters = dict(status=None, urgent_only=urgent_only, archived=archived,
                        due_filter=due_filter, today=today, deleted=deleted, type_id=type_id)
         with self.db.connect() as connection:
             connection.execute('BEGIN')
@@ -212,11 +228,15 @@ class DesktopService(WorkBox):
             matching_ids = ({row['id'] for row in self.db.list_projects(query=query, connection=connection, **filters)}
                             if query else None)
             result = []
+            status_counts = Counter(dict.fromkeys(STATUSES, 0))
             for project in projects:
                 pid = project['id']
                 project['added_on'] = added_dates.get(pid)
                 project['added_on_label'] = project['added_on'] or '日期未知'
                 if added_on is not None and (project['added_on'] or 'unknown') != added_on:
+                    continue
+                if has_range and (project['added_on'] is None
+                                  or not added_from <= project['added_on'] <= added_to):
                     continue
                 markers = index['by_project'].get(pid, [])
                 if batch_key is not None and not any(m['key'] == batch_key for m in markers):
@@ -225,6 +245,9 @@ class DesktopService(WorkBox):
                         query.casefold() in str(m[field]).casefold()
                         for m in markers for field in ('key', 'code', 'label')):
                     continue
+                status_counts[project['status']] += 1
+                if status is not None and project['status'] != status:
+                    continue
                 project['batch_markers'] = markers
                 if pid in aliases:
                     project['name_aliases'] = aliases[pid]
@@ -232,7 +255,8 @@ class DesktopService(WorkBox):
                     project['merged_project_ids'] = merged_ids[pid]
                 result.append(project)
         return dict(projects=result, batch_options=index['options'], added_date_choices=date_choices,
-                    warnings=index['warnings'])
+                    warnings=index['warnings'], status_counts=dict(status_counts),
+                    total_count=sum(status_counts.values()))
 
     @staticmethod
     def _receipt(row, *, duplicate=False):
