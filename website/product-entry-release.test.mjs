@@ -31,7 +31,7 @@ test('11月13日r2当前下载与在线更新绑定新构建，全部34项旧目
     browser_download_url: `https://github.com/232577/workbox/releases/download/${tag}/${filename}` }]);
   const home = documents['/index.html'];
   assert.equal([...home.matchAll(/class="[^\"]*download-link[^\"]*" href="([^"#]+)"/g)]
-    .filter(match => match[1] === `/download/${filename}`).length, 2);
+    .filter(match => match[1] === `/download/${filename}`).length, 1);
   for (const page of [home, documents['/releases.html']]) {
     for (const value of [filename, release.sha256, release.size.toLocaleString('en-US')]) assert.ok(page.includes(value), value);
     assert.ok(page.includes(`https://github.com/232577/workbox/releases/download/${tag}/${filename}`));
