@@ -73,6 +73,7 @@ class _DateSelectionDialog(QDialog):
                 edit.dateChanged.connect(self._validate)
                 edit.lineEdit().textEdited.connect(self._validate)
                 edit.input_rejected.connect(self._validate)
+                edit.input_accepted.connect(self._validate)
         self._validate()
         apply_to(self)
 

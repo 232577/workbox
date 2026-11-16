@@ -263,6 +263,40 @@ def test_invalid_typed_date_is_visible_and_cannot_silently_apply(picker):
     assert changed.count() == 1
 
 
+@pytest.mark.parametrize('menu_text,edit_index,expected', [
+    ('选择某天…', 0, ('2026-11-13', '2026-11-13')),
+    ('选择时间段…', 0, ('2026-11-13', '2026-11-15')),
+    ('选择时间段…', 1, ('2026-11-13', '2026-11-15')),
+])
+def test_escape_restores_valid_date_and_allows_apply(picker, menu_text, edit_index, expected):
+    picker.set_range(*expected)
+    changed = QSignalSpy(picker.changed)
+
+    def choose(dialog):
+        assert QTest.qWaitForWindowActive(dialog, 1000)
+        edit = dialog.findChildren(QDateEdit)[edit_index]
+        apply = dialog.findChild(QDialogButtonBox).button(QDialogButtonBox.Apply)
+        error = dialog.findChild(QLabel, 'projectDateFilterError')
+        edit.setFocus()
+        QApplication.processEvents()
+        assert edit.hasFocus()
+        QTest.keyClick(edit, Qt.Key_A, Qt.ControlModifier)
+        QTest.keyClicks(edit, '2027-02-29')
+        assert edit.text() == '2027-02-29'
+        assert not apply.isEnabled() and error.isVisible()
+
+        QTest.keyClick(edit, Qt.Key_Escape)
+        assert dialog.isVisible()
+        assert edit.text() == expected[edit_index]
+        assert apply.isEnabled() and not error.isVisible()
+        apply.click()
+        assert dialog.result() == QDialog.Accepted
+
+    run_dialog(picker, menu_text, choose)
+    assert picker.selection() == expected
+    assert changed.count() == 0
+
+
 def test_cancel_restores_menu_check_and_releases_transient_dialog(picker):
     import shiboken6
     picker.set_day('unknown')
