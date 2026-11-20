@@ -30,6 +30,12 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1
 
 `scripts/build.ps1` 使用当前克隆的 `.venv`，Inno Setup 6 在发布机单独安装。不要以更新日期为由重建或重新安装一个字节相同的正式版本。
 
+发布机的 Windows 回归环境无法执行完整构建时，可在已评审的 `main` 上手动运行
+`WorkBox frozen release candidate`，输入该分支当前完整提交 SHA。该工作流调用同一
+`scripts/build.ps1`，完整测试和构建标识检查通过后才提供冻结程序、源提交和运行载荷摘要。
+下载产物后核对提交与摘要，再用发布机的 Inno Setup 编译和验收安装包。该工作流只读仓库，
+不创建标签、公开发行或部署官网。
+
 新标签使用附注标签，并仅在核验后通过一次性 `WORKBOX_RELEASE_TAGS=1` 允许本地 hook 创建；该变量不允许覆盖或删除已有标签。服务器端标签规则仍然生效。推送后核对远端标签目标，不使用 `--force` 或资产 `--clobber`。
 
 网站部署凭据由发布者本机登录或受保护的 CI environment 提供，不复制个人 OAuth 到源码或 PR。当前 CI **只检查，不自动部署，也不自动公开安装包**。执行部署时，应直接针对已核验的干净克隆 `website/wrangler.jsonc`，保存 SHA 和部署 ID；不得改其他站点或重置 Durable Object。

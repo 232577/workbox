@@ -1,0 +1,108 @@
+name: WorkBox frozen release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact reviewed main commit to build
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.repository == '232577/workbox' && github.ref == 'refs/heads/main' && github.sha == inputs.source_sha
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      EXPECTED_SOURCE: ${{ inputs.source_sha }}
+      QT_QPA_PLATFORM: offscreen
+      QT_API: pyside6
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.11'
+      - name: Check source and install locked requirements
+        shell: pwsh
+        run: |
+          $source = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $env:EXPECTED_SOURCE -cnotmatch '^[0-9a-f]{40}$' -or
+              $source -cne $env:EXPECTED_SOURCE -or $source -cne $env:GITHUB_SHA -or
+              (git status --porcelain)) {
+            throw 'Source checkout does not match the reviewed main commit.'
+          }
+          python scripts/repo_guard.py --all
+          if ($LASTEXITCODE -ne 0) { throw 'Repository boundary check failed.' }
+          python -m venv .venv
+          if ($LASTEXITCODE -ne 0) { throw 'Virtual environment creation failed.' }
+          & .\.venv\Scripts\python.exe -m pip install -r requirements-lock.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Locked dependency installation failed.' }
+      - name: Run full Windows tests and freeze the reviewed source
+        shell: pwsh
+        run: |
+          & ./scripts/build.ps1
+      - name: Verify frozen runtime and record its provenance
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD).Trim() -cne $env:EXPECTED_SOURCE -or (git status --porcelain)) {
+            throw 'Source changed while building.'
+          }
+          $runtime = (Resolve-Path -LiteralPath 'dist/WorkBox').Path
+          $top = @(Get-ChildItem -LiteralPath $runtime -Force | Select-Object -ExpandProperty Name)
+          if (Compare-Object $top @('WorkBox.exe', 'WorkBoxUpdater.exe', '_internal')) {
+            throw 'Unrecognized file in the frozen runtime.'
+          }
+          $proof = New-Item -ItemType Directory -Path '.local/frozen-candidate'
+          $probe = Join-Path $proof.FullName 'runtime-info.json'
+          $process = Start-Process -FilePath (Join-Path $runtime 'WorkBox.exe') `
+            -ArgumentList @('--build-info', '--build-info-output', ('"' + $probe + '"')) `
+            -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw 'Frozen identity probe failed.' }
+          $info = Get-Content -LiteralPath $probe -Raw -Encoding utf8 | ConvertFrom-Json
+          $expected = & .\.venv\Scripts\python.exe -m workbox --build-info | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $info.version -cne '1.0.0' -or
+              $info.release_tag -cne $expected.release_tag) {
+            throw 'Frozen and reviewed source build identities differ.'
+          }
+          $entries = @(Get-ChildItem -LiteralPath $runtime -Recurse -Force | Sort-Object FullName)
+          if ($entries | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }) {
+            throw 'Unexpected link in frozen runtime.'
+          }
+          $files = @($entries | Where-Object { -not $_.PSIsContainer })
+          $manifest = Join-Path $proof.FullName 'FROZEN_PAYLOAD.sha256'
+          $files | ForEach-Object {
+            $relative = [IO.Path]::GetRelativePath($runtime, $_.FullName).Replace('\', '/')
+            "$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $relative"
+          } | Set-Content -LiteralPath $manifest -Encoding utf8
+          [ordered]@{
+            source_commit = $env:EXPECTED_SOURCE
+            source_tree = (git rev-parse 'HEAD^{tree}').Trim()
+            workflow_run_id = $env:GITHUB_RUN_ID
+            product_version = $info.version
+            release_tag = $info.release_tag
+            app_sha256 = (Get-FileHash -LiteralPath (Join-Path $runtime 'WorkBox.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+            updater_sha256 = (Get-FileHash -LiteralPath (Join-Path $runtime 'WorkBoxUpdater.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+            frozen_payload_sha256 = (Get-FileHash -LiteralPath $manifest -Algorithm SHA256).Hash.ToLowerInvariant()
+            runtime_files = $files.Count
+            validation = 'full-windows-tests-and-frozen-identity'
+          } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $proof.FullName 'FROZEN_PROVENANCE.json') -Encoding utf8
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: workbox-frozen-${{ github.sha }}
+          path: |
+            dist/WorkBox/
+            .local/frozen-candidate/FROZEN_PROVENANCE.json
+            .local/frozen-candidate/FROZEN_PAYLOAD.sha256
+            .local/final-tests.xml
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14

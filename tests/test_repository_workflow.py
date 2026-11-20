@@ -254,3 +254,16 @@ def test_ci_shard_keeps_reports_and_fixtures_in_selected_directory(tmp_path, mon
         'files': [str(Path('tests/test_b.py')), str(Path('tests/test_e.py'))],
     }
     assert default_output.exists() == (path_kind == 'default')
+
+
+def test_frozen_release_workflow_builds_only_exact_main_without_publication():
+    workflow = (ROOT / '.github/workflows/frozen-release-candidate.yml').read_text(encoding='utf-8')
+    assert "workflow_dispatch:" in workflow
+    assert "github.ref == 'refs/heads/main'" in workflow
+    assert 'github.sha == inputs.source_sha' in workflow
+    assert 'permissions:\n  contents: read' in workflow
+    assert 'contents: write' not in workflow
+    assert 'scripts/build.ps1' in workflow
+    assert 'dist/WorkBox/' in workflow
+    assert 'final-tests.xml' in workflow
+    assert 'gh release' not in workflow
