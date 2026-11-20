@@ -6,8 +6,8 @@ from PySide6.QtGui import QContextMenuEvent, QWheelEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDateTimeEdit, QMenu, QMessageBox, QAbstractItemView
 
-from compact_ui import CompactPanel, ProjectDetailsDialog
-from desktop_service import DesktopService
+from workbox.desktop.compact_ui import CompactPanel, ProjectDetailsDialog
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture

@@ -18,8 +18,8 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
 
 
 def components():
-    assert importlib.util.find_spec('ui_components') is not None, '缺少共享 Fluent 控件层'
-    return importlib.import_module('ui_components')
+    assert importlib.util.find_spec('workbox.desktop.ui_components') is not None, '缺少共享 Fluent 控件层'
+    return importlib.import_module('workbox.desktop.ui_components')
 
 
 def test_shared_fluent_components_module_exists():

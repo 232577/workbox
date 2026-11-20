@@ -16,7 +16,7 @@ pytestmark = pytest.mark.skipif(sys.platform != 'win32', reason='Windows process
 
 
 def test_launch_uses_hidden_console_and_independent_restart_environment(monkeypatch, tmp_path):
-    import update_install
+    from workbox.updates import update_install
     monkeypatch.setattr(sys, 'frozen', True, raising=False)
     monkeypatch.setattr(update_install, 'handoff_command', lambda *a: ['powershell.exe', 'anonymous'])
     received = {}
@@ -44,7 +44,7 @@ def test_real_windowless_parent_helper_runs_after_parent_exit(tmp_path):
     runner.write_text('''from pathlib import Path
 import base64, json, os, sys
 sys.path.insert(0, sys.argv[1])
-import update_install
+from workbox.updates import update_install
 sys.frozen = True
 marker = str(Path(sys.argv[2]).resolve()).replace("'", "''")
 script = "$p=$null;try{$p=[Diagnostics.Process]::GetProcessById("+str(os.getpid())+")}catch [ArgumentException]{};if($null -ne $p -and -not $p.WaitForExit(15000)){exit 2};[IO.File]::WriteAllText('"+marker+"','{\\"executed_after_parent_exit\\":true}')"
@@ -63,8 +63,8 @@ update_install.launch_installer(Path('unused.exe'), object(), Path('unused-data'
 
 
 def test_handoff_records_entry_before_waiting_for_application(tmp_path):
-    from update_client import Release
-    from update_install import handoff_command
+    from workbox.updates.update_client import Release
+    from workbox.updates.update_install import handoff_command
     data=b'MZanonymous command-generation fixture'
     installer=tmp_path/'WorkBox-anonymous.exe';installer.write_bytes(data)
     app=tmp_path/'app';app.mkdir();(app/'WorkBox.exe').write_bytes(b'anonymous')
@@ -77,8 +77,8 @@ def test_handoff_records_entry_before_waiting_for_application(tmp_path):
 
 @pytest.mark.parametrize('exit_code', [5, 7])
 def test_incomplete_install_notifies_user_and_keeps_exit_code(tmp_path, exit_code):
-    from update_client import Release
-    from update_install import handoff_command
+    from workbox.updates.update_client import Release
+    from workbox.updates.update_install import handoff_command
 
     content = b'MZanonymous installer fixture'
     installer = tmp_path / 'WorkBox-anonymous.exe'

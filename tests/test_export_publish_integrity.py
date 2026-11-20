@@ -10,9 +10,9 @@ from zipfile import is_zipfile
 
 import pytest
 
-import delivery_export
-from database import Database
-from native_files import ZipLease
+import workbox.storage.delivery_export as delivery_export
+from workbox.projects.database import Database
+from workbox.storage.native_files import ZipLease
 
 
 EXTERNAL_CONTENT = b'anonymous file from another process'

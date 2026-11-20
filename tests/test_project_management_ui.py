@@ -8,9 +8,9 @@ from PySide6.QtCore import QDate, Qt, QTimer, QPoint
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from desktop_controller import FloatingController
-from desktop_service import DesktopService
-from compact_ui import ProjectDeliveryDialog
+from workbox.desktop.desktop_controller import FloatingController
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.compact_ui import ProjectDeliveryDialog
 
 
 @pytest.fixture(scope='module')
@@ -67,7 +67,7 @@ def project_action(panel, project_id, text):
 
 
 def test_notes_and_optional_deadline_save_clear_and_survive_restart(app):
-    module = importlib.import_module('compact_ui')
+    module = importlib.import_module('workbox.desktop.compact_ui')
     assert hasattr(module, 'ProjectDetailsDialog'), '缺少项目备注与日期编辑入口'
     dialog = module.ProjectDetailsDialog(app.service, app.service.get_project(1), app.panel)
     dialog.notes.setPlainText('客户要求：\n保留原始单据。')
@@ -84,7 +84,7 @@ def test_notes_and_optional_deadline_save_clear_and_survive_restart(app):
 
 
 def test_notes_validation_preserves_input_and_cancel_leaves_database_unchanged(app):
-    module = importlib.import_module('compact_ui')
+    module = importlib.import_module('workbox.desktop.compact_ui')
     assert hasattr(module, 'ProjectDetailsDialog'), '缺少备注保存校验'
     dialog = module.ProjectDetailsDialog(app.service, app.service.get_project(1), app.panel)
     dialog.show()
@@ -99,7 +99,7 @@ def test_notes_validation_preserves_input_and_cancel_leaves_database_unchanged(a
 
 
 def test_editing_notes_does_not_clamp_an_existing_early_calendar_date(app):
-    from compact_ui import ProjectDetailsDialog
+    from workbox.desktop.compact_ui import ProjectDetailsDialog
     app.service.update_project_details(1, '原备注', '1899-12-31')
     dialog = ProjectDetailsDialog(app.service, app.service.get_project(1), app.panel)
     dialog.notes.setPlainText('只修改备注')

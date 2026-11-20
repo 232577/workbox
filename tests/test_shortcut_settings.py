@@ -8,15 +8,15 @@ from PySide6.QtGui import QAccessible, QKeySequence
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog, QLabel, QVBoxLayout
 
-from shortcut_settings import ShortcutSettings
-from ui_components import button
+from workbox.desktop.shortcut_settings import ShortcutSettings
+from workbox.desktop.ui_components import button
 
 
 @pytest.fixture(scope='module')
 def qapp():
     app = QApplication.instance() or QApplication([])
     app.setQuitOnLastWindowClosed(False)
-    import theme
+    from workbox.desktop import theme
     theme.install_theme()
     return app
 
@@ -309,7 +309,7 @@ def test_accessibility_search_copy_and_keyboard_do_not_submit_parent(qapp):
 @pytest.mark.parametrize('mode', ['light', 'dark'])
 @pytest.mark.parametrize('width', [480, 680])
 def test_real_widget_layout_and_theme_captures(qapp, mode, width):
-    import theme
+    from workbox.desktop import theme
     from qfluentwidgets import CardWidget
     theme.set_theme(mode, persist=False)
     dialog = QDialog()

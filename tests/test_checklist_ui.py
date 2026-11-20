@@ -7,8 +7,8 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from desktop_service import DesktopService
-from theme import install_theme
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.theme import install_theme
 
 
 @pytest.fixture
@@ -18,8 +18,8 @@ def app():
 
 
 def make_dialog(service):
-    assert util.find_spec('checklist_ui') is not None, 'Checklist workspace not implemented'
-    return import_module('checklist_ui').ChecklistDialog(service)
+    assert util.find_spec('workbox.desktop.checklist_ui') is not None, 'Checklist workspace not implemented'
+    return import_module('workbox.desktop.checklist_ui').ChecklistDialog(service)
 
 
 def wait(app, dialog):
@@ -52,7 +52,7 @@ def test_theme_changes_preserve_inputs_and_widths(app,tmp_path):
     d=make_dialog(s); d.show()
     try:
         d.search.setText('示例')
-        from theme import set_theme
+        from workbox.desktop.theme import set_theme
         for mode in ('dark','light'):
             set_theme(mode, service=s)
             for width in (780,1120):
@@ -67,7 +67,7 @@ def test_theme_changes_preserve_inputs_and_widths(app,tmp_path):
 
 @pytest.mark.parametrize('activation', ['mouse', 'keyboard'])
 def test_main_native_menu_entry_opens_checklist_without_restoring_task_groups(app,tmp_path,activation):
-    from compact_ui import CompactPanel
+    from workbox.desktop.compact_ui import CompactPanel
     s=DesktopService(tmp_path/'data/db.sqlite');install_theme(s);p=CompactPanel(s)
     try:
         p.resize(1180,760);p.show();app.processEvents()
@@ -101,8 +101,8 @@ def test_main_native_menu_entry_opens_checklist_without_restoring_task_groups(ap
 
 def test_shorter_reimport_never_uses_previous_table_indexes(app,tmp_path):
     s=DesktopService(tmp_path/'data/db.sqlite');install_theme(s);d=make_dialog(s)
-    from checklist_reader import extract_entries
-    from checklist_review import review_entries
+    from workbox.projects.checklist_reader import extract_entries
+    from workbox.projects.checklist_review import review_entries
     try:
         first=extract_entries({'name':'s','rows':[['甲系统'],['乙系统'],['丙系统']]},0)
         d.results=review_entries(s,first);d._render();d.table.selectRow(2)
@@ -116,7 +116,7 @@ def test_shorter_reimport_never_uses_previous_table_indexes(app,tmp_path):
 
 
 def test_cancelled_reader_closes_after_finishing_without_project_writes(app,tmp_path):
-    from native_files import cancelled
+    from workbox.storage.native_files import cancelled
     s=DesktopService(tmp_path/'data/db.sqlite');install_theme(s);d=make_dialog(s);d.show()
     before=s.db.counts();applied=[]
     def operation(*,cancel_event,progress):

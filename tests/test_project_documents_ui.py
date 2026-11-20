@@ -7,8 +7,8 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtTest import QSignalSpy, QTest
 from PySide6.QtWidgets import QApplication, QHeaderView, QMessageBox
 
-from compact_ui import CompactPanel
-from desktop_service import DesktopService
+from workbox.desktop.compact_ui import CompactPanel
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture(scope='module')
@@ -49,7 +49,7 @@ def choose(panel,pid):
 
 
 def history_reader(monkeypatch,panel,tmp_path):
-    import project_documents_ui
+    from workbox.desktop import project_documents_ui
     original=project_documents_ui.list_project_documents
     history=tmp_path/'history'/'甲说明.txt';history.parent.mkdir();history.write_text('旧稿',encoding='utf-8')
     def read(service,pid,**kwargs):
@@ -89,7 +89,7 @@ def test_history_uses_native_menu_and_keeps_current_selection(panel,tmp_path,mon
 
 def test_history_mode_rejects_old_current_reader_and_resets_for_new_project(panel,tmp_path,monkeypatch):
     from threading import Event
-    import project_documents_ui
+    from workbox.desktop import project_documents_ui
     _,read=history_reader(monkeypatch,panel,tmp_path)
     choose(panel,1);pane=panel.document_pane
     wait(lambda:pane.worker is None and pane.table.rowCount()==1)
@@ -248,7 +248,7 @@ def test_open_document_requires_explicit_action_and_never_runs_program_files(pan
 
 def test_late_document_load_cannot_replace_the_new_project(panel,monkeypatch):
     from threading import Event
-    import project_documents_ui
+    from workbox.desktop import project_documents_ui
     original=project_documents_ui.list_project_documents
     entered,release=Event(),Event()
     def delayed(service,pid,**kwargs):
@@ -311,7 +311,7 @@ def test_reverted_update_during_drag_does_not_apply_obsolete_files(panel,qapp):
 
 def test_document_refresh_consumes_stale_queued_layout_anchor(panel, qapp):
     """An earlier width-layout callback cannot undo a later explicit scroll/refresh."""
-    from project_documents import list_project_documents
+    from workbox.storage.project_documents import list_project_documents
     root = Path(panel.service.workspaces.get_workspace(1)['path'])
     for index in range(60):
         (root / f'文件{index:03d}.txt').write_text('隔离资料', encoding='utf-8')
@@ -345,7 +345,7 @@ def test_document_refresh_consumes_stale_queued_layout_anchor(panel, qapp):
 
 
 def test_successful_same_content_refresh_clears_old_read_error(panel,monkeypatch):
-    import project_documents_ui
+    from workbox.desktop import project_documents_ui
     choose(panel,1)
     pane=panel.document_pane
     wait(lambda:pane.worker is None and pane.table.rowCount()==1)
@@ -371,7 +371,7 @@ def test_successful_same_content_refresh_clears_old_read_error(panel,monkeypatch
 
 @pytest.mark.parametrize('readable', [False, True])
 def test_incomplete_document_read_marks_count_and_can_retry(panel, monkeypatch, readable):
-    import project_documents_ui
+    from workbox.desktop import project_documents_ui
 
     original = project_documents_ui.list_project_documents
 
@@ -402,7 +402,7 @@ def test_incomplete_document_read_marks_count_and_can_retry(panel, monkeypatch, 
 
 def test_hidden_reader_finished_callback_cannot_consume_new_reader(panel,monkeypatch,qapp):
     from threading import Event
-    import project_documents_ui
+    from workbox.desktop import project_documents_ui
     choose(panel,1)
     pane=panel.document_pane
     old=pane.worker

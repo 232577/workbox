@@ -4,9 +4,9 @@ from zipfile import ZipFile
 
 import pytest
 
-from desktop_service import DesktopService
-from delivery_export import export_pending_projects
-from folder_intake import FolderIntake
+from workbox.desktop.desktop_service import DesktopService
+from workbox.storage.delivery_export import export_pending_projects
+from workbox.storage.folder_intake import FolderIntake
 
 
 @pytest.fixture
@@ -75,7 +75,7 @@ def test_rename_cannot_move_a_registered_history_root(service, monkeypatch):
 
 
 def test_delivery_refuses_overlapping_history_storage(service, monkeypatch):
-    from delivery_archive import ProjectDeliveryArchive
+    from workbox.storage.delivery_archive import ProjectDeliveryArchive
     pid, workspace = project(service)
     history = register_history(service, workspace / 'protected', monkeypatch)
     (workspace / 'current.txt').write_bytes(b'current')

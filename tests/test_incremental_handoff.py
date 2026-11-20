@@ -7,10 +7,10 @@ import sys
 
 import pytest
 
-import main
-import update_client
-import update_install
-from update_client import Release, DeltaAsset, RELEASE_ROOT
+import workbox.__main__ as main
+import workbox.updates.update_client as update_client
+import workbox.updates.update_install as update_install
+from workbox.updates.update_client import Release, DeltaAsset, RELEASE_ROOT
 from test_incremental_apply import candidate, OLD, NEW, preserved
 
 
@@ -104,7 +104,7 @@ def test_frozen_startup_rejects_unresolved_transaction_before_data(tmp_path, mon
 
 
 def test_application_holds_runtime_lease_until_exit_and_probe_is_read_only(tmp_path, monkeypatch):
-    from incremental_apply import runtime_guard
+    from workbox.updates.incremental_apply import runtime_guard
     app = tmp_path / 'app'
     app.mkdir()
     monkeypatch.setattr(sys, 'frozen', True, raising=False)

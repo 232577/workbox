@@ -10,13 +10,13 @@ from pathlib import Path
 
 import pytest
 
-from app import WorkBox
-from workspace_manager import WorkspaceManager
+from workbox.app import WorkBox
+from workbox.storage.workspace_manager import WorkspaceManager
 
 
 def archive_class():
-    assert importlib.util.find_spec('delivery_archive') is not None, 'project material archive is missing'
-    return importlib.import_module('delivery_archive').ProjectDeliveryArchive
+    assert importlib.util.find_spec('workbox.storage.delivery_archive') is not None, 'project material archive is missing'
+    return importlib.import_module('workbox.storage.delivery_archive').ProjectDeliveryArchive
 
 
 @pytest.fixture
@@ -152,7 +152,7 @@ def test_cancel_during_copy_can_retry_without_overwriting_verified_files(context
     (root / 'a.docx').write_bytes(b'a')
     (root / 'b.docx').write_bytes(b'b')
     manager = archive_class()(service, workspaces)
-    module = importlib.import_module('delivery_archive')
+    module = importlib.import_module('workbox.storage.delivery_archive')
     original = module.copy_verified
     event = threading.Event()
     copies = []
@@ -179,7 +179,7 @@ def test_source_changes_during_copy_do_not_confirm_delivery(context, monkeypatch
     service, workspaces, ids, root = context
     (root / 'a.docx').write_bytes(b'a')
     (root / 'b.docx').write_bytes(b'b')
-    module = importlib.import_module('delivery_archive')
+    module = importlib.import_module('workbox.storage.delivery_archive')
     manager = archive_class()(service, workspaces)
     original = module.copy_verified
     changed = False

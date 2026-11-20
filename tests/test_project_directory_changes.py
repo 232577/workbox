@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from app import WorkBox
-from workspace_manager import WorkspaceManager
+from workbox.app import WorkBox
+from workbox.storage.workspace_manager import WorkspaceManager
 
 
 @pytest.fixture
@@ -30,9 +30,9 @@ def context(tmp_path):
 
 
 def coordinator(context):
-    if importlib.util.find_spec('project_directory_changes') is None:
+    if importlib.util.find_spec('workbox.storage.project_directory_changes') is None:
         pytest.fail('项目目录变更协调器尚未实现')
-    from project_directory_changes import ProjectDirectoryChanges
+    from workbox.storage.project_directory_changes import ProjectDirectoryChanges
     return ProjectDirectoryChanges(context[0].db, context[1], context[2])
 
 
@@ -63,7 +63,7 @@ def commit(context, *, fail=False):
 
 @pytest.mark.parametrize('phase', ['serialize', 'write', 'flush', 'fsync', 'replace', 'cancel'])
 def test_journal_write_failure_removes_only_its_temporary_file(context, monkeypatch, phase):
-    import project_directory_changes as module
+    from workbox.storage import project_directory_changes as module
     changes = coordinator(context)
     record = dict(operation_id='a' * 32, state='original')
     changes._write(record)
@@ -122,7 +122,7 @@ def test_journal_write_failure_removes_only_its_temporary_file(context, monkeypa
 
 
 def test_journal_write_failure_preserves_replacement_temporary_file(context, monkeypatch):
-    import project_directory_changes as module
+    from workbox.storage import project_directory_changes as module
     changes = coordinator(context)
     record = dict(operation_id='a' * 32, state='original')
     changes._write(record)
@@ -146,7 +146,7 @@ def test_journal_write_failure_preserves_replacement_temporary_file(context, mon
 
 
 def test_journal_write_does_not_remove_existing_temporary_file(context, monkeypatch):
-    import project_directory_changes as module
+    from workbox.storage import project_directory_changes as module
     changes = coordinator(context)
     changes.journal_root.mkdir(parents=True)
     existing = changes.journal_root / ('.' + 'b' * 32 + '.partial')
@@ -159,7 +159,7 @@ def test_journal_write_does_not_remove_existing_temporary_file(context, monkeypa
 
 
 def test_journal_temporary_cleanup_failure_does_not_mask_publish_error(context, monkeypatch):
-    import project_directory_changes as module
+    from workbox.storage import project_directory_changes as module
     changes = coordinator(context)
     failure = OSError('original publish error')
 
@@ -230,7 +230,7 @@ def test_merge_copies_complete_tree_without_overwriting_or_removing_source(conte
 
 def test_recover_interrupted_flat_merge_restores_original_target(context):
     import uuid
-    from project_directory_changes import _directory_identity
+    from workbox.storage.project_directory_changes import _directory_identity
     source, target = create(context, ['来源系统', '目标系统'])
     old = Path(context[1].get_workspace(source)['path'])
     retained = Path(context[1].get_workspace(target)['path'])
@@ -326,7 +326,7 @@ def test_merge_cleanup_locks_backup_identity_and_published_bytes(context, monkey
     retained = Path(context[1].get_workspace(target)['path'])
     (retained / 'target.txt').write_bytes(b'target')
     changes = coordinator(context)
-    import project_directory_changes as module
+    from workbox.storage import project_directory_changes as module
     original_inventory = changes._inventory
     original_remove = module.ZipLease.remove_after_verified_commit
     denied = []
@@ -360,7 +360,7 @@ def test_merge_cleanup_resumes_after_partial_file_deletion(context, monkeypatch)
     (retained / 'nested' / 'first.txt').write_bytes(b'first')
     (retained / 'nested' / 'second.txt').write_bytes(b'second')
     changes = coordinator(context)
-    import project_directory_changes as module
+    from workbox.storage import project_directory_changes as module
     original = module.ZipLease.remove_after_verified_commit
     removed = []
     def interrupt_after_removal(lease):
@@ -383,7 +383,7 @@ def test_merge_cleanup_resumes_after_partial_file_deletion(context, monkeypatch)
 def test_recover_preupgrade_nested_merge_journal(context):
     import hashlib
     import uuid
-    from project_directory_changes import _directory_identity, _json
+    from workbox.storage.project_directory_changes import _directory_identity, _json
     source, target = create(context, ['来源系统', '目标系统'])
     old = Path(context[1].get_workspace(source)['path'])
     retained = Path(context[1].get_workspace(target)['path'])
@@ -608,7 +608,7 @@ def test_merge_detects_corrupted_published_copy_before_commit(context, monkeypat
     (old / '材料.txt').write_bytes(b'expected')
     changes = coordinator(context)
     plan = changes.preview(source, '目标系统', target)
-    import project_directory_changes as module
+    from workbox.storage import project_directory_changes as module
     original = module.copy_verified
     def altered(*args, **kwargs):
         metadata = original(*args, **kwargs)
@@ -801,7 +801,7 @@ def test_edit_in_publish_to_lease_gap_is_detected_and_retained_on_rollback(conte
     (old / '材料.txt').write_bytes(b'previewed')
     changes = coordinator(context)
     plan = changes.preview(source, '目标系统', target)
-    import project_directory_changes as module
+    from workbox.storage import project_directory_changes as module
     original = module._DirectoryLease.rename
     def edited(lease, destination):
         publishing = (lease.path.name.startswith('.workbox-merge-')
@@ -842,7 +842,7 @@ def test_large_file_preview_hash_stops_at_cancelled_read_boundary(context, monke
     file.write_bytes(payload)
     changes = coordinator(context)
     event = threading.Event()
-    import project_directory_changes as module
+    from workbox.storage import project_directory_changes as module
     original = module._hash_stream
     reads = []
     class StopAfterRead:

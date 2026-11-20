@@ -18,8 +18,8 @@ def release_test_windows():
     yield
     if QApplication.instance() is None:
         return
-    from delivery_ui import TodayDeliveryDialog
-    from project_documents_ui import ProjectDocumentsPane
+    from workbox.desktop.delivery_ui import TodayDeliveryDialog
+    from workbox.desktop.project_documents_ui import ProjectDocumentsPane
 
     windows = [widget for widget in QApplication.topLevelWidgets()
                if shiboken6.getCppPointer(widget)[0] not in existing]

@@ -11,8 +11,8 @@ PROJECTS = [dict(id=1, name='甲系统', batch_id=8, archived_at=None),
 
 
 def counter():
-    assert importlib.util.find_spec('zip_content') is not None, 'ZIP project ownership counter is missing'
-    return importlib.import_module('zip_content').count_project_files
+    assert importlib.util.find_spec('workbox.storage.zip_content') is not None, 'ZIP project ownership counter is missing'
+    return importlib.import_module('workbox.storage.zip_content').count_project_files
 
 
 def package(tmp_path, names, filename='甲系统.zip'):
@@ -92,7 +92,7 @@ def test_multiple_selected_project_ids_cannot_share_one_named_directory(tmp_path
 
 
 def test_matched_bundle_retains_full_wrapper_paths_and_project_counts(tmp_path):
-    from bundle_analyzer import analyze_bundle
+    from workbox.storage.bundle_analyzer import analyze_bundle
     path = package(tmp_path, ['甲系统/wrapper/甲系统/a.txt',
                              '甲系统/wrapper/乙系统/a.txt',
                              '甲系统/wrapper/乙系统/deep/b.txt'], '甲系统-2-G.zip')
@@ -104,7 +104,7 @@ def test_matched_bundle_retains_full_wrapper_paths_and_project_counts(tmp_path):
 
 
 def test_bundle_plan_cannot_reuse_outdated_counts(tmp_path):
-    from bundle_analyzer import analyze_bundle
+    from workbox.storage.bundle_analyzer import analyze_bundle
     path = package(tmp_path, ['甲系统/a.txt', '乙系统/a.txt'], '甲系统-2.zip')
     plan = analyze_bundle(path, PROJECTS)
     plan['matches'][0]['file_count'] = 100

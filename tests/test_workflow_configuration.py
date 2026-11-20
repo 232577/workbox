@@ -5,7 +5,7 @@ from zipfile import ZipFile
 
 import pytest
 
-from desktop_service import DesktopService
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture
@@ -250,7 +250,7 @@ def test_disabled_creation_respects_protected_project_names(service, tmp_path, p
 
 
 def test_disabled_creation_folder_cancel_and_manual_retry_keep_prior_success(service, tmp_path):
-    from folder_intake import FolderIntake
+    from workbox.storage.folder_intake import FolderIntake
     pid = project(service)
     configure(service, auto_create_projects=False)
     root = tmp_path / 'source' / '甲系统'

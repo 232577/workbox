@@ -2,8 +2,8 @@
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from archive_classification_ui import ArchiveClassificationPane
-from desktop_service import DesktopService
+from workbox.desktop.archive_classification_ui import ArchiveClassificationPane
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture

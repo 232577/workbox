@@ -10,8 +10,8 @@ from PySide6.QtWidgets import QApplication, QDialog, QListWidget, QMenu, QScroll
 
 
 def theme_module():
-    assert importlib.util.find_spec('theme') is not None, '缺少统一主题模块'
-    return importlib.import_module('theme')
+    assert importlib.util.find_spec('workbox.desktop.theme') is not None, '缺少统一主题模块'
+    return importlib.import_module('workbox.desktop.theme')
 
 
 def test_unified_theme_module_is_available():

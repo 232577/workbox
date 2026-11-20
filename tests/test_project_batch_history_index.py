@@ -1,5 +1,5 @@
 """历史补录来源已覆盖时，不把旧回执再次当作当前批次。"""
-from desktop_service import DesktopService
+from workbox.desktop.desktop_service import DesktopService
 import sqlite3
 
 

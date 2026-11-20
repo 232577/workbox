@@ -22,7 +22,7 @@ def qapp():
 
 
 def views():
-    return importlib.import_module('fluent_views')
+    return importlib.import_module('workbox.desktop.fluent_views')
 
 
 def fill(view, count=30):
@@ -174,9 +174,9 @@ def test_chinese_filename_at_wrap_boundary_includes_qt_text_margins(qapp):
 def test_real_workbench_styles_keep_selected_text_and_metadata_readable(qapp, tmp_path, mode, foreground, kind):
     from PySide6.QtGui import QColor
     from PySide6.QtTest import QTest
-    from compact_ui import CompactPanel
-    from desktop_service import DesktopService
-    from theme import install_theme, set_theme
+    from workbox.desktop.compact_ui import CompactPanel
+    from workbox.desktop.desktop_service import DesktopService
+    from workbox.desktop.theme import install_theme, set_theme
 
     service = DesktopService(tmp_path / 'data/workbox.db')
     name = '跨部门项目文档收录整理与版本交付协同管理系统'
@@ -231,7 +231,7 @@ def test_real_workbench_styles_keep_selected_text_and_metadata_readable(qapp, tm
     # 用真实像素验证末行元数据，不能只测委托返回的尺寸。
     if kind == 'list':
         # 项目名仍用主文字色，独立的较小详情使用统一辅助文字色。
-        from theme import tokens
+        from workbox.desktop.theme import tokens
         expected = QColor(tokens(mode)['muted'])
     last_ink = sum(same_ink(rendered.pixelColor(x, y))
                   for y in range(round(rendered.height() * .68), round(rendered.height() * .92))
@@ -256,9 +256,9 @@ def test_real_workbench_mouse_drag_uses_original_qt_scrollbar(qapp, tmp_path, ki
     from PySide6.QtCore import QPoint
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QStyle, QStyleOptionSlider
-    from compact_ui import CompactPanel
-    from desktop_service import DesktopService
-    from theme import install_theme
+    from workbox.desktop.compact_ui import CompactPanel
+    from workbox.desktop.desktop_service import DesktopService
+    from workbox.desktop.theme import install_theme
 
     service = DesktopService(tmp_path / 'data/workbox.db')
     service.db.create_capture('独立鼠标拖动验证', '资料',

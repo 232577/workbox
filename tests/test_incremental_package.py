@@ -10,7 +10,7 @@ import sys
 from zipfile import ZipFile, ZIP_DEFLATED
 
 import pytest
-import delta_format as fmt
+import workbox.updates.delta_format as fmt
 
 FROM, TO = 'v1.0.0.20261113.2', 'v1.0.0.20261113.3'
 CONTENTS = 'PACKAGE_CONTENTS.sha256'

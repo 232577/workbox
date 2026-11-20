@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from delta_format import REQUIRED_FILES
-from incremental_apply import runtime_guard, verify_tree
+from workbox.updates.delta_format import REQUIRED_FILES
+from workbox.updates.incremental_apply import runtime_guard, verify_tree
 
 
 def module():
-    return importlib.import_module('installer_runtime')
+    return importlib.import_module('workbox.updates.installer_runtime')
 
 
 def sha(data):

@@ -6,8 +6,8 @@ import pytest
 
 
 def reader():
-    assert util.find_spec('checklist_reader') is not None, 'Read-only checklist reader not implemented'
-    return import_module('checklist_reader')
+    assert util.find_spec('workbox.projects.checklist_reader') is not None, 'Read-only checklist reader not implemented'
+    return import_module('workbox.projects.checklist_reader')
 
 
 def test_csv_read_preserves_source_rows_multiline_and_duplicates(tmp_path):

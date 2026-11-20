@@ -8,10 +8,10 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QPushButton, QStyle, QStyleOptionButton, QVBoxLayout, QWidget
 from qfluentwidgets import FluentIcon, SettingCard
 
-from compact_ui import DirectorySettingsDialog
-from date_edit import DateEdit
-from theme import install_theme, resolved_mode, set_theme
-from ui_components import SpinBox, button
+from workbox.desktop.compact_ui import DirectorySettingsDialog
+from workbox.desktop.date_edit import DateEdit
+from workbox.desktop.theme import install_theme, resolved_mode, set_theme
+from workbox.desktop.ui_components import SpinBox, button
 
 
 @pytest.fixture(params=['light', 'dark'])

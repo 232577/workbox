@@ -7,8 +7,8 @@ from PySide6.QtGui import QDesktopServices, QFont, QFontMetrics
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QStyleOptionViewItem
 
-from project_documents_ui import ProjectDocumentsPane
-from theme import install_theme
+from workbox.desktop.project_documents_ui import ProjectDocumentsPane
+from workbox.desktop.theme import install_theme
 
 
 @pytest.fixture

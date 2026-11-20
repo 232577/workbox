@@ -5,9 +5,9 @@ from zipfile import ZipFile
 
 import pytest
 
-from app import WorkBox
-from database import Database
-from zip_manager import inspect_zip
+from workbox.app import WorkBox
+from workbox.projects.database import Database
+from workbox.storage.zip_manager import inspect_zip
 from dataclasses import asdict
 
 
@@ -214,7 +214,7 @@ def test_delivery_rechecks_membership_after_hashing(box):
 
 
 def snapshots(box, *records):
-    from snapshot_manager import SCHEMA
+    from workbox.storage.snapshot_manager import SCHEMA
     with box.db.connect() as connection:
         connection.executescript(SCHEMA)
         source_id = connection.execute("INSERT INTO zip_sources(source_key,source_path) VALUES ('fixture','fixture')").lastrowid

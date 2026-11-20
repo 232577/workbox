@@ -7,9 +7,9 @@ import pytest
 
 
 def engine():
-    assert (Path(__file__).resolve().parents[1] / 'material_matching.py').is_file(), (
+    assert (Path(__file__).resolve().parents[1] / 'workbox/projects/material_matching.py').is_file(), (
         'material-check implementation is not present in this source commit')
-    return importlib.import_module('material_matching')
+    return importlib.import_module('workbox.projects.material_matching')
 
 
 def requirement(e, key='manual', family='word', count=1, keywords='说明书'):
@@ -193,14 +193,14 @@ def test_saved_duplicate_ids_cannot_change_counts_or_silently_replace_rules():
 
 def store_module():
     engine()
-    assert (Path(__file__).resolve().parents[1] / 'material_check_store.py').is_file(), (
+    assert (Path(__file__).resolve().parents[1] / 'workbox/projects/material_check_store.py').is_file(), (
         'project-scoped material settings are not present in this source commit')
-    return importlib.import_module('material_check_store')
+    return importlib.import_module('workbox.projects.material_check_store')
 
 
 @pytest.fixture
 def anonymous_service(tmp_path):
-    from desktop_service import DesktopService
+    from workbox.desktop.desktop_service import DesktopService
     service = DesktopService(tmp_path / 'data' / 'workbox.db')
     service.receive_text('1. 验收甲系统\n2. 验收乙系统')
     workspace = Path(service.workspaces.get_workspace(1)['path'])

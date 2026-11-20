@@ -10,8 +10,8 @@ import pytest
 
 
 def manager():
-    assert importlib.util.find_spec("zip_manager") is not None, "Task 3: ZIP manager missing"
-    return importlib.import_module("zip_manager")
+    assert importlib.util.find_spec("workbox.storage.zip_manager") is not None, "Task 3: ZIP manager missing"
+    return importlib.import_module("workbox.storage.zip_manager")
 
 
 def make_zip(path, content=b"isolated fixture; never execute"):
@@ -125,7 +125,7 @@ def test_download_copy_zip_keeps_batch_ambiguity_and_project_numbers():
     assert manager().match_projects('甲系统_未知 (2).zip', projects) == projects
     for filename in ['甲系统-2.zip', '甲系统2.zip', '甲系统(2).zip']:
         assert manager().match_projects(filename, projects) == []
-    from bundle_analyzer import bundle_hint
+    from workbox.storage.bundle_analyzer import bundle_hint
     assert bundle_hint('甲系统-2.zip')['declared_count'] == 2
 
 

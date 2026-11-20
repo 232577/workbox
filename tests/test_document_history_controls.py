@@ -4,9 +4,9 @@ import threading
 import pytest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from compact_ui import CompactPanel
-from desktop_controller import FloatingController
-from desktop_service import DesktopService
+from workbox.desktop.compact_ui import CompactPanel
+from workbox.desktop.desktop_controller import FloatingController
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture(scope='module')

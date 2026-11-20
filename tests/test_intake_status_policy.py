@@ -7,10 +7,10 @@ from zipfile import ZipFile
 
 import pytest
 
-from app import WorkBox
-from database import Database
-from workspace_manager import WorkspaceManager
-from zip_manager import inspect_zip
+from workbox.app import WorkBox
+from workbox.projects.database import Database
+from workbox.storage.workspace_manager import WorkspaceManager
+from workbox.storage.zip_manager import inspect_zip
 
 
 @pytest.fixture
@@ -98,7 +98,7 @@ def test_work_file_failure_rolls_back_status_record_event_and_own_copy(context, 
         with box.db.connect() as connection:
             connection.execute("CREATE TRIGGER reject_status BEFORE UPDATE OF status ON projects WHEN NEW.status='待交付' BEGIN SELECT RAISE(ABORT,'status failure'); END")
     else:
-        import workspace_manager
+        import workbox.storage.workspace_manager as workspace_manager
         def fail_copy(*args, **kwargs):
             raise OSError('copy failure')
         monkeypatch.setattr(workspace_manager, 'copy_verified', fail_copy)

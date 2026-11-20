@@ -57,7 +57,7 @@
 
 官网 stable.json 保持旧客户端兼容，只为目录中真实提供的可选增量资产追加合法 assets。既有 r2 和历史发布不伪造增量资产，也不改变其下载链接/摘要。
 
-`build.ps1` 先从 `update_helper_main.py` 用同一锁定环境生成标准库 onefile/windowed `WorkBoxUpdater.exe`，再构建原有 WorkBox onedir，并将助手复制入载荷。`scripts/build_installer.py` 与安装验收允许并要求该新助手。后续增量也可以更换助手，因为实际执行的是更新缓存中的已验证副本。
+`scripts/build.ps1` 从 `workbox/updates/update_helper_main.py` 用同一锁定环境生成标准库 onefile/windowed `WorkBoxUpdater.exe`，再从 `workbox/__main__.py` 构建 WorkBox onedir，并将助手复制入载荷。`scripts/build_installer.py` 与安装验收核对助手。后续增量可以更换助手，因为实际执行的是更新缓存中的已验证副本。
 
 ## 客户端与替换方
 

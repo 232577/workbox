@@ -6,8 +6,8 @@ import pytest
 
 @pytest.fixture
 def parser_module():
-    assert importlib.util.find_spec("parser") is not None, "Task 1: parser.py missing"
-    module = importlib.import_module("parser")
+    assert importlib.util.find_spec("workbox.projects.parser") is not None, "Task 1: parser.py missing"
+    module = importlib.import_module("workbox.projects.parser")
     assert hasattr(module, "parse_message"), "Task 1: parse_message missing"
     return module
 

@@ -6,8 +6,8 @@ from zipfile import ZipFile
 
 import pytest
 
-import native_files
-from workspace_manager import _path, copy_verified
+from workbox.storage import native_files
+from workbox.storage.workspace_manager import _path, copy_verified
 
 
 pytestmark = pytest.mark.skipif(os.name != 'nt', reason='Windows 共享文件句柄')

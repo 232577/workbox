@@ -9,8 +9,8 @@ from zipfile import ZipFile
 import pytest
 from openpyxl import load_workbook
 
-import delivery_export
-from database import Database
+from workbox.storage import delivery_export
+from workbox.projects.database import Database
 
 
 @pytest.fixture

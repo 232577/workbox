@@ -3,10 +3,10 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
-from database import Database
-from desktop_service import DesktopService
-from delivery_export import collect_delivery_report, export_delivered_projects
-from task_groups import observe_delivery_event
+from workbox.projects.database import Database
+from workbox.desktop.desktop_service import DesktopService
+from workbox.storage.delivery_export import collect_delivery_report, export_delivered_projects
+from workbox.projects.task_groups import observe_delivery_event
 
 
 def service(tmp_path):
@@ -85,7 +85,7 @@ def test_void_restore_and_rework_never_export_prior_handoff_as_current(tmp_path)
 
 
 def test_task_snapshot_reader_is_read_only_and_requires_no_service(tmp_path):
-    import task_groups
+    from workbox.projects import task_groups
     s = service(tmp_path)
     s.task_groups.receive('1. 匿名客户系统')
     assert hasattr(task_groups, 'read_task_snapshot'), '需要独立只读任务快照读取器'
@@ -126,7 +126,7 @@ def test_task_group_and_detail_use_literals_and_count_withdrawn_separately(tmp_p
 
 
 def test_project_and_task_statuses_are_from_the_same_read_transaction(tmp_path, monkeypatch):
-    import delivery_export
+    from workbox.storage import delivery_export
     s = service(tmp_path)
     one = s.task_groups.receive('1. 匿名客户系统')
     deliver(s)
@@ -236,7 +236,7 @@ def test_group_export_still_protects_other_groups_managed_paths(tmp_path):
 
 
 def test_group_export_retains_explicit_unchanged_file_replacement_contract(tmp_path):
-    from delivery_export import target_identity
+    from workbox.storage.delivery_export import target_identity
     s = service(tmp_path)
     group = s.task_groups.receive('1. 匿名本组系统')
     target = tmp_path / 'existing-group.xlsx'

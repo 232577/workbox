@@ -4,8 +4,8 @@ import sqlite3
 
 
 def make_database(path):
-    assert importlib.util.find_spec("database") is not None, "Task 0: database.py 尚未实现"
-    module = importlib.import_module("database")
+    assert importlib.util.find_spec("workbox.projects.database") is not None, "Task 0: database.py 尚未实现"
+    module = importlib.import_module("workbox.projects.database")
     assert hasattr(module, "Database"), "Task 0: Database 尚未实现"
     return module.Database(path)
 

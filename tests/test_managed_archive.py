@@ -8,12 +8,12 @@ from zipfile import ZipFile
 
 import pytest
 
-from app import WorkBox
+from workbox.app import WorkBox
 
 
 def archive(tmp_path):
-    assert importlib.util.find_spec('managed_archive'), 'Managed ZIP movement is not implemented'
-    module = importlib.import_module('managed_archive')
+    assert importlib.util.find_spec('workbox.storage.managed_archive'), 'Managed ZIP movement is not implemented'
+    module = importlib.import_module('workbox.storage.managed_archive')
     service = WorkBox(tmp_path / 'data' / 'workbox.db')
     service.capture_message('1. 客户档案系统\n2. 合同工具', '今日收件')
     return module.ManagedArchive(service, tmp_path / 'data' / 'packages'), service
@@ -156,7 +156,7 @@ def test_source_is_locked_against_replacement_during_hashing(tmp_path):
 
 def test_cross_volume_copy_branch_checks_hash_before_source_removal(tmp_path, monkeypatch):
     manager, service = archive(tmp_path)
-    native = importlib.import_module('native_files')
+    native = importlib.import_module('workbox.storage.native_files')
     original = native.ZipLease.rename_to
     source = make_zip(tmp_path / 'incoming')
     before = source.read_bytes()
@@ -183,7 +183,7 @@ def test_directory_and_symlink_are_not_moved(tmp_path):
 
 
 def force_cross_volume(monkeypatch, source):
-    native = importlib.import_module('native_files')
+    native = importlib.import_module('workbox.storage.native_files')
     original = native.ZipLease.rename_to
     def cross(lease, target):
         if lease.path == source.resolve():
@@ -198,12 +198,12 @@ def test_copy_never_deletes_a_preexisting_unowned_temporary_path(tmp_path, monke
     from types import SimpleNamespace
     manager, service = archive(tmp_path)
     source = make_zip(tmp_path / 'incoming')
-    native = importlib.import_module('native_files')
+    native = importlib.import_module('workbox.storage.native_files')
     with native.ZipLease(source) as lease:
         target = manager._target(lease.inspect(), 1)
     sentinel = target.parent / ('.' + 'a' * 32 + '.partial')
     sentinel.write_bytes(b'not owned by this transfer')
-    monkeypatch.setattr(importlib.import_module('managed_archive'), 'uuid4', lambda: SimpleNamespace(hex='a' * 32))
+    monkeypatch.setattr(importlib.import_module('workbox.storage.managed_archive'), 'uuid4', lambda: SimpleNamespace(hex='a' * 32))
     force_cross_volume(monkeypatch, source)
     with pytest.raises(FileExistsError):
         manager.import_zip(source)
@@ -256,7 +256,7 @@ def test_recovery_never_reapplies_status_after_record_was_committed(tmp_path, mo
     manager, service = archive(tmp_path)
     source = make_zip(tmp_path / 'incoming')
     force_cross_volume(monkeypatch, source)
-    native = importlib.import_module('native_files')
+    native = importlib.import_module('workbox.storage.native_files')
     remove = native.ZipLease.remove_after_verified_commit
     def deny(lease):
         if lease.path == source.resolve():
@@ -274,7 +274,7 @@ def test_recovery_never_reapplies_status_after_record_was_committed(tmp_path, mo
 def test_unowned_partial_is_reported_not_silently_abandoned_as_complete(tmp_path):
     manager, service = archive(tmp_path)
     source = make_zip(tmp_path / 'incoming')
-    native = importlib.import_module('native_files')
+    native = importlib.import_module('workbox.storage.native_files')
     with native.ZipLease(source, movable=False) as lease:
         info = lease.inspect()
     target = manager._target(info, 1)

@@ -17,7 +17,7 @@ def test_chinese_intake_labels_do_not_depend_on_windows_locale(tmp_path,entry):
         from pathlib import Path
         locale.setlocale(locale.LC_ALL,'English_United States.1252')
         root=Path(sys.argv[1]);entry=sys.argv[2]
-        from desktop_service import DesktopService
+        from workbox.desktop.desktop_service import DesktopService
         service=DesktopService(root/'data/workbox.db')
         if entry=='text':
             result=service.receive_text('1. 区域设置验证项目')

@@ -7,7 +7,7 @@ from PySide6.QtGui import QImage, QPainter
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QApplication
 
-import branding
+import workbox.desktop.branding as branding
 
 
 @pytest.fixture(scope='module')
@@ -56,7 +56,7 @@ def test_windows_ico_contains_seven_decodable_native_sizes(qapp, tmp_path):
 
 
 def test_runtime_icon_exposes_native_sizes(qapp):
-    from ui import app_icon
+    from workbox.desktop.ui import app_icon
     icon = app_icon()
     assert {(s.width(), s.height()) for s in icon.availableSizes()} == {
         (size, size) for size in branding.ICON_SIZES
@@ -67,7 +67,7 @@ def test_runtime_icon_exposes_native_sizes(qapp):
 @pytest.mark.parametrize('size', [32, 40, 48, 56, 64])
 @pytest.mark.parametrize('dpr', [1, 2])
 def test_floating_mark_keeps_badge_and_progress_outside_the_symbol(qapp, size, dpr):
-    from floating import FloatingBall
+    from workbox.desktop.floating import FloatingBall
     ball = FloatingBall()
     ball.set_orb_size(size)
     try:

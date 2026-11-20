@@ -9,9 +9,9 @@ from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from compact_ui import CompactPanel
-from desktop_service import DesktopService
-from theme import install_theme, set_theme, tokens
+from workbox.desktop.compact_ui import CompactPanel
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.theme import install_theme, set_theme, tokens
 
 
 @pytest.fixture
@@ -109,7 +109,7 @@ def test_bulk_type_action_stays_visible_and_targets_all_selected_projects(panel,
     def choose(service, parent, projects):
         calls.append({project['id'] for project in projects})
         return False, None
-    monkeypatch.setattr('project_types_ui.choose_project_type', choose)
+    monkeypatch.setattr('workbox.desktop.project_types_ui.choose_project_type', choose)
     panel.bulk_mode.setChecked(True)
     items = [panel.project_list.item(i) for i in range(2)]
     for item in items:

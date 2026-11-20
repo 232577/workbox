@@ -5,10 +5,10 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
-from compact_ui import CompactPanel
-from desktop_service import DesktopService
-from fluent_views import PROJECT_BATCH_MARKERS_ROLE
-from parser import ParsedProject
+from workbox.desktop.compact_ui import CompactPanel
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.fluent_views import PROJECT_BATCH_MARKERS_ROLE
+from workbox.projects.parser import ParsedProject
 
 
 pytestmark = pytest.mark.skipif(os.name != 'nt', reason='实际项目合并目录身份租约使用 Windows API')

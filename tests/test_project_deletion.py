@@ -9,8 +9,8 @@ from zipfile import ZipFile
 
 import pytest
 
-from database import Database
-from zip_manager import inspect_zip
+from workbox.projects.database import Database
+from workbox.storage.zip_manager import inspect_zip
 
 
 @pytest.fixture
@@ -165,7 +165,7 @@ def test_concurrent_repeated_delete_restore_preserves_original_archive(db):
 
 
 def test_registered_working_files_and_receipt_records_survive_delete_restore(db, tmp_path):
-    from desktop_service import DesktopService
+    from workbox.desktop.desktop_service import DesktopService
 
     service = DesktopService(db.path)
     source = tmp_path / '原始说明.docx'

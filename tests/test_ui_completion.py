@@ -18,17 +18,17 @@ def qapp():
 
 @pytest.fixture
 def service(tmp_path):
-    from desktop_service import DesktopService
+    from workbox.desktop.desktop_service import DesktopService
     service = DesktopService(tmp_path / 'data/workbox.db')
     service.receive_text('1. 匿名界面验收系统')
     return service
 
 
 def make_dialog(kind, service):
-    from compact_ui import DirectorySettingsDialog, ProjectDetailsDialog, ProjectDeliveryDialog, FileIntakeLogDialog
-    from project_types_ui import ProjectTypePickerDialog, ProjectTypesDialog
-    from project_change_ui import ProjectChangeDialog
-    from onboarding_ui import FirstRunDialog, QuickStartDialog
+    from workbox.desktop.compact_ui import DirectorySettingsDialog, ProjectDetailsDialog, ProjectDeliveryDialog, FileIntakeLogDialog
+    from workbox.desktop.project_types_ui import ProjectTypePickerDialog, ProjectTypesDialog
+    from workbox.desktop.project_change_ui import ProjectChangeDialog
+    from workbox.desktop.onboarding_ui import FirstRunDialog, QuickStartDialog
     return {
         'settings': lambda: DirectorySettingsDialog(service),
         'details': lambda: ProjectDetailsDialog(service, service.get_project(1)),
@@ -44,7 +44,7 @@ def make_dialog(kind, service):
 
 @pytest.mark.parametrize('kind', ['settings','details','delivery','history','type-picker','types','rename','welcome','guide'])
 def test_secondary_dialog_has_shared_header_and_fixed_actions(qapp, service, kind):
-    from ui_components import DialogHeader
+    from workbox.desktop.ui_components import DialogHeader
     d = make_dialog(kind, service)
     try:
         d.show()
@@ -59,8 +59,8 @@ def test_secondary_dialog_has_shared_header_and_fixed_actions(qapp, service, kin
 
 
 def test_inline_error_is_plain_visible_only_when_present(qapp):
-    assert (Path(__file__).parents[1] / 'dialog_chrome.py').is_file(), 'missing dialog chrome'
-    module = importlib.import_module('dialog_chrome')
+    assert (Path(__file__).parents[1] / 'workbox/desktop/dialog_chrome.py').is_file(), 'missing dialog chrome'
+    module = importlib.import_module('workbox.desktop.dialog_chrome')
     error = module.InlineError()
     try:
         assert error.isHidden()
@@ -73,7 +73,7 @@ def test_inline_error_is_plain_visible_only_when_present(qapp):
 
 
 def test_inline_error_accessibility_exposes_current_message_and_clears_it(qapp):
-    from dialog_chrome import InlineError
+    from workbox.desktop.dialog_chrome import InlineError
     error = InlineError('设置未保存：匿名目录不合法')
     try:
         error.show(); qapp.processEvents()
@@ -90,7 +90,7 @@ def test_inline_error_accessibility_exposes_current_message_and_clears_it(qapp):
 
 
 def test_settings_accessibility_exposes_current_save_state(qapp, service):
-    from compact_ui import DirectorySettingsDialog
+    from workbox.desktop.compact_ui import DirectorySettingsDialog
     before = service.workspaces.settings()
     d = DirectorySettingsDialog(service)
     try:
@@ -110,8 +110,8 @@ def test_settings_accessibility_exposes_current_save_state(qapp, service):
 
 def test_shared_text_inputs_keep_readable_height_through_theme_and_disabled_states(qapp):
     from PySide6.QtWidgets import QDialog, QVBoxLayout
-    from ui_components import LineEdit
-    from theme import apply_to, set_theme
+    from workbox.desktop.ui_components import LineEdit
+    from workbox.desktop.theme import apply_to, set_theme
     d = QDialog(); apply_to(d)
     edit = LineEdit('匿名输入')
     QVBoxLayout(d).addWidget(edit)
@@ -129,7 +129,7 @@ def test_shared_text_inputs_keep_readable_height_through_theme_and_disabled_stat
 
 
 def test_settings_search_and_sections_keep_pending_values_without_writes(qapp, service):
-    from compact_ui import DirectorySettingsDialog
+    from workbox.desktop.compact_ui import DirectorySettingsDialog
     before = service.workspaces.settings()
     d = DirectorySettingsDialog(service)
     try:
@@ -156,7 +156,7 @@ def test_settings_search_and_sections_keep_pending_values_without_writes(qapp, s
 
 
 def test_enter_in_settings_search_never_saves(qapp, service, monkeypatch):
-    from compact_ui import DirectorySettingsDialog
+    from workbox.desktop.compact_ui import DirectorySettingsDialog
     d = DirectorySettingsDialog(service)
     calls = []
     monkeypatch.setattr(service.workspaces, 'configure', lambda *a, **k: calls.append(True))
@@ -170,7 +170,7 @@ def test_enter_in_settings_search_never_saves(qapp, service, monkeypatch):
 
 
 def test_type_filter_cannot_modify_a_hidden_selected_type(qapp, service):
-    from project_types_ui import ProjectTypesDialog
+    from workbox.desktop.project_types_ui import ProjectTypesDialog
     service.create_project_type('界面验收分类')
     before = service.list_project_types(include_inactive=True)
     d = ProjectTypesDialog(service)
@@ -189,7 +189,7 @@ def test_type_filter_cannot_modify_a_hidden_selected_type(qapp, service):
 
 
 def test_type_search_has_readable_height_and_enter_does_not_open_editor(qapp, service, monkeypatch):
-    import project_types_ui
+    from workbox.desktop import project_types_ui
     calls = []
     monkeypatch.setattr(project_types_ui.QInputDialog, 'getText', lambda *a, **k: (calls.append(True) or '', False))
     d = project_types_ui.ProjectTypesDialog(service)
@@ -204,7 +204,7 @@ def test_type_search_has_readable_height_and_enter_does_not_open_editor(qapp, se
 
 
 def test_type_search_enter_is_filter_only(qapp, service, monkeypatch):
-    import project_types_ui
+    from workbox.desktop import project_types_ui
     calls = []
     monkeypatch.setattr(project_types_ui.QInputDialog, 'getText', lambda *a, **k: (calls.append(True) or '', False))
     d = project_types_ui.ProjectTypesDialog(service)
@@ -219,8 +219,8 @@ def test_type_search_enter_is_filter_only(qapp, service, monkeypatch):
 
 @pytest.mark.parametrize('mode', ['light', 'dark'])
 def test_settings_small_window_filter_and_error_keep_actions_visible(qapp, service, mode):
-    from compact_ui import DirectorySettingsDialog
-    from theme import set_theme
+    from workbox.desktop.compact_ui import DirectorySettingsDialog
+    from workbox.desktop.theme import set_theme
     set_theme(mode, persist=False)
     d = DirectorySettingsDialog(service)
     try:

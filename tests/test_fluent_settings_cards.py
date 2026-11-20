@@ -5,8 +5,8 @@ from PySide6.QtGui import QAccessible
 from PySide6.QtWidgets import QApplication, QScrollArea
 from qfluentwidgets import CardWidget, SettingCard, SettingCardGroup
 
-from compact_ui import DirectorySettingsDialog
-from desktop_service import DesktopService
+from workbox.desktop.compact_ui import DirectorySettingsDialog
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture(scope='module')

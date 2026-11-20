@@ -8,8 +8,8 @@ from PySide6.QtTest import QSignalSpy
 from PySide6.QtWidgets import QApplication
 from qfluentwidgets import TableWidget
 
-from fluent_views import WorkbenchTableWidget
-from project_documents_ui import ProjectDocumentsPane
+from workbox.desktop.fluent_views import WorkbenchTableWidget
+from workbox.desktop.project_documents_ui import ProjectDocumentsPane
 
 
 @pytest.fixture(scope='module')

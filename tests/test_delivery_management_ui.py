@@ -6,9 +6,9 @@ import pytest
 from PySide6.QtCore import Qt,QDate
 from PySide6.QtWidgets import QApplication,QDialogButtonBox
 
-import database
-from desktop_service import DesktopService
-from delivery_ui import TodayDeliveryDialog
+import workbox.projects.database as database
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.delivery_ui import TodayDeliveryDialog
 from test_delivery_cleanup_ui import answer_correction
 
 
@@ -156,7 +156,7 @@ def test_management_failure_keeps_note_and_allows_retry(dialog,monkeypatch):
 
 @pytest.mark.parametrize('delivered_filter',[False,True])
 def test_management_updates_status_list_and_orb_without_waiting_for_timer(dialog,delivered_filter):
-    from desktop_controller import FloatingController
+    from workbox.desktop.desktop_controller import FloatingController
     dialog.close()
     with dialog.service.db.connect() as connection:
         connection.execute("UPDATE projects SET status='已交付',delivered_at='2026-10-26T03:00:00Z' WHERE id=2")

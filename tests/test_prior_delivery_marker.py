@@ -5,7 +5,7 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from database import Database
+from workbox.projects.database import Database
 
 
 DAY = date(2026, 10, 26)

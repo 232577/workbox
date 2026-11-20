@@ -6,8 +6,8 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from archive_classification import ArchiveClassification
-from database import Database
+from workbox.projects.archive_classification import ArchiveClassification
+from workbox.projects.database import Database
 
 
 @pytest.fixture
@@ -30,7 +30,7 @@ def service(tmp_path):
 
 
 def pane(service):
-    return importlib.import_module('archive_classification_ui').ArchiveClassificationPane(service)
+    return importlib.import_module('workbox.desktop.archive_classification_ui').ArchiveClassificationPane(service)
 
 
 def settle(app, page):
@@ -45,7 +45,7 @@ def settle(app, page):
 
 
 def test_inline_pane_module_exists():
-    assert importlib.util.find_spec('archive_classification_ui') is not None
+    assert importlib.util.find_spec('workbox.desktop.archive_classification_ui') is not None
 
 
 def test_recent_operations_survive_new_backend_and_are_read_only(service):
@@ -177,7 +177,7 @@ def test_busy_close_is_blocked_and_return_signal_is_inline(app, service):
 def test_recent_batches_are_not_hidden_by_many_automatic_observations(service):
     classifier = service.archive_classification
     initial = classifier.apply(classifier.preview()['token'], confirmed=True)
-    from archive_classification import classify_new_delivery
+    from workbox.projects.archive_classification import classify_new_delivery
     with service.db.connect() as connection:
         connection.execute('BEGIN IMMEDIATE')
         for _ in range(31):

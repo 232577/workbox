@@ -34,7 +34,7 @@ def event(event_id=51, project_id=1, **values):
 
 
 def facts(connection, events):
-    from archive_facts import delivery_archive_facts
+    from workbox.projects.archive_facts import delivery_archive_facts
     return delivery_archive_facts(connection, events)
 
 
@@ -43,7 +43,7 @@ def file_item(path='docs/a.txt'):
 
 
 def material(connection, manifest, *, archive_id=31, project_id=1, path='Z:/anonymous/files', signature=None):
-    from delivery_archive import _signature
+    from workbox.storage.delivery_archive import _signature
 
     if signature is None:
         try:
@@ -165,8 +165,8 @@ def test_event_project_disagreement_is_unknown(connection):
 
 
 def test_reads_real_database_delivery_history_without_archive_files(tmp_path):
-    from database import Database
-    from delivery_archive import SCHEMA
+    from workbox.projects.database import Database
+    from workbox.storage.delivery_archive import SCHEMA
 
     db = Database(tmp_path / 'anonymous.db')
     db.create_capture('匿名项目', '匿名批次', [('匿名项目', False)])

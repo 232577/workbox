@@ -6,9 +6,9 @@ from zipfile import ZipFile
 import pytest
 from openpyxl import load_workbook
 
-from archive_classification import ArchiveClassification
-from delivery_export import collect_delivery_report, export_delivered_projects
-from desktop_service import DesktopService
+from workbox.projects.archive_classification import ArchiveClassification
+from workbox.storage.delivery_export import collect_delivery_report, export_delivered_projects
+from workbox.desktop.desktop_service import DesktopService
 from test_archive_classification import current, type_id, zip_event
 
 

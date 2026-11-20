@@ -9,10 +9,10 @@ from zipfile import ZipFile
 
 import pytest
 
-import database
-from app import WorkBox
-from database import Database
-from zip_manager import inspect_zip
+import workbox.projects.database as database
+from workbox.app import WorkBox
+from workbox.projects.database import Database
+from workbox.storage.zip_manager import inspect_zip
 
 
 @pytest.fixture

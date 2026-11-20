@@ -4,8 +4,8 @@ import time
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from desktop_controller import FloatingController
-from desktop_service import DesktopService
+from workbox.desktop.desktop_controller import FloatingController
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture
@@ -38,7 +38,7 @@ def task_history(service):
 
 
 def test_main_title_exposes_current_build_without_opening_update_dialog(controller):
-    from update_client import CURRENT_TAG
+    from workbox.updates.update_client import CURRENT_TAG
     assert CURRENT_TAG in controller.panel.windowTitle()
     assert '项目管理' in controller.panel.windowTitle()
 

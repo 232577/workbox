@@ -2,8 +2,8 @@ import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import QApplication
 
-from compact_ui import CompactPanel
-from desktop_service import DesktopService
+from workbox.desktop.compact_ui import CompactPanel
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture(scope='module')

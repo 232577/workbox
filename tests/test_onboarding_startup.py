@@ -1,8 +1,8 @@
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from desktop_controller import FloatingController
-from desktop_service import DesktopService
+from workbox.desktop.desktop_controller import FloatingController
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture(scope='module')
@@ -82,7 +82,7 @@ def test_uncommitted_setup_cannot_report_success(qapp, tmp_path):
 
 
 def test_directory_recovery_runs_only_after_owning_session_lock(qapp,tmp_path,monkeypatch):
-    from project_directory_changes import ProjectDirectoryChanges
+    from workbox.storage.project_directory_changes import ProjectDirectoryChanges
     calls=[]
     monkeypatch.setattr(ProjectDirectoryChanges,'recover',lambda self:calls.append('recover') or [])
     service=DesktopService(tmp_path/'data/workbox.db')

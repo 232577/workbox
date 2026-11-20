@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
-from branding import write_ico
+from workbox.desktop.branding import write_ico
 
 
 def main():

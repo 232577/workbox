@@ -88,8 +88,13 @@ def test_new_installed_payload_verifies_helper_hash_and_executable_header(tmp_pa
         assert acceptance().verify_installed_payload(tmp_path, manifest, sha, require_updater=True) == 2
 
 
-@pytest.mark.parametrize('output,expected', [('', False),
-    ('100644 blob ' + 'b' * 40 + '\tupdate_helper_main.py\n', True)])
+_UPDATER_GIT_PATHS = ['update_helper_main.py', 'workbox/updates/update_helper_main.py']
+
+
+@pytest.mark.parametrize('output,expected', [
+    ('', False),
+    *(('100644 blob ' + 'b' * 40 + f'\t{path}\n', True) for path in _UPDATER_GIT_PATHS),
+])
 def test_source_capability_reads_exact_commit_tree_without_working_tree_guess(monkeypatch, output, expected):
     calls = []
     def git(command, **options):
@@ -97,11 +102,16 @@ def test_source_capability_reads_exact_commit_tree_without_working_tree_guess(mo
         return output
     monkeypatch.setattr(acceptance().subprocess, 'check_output', git)
     assert acceptance().source_requires_updater('a' * 40) is expected
-    assert calls[0][0] == ['git', 'ls-tree', 'a' * 40, '--', 'update_helper_main.py']
+    assert calls[0][0] == ['git', 'ls-tree', 'a' * 40, '--', *_UPDATER_GIT_PATHS]
 
 
-@pytest.mark.parametrize('output', ['unparseable', '120000 blob ' + 'b' * 40 + '\tupdate_helper_main.py\n',
-    '100644 blob ' + 'b' * 40 + '\tunrelated.py\n'])
+@pytest.mark.parametrize('output', [
+    'unparseable',
+    '120000 blob ' + 'b' * 40 + '\tupdate_helper_main.py\n',
+    '120000 blob ' + 'b' * 40 + '\tworkbox/updates/update_helper_main.py\n',
+    '100644 blob ' + 'b' * 40 + '\tunrelated.py\n',
+    ''.join('100644 blob ' + 'b' * 40 + f'\t{path}\n' for path in _UPDATER_GIT_PATHS),
+])
 def test_ambiguous_source_capability_never_silently_becomes_legacy(monkeypatch, output):
     monkeypatch.setattr(acceptance().subprocess, 'check_output', lambda *a, **k: output)
     with pytest.raises(ValueError):
@@ -149,8 +159,8 @@ def test_candidate_cli_checks_exact_source_before_any_installer_execution(tmp_pa
     def git(command, **options):
         calls.append(command)
         if command == ['git', 'rev-parse', 'HEAD']: return source
-        if command == ['git', 'ls-tree', source, '--', 'update_helper_main.py']:
-            return '100644 blob ' + 'c' * 40 + '\tupdate_helper_main.py\n'
+        if command == ['git', 'ls-tree', source, '--', *_UPDATER_GIT_PATHS]:
+            return '100644 blob ' + 'c' * 40 + '\tworkbox/updates/update_helper_main.py\n'
         pytest.fail('unexpected read command')
     def run(command, **options):
         calls.append(command)
@@ -255,7 +265,7 @@ def test_legacy_busy_gate_requires_preparing_failure_and_unchanged_program(tmp_p
 def test_installer_gate_requires_recoverable_old_runtime_through_uninstall(tmp_path, monkeypatch, damage):
     import json
     from types import SimpleNamespace
-    import installer_runtime as runtime
+    import workbox.updates.installer_runtime as runtime
 
     tool = acceptance()
     source, old_tag, new_tag = 'a' * 40, 'v1.0.0.20261113.2', 'v1.0.0.20261116'
@@ -383,7 +393,7 @@ def test_installer_gate_requires_recoverable_old_runtime_through_uninstall(tmp_p
 
 @pytest.mark.parametrize('stage', ['plan', 'receipt'])
 def test_installer_gate_accepts_core_retry_with_unpublished_partial_metadata(tmp_path, monkeypatch, stage):
-    import installer_runtime as runtime
+    import workbox.updates.installer_runtime as runtime
 
     app = tmp_path / 'app'
     app.mkdir()

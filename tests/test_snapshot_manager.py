@@ -6,7 +6,7 @@ from zipfile import ZipFile
 
 import pytest
 
-from desktop_service import DesktopService
+from workbox.desktop.desktop_service import DesktopService
 
 
 class Workspaces:
@@ -22,7 +22,7 @@ class Workspaces:
 
 
 def setup_manager(tmp_path):
-    from snapshot_manager import SnapshotManager
+    from workbox.storage.snapshot_manager import SnapshotManager
     service = DesktopService(tmp_path / 'data' / 'workbox.db')
     service.receive_text('1. 客户档案系统\n2. 合同归档工具')
     workspaces = Workspaces(tmp_path)
@@ -101,7 +101,7 @@ def test_cancel_and_restart_require_new_stability(tmp_path):
     event.set()
     with pytest.raises(CancelledError):
         manager.scan(10, cancel_event=event)
-    from snapshot_manager import SnapshotManager
+    from workbox.storage.snapshot_manager import SnapshotManager
     reopened = SnapshotManager(service, ws)
     assert reopened.scan(100)['archived'] == []
     assert reopened.scan(109)['archived'] == []
@@ -252,7 +252,7 @@ def test_only_one_approved_version_and_ui_keys_are_explicit(tmp_path):
 
 
 def test_published_copy_before_metadata_update_can_recover(tmp_path, monkeypatch):
-    import workspace_manager
+    from workbox.storage import workspace_manager
     service, ws, manager = setup_manager(tmp_path)
     source = write_zip(tmp_path / 'input.zip')
     manager.watch_zip(source, 1)
@@ -270,7 +270,7 @@ def test_published_copy_before_metadata_update_can_recover(tmp_path, monkeypatch
 
 
 def test_transient_copy_error_retries_unchanged_source_without_repeating_notice(tmp_path, monkeypatch):
-    import workspace_manager
+    from workbox.storage import workspace_manager
     service, ws, manager = setup_manager(tmp_path)
     source = write_zip(tmp_path / 'input.zip')
     manager.watch_zip(source, 1)

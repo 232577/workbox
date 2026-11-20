@@ -5,10 +5,10 @@ from PySide6.QtGui import QEnterEvent, QImage
 from PySide6.QtTest import QSignalSpy, QTest
 from PySide6.QtWidgets import QApplication, QMenu
 
-import branding
-from floating import FloatingBall
-from desktop_controller import FloatingController
-from desktop_service import DesktopService
+import workbox.desktop.branding as branding
+from workbox.desktop.floating import FloatingBall
+from workbox.desktop.desktop_controller import FloatingController
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture(scope='module')

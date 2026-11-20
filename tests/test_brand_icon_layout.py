@@ -4,9 +4,9 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QLabel
 
-from compact_ui import CompactPanel
-from desktop_service import DesktopService
-from theme import install_theme, set_theme
+from workbox.desktop.compact_ui import CompactPanel
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.theme import install_theme, set_theme
 
 
 @pytest.mark.parametrize('mode', ['light', 'dark'])

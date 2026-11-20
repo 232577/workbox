@@ -10,9 +10,9 @@ from PySide6.QtGui import QResizeEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog
 
-import floating
-from compact_ui import CompactPanel
-from desktop_service import DesktopService
+from workbox.desktop import floating
+from workbox.desktop.compact_ui import CompactPanel
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture(scope='module')
@@ -148,8 +148,8 @@ class FakeAPI:
 
 
 def adapter():
-    assert importlib.util.find_spec('window_zorder'), 'Native non-activating adapter missing'
-    return importlib.import_module('window_zorder')
+    assert importlib.util.find_spec('workbox.desktop.window_zorder'), 'Native non-activating adapter missing'
+    return importlib.import_module('workbox.desktop.window_zorder')
 
 
 def test_native_call_only_changes_own_z_order(monkeypatch):
@@ -181,5 +181,5 @@ def test_native_failure_does_not_crash_file_intake(monkeypatch):
 
 
 def test_repair_build_is_newer_than_installed_handoff_fix():
-    from update_client import CURRENT_TAG, build_key
+    from workbox.updates.update_client import CURRENT_TAG, build_key
     assert build_key(CURRENT_TAG) > build_key('v1.0.0.20261103.2')

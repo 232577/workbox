@@ -4,11 +4,11 @@ import sqlite3
 
 import pytest
 
-from database import Database
-from workspace_manager import SCHEMA as WORKSPACE_SCHEMA
-from snapshot_manager import SCHEMA as SNAPSHOT_SCHEMA
-from delivery_archive import SCHEMA as DELIVERY_ARCHIVE_SCHEMA
-from managed_archive import JOURNAL as MANAGED_SCHEMA
+from workbox.projects.database import Database
+from workbox.storage.workspace_manager import SCHEMA as WORKSPACE_SCHEMA
+from workbox.storage.snapshot_manager import SCHEMA as SNAPSHOT_SCHEMA
+from workbox.storage.delivery_archive import SCHEMA as DELIVERY_ARCHIVE_SCHEMA
+from workbox.storage.managed_archive import JOURNAL as MANAGED_SCHEMA
 
 
 @pytest.fixture
@@ -305,7 +305,7 @@ def test_readiness_check_is_read_only_and_supports_absent_extension_tables(tmp_p
 
 
 def test_retained_source_approval_is_not_counted_as_a_current_version_owner(db):
-    from snapshot_manager import SnapshotManager
+    from workbox.storage.snapshot_manager import SnapshotManager
     with db.connect() as connection:
         zip_id = connection.execute("INSERT INTO zips(project_id,path,filename,size,sha256,mtime_ns) VALUES (1,'bundle','原项目-2.zip',1,?,1)", ('a' * 64,)).lastrowid
         connection.execute("INSERT INTO zip_bundles VALUES (?,2,'[\"原项目\",\"第三项目\"]','matched','')", (zip_id,))

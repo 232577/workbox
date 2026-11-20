@@ -4,9 +4,9 @@ import pytest
 from PySide6.QtCore import QDateTime, Qt, QTimer
 from PySide6.QtWidgets import QApplication, QAbstractItemView, QHeaderView
 
-import compact_ui
-from desktop_service import DesktopService
-from intake_log import FileIntakeLog
+import workbox.desktop.compact_ui as compact_ui
+from workbox.desktop.desktop_service import DesktopService
+from workbox.storage.intake_log import FileIntakeLog
 
 
 @pytest.fixture(scope='module')

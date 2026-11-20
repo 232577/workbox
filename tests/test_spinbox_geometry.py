@@ -2,10 +2,10 @@
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from compact_ui import DirectorySettingsDialog
-from desktop_service import DesktopService
-from onboarding_ui import FirstRunDialog
-from theme import install_theme, set_theme
+from workbox.desktop.compact_ui import DirectorySettingsDialog
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.onboarding_ui import FirstRunDialog
+from workbox.desktop.theme import install_theme, set_theme
 
 
 @pytest.mark.parametrize('mode', ['light', 'dark'])

@@ -11,8 +11,8 @@ from PySide6.QtGui import QDropEvent
 from PySide6.QtTest import QTest, QSignalSpy
 from PySide6.QtWidgets import QApplication
 
-from desktop_service import DesktopService
-from compact_ui import ProjectDeliveryDialog
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.compact_ui import ProjectDeliveryDialog
 
 
 @pytest.fixture(scope='module')
@@ -23,13 +23,13 @@ def qapp():
 
 
 def module():
-    assert importlib.util.find_spec('floating'), 'Floating ball is not implemented'
-    return importlib.import_module('floating')
+    assert importlib.util.find_spec('workbox.desktop.floating'), 'Floating ball is not implemented'
+    return importlib.import_module('workbox.desktop.floating')
 
 
 def controller(tmp_path):
-    assert importlib.util.find_spec('desktop_controller'), 'Floating lifecycle is not implemented'
-    cls = importlib.import_module('desktop_controller').FloatingController
+    assert importlib.util.find_spec('workbox.desktop.desktop_controller'), 'Floating lifecycle is not implemented'
+    cls = importlib.import_module('workbox.desktop.desktop_controller').FloatingController
     value = cls(DesktopService(tmp_path / 'workbox.db'), tray_enabled=False)
     assert value.start()
     return value
@@ -229,7 +229,7 @@ def test_position_is_persisted_and_offscreen_position_is_clamped(qapp, tmp_path)
 def test_same_database_second_instance_wakes_first_without_a_second_ball(qapp, tmp_path):
     first = controller(tmp_path)
     try:
-        second = importlib.import_module('desktop_controller').FloatingController(first.service, tray_enabled=False)
+        second = importlib.import_module('workbox.desktop.desktop_controller').FloatingController(first.service, tray_enabled=False)
         try:
             assert second.start() is False
             wait(lambda: first.panel.isVisible())
@@ -327,7 +327,7 @@ def test_review_dialog_saves_and_updates_orb_count(qapp, tmp_path):
 def test_long_project_name_does_not_expand_panel_beyond_screen(qapp, tmp_path):
     app = controller(tmp_path)
     try:
-        app.service.capture_message('原文', '长名称测试', [importlib.import_module('parser').ParsedProject('超长项目名称' * 30)])
+        app.service.capture_message('原文', '长名称测试', [importlib.import_module('workbox.projects.parser').ParsedProject('超长项目名称' * 30)])
         app.show_panel()
         app.panel.project_list.setCurrentRow(0)
         qapp.processEvents()
