@@ -40,7 +40,9 @@ npx wrangler@4.127.1 dev --config website/wrangler.jsonc
 
 按[发布规程](../docs/RELEASING.md)从已审查 main 部署。先核对账户与域名，再确认对应 GitHub Release 已公开；官网部署使用 `website/wrangler.jsonc`。本地验证不能替代上线检查。
 
-仓库所有者也可从 `main` 手动运行 `WorkBox website deploy`，输入当前已审查的完整 SHA。工作流先运行网站测试，再核对 GitHub 当前 `main` 和最新公开安装包。在现有 GitHub `workbox-website` 环境设置 `CLOUDFLARE_API_TOKEN` 密钥和 `CLOUDFLARE_ACCOUNT_ID` 变量，供 Wrangler 发布现有 `workbox-downloads` Worker。部署后检查公开更新清单、页面链接、上一版安装包入口、统计接口的匿名访问限制，以及当前安装包和教程视频的完整 SHA-256 和 Range 响应。按发布规程另行验证浏览器交互与视频播放，并记录部署 ID。
+仓库所有者也可从 `main` 手动运行 `WorkBox website deploy`，输入当前已审查的完整 SHA。工作流先运行网站测试，再核对 GitHub 当前 `main` 和最新公开安装包。在现有 GitHub `workbox-website` 环境设置 `CLOUDFLARE_API_TOKEN` 密钥和 `CLOUDFLARE_ACCOUNT_ID` 变量。该令牌使用现有 `workbox-downloads` Worker 的 Editor 权限。Wrangler 分别上传 Worker 版本和切换正式流量，保留已有域名、路由和绑定。运行记录包含源码提交、Worker 版本 ID 和部署 ID。
+
+部署后检查公开更新清单、页面链接、上一版安装包入口、统计接口的匿名访问限制，以及当前安装包和教程视频的完整 SHA-256 和 Range 响应。按发布规程另行验证浏览器交互与视频播放。
 
 - 下载与更新清单的文件名、标签、来源提交、大小和 SHA-256 必须对应同一资产。已发布标签和安装包不替换；历史下载路由继续有效。
 - 安装包由 GitHub Releases 托管，Worker 流式转发并支持断点续传，不把二进制塞进静态目录；保留 GitHub 备用链接。

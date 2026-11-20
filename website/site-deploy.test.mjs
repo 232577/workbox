@@ -31,8 +31,34 @@ test('the website deploy is manual, restricted to the reviewed main, and scopes 
   assert.doesNotMatch(checks + onlineCheck, /CLOUDFLARE_(API_TOKEN|ACCOUNT_ID)|\$\{\{ secrets\./);
   assert.match(deployment, /CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}/);
   assert.match(deployment, /CLOUDFLARE_ACCOUNT_ID: \$\{\{ vars\.CLOUDFLARE_ACCOUNT_ID \}\}/);
-  assert.match(deployment, /wrangler" deploy --config website\/wrangler\.jsonc/);
+  assert.match(deployment, /export WRANGLER_OUTPUT_FILE_PATH/);
+  assert.match(deployment, /"\$wrangler" versions upload --config website\/wrangler\.jsonc/);
+  assert.match(deployment, /version_id=\$\(node scripts\/verify_website_deploy\.mjs version-upload "\$WRANGLER_OUTPUT_FILE_PATH"\)/);
+  assert.match(deployment, /"\$wrangler" versions deploy "\$version_id@100%" --yes --config website\/wrangler\.jsonc/);
+  assert.match(deployment, /--message "WorkBox site \$GITHUB_SHA"/);
+  assert.match(deployment, /deployment_id=\$\(node scripts\/verify_website_deploy\.mjs version-deploy "\$WRANGLER_OUTPUT_FILE_PATH"\)/);
+  assert.match(deployment, /printf [^\n]+"\$GITHUB_SHA" "\$version_id" "\$deployment_id"/);
+  assert.doesNotMatch(deployment, /" (?:deploy\b|triggers\b)/);
   assert.match(onlineCheck, /node scripts\/verify_website_deploy\.mjs online/);
+});
+
+test('Wrangler deployment evidence requires a unique result for the existing Worker and a valid ID', async () => {
+  const { wranglerResultId } = await import('../scripts/verify_website_deploy.mjs');
+  const session = { type: 'wrangler-session' };
+  const upload = { type: 'version-upload', version: 1, worker_name: 'workbox-downloads',
+    version_id: '12345678-1234-4234-8234-123456789012' };
+  const deploy = { type: 'version-deploy', version: 1, worker_name: 'workbox-downloads',
+    deployment_id: '12345678-1234-4234-8234-123456789013' };
+  const jsonl = (...records) => records.map(record => JSON.stringify(record)).join('\n') + '\n';
+
+  assert.equal(wranglerResultId(jsonl(session, upload), upload.type), upload.version_id);
+  assert.equal(wranglerResultId(jsonl(session, upload, session, deploy), deploy.type), deploy.deployment_id);
+  assert.throws(() => wranglerResultId(jsonl(session), upload.type), /one .* result/);
+  assert.throws(() => wranglerResultId(jsonl(upload, upload), upload.type), /one .* result/);
+  assert.throws(() => wranglerResultId(jsonl({ ...upload, worker_name: 'another-worker' }), upload.type), /Worker/);
+  assert.throws(() => wranglerResultId(jsonl({ ...upload, version: 2 }), upload.type), /schema/);
+  assert.throws(() => wranglerResultId(jsonl({ ...upload, version_id: 'not-an-id' }), upload.type), /ID/);
+  assert.throws(() => wranglerResultId(jsonl(upload, { ...deploy, deployment_id: null }), deploy.type), /ID/);
 });
 
 test('release verification rejects a stale main or any changed public asset identity', async () => {

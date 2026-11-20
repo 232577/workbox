@@ -8,9 +8,23 @@ import { handleRequest, release, releaseAssets, releases } from '../website/work
 const repository = '232577/workbox';
 const githubApi = `https://api.github.com/repos/${repository}`;
 const site = 'https://workbox.ltxiangzi.dpdns.org';
+const workerName = 'workbox-downloads';
 const stablePath = '/updates/stable.json';
 const assetFields = ['name', 'size', 'state', 'digest', 'browser_download_url'];
 const rangeBytes = 1024;
+
+export function wranglerResultId(output, type) {
+  assert.ok(type === 'version-upload' || type === 'version-deploy', 'Unknown Wrangler result type');
+  const results = output.split(/\r?\n/).filter(line => line.trim())
+    .map(line => JSON.parse(line)).filter(row => row?.type === type);
+  assert.equal(results.length, 1, `Expected one ${type} result`);
+  const [result] = results;
+  assert.equal(result.version, 1, 'Unexpected Wrangler result schema');
+  assert.equal(result.worker_name, workerName, 'Wrangler result is for an unexpected Worker');
+  const id = type === 'version-upload' ? result.version_id : result.deployment_id;
+  assert.ok(typeof id === 'string' && uuid.test(id), `Invalid Wrangler ${type} ID`);
+  return id;
+}
 
 export function verifyPublicRelease(expectedSource, main, siteRelease, localManifest, published) {
   assert.ok(/^[a-f0-9]{40}$/.test(expectedSource), 'Expected a full main SHA');
@@ -122,7 +136,11 @@ export async function verifyOnlineSite(primary, manifest, previous, media, fetch
   await Promise.all([verifyFile(download, primary, fetcher, true), verifyFile(media.path, media, fetcher)]);
 }
 
-async function main(mode) {
+async function main(mode, resultPath) {
+  if (mode === 'version-upload' || mode === 'version-deploy') {
+    console.log(wranglerResultId(await readFile(resultPath, 'utf8'), mode));
+    return;
+  }
   const local = await handleRequest(new Request(site + stablePath), {});
   assert.equal(local.status, 200);
   const manifest = await local.json();
@@ -142,10 +160,10 @@ async function main(mode) {
     await verifyOnlineSite(release, manifest, releases[1], activeVideo);
     console.log(`Verified ${release.tag} public links, installer and video digests and ranges, history and anonymous stats denial`);
   } else {
-    throw new Error('Use preflight or online');
+    throw new Error('Use preflight, online, version-upload or version-deploy');
   }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  await main(process.argv[2]);
+  await main(process.argv[2], process.argv[3]);
 }
