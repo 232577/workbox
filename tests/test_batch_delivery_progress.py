@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from desktop_service import DesktopService
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture
@@ -185,7 +185,7 @@ def test_batch_progress_uses_verified_fallback_for_damaged_receipt(service):
 
 
 def test_project_status_and_batch_progress_use_same_snapshot(service, monkeypatch):
-    import project_batches
+    import workbox.projects.project_batches as project_batches
 
     receipt = service.receive_text('1. 匿名并发系统')
     project_id, = receipt['project_ids']
@@ -208,7 +208,7 @@ def test_project_status_and_batch_progress_use_same_snapshot(service, monkeypatc
 
 
 def test_batch_progress_query_count_does_not_grow_with_members(service):
-    from project_batches import read_project_batch_index
+    from workbox.projects.project_batches import read_project_batch_index
 
     def read_index():
         statements = []

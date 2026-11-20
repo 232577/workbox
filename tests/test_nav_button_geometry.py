@@ -6,8 +6,8 @@ from PySide6.QtTest import QSignalSpy, QTest
 from PySide6.QtWidgets import QApplication, QMenu, QPushButton
 from qfluentwidgets import FluentIcon, isDarkTheme
 
-import ui_components as ui
-from theme import install_theme, set_theme
+from workbox.desktop import ui_components as ui
+from workbox.desktop.theme import install_theme, set_theme
 
 
 @pytest.fixture(scope='module')

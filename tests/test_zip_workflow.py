@@ -5,7 +5,7 @@ from concurrent.futures import CancelledError, ThreadPoolExecutor
 
 import pytest
 
-from app import WorkBox
+from workbox.app import WorkBox
 
 
 @pytest.fixture

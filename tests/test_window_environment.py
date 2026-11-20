@@ -8,7 +8,7 @@ from PySide6.QtCore import QCoreApplication, QEvent, QObject, QRect, QTimer, Sig
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
-from window_environment import DesktopEnvironmentWatcher
+from workbox.desktop.window_environment import DesktopEnvironmentWatcher
 
 
 class Screen(QObject):
@@ -37,7 +37,7 @@ def qapp():
 
 @pytest.fixture
 def environment(qapp, monkeypatch):
-    import window_environment
+    from workbox.desktop import window_environment
 
     displays = Displays([Screen()])
     monkeypatch.setattr(window_environment, 'QApplication',

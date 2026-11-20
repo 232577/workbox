@@ -6,7 +6,7 @@ import subprocess
 
 import pytest
 
-from desktop_service import DesktopService
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture
@@ -15,7 +15,7 @@ def service(tmp_path):
 
 
 def intake(service, path, **kwargs):
-    from folder_intake import FolderIntake
+    from workbox.storage.folder_intake import FolderIntake
     return FolderIntake(service).receive(path, **kwargs)
 
 
@@ -194,7 +194,7 @@ def test_new_folder_with_only_bad_zip_does_not_create_project(service, tmp_path)
 
 
 def test_overlap_rejected_and_bounded_scan_does_not_import_partial_tree(service, tmp_path):
-    from folder_intake import FolderIntake
+    from workbox.storage.folder_intake import FolderIntake
     project(service, '甲系统')
     assert intake(service, service.workspaces.settings()['work_root'])['failed'] == 1
     root = tmp_path / '新建系统'
@@ -207,7 +207,7 @@ def test_overlap_rejected_and_bounded_scan_does_not_import_partial_tree(service,
 
 @pytest.mark.parametrize('limits', [{'max_bytes': 1}, {'max_depth': 1}, {'max_entries': 1}])
 def test_scan_limits_prevent_partial_writes(service, tmp_path, limits):
-    from folder_intake import FolderIntake
+    from workbox.storage.folder_intake import FolderIntake
     root = tmp_path / '新建系统'
     file(root, 'a/b/file.txt', b'oversize')
     result = FolderIntake(service, **limits).receive(root)
@@ -216,7 +216,7 @@ def test_scan_limits_prevent_partial_writes(service, tmp_path, limits):
 
 
 def test_manual_zip_retry_preserves_nested_filename_and_stable_watch(service, tmp_path):
-    from folder_intake import FolderIntake
+    from workbox.storage.folder_intake import FolderIntake
     pid = project(service, '甲系统')
     root = tmp_path / '本次材料'
     file(root, '甲系统_操作手册.docx')
@@ -278,7 +278,7 @@ def test_same_relative_file_from_different_source_is_duplicate(service, tmp_path
 
 
 def test_manual_retry_preserves_subdirectories_without_reimporting_success(service, tmp_path):
-    from folder_intake import FolderIntake
+    from workbox.storage.folder_intake import FolderIntake
     a, b = project(service, '甲系统'), project(service, '乙系统')
     root = tmp_path / '本次材料'
     file(root, '甲系统_操作手册.docx')
@@ -294,7 +294,7 @@ def test_manual_retry_preserves_subdirectories_without_reimporting_success(servi
 
 
 def test_manual_group_retry_preserves_two_files_and_keeps_previous_success(service, tmp_path):
-    from folder_intake import FolderIntake
+    from workbox.storage.folder_intake import FolderIntake
     pid = project(service, '甲系统')
     root = tmp_path / '本次材料'
     file(root, '甲系统_操作手册.docx')
@@ -312,7 +312,7 @@ def test_manual_group_retry_preserves_two_files_and_keeps_previous_success(servi
 
 
 def test_manual_group_cancellation_retains_completed_file(service, tmp_path):
-    from folder_intake import FolderIntake
+    from workbox.storage.folder_intake import FolderIntake
     pid = project(service, '甲系统')
     root = tmp_path / '本次材料'
     file(root, '甲系统_操作手册.docx')
@@ -331,7 +331,7 @@ def test_manual_group_cancellation_retains_completed_file(service, tmp_path):
 
 @pytest.mark.parametrize('tamper', ['outside', 'traversal', 'renamed_source'])
 def test_manual_retry_revalidates_paths(service, tmp_path, tamper):
-    from folder_intake import FolderIntake
+    from workbox.storage.folder_intake import FolderIntake
     pid = project(service, '甲系统')
     root = tmp_path / '本次材料'
     file(root, '甲系统_操作手册.docx')

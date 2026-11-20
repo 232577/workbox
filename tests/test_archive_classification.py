@@ -5,12 +5,12 @@ import json
 
 import pytest
 
-from database import Database
-from delivery_archive import SCHEMA as MATERIAL_SCHEMA
+from workbox.projects.database import Database
+from workbox.storage.delivery_archive import SCHEMA as MATERIAL_SCHEMA
 
 
 def backend():
-    return importlib.import_module('archive_classification')
+    return importlib.import_module('workbox.projects.archive_classification')
 
 
 @pytest.fixture
@@ -57,7 +57,7 @@ def manual(db, project_id, selected):
 
 def test_backend_is_available():
     import importlib.util
-    assert importlib.util.find_spec('archive_classification') is not None
+    assert importlib.util.find_spec('workbox.projects.archive_classification') is not None
 
 
 def test_policy_defaults_off_and_does_not_reenable_inactive_types(db):

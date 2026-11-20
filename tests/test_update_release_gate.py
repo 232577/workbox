@@ -135,7 +135,7 @@ def test_metadata_must_be_one_official_stable_release(candidate, field, value):
 
 @pytest.mark.parametrize('body', [True, 1, 1.5, ['notes'], {'notes': 'text'}])
 def test_release_notes_rejected_by_updater_are_rejected_by_gate(candidate, body):
-    from update_client import parse_release
+    from workbox.updates.update_client import parse_release
 
     candidate['manifest']['body'] = body
     with pytest.raises(ValueError):
@@ -146,7 +146,7 @@ def test_release_notes_rejected_by_updater_are_rejected_by_gate(candidate, body)
 
 @pytest.mark.parametrize('body', ['release notes', '', None, False, 0, [], {}])
 def test_release_notes_accepted_by_updater_are_accepted_by_gate(candidate, body):
-    from update_client import parse_release
+    from workbox.updates.update_client import parse_release
 
     candidate['manifest']['body'] = body
     assert parse_release(candidate['manifest'], current_tag='v1.0.0.20261102').tag == TAG
@@ -154,7 +154,7 @@ def test_release_notes_accepted_by_updater_are_accepted_by_gate(candidate, body)
 
 
 def test_missing_release_notes_keep_the_updater_fallback(candidate):
-    from update_client import parse_release
+    from workbox.updates.update_client import parse_release
 
     candidate['manifest'].pop('body')
     assert parse_release(candidate['manifest'], current_tag='v1.0.0.20261102').tag == TAG

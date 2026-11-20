@@ -1,7 +1,7 @@
 import re
 import pytest
 
-from theme import stylesheet, tokens
+from workbox.desktop.theme import stylesheet, tokens
 
 
 def contrast(a, b):
@@ -52,8 +52,8 @@ def test_idle_input_renders_the_distinct_bottom_boundary(mode, fluent):
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QColor
     from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QVBoxLayout, QWidget
-    from theme import install_theme, set_theme
-    from ui_components import LineEdit
+    from workbox.desktop.theme import install_theme, set_theme
+    from workbox.desktop.ui_components import LineEdit
 
     app = QApplication.instance() or QApplication([])
     app.setQuitOnLastWindowClosed(False)

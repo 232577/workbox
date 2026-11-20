@@ -6,8 +6,8 @@ from zipfile import ZipFile
 
 import pytest
 
-from app import WorkBox
-from managed_archive import ManagedArchive
+from workbox.app import WorkBox
+from workbox.storage.managed_archive import ManagedArchive
 
 
 @pytest.fixture

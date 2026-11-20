@@ -15,7 +15,7 @@ def qapp():
 
 @pytest.fixture
 def service(tmp_path):
-    from desktop_service import DesktopService
+    from workbox.desktop.desktop_service import DesktopService
     s=DesktopService(tmp_path/'data/workbox.db')
     s.receive_text('1. 匿名检查系统')
     return s
@@ -31,7 +31,7 @@ def wait(done):
 
 
 def test_shared_design_tokens_and_semantic_styles(qapp):
-    from theme import tokens, stylesheet
+    from workbox.desktop.theme import tokens, stylesheet
     for mode in ('light','dark'):
         c=tokens(mode)
         assert {'info_bg','success_bg','warning_bg','error_bg','subtle_surface'} <= set(c)
@@ -41,7 +41,7 @@ def test_shared_design_tokens_and_semantic_styles(qapp):
 
 
 def test_status_banner_has_explicit_text_tone_and_no_rich_text(qapp):
-    import ui_components as ui
+    from workbox.desktop import ui_components as ui
     assert hasattr(ui,'StatusBanner'), 'missing shared status component'
     w=ui.StatusBanner('<b>匿名提示</b>')
     try:
@@ -55,7 +55,7 @@ def test_status_banner_has_explicit_text_tone_and_no_rich_text(qapp):
 
 def test_shared_button_accessible_name_tracks_dynamic_caption(qapp):
     from PySide6.QtGui import QAccessible
-    from ui_components import button
+    from workbox.desktop.ui_components import button
     b=button('检查更新')
     try:
         b.setText('正在检查')
@@ -66,8 +66,8 @@ def test_shared_button_accessible_name_tracks_dynamic_caption(qapp):
 def test_danger_button_keeps_semantic_color_with_local_fluent_styles(qapp):
     from PySide6.QtGui import QPalette
     from PySide6.QtWidgets import QDialog, QVBoxLayout
-    from ui_components import button
-    from theme import apply_to, set_theme, tokens
+    from workbox.desktop.ui_components import button
+    from workbox.desktop.theme import apply_to, set_theme, tokens
     w=QDialog();apply_to(w);layout=QVBoxLayout(w)
     b=button('移除所选','danger');layout.addWidget(b);w.show()
     try:
@@ -82,7 +82,7 @@ def test_danger_button_keeps_semantic_color_with_local_fluent_styles(qapp):
 
 
 def test_contextual_material_menu_is_reachable_and_safe(qapp,service,monkeypatch):
-    from compact_ui import CompactPanel
+    from workbox.desktop.compact_ui import CompactPanel
     p=CompactPanel(service)
     try:
         p.show();QApplication.processEvents()
@@ -104,8 +104,8 @@ def test_contextual_material_menu_is_reachable_and_safe(qapp,service,monkeypatch
 
 
 def test_material_missing_filter_summary_and_invalidation(qapp,service,monkeypatch):
-    import material_check_ui as ui
-    from material_matching import Requirement
+    from workbox.desktop import material_check_ui as ui
+    from workbox.projects.material_matching import Requirement
     d=ui.MaterialCheckDialog(service,1)
     before=service.get_project(1)
     data=dict(project_id=1,workspace_path='registered',errors=[],documents=[dict(id='one',name='说明书.docx',relative_path='说明书.docx',kind='工作文件',exists=True,is_directory=False)])
@@ -131,7 +131,7 @@ def test_material_missing_filter_summary_and_invalidation(qapp,service,monkeypat
 
 
 def test_workbench_wide_to_compact_resize_keeps_native_minimum(qapp,service):
-    from compact_ui import CompactPanel
+    from workbox.desktop.compact_ui import CompactPanel
     p=CompactPanel(service)
     try:
         p.show();p.project_list.setCurrentRow(0)
@@ -151,7 +151,7 @@ def test_workbench_wide_to_compact_resize_keeps_native_minimum(qapp,service):
 
 
 def test_material_tables_are_resizable_and_show_gridless_rows(qapp,service):
-    from material_check_ui import MaterialCheckDialog
+    from workbox.desktop.material_check_ui import MaterialCheckDialog
     d=MaterialCheckDialog(service,1)
     try:
         for t in (d.rule_table,d.result_table,d.ambiguity_table):
@@ -162,7 +162,7 @@ def test_material_tables_are_resizable_and_show_gridless_rows(qapp,service):
 
 
 def test_material_first_show_respects_default_size(qapp,service):
-    from material_check_ui import MaterialCheckDialog
+    from workbox.desktop.material_check_ui import MaterialCheckDialog
     d=MaterialCheckDialog(service,1)
     try:
         d.show()
@@ -174,7 +174,7 @@ def test_material_first_show_respects_default_size(qapp,service):
 
 
 def test_update_dialog_is_inert_until_requested(qapp,tmp_path,monkeypatch):
-    import update_ui
+    from workbox.desktop import update_ui
     network=[]
     monkeypatch.setattr(update_ui,'check_for_update',lambda **k:network.append(True))
     d=update_ui.UpdateDialog(cache_root=tmp_path/'cache')
@@ -186,8 +186,8 @@ def test_update_dialog_is_inert_until_requested(qapp,tmp_path,monkeypatch):
 
 
 def test_dialog_header_icon_follows_live_theme_without_losing_context(qapp):
-    import theme
-    import ui_components as ui
+    from workbox.desktop import theme
+    from workbox.desktop import ui_components as ui
     from qfluentwidgets import FluentIcon
     theme.set_theme('light',persist=False)
     w=ui.DialogHeader('匿名窗口','<b>很长的匿名项目名称</b>',icon=FluentIcon.DOCUMENT)
@@ -202,8 +202,8 @@ def test_dialog_header_icon_follows_live_theme_without_losing_context(qapp):
 
 
 def test_incomplete_material_summary_is_not_a_success_and_copy_is_explicit(qapp,service,monkeypatch):
-    import material_check_ui as ui
-    from material_matching import Requirement
+    from workbox.desktop import material_check_ui as ui
+    from workbox.projects.material_matching import Requirement
     d=ui.MaterialCheckDialog(service,1)
     copied=[]
     class Clipboard:

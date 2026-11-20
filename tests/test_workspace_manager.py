@@ -7,9 +7,9 @@ from zipfile import ZipFile
 
 import pytest
 
-from app import WorkBox
-from native_files import ZipLease
-from workspace_manager import WorkspaceManager, copy_verified
+from workbox.app import WorkBox
+from workbox.storage.native_files import ZipLease
+from workbox.storage.workspace_manager import WorkspaceManager, copy_verified
 
 
 @pytest.fixture
@@ -118,7 +118,7 @@ def test_copy_cancel_invalid_and_no_overwrite(tmp_path):
 @pytest.fixture
 def copy_paths(tmp_path, monkeypatch):
     identifier = UUID(int=1)
-    monkeypatch.setattr('workspace_manager.uuid.uuid4', lambda: identifier)
+    monkeypatch.setattr('workbox.storage.workspace_manager.uuid.uuid4', lambda: identifier)
     source = tmp_path / 'source.txt'
     source.write_bytes(b'original material')
     return source, tmp_path / 'target.txt', tmp_path / f'~$workbox-{identifier.hex}.partial'
@@ -171,7 +171,7 @@ def test_copy_leaves_a_replacement_temporary_file_in_place(copy_paths, monkeypat
 
 
 def test_copy_does_not_overwrite_a_target_created_during_verification(copy_paths, monkeypatch):
-    from workspace_manager import _hash_stream
+    from workbox.storage.workspace_manager import _hash_stream
 
     source, target, temporary = copy_paths
 
@@ -180,7 +180,7 @@ def test_copy_does_not_overwrite_a_target_created_during_verification(copy_paths
         target.write_bytes(b'another operation')
         return result
 
-    monkeypatch.setattr('workspace_manager._hash_stream', create_competing_target)
+    monkeypatch.setattr('workbox.storage.workspace_manager._hash_stream', create_competing_target)
     with pytest.raises(FileExistsError):
         copy_verified(source, target)
 
@@ -233,7 +233,7 @@ def test_corrupt_local_zip_member_name_is_rejected(tmp_path):
 
 
 def test_cancellation_after_publish_removes_only_own_copy(context, tmp_path, monkeypatch):
-    import workspace_manager
+    from workbox.storage import workspace_manager
     service, manager = context
     pid = projects(service, ['取消系统'])[0]
     directory = Path(manager.ensure_projects([pid])[0]['path'])

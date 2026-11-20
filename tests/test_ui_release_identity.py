@@ -2,8 +2,8 @@
 import json
 import pytest
 
-import update_client
-from main import main
+from workbox.updates import update_client
+from workbox.__main__ import main
 
 
 def test_ui_release_can_upgrade_the_online_update_bootstrap():

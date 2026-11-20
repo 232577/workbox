@@ -2,11 +2,11 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QColor, QPalette
-from compact_ui import CompactPanel, DirectorySettingsDialog
-from desktop_controller import FeedbackBubble
-from desktop_service import DesktopService
-from onboarding_ui import QuickStartDialog
-from theme import install_theme, set_theme, current_mode, resolved_mode, tokens
+from workbox.desktop.compact_ui import CompactPanel, DirectorySettingsDialog
+from workbox.desktop.desktop_controller import FeedbackBubble
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.onboarding_ui import QuickStartDialog
+from workbox.desktop.theme import install_theme, set_theme, current_mode, resolved_mode, tokens
 
 
 @pytest.fixture(scope='module')

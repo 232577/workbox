@@ -6,9 +6,9 @@ from PySide6.QtCore import QDate, QItemSelectionModel, QPoint, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from compact_ui import CompactPanel
-from delivery_ui import TodayDeliveryDialog
-from desktop_service import DesktopService
+from workbox.desktop.compact_ui import CompactPanel
+from workbox.desktop.delivery_ui import TodayDeliveryDialog
+from workbox.desktop.desktop_service import DesktopService
 
 
 LONG_PROJECT_NAME = '匿名目标项目跨部门工作资料整理与阶段性交付记录核查平台的超长项目名称验证' * 2

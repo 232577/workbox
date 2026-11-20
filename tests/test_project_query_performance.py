@@ -3,7 +3,7 @@ from contextlib import contextmanager
 import json
 from math import ceil
 
-from desktop_service import DesktopService
+from workbox.desktop.desktop_service import DesktopService
 
 
 def versions_at(tmp_path, count):

@@ -2,7 +2,7 @@
 
 import pytest
 
-from file_matcher import match_work_file_projects, new_file_project_name
+from workbox.storage.file_matcher import match_work_file_projects, new_file_project_name
 
 
 @pytest.mark.parametrize(('filename', 'name'), [

@@ -7,7 +7,7 @@ from PySide6.QtGui import QColor, QFont, QImage, QPainter, QTextLayout, QTextOpt
 from PySide6.QtWidgets import QApplication, QListWidgetItem, QStyleOptionViewItem
 from qfluentwidgets.components.widgets.list_view import ListItemDelegate
 
-import fluent_views
+from workbox.desktop import fluent_views
 
 
 @pytest.fixture(scope='module')
@@ -37,8 +37,8 @@ def option_for(view, width, height=2000):
 
 
 def test_real_project_list_populates_separate_text_and_updates_in_place(qapp,tmp_path):
-    from compact_ui import CompactPanel
-    from desktop_service import DesktopService
+    from workbox.desktop.compact_ui import CompactPanel
+    from workbox.desktop.desktop_service import DesktopService
     service = DesktopService(tmp_path/'data/workbox.db')
     service.db.create_capture('文字层级','隔离批次',[('项目名称验证系统',False)])
     panel = CompactPanel(service)
@@ -117,7 +117,7 @@ def test_narrow_rows_cover_both_text_blocks_without_elision(qapp, name):
 @pytest.mark.parametrize('enabled', [True, False])
 def test_offscreen_paint_uses_distinct_fonts_theme_colors_and_library_background(
         qapp, monkeypatch, mode, enabled):
-    import theme
+    from workbox.desktop import theme
     colors = theme.tokens(mode)
     monkeypatch.setattr(theme, 'tokens', lambda mode=None: colors)
     view, item, index = project_view()

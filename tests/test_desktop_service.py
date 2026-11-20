@@ -4,12 +4,12 @@ from pathlib import Path
 from zipfile import ZipFile
 
 import pytest
-from parser import ParsedProject
+from workbox.projects.parser import ParsedProject
 
 
 def desktop(tmp_path):
-    assert importlib.util.find_spec('desktop_service'), 'Floating desktop intake service missing'
-    return importlib.import_module('desktop_service').DesktopService(tmp_path / 'data' / 'workbox.db')
+    assert importlib.util.find_spec('workbox.desktop.desktop_service'), 'Floating desktop intake service missing'
+    return importlib.import_module('workbox.desktop.desktop_service').DesktopService(tmp_path / 'data' / 'workbox.db')
 
 
 def test_clear_dropped_message_creates_projects_without_a_form(tmp_path):

@@ -12,9 +12,9 @@ from PySide6.QtCore import QCoreApplication, QEvent, QTimer
 from PySide6.QtGui import QAccessible
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox, QPushButton
 
-from desktop_controller import FloatingController
-from desktop_service import DesktopService
-import update_client
+from workbox.desktop.desktop_controller import FloatingController
+from workbox.desktop.desktop_service import DesktopService
+from workbox.updates import update_client
 
 
 @pytest.fixture(scope='module')
@@ -46,8 +46,8 @@ def controller(qapp,tmp_path,monkeypatch):
 
 
 def module():
-    assert (Path(__file__).resolve().parents[1]/'update_ui.py').is_file(), 'Missing update dialog'
-    return importlib.import_module('update_ui')
+    assert (Path(__file__).resolve().parents[1]/'workbox/desktop/update_ui.py').is_file(), 'Missing update dialog'
+    return importlib.import_module('workbox.desktop.update_ui')
 
 
 def test_entry_does_not_check_network_automatically(controller):
@@ -116,7 +116,7 @@ def test_closing_cancels_network_before_dialog_disposal(qapp,tmp_path,monkeypatc
 
 
 def test_backup_precedes_unlock_and_launch_follows_shutdown(controller,tmp_path,monkeypatch):
-    import update_install
+    from workbox.updates import update_install
     package=tmp_path/'setup.exe';package.write_bytes(b'not-executed')
     release=object();sequence=[]
     assert hasattr(controller,'prepare_update_install'), 'Missing safe update integration'
@@ -135,7 +135,7 @@ def test_backup_precedes_unlock_and_launch_follows_shutdown(controller,tmp_path,
 
 
 def test_shutdown_failure_never_starts_installer(controller,tmp_path,monkeypatch):
-    import update_install
+    from workbox.updates import update_install
     assert hasattr(controller,'prepare_update_install')
     monkeypatch.setattr(sys,'frozen',True,raising=False)
     monkeypatch.setattr(update_client,'verify_installer',lambda *a:None)
@@ -155,7 +155,7 @@ def test_source_mode_cannot_replace_development_checkout(controller,tmp_path,mon
 
 
 def test_backup_failure_restores_current_session_without_install(controller,tmp_path,monkeypatch):
-    import update_install
+    from workbox.updates import update_install
     monkeypatch.setattr(sys,'frozen',True,raising=False)
     monkeypatch.setattr(update_client,'verify_installer',lambda *a:None)
     monkeypatch.setattr(update_install,'backup_database',lambda *a:(_ for _ in ()).throw(OSError('isolated full disk')))

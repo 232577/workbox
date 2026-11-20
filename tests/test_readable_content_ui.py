@@ -5,9 +5,9 @@ from PySide6.QtGui import QTextLayout, QTextOption
 from PySide6.QtWidgets import QApplication, QAbstractItemView, QStyle, QStyleOptionViewItem
 from PySide6.QtTest import QTest
 
-from compact_ui import CompactPanel
-from desktop_service import DesktopService
-from theme import install_theme, set_theme
+from workbox.desktop.compact_ui import CompactPanel
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.theme import install_theme, set_theme
 
 
 LONG_PROJECT = '智能设备运行状态采集与远程维护综合管理平台'
@@ -230,7 +230,7 @@ def test_document_splitter_reflow_preserves_reading_anchor_away_from_selection(p
 
 
 def test_changed_project_caption_preserves_reading_anchor_without_reset(panel, qapp):
-    from compact_ui import populate
+    from workbox.desktop.compact_ui import populate
     view = panel.project_list
     rows = [dict(id=i, name=f'项目{i:03d}系统') for i in range(100)]
     populate(view, rows, lambda row: row['name'])
@@ -327,7 +327,7 @@ def test_mouse_selected_project_paints_metadata_on_last_line(panel, qapp, mode, 
     settle(qapp)
     assert item.isSelected() is (selection_state != 'unselected')
     assert view.hasFocus() is (selection_state == 'focused')
-    from fluent_views import PROJECT_BATCH_MARKERS_ROLE
+    from workbox.desktop.fluent_views import PROJECT_BATCH_MARKERS_ROLE
     assert item.text().startswith(name + '\n') and '待开发' in item.text()
     assert '资料完整批次元数据' in item.toolTip()
     markers = item.data(PROJECT_BATCH_MARKERS_ROLE)

@@ -10,11 +10,11 @@ from PySide6.QtCore import Qt
 from PySide6.QtTest import QSignalSpy
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
-import delivery_export
-from desktop_controller import FloatingController
-from desktop_service import DesktopService
-from native_files import identity
-from theme import current_mode, set_theme
+from workbox.storage import delivery_export
+from workbox.desktop.desktop_controller import FloatingController
+from workbox.desktop.desktop_service import DesktopService
+from workbox.storage.native_files import identity
+from workbox.desktop.theme import current_mode, set_theme
 
 
 @pytest.fixture

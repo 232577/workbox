@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt
 
 def test_preview_requires_explicit_check_and_invalidates_on_edit():
     app = QApplication.instance() or QApplication([])
-    from project_change_ui import ProjectChangeDialog
+    from workbox.desktop.project_change_ui import ProjectChangeDialog
     dialog = ProjectChangeDialog({'id': 1, 'name': '甲'})
     requests = []
     dialog.preview_requested.connect(requests.append)
@@ -30,7 +30,7 @@ def test_preview_requires_explicit_check_and_invalidates_on_edit():
 
 def test_multiple_candidates_require_explicit_choice_and_second_preview():
     app = QApplication.instance() or QApplication([])
-    from project_change_ui import ProjectChangeDialog
+    from workbox.desktop.project_change_ui import ProjectChangeDialog
     dialog = ProjectChangeDialog({'id': 1, 'name': '甲'})
     requests = []
     dialog.preview_requested.connect(requests.append)
@@ -56,7 +56,7 @@ def test_multiple_candidates_require_explicit_choice_and_second_preview():
 
 def test_single_same_name_candidate_merge_uses_preview_target():
     app = QApplication.instance() or QApplication([])
-    from project_change_ui import ProjectChangeDialog
+    from workbox.desktop.project_change_ui import ProjectChangeDialog
     dialog = ProjectChangeDialog({'id': 1, 'name': '同名项目'})
     requests = []
     dialog.preview_requested.connect(requests.append)
@@ -76,7 +76,7 @@ def test_single_same_name_candidate_merge_uses_preview_target():
 
 def test_late_preview_after_name_change_and_blocked_plan_cannot_confirm():
     app = QApplication.instance() or QApplication([])
-    from project_change_ui import ProjectChangeDialog
+    from workbox.desktop.project_change_ui import ProjectChangeDialog
     dialog = ProjectChangeDialog({'id': 1, 'name': '甲'})
     requests = []
     dialog.preview_requested.connect(requests.append)
@@ -98,9 +98,9 @@ def test_late_preview_after_name_change_and_blocked_plan_cannot_confirm():
 def test_preview_runs_in_controller_queue_and_closed_dialog_is_ignored(tmp_path):
     app = QApplication.instance() or QApplication([])
     app.setQuitOnLastWindowClosed(False)
-    from desktop_controller import FloatingController
-    from desktop_service import DesktopService
-    from project_change_ui import ProjectChangeDialog
+    from workbox.desktop.desktop_controller import FloatingController
+    from workbox.desktop.desktop_service import DesktopService
+    from workbox.desktop.project_change_ui import ProjectChangeDialog
     service = DesktopService(tmp_path / 'data' / 'workbox.db')
     service.db.create_capture('甲', '批次', [('甲', False)])
     calls = []
@@ -137,7 +137,7 @@ def test_preview_runs_in_controller_queue_and_closed_dialog_is_ignored(tmp_path)
 
 def test_long_candidate_keeps_dialog_usable_and_exposes_full_path():
     app = QApplication.instance() or QApplication([])
-    from project_change_ui import ProjectChangeDialog
+    from workbox.desktop.project_change_ui import ProjectChangeDialog
     dialog = ProjectChangeDialog({'id': 1, 'name': '甲'})
     requests = []
     dialog.preview_requested.connect(requests.append)
@@ -164,9 +164,9 @@ def test_long_candidate_keeps_dialog_usable_and_exposes_full_path():
 def test_changing_or_closing_dialog_cancels_only_current_preview(tmp_path, action):
     app = QApplication.instance() or QApplication([])
     app.setQuitOnLastWindowClosed(False)
-    from desktop_controller import FloatingController
-    from desktop_service import DesktopService
-    from project_change_ui import ProjectChangeDialog
+    from workbox.desktop.desktop_controller import FloatingController
+    from workbox.desktop.desktop_service import DesktopService
+    from workbox.desktop.project_change_ui import ProjectChangeDialog
     service = DesktopService(tmp_path / 'data' / 'workbox.db')
     service.db.create_capture('甲', '批次', [('甲', False)])
     entered, stopped, queued = Event(), Event(), Event()

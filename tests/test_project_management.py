@@ -7,8 +7,8 @@ from threading import Event
 
 import pytest
 
-from app import WorkBox
-from desktop_service import DesktopService
+from workbox.app import WorkBox
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture

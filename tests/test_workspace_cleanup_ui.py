@@ -7,8 +7,8 @@ from PySide6.QtCore import QPoint, QTimer, Qt
 from PySide6.QtTest import QSignalSpy, QTest
 from PySide6.QtWidgets import QApplication, QListWidget, QMenu, QPushButton, QStyle, QStyleOptionComboBox, QWidget
 
-from compact_ui import CompactPanel
-from desktop_service import DesktopService
+from workbox.desktop.compact_ui import CompactPanel
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture
@@ -102,7 +102,7 @@ def test_project_row_and_unselected_file_panel_only_show_applicable_content(pane
 
 
 def test_failed_document_read_offers_direct_retry_and_keeps_normal_refresh_in_menu(panel, monkeypatch):
-    import project_documents_ui
+    from workbox.desktop import project_documents_ui
 
     pane = panel.document_pane
     original = project_documents_ui.list_project_documents

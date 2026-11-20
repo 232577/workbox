@@ -6,8 +6,8 @@ import shiboken6
 from PySide6.QtCore import QCoreApplication, QEvent, QTimer
 from PySide6.QtWidgets import QApplication, QDialog, QLineEdit, QListWidget
 
-from compact_ui import CompactPanel
-from desktop_service import DesktopService
+from workbox.desktop.compact_ui import CompactPanel
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture(scope='module')
@@ -56,7 +56,7 @@ def test_selected_project_is_consumed_before_dialog_destruction(panel, qapp):
 
 @pytest.mark.parametrize('raises', [False, True])
 def test_transient_dialog_retains_fields_until_scope_exits_and_releases_on_error(qapp, raises):
-    transient_dialog = importlib.import_module('dialog_lifecycle').transient_dialog
+    transient_dialog = importlib.import_module('workbox.desktop.dialog_lifecycle').transient_dialog
     dialog = QDialog()
     field = QLineEdit('保留结果', dialog)
     try:

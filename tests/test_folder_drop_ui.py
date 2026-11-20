@@ -9,9 +9,9 @@ from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
 from PySide6.QtGui import QDropEvent
 from PySide6.QtWidgets import QApplication
 
-from desktop_controller import FloatingController
-from desktop_service import DesktopService
-from floating import decode_mime
+from workbox.desktop.desktop_controller import FloatingController
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.floating import decode_mime
 
 
 @pytest.fixture

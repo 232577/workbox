@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from database import Database
+from workbox.projects.database import Database
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,7 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_production_has_no_archive_extraction_execution_or_file_destruction():
     forbidden_calls = {"extract", "extractall", "unpack_archive", "rmtree", "unlink", "remove", "rename", "startfile", "system", "Popen", "move"}
-    for name in ("zip_manager.py", "app.py", "database.py", "ui.py"):
+    for name in ("workbox/storage/zip_manager.py", "workbox/app.py",
+                 "workbox/projects/database.py", "workbox/desktop/ui.py"):
         tree = ast.parse((ROOT / name).read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):

@@ -6,14 +6,14 @@ from contextlib import contextmanager
 
 import pytest
 
-from database import Database
-from desktop_service import DesktopService
-from parser import ParsedProject
+from workbox.projects.database import Database
+from workbox.desktop.desktop_service import DesktopService
+from workbox.projects.parser import ParsedProject
 
 
 def reader(connection):
-    assert importlib.util.find_spec('project_batches'), '只读批次索引尚未实现'
-    from project_batches import read_project_batch_index
+    assert importlib.util.find_spec('workbox.projects.project_batches'), '只读批次索引尚未实现'
+    from workbox.projects.project_batches import read_project_batch_index
     return read_project_batch_index(connection)
 
 
@@ -191,7 +191,7 @@ def test_compact_labels_keep_two_digit_year_and_unknown_date_is_honest(tmp_path)
 def test_snapshot_does_not_mix_writer_commit_between_rows_and_markers(tmp_path, monkeypatch):
     service = service_at(tmp_path)
     service.capture_message('匿名甲系统', '匿名建项', [ParsedProject('匿名甲系统')])
-    import project_batches
+    from workbox.projects import project_batches
     original = project_batches.read_project_batch_index
 
     def write_between_reads(connection):

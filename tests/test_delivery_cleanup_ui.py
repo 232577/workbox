@@ -4,8 +4,8 @@ from PySide6.QtCore import QTimer
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialogButtonBox, QLineEdit, QTextBrowser
 
-from delivery_ui import TodayDeliveryDialog
-from desktop_service import DesktopService
+from workbox.desktop.delivery_ui import TodayDeliveryDialog
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture(params=[(660, 480), (980, 680)], ids=['compact', 'wide'])

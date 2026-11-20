@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtCore import QLockFile
 
-from desktop_service import DesktopService
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture
@@ -42,7 +42,7 @@ def test_crashed_archive_copy_retries_without_changing_original_attempt(material
     before = contents(root)
     script = '''
 import os, sys
-from desktop_service import DesktopService
+from workbox.desktop.desktop_service import DesktopService
 service = DesktopService(sys.argv[1])
 def interrupted(done, total):
     if done > len(b'complete first document'):

@@ -7,8 +7,8 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QAbstractItemView, QHeaderView
 
-import database
-from desktop_service import DesktopService
+import workbox.projects.database as database
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture(scope='module')
@@ -33,7 +33,7 @@ def service(tmp_path, monkeypatch):
 
 def make_dialog(service):
     try:
-        module = importlib.import_module('delivery_ui')
+        module = importlib.import_module('workbox.desktop.delivery_ui')
     except ImportError:
         pytest.fail('缺少今日交付窗口模块')
     return module.TodayDeliveryDialog(service)
@@ -216,7 +216,7 @@ def test_delivery_tables_keep_adjusted_column_widths(qapp, service):
 
 
 def test_embedded_delivery_keeps_all_columns_available_in_compact_view(qapp, service):
-    from delivery_ui import TodayDeliveryDialog
+    from workbox.desktop.delivery_ui import TodayDeliveryDialog
     dialog = TodayDeliveryDialog(service, embedded=True)
     try:
         dialog.resize(700, 500)

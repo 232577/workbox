@@ -7,10 +7,10 @@ from PySide6.QtTest import QSignalSpy, QTest
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QLineEdit, QSpinBox,
                               QStyle, QStyleOptionFrame, QStyleOptionViewItem, QToolButton)
 
-from compact_ui import ProjectDetailsDialog
-from delivery_ui import TodayDeliveryDialog
-from desktop_service import DesktopService
-from theme import install_theme, set_theme, tokens
+from workbox.desktop.compact_ui import ProjectDetailsDialog
+from workbox.desktop.delivery_ui import TodayDeliveryDialog
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.theme import install_theme, set_theme, tokens
 
 
 @pytest.fixture(scope='module')

@@ -2,8 +2,8 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
-from compact_ui import CompactPanel
-from desktop_service import DesktopService
+from workbox.desktop.compact_ui import CompactPanel
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture(scope='module')
@@ -42,8 +42,8 @@ def test_project_type_filter_context_and_bulk_use_real_ids(qapp, tmp_path):
 
 
 def test_type_manager_cancel_and_service_error_keep_data(qapp, tmp_path, monkeypatch):
-    from project_types_ui import ProjectTypesDialog
-    import project_types_ui
+    from workbox.desktop.project_types_ui import ProjectTypesDialog
+    from workbox.desktop import project_types_ui
     service = DesktopService(tmp_path / 'workbox.db')
     initial = service.list_project_types()
     dialog = ProjectTypesDialog(service)
@@ -61,8 +61,8 @@ def test_type_manager_cancel_and_service_error_keep_data(qapp, tmp_path, monkeyp
 
 
 def test_type_manager_rename_disable_and_enable_are_immediate(qapp, tmp_path, monkeypatch):
-    from project_types_ui import ProjectTypesDialog
-    import project_types_ui
+    from workbox.desktop.project_types_ui import ProjectTypesDialog
+    from workbox.desktop import project_types_ui
     service = DesktopService(tmp_path / 'workbox.db')
     kind = service.create_project_type('工具')
     dialog = ProjectTypesDialog(service)
@@ -109,7 +109,7 @@ def test_inactive_current_type_remains_visible_and_cannot_be_assigned(qapp, tmp_
 
 
 def test_visible_type_entry_uses_selected_ids_and_preserves_project_state(qapp, tmp_path, monkeypatch):
-    import project_types_ui
+    from workbox.desktop import project_types_ui
     service = DesktopService(tmp_path / 'entry.db')
     service.db.create_capture('隔离验证', '分类入口', [('甲工具', False), ('乙工具', False)])
     first, second = service.list_projects()
@@ -146,7 +146,7 @@ def test_visible_type_entry_uses_selected_ids_and_preserves_project_state(qapp, 
 
 
 def test_type_entry_cancel_filter_removal_and_archived_boundary(qapp, tmp_path, monkeypatch):
-    import project_types_ui
+    from workbox.desktop import project_types_ui
     service = DesktopService(tmp_path / 'entry-boundary.db')
     service.set_default_project_type(None)
     service.db.create_capture('隔离验证', '分类入口', [('边界项目', False)])

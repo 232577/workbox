@@ -1,6 +1,8 @@
 """Public collaboration tooling uses isolated Git fixtures, never production data."""
 import importlib.util
+import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -215,3 +217,40 @@ def test_resume_rejects_main_and_wrong_remote(repository):
     with pytest.raises(RuntimeError, match='remote|远端'):
         dev.resume_branch(repository, 'feat/task')
     assert git(repository, 'rev-parse', 'HEAD') == before
+
+
+@pytest.mark.parametrize('path_kind', ['default', 'relative', 'absolute'])
+def test_ci_shard_keeps_reports_and_fixtures_in_selected_directory(tmp_path, monkeypatch, path_kind):
+    ci_tests = load('ci_tests')
+    monkeypatch.setattr(ci_tests, '__file__', str(tmp_path / 'scripts' / 'ci_tests.py'))
+    tests = tmp_path / 'tests'
+    tests.mkdir()
+    for name in ('test_e.py', 'test_a.py', 'test_c.py', 'test_d.py', 'test_b.py', 'helper.py'):
+        (tests / name).touch()
+
+    default_output = tmp_path / '.local' / 'ci'
+    argv = ['ci_tests.py', '--shard', '2', '--shards', '3']
+    output = default_output
+    if path_kind != 'default':
+        output = tmp_path / 'test evidence'
+        argv.extend(['--output-dir', str(output) if path_kind == 'absolute' else output.name])
+    monkeypatch.setattr(sys, 'argv', argv)
+
+    def run(command, *, cwd):
+        assert cwd == tmp_path
+        assert command == [
+            sys.executable, '-m', 'scripts.run_tests', '-q',
+            str(Path('tests/test_b.py')), str(Path('tests/test_e.py')),
+            '--basetemp=' + str(output / 'fixtures-2'),
+            '--junitxml=' + str(output / 'part-2.xml'),
+        ]
+        return subprocess.CompletedProcess(command, returncode=3)
+
+    monkeypatch.setattr(ci_tests.subprocess, 'run', run)
+    assert ci_tests.main() == 3
+    manifest = json.loads((output / 'collection-2.json').read_text(encoding='utf-8'))
+    assert manifest == {
+        'total_files': 5, 'shard': 2,
+        'files': [str(Path('tests/test_b.py')), str(Path('tests/test_e.py'))],
+    }
+    assert default_output.exists() == (path_kind == 'default')

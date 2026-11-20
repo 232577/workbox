@@ -6,14 +6,14 @@ from threading import Event
 
 import pytest
 
-from desktop_service import DesktopService
-from material_check_store import save_rules
-from material_matching import Requirement
+from workbox.desktop.desktop_service import DesktopService
+from workbox.projects.material_check_store import save_rules
+from workbox.projects.material_matching import Requirement
 
 
 def review():
-    assert util.find_spec('checklist_review') is not None, 'Checklist integration not implemented'
-    return import_module('checklist_review')
+    assert util.find_spec('workbox.projects.checklist_review') is not None, 'Checklist integration not implemented'
+    return import_module('workbox.projects.checklist_review')
 
 
 def entry(name, row=2):

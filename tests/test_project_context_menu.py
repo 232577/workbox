@@ -7,8 +7,8 @@ from PySide6.QtCore import QPoint, Qt, QTimer
 from PySide6.QtGui import QContextMenuEvent
 from PySide6.QtWidgets import QApplication, QDialog, QInputDialog, QMenu, QMessageBox, QPlainTextEdit
 
-from compact_ui import CompactPanel
-from desktop_service import DesktopService
+from workbox.desktop.compact_ui import CompactPanel
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture(scope='module')
@@ -140,7 +140,7 @@ def test_archive_confirmation_targets_one_id_and_defaults_to_no(panel, monkeypat
 
 
 def test_delivery_dialog_supports_explicit_material_choice_and_guards_review(panel):
-    from compact_ui import ProjectDeliveryDialog
+    from workbox.desktop.compact_ui import ProjectDeliveryDialog
     project = panel.service.get_project(1)
     project['status'] = '待交付'
     project['zips'] = [dict(id=7, filename='甲系统.zip', path='D:/isolated/甲系统.zip',
@@ -187,7 +187,7 @@ def test_rename_and_source_use_menu_id_when_selection_changes(panel, monkeypatch
     panel.project_change_requested.connect(received.append)
     menu = panel.project_context_menu(2)
     panel.project_list.setCurrentRow(0)
-    from project_change_ui import ProjectChangeDialog
+    from workbox.desktop.project_change_ui import ProjectChangeDialog
     def change(dialog):
         assert dialog.name_edit.text() == '乙系统'
         dialog.request = {'project_id': dialog.project_id, 'name': '乙系统二期',
@@ -206,7 +206,7 @@ def test_rename_and_source_use_menu_id_when_selection_changes(panel, monkeypatch
 
 
 def test_notes_dialog_uses_menu_id_and_cancel_preserves_data(panel, monkeypatch):
-    from compact_ui import ProjectDetailsDialog
+    from workbox.desktop.compact_ui import ProjectDetailsDialog
     panel.service.update_project_details(1, '甲备注', None)
     panel.service.update_project_details(2, '乙备注', None)
     panel.project_list.setCurrentRow(0)
@@ -223,7 +223,7 @@ def test_notes_dialog_uses_menu_id_and_cancel_preserves_data(panel, monkeypatch)
 
 def test_manual_delivery_choices_target_menu_id_and_cancel_emits_nothing(panel, monkeypatch, tmp_path):
     from zipfile import ZipFile
-    from compact_ui import ProjectDeliveryDialog
+    from workbox.desktop.compact_ui import ProjectDeliveryDialog
     path = tmp_path / '乙系统.zip'
     with ZipFile(path, 'w') as archive:
         archive.writestr('说明.txt', '乙材料')

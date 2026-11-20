@@ -7,10 +7,10 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
-import delivery_export
-from desktop_controller import FloatingController
-from desktop_service import DesktopService
-from native_files import identity
+from workbox.storage import delivery_export
+from workbox.desktop.desktop_controller import FloatingController
+from workbox.desktop.desktop_service import DesktopService
+from workbox.storage.native_files import identity
 
 
 @pytest.fixture

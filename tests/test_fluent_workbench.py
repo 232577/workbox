@@ -2,9 +2,9 @@
 import pytest
 from PySide6.QtWidgets import QApplication, QFrame
 from qfluentwidgets import ListWidget, SegmentedWidget, TableWidget
-from compact_ui import CompactPanel, ReviewDialog
-from desktop_service import DesktopService
-from theme import install_theme
+from workbox.desktop.compact_ui import CompactPanel, ReviewDialog
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.theme import install_theme
 
 @pytest.fixture(scope='module')
 def app():

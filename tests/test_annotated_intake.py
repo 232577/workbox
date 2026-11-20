@@ -5,9 +5,9 @@ from zipfile import ZipFile
 
 import pytest
 
-from desktop_service import DesktopService
-from file_matcher import match_work_file_projects, new_file_project_name
-from zip_manager import match_projects
+from workbox.desktop.desktop_service import DesktopService
+from workbox.storage.file_matcher import match_work_file_projects, new_file_project_name
+from workbox.storage.zip_manager import match_projects
 
 
 def project(pid, name, aliases=(), **extra):

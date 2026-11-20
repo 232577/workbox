@@ -6,8 +6,8 @@ import pytest
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QDialog
 
-from compact_ui import CompactPanel, DirectorySettingsDialog
-from desktop_service import DesktopService
+from workbox.desktop.compact_ui import CompactPanel, DirectorySettingsDialog
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture(scope='module')
@@ -23,8 +23,8 @@ def service(tmp_path):
 
 
 def onboarding():
-    assert importlib.util.find_spec('onboarding_ui') is not None, '首次设置界面尚未实现'
-    return importlib.import_module('onboarding_ui')
+    assert importlib.util.find_spec('workbox.desktop.onboarding_ui') is not None, '首次设置界面尚未实现'
+    return importlib.import_module('workbox.desktop.onboarding_ui')
 
 
 def finish_steps(dialog):

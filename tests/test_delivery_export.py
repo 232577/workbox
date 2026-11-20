@@ -6,7 +6,7 @@ from concurrent.futures import CancelledError
 import pytest
 from openpyxl import load_workbook
 
-from database import Database
+from workbox.projects.database import Database
 
 
 @pytest.fixture
@@ -26,8 +26,8 @@ def event(db, pid, when, name='甲项目', path='未知归档', signature=None):
 
 def backend():
     # 缺少实现时给出明确的行为断言失败，而非收集阶段导入错误。
-    assert importlib.util.find_spec('delivery_export'), '缺少交付表导出实现'
-    return importlib.import_module('delivery_export')
+    assert importlib.util.find_spec('workbox.storage.delivery_export'), '缺少交付表导出实现'
+    return importlib.import_module('workbox.storage.delivery_export')
 
 
 def test_collect_uses_latest_valid_delivery_and_keeps_workload_exclusion(db):
@@ -152,7 +152,7 @@ def test_cancel_and_writer_failure_do_not_leave_files(db, tmp_path, monkeypatch)
 def test_latest_valid_material_fact_is_not_sum_of_versions_and_query_is_read_only(db):
     import hashlib
     import json
-    from delivery_archive import SCHEMA
+    from workbox.storage.delivery_archive import SCHEMA
     manifests = [[dict(path=f'{n}.txt', size=0, sha256='a'*64) for n in range(count)] for count in (7, 2)]
     signatures = [hashlib.sha256(json.dumps([[row['path'], row['sha256']] for row in manifest],
                   ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')).hexdigest()
@@ -174,7 +174,7 @@ def test_latest_valid_material_fact_is_not_sum_of_versions_and_query_is_read_onl
 
 
 def test_merge_uses_one_canonical_project(db):
-    from workspace_manager import SCHEMA
+    from workbox.storage.workspace_manager import SCHEMA
     event(db, 1, '2026-10-01T00:00:00Z')
     event(db, 2, '2026-10-02T00:00:00Z', '乙项目')
     with db.connect() as connection:
@@ -303,7 +303,7 @@ def test_empty_report_summary_has_explicit_zero_total(db, tmp_path):
 def test_new_managed_root_during_xlsx_write_blocks_publication(db, tmp_path, monkeypatch):
     import json
     import threading
-    from workspace_manager import SCHEMA
+    from workbox.storage.workspace_manager import SCHEMA
     export = backend()
     db._operation_lock = threading.RLock()
     destination = tmp_path / 'new-managed-root'

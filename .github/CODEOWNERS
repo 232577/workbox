@@ -3,4 +3,4 @@
 /.github/ @232577
 /scripts/ @232577
 /website/worker.mjs @232577
-/database.py @232577
+/workbox/projects/database.py @232577

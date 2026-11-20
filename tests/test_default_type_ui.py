@@ -5,8 +5,8 @@ import pytest
 from PySide6.QtTest import QSignalSpy
 from PySide6.QtWidgets import QApplication
 
-from desktop_service import DesktopService
-from project_types_ui import ProjectTypesDialog
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.project_types_ui import ProjectTypesDialog
 
 
 @pytest.fixture(scope='module')

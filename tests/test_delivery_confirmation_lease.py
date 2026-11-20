@@ -8,8 +8,8 @@ from zipfile import ZipFile
 
 import pytest
 
-import app
-from app import WorkBox
+import workbox.app as app
+from workbox.app import WorkBox
 
 
 @pytest.fixture

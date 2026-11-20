@@ -12,7 +12,7 @@ import pytest
 from PySide6.QtCore import QByteArray, QObject
 from PySide6.QtWidgets import QApplication
 
-from global_shortcut import GlobalShortcut, validate_shortcut
+from workbox.desktop.global_shortcut import GlobalShortcut, validate_shortcut
 
 
 @pytest.fixture(scope='module')
@@ -379,7 +379,7 @@ import ctypes
 from ctypes import wintypes as w
 from PySide6.QtCore import QElapsedTimer, QObject
 from PySide6.QtWidgets import QApplication
-from global_shortcut import GlobalShortcut
+from workbox.desktop.global_shortcut import GlobalShortcut
 app = QApplication([])
 first, second = GlobalShortcut(), GlobalShortcut()
 seen = []

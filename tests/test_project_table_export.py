@@ -6,8 +6,8 @@ from contextlib import contextmanager
 import pytest
 from openpyxl import load_workbook
 
-import delivery_export as exports
-from database import Database
+from workbox.storage import delivery_export as exports
+from workbox.projects.database import Database
 
 
 @pytest.fixture

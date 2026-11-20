@@ -9,11 +9,11 @@ from PySide6.QtGui import QFont, QFontDatabase, QFontMetrics
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from compact_ui import CompactPanel, ProjectList, populate
-from desktop_service import DesktopService
-from fluent_views import (PROJECT_BATCH_MARKERS_ROLE, _batch_badge_layout,
+from workbox.desktop.compact_ui import CompactPanel, ProjectList, populate
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.fluent_views import (PROJECT_BATCH_MARKERS_ROLE, _batch_badge_layout,
                           _batch_badge_parts, batch_progress_summary)
-from theme import set_theme
+from workbox.desktop.theme import set_theme
 
 
 @pytest.fixture(scope='module')

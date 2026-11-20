@@ -7,8 +7,8 @@ import pytest
 
 @pytest.fixture
 def service(tmp_path):
-    assert importlib.util.find_spec("app") is not None, "Task 1: app.py missing"
-    module = importlib.import_module("app")
+    assert importlib.util.find_spec("workbox.app") is not None, "Task 1: app.py missing"
+    module = importlib.import_module("workbox.app")
     assert hasattr(module, "WorkBox"), "Task 1: WorkBox service missing"
     return module.WorkBox(tmp_path / "workbox.db")
 
@@ -46,7 +46,7 @@ def test_duplicate_click_is_rejected_but_new_batch_is_independent(service):
 
 
 def test_user_edited_preview_is_what_gets_saved(service):
-    ParsedProject = importlib.import_module("parser").ParsedProject
+    ParsedProject = importlib.import_module("workbox.projects.parser").ParsedProject
     service.capture_message("一段未规整的文字", "手工收件", [ParsedProject("修正后的项目名", True)])
     project = rows(service, "projects")[0]
     assert project["name"] == "修正后的项目名"
@@ -82,6 +82,6 @@ def test_sql_failure_rolls_back_entire_capture(service):
 
 def test_captured_data_survives_restart(service):
     service.capture_message("1. 项目甲\n2. 项目乙", "批次")
-    reopened = importlib.import_module("app").WorkBox(service.db.path)
+    reopened = importlib.import_module("workbox.app").WorkBox(service.db.path)
     assert reopened.db.counts() == {"projects": 2, "batches": 1, "zips": 0}
     assert rows(reopened, "messages")[0]["raw_text"] == "1. 项目甲\n2. 项目乙"

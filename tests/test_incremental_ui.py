@@ -10,8 +10,8 @@ import pytest
 from PySide6.QtCore import QThread
 from PySide6.QtWidgets import QApplication, QDialog
 
-import update_client
-import update_ui
+import workbox.updates.update_client as update_client
+import workbox.desktop.update_ui as update_ui
 
 
 @pytest.fixture(scope='module')
@@ -73,7 +73,7 @@ def dialogs(qapp, tmp_path, monkeypatch, release):
 def backend(monkeypatch, download=None, verify=None):
     """此边界替身不执行网络、文件替换或真实安装。"""
     module = SimpleNamespace(download_update=download, verify_downloaded_update=verify)
-    monkeypatch.setitem(sys.modules, 'incremental_update', module)
+    monkeypatch.setitem(sys.modules, 'workbox.updates.incremental_update', module)
     return module
 
 
@@ -240,8 +240,8 @@ def test_shutdown_ignores_queued_status_after_waiting_for_network(qapp, dialogs,
 
 @pytest.fixture
 def controller(qapp, tmp_path):
-    from desktop_controller import FloatingController
-    from desktop_service import DesktopService
+    from workbox.desktop.desktop_controller import FloatingController
+    from workbox.desktop.desktop_service import DesktopService
     service = DesktopService(tmp_path / 'data' / 'workbox.db')
     instance = FloatingController(service, tray_enabled=False)
     assert instance.start()
@@ -254,7 +254,7 @@ def controller(qapp, tmp_path):
 
 
 def test_unified_reverification_precedes_backup_unlock_and_handoff(controller, tmp_path, release, monkeypatch):
-    import update_install
+    import workbox.updates.update_install as update_install
     monkeypatch.setattr(sys, 'frozen', True, raising=False)
     package = tmp_path / 'anonymous.wbdelta'
     calls = []
@@ -295,7 +295,7 @@ def test_reverification_failure_leaves_data_session_open(controller, tmp_path, r
 
 
 def test_backup_failure_keeps_lock_and_resumes_application(controller, tmp_path, release, monkeypatch):
-    import update_install
+    import workbox.updates.update_install as update_install
     monkeypatch.setattr(sys, 'frozen', True, raising=False)
     backend(monkeypatch, verify=lambda *args: None)
 

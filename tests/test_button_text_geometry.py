@@ -4,10 +4,10 @@ from PySide6.QtCore import QRect, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QPushButton, QStyle, QStyleOptionButton
 
-from compact_ui import CompactPanel, DirectorySettingsDialog
-from delivery_ui import TodayDeliveryDialog
-from desktop_service import DesktopService
-from theme import install_theme, set_theme
+from workbox.desktop.compact_ui import CompactPanel, DirectorySettingsDialog
+from workbox.desktop.delivery_ui import TodayDeliveryDialog
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.theme import install_theme, set_theme
 
 
 @pytest.fixture(scope='module')

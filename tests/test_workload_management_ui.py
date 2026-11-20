@@ -4,9 +4,9 @@ import time
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QDialogButtonBox, QAbstractItemView
-import database
-from desktop_service import DesktopService
-from delivery_ui import TodayDeliveryDialog
+from workbox.projects import database
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.delivery_ui import TodayDeliveryDialog
 from test_delivery_cleanup_ui import answer_correction
 
 @pytest.fixture(scope='module')

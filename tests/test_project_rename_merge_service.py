@@ -6,7 +6,7 @@ from zipfile import ZipFile
 
 import pytest
 
-from desktop_service import DesktopService
+from workbox.desktop.desktop_service import DesktopService
 
 pytestmark = pytest.mark.skipif(os.name != 'nt', reason='目录身份租约使用 Windows API')
 

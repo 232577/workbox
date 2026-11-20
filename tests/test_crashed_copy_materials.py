@@ -10,9 +10,9 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QLockFile
 
-from desktop_service import DesktopService
-from project_documents import list_project_documents
-from workspace_manager import copy_verified
+from workbox.desktop.desktop_service import DesktopService
+from workbox.storage.project_documents import list_project_documents
+from workbox.storage.workspace_manager import copy_verified
 
 
 @pytest.mark.parametrize('existing_document', [False, True])
@@ -31,7 +31,7 @@ def test_crashed_copy_is_not_a_document_or_deliverable_material(tmp_path, existi
     source.write_bytes(incoming_content)
     script = '''
 import os, sys
-from desktop_service import DesktopService
+from workbox.desktop.desktop_service import DesktopService
 service = DesktopService(sys.argv[1])
 def interrupted(done, total):
     os._exit(95)

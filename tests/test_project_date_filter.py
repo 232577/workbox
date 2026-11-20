@@ -19,7 +19,7 @@ def qapp():
 
 @pytest.fixture
 def picker(qapp):
-    from project_date_filter import ProjectDateFilter
+    from workbox.desktop.project_date_filter import ProjectDateFilter
     widget = ProjectDateFilter()
     widget.show()
     yield widget
@@ -137,8 +137,8 @@ def test_calendar_boundaries_and_inclusive_endpoints(picker):
 
 
 def test_today_uses_beijing_calendar_day(picker, monkeypatch):
-    import project_date_filter
-    from database import DELIVERY_TIMEZONE
+    from workbox.desktop import project_date_filter
+    from workbox.projects.database import DELIVERY_TIMEZONE
 
     class FixedDateTime:
         @classmethod

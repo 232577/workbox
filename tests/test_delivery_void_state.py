@@ -7,11 +7,11 @@ from zipfile import ZipFile
 
 import pytest
 
-from database import Database
-from delivery_archive import ProjectDeliveryArchive
-from desktop_service import DesktopService
-from snapshot_manager import SnapshotManager
-from workspace_manager import WorkspaceManager
+from workbox.projects.database import Database
+from workbox.storage.delivery_archive import ProjectDeliveryArchive
+from workbox.desktop.desktop_service import DesktopService
+from workbox.storage.snapshot_manager import SnapshotManager
+from workbox.storage.workspace_manager import WorkspaceManager
 
 
 @pytest.fixture

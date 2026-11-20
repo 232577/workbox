@@ -3,8 +3,8 @@ import pytest
 from PySide6.QtCore import QObject, Signal, Qt
 from PySide6.QtWidgets import QApplication, QDialog, QLineEdit, QVBoxLayout
 
-from desktop_controller import FloatingController
-from desktop_service import DesktopService
+from workbox.desktop.desktop_controller import FloatingController
+from workbox.desktop.desktop_service import DesktopService
 
 
 class Shortcut(QObject):
@@ -41,7 +41,7 @@ def qapp():
 
 @pytest.fixture
 def controller(qapp, tmp_path, monkeypatch):
-    import desktop_controller
+    from workbox.desktop import desktop_controller
     monkeypatch.setattr(desktop_controller, 'GlobalShortcut', Shortcut)
     value = FloatingController(DesktopService(tmp_path / 'anonymous.db'), tray_enabled=False)
     assert value.start()
@@ -148,7 +148,7 @@ def test_failed_shortcut_release_keeps_workbench_usable_and_exit_can_retry(contr
 
 
 def test_settings_entry_applies_independently_and_search_locates_shortcut(controller, qapp):
-    from compact_ui import DirectorySettingsDialog
+    from workbox.desktop.compact_ui import DirectorySettingsDialog
     dialog = DirectorySettingsDialog(controller.service, controller.panel)
     try:
         original = controller.service.workspaces.settings()
@@ -173,7 +173,7 @@ def test_settings_entry_applies_independently_and_search_locates_shortcut(contro
 
 
 def test_settings_inline_shortcut_error_grows_card_without_clipping(controller, qapp):
-    from compact_ui import DirectorySettingsDialog
+    from workbox.desktop.compact_ui import DirectorySettingsDialog
     dialog = DirectorySettingsDialog(controller.service, controller.panel)
     try:
         dialog.resize(640, 540)
@@ -212,7 +212,7 @@ def test_settings_inline_shortcut_error_grows_card_without_clipping(controller, 
 @pytest.mark.parametrize('conflict', [False, True])
 def test_saved_shortcut_startup_and_second_instance_do_not_steal_registration(
         qapp, tmp_path, monkeypatch, conflict):
-    import desktop_controller
+    from workbox.desktop import desktop_controller
     monkeypatch.setattr(desktop_controller, 'GlobalShortcut', Shortcut)
     service = DesktopService(tmp_path / 'anonymous.db')
     service.set_setting('window_shortcut', 'Ctrl+Alt+W')

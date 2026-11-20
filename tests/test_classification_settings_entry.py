@@ -1,7 +1,7 @@
 """归档分类规则可从设置进入，不能丢弃未保存目录变更。"""
 from PySide6.QtWidgets import QApplication
-from compact_ui import DirectorySettingsDialog
-from desktop_service import DesktopService
+from workbox.desktop.compact_ui import DirectorySettingsDialog
+from workbox.desktop.desktop_service import DesktopService
 
 
 def test_settings_entry_does_not_save_other_settings(tmp_path):

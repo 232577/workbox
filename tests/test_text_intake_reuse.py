@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from desktop_service import DesktopService
-from parser import ParsedProject
+from workbox.desktop.desktop_service import DesktopService
+from workbox.projects.parser import ParsedProject
 
 
 @pytest.fixture

@@ -1,6 +1,6 @@
 """Batch-label work grows with source batches, not repeated project membership."""
-import project_batches
-from database import Database
+from workbox.projects import project_batches
+from workbox.projects.database import Database
 
 
 def test_shared_creation_batch_dates_are_not_reparsed_for_every_project(tmp_path, monkeypatch):

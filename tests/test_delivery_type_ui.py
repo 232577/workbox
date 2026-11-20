@@ -8,10 +8,10 @@ from PySide6.QtGui import QTextLayout, QTextOption
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialogButtonBox, QTextEdit, QStyle, QStyleOptionViewItem, QAbstractItemView
 
-import database
-import delivery_ui
-from desktop_service import DesktopService
-from theme import install_theme, set_theme
+import workbox.projects.database as database
+import workbox.desktop.delivery_ui as delivery_ui
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.theme import install_theme, set_theme
 from test_delivery_cleanup_ui import answer_correction
 
 

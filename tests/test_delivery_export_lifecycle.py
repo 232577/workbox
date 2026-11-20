@@ -4,9 +4,9 @@ from time import monotonic, sleep
 import pytest
 from PySide6.QtWidgets import QApplication, QFileDialog
 
-from desktop_controller import FloatingController
-from desktop_service import DesktopService
-from delivery_ui import TodayDeliveryDialog
+from workbox.desktop.desktop_controller import FloatingController
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.delivery_ui import TodayDeliveryDialog
 
 
 def wait_for(predicate):

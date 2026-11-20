@@ -3,11 +3,11 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QColor
 
-from compact_ui import CompactPanel, ProjectList, populate
-from desktop_service import DesktopService
-from parser import ParsedProject
-import fluent_views
-from theme import set_theme
+from workbox.desktop.compact_ui import CompactPanel, ProjectList, populate
+from workbox.desktop.desktop_service import DesktopService
+from workbox.projects.parser import ParsedProject
+from workbox.desktop import fluent_views
+from workbox.desktop.theme import set_theme
 
 
 def test_disappearing_creation_batch_resets_filter_and_reloads_current_scope(tmp_path, monkeypatch):

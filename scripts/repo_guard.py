@@ -1,4 +1,4 @@
-"""Reject private payloads and common secret patterns without printing their contents."""
+"""Check repository layout, private paths and common secret patterns."""
 from __future__ import annotations
 
 import argparse
@@ -8,22 +8,44 @@ import re
 import subprocess
 import sys
 
-PRIVATE_DIRS={'.local','.tmp','.venv','.cache','data','backups','releases','build','dist','verification','软件著作权申请资料'}
-PRIVATE_SUFFIXES={'.db','.sqlite','.sqlite3','.db-wal','.db-shm','.exe','.msi','.zip','.7z','.key','.pfx','.p12','.pem'}
-SECRET=re.compile(rb'gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|-----BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY-----')
+PRIVATE_DIRS = {
+    '.local', '.tmp', '.venv', '.cache', 'data', 'backups', 'releases',
+    'build', 'dist', 'verification', '软件著作权申请资料',
+}
+GENERATED_DIRS = {
+    '.worktrees', '.pytest_cache', '.pytest-tmp', '.playwright-mcp', '.wrangler',
+    '__pycache__',
+}
+PRIVATE_SUFFIXES = {
+    '.db', '.sqlite', '.sqlite3', '.db-wal', '.db-shm', '.exe', '.msi',
+    '.zip', '.7z', '.key', '.pfx', '.p12', '.pem',
+}
+SECRET = re.compile(
+    rb'gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|'
+    rb'-----BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY-----'
+)
+
 
 def inspect_file(name: str, content: bytes) -> list[str]:
     """Return reasons, not matching content. This is a guardrail, not a full secret audit."""
-    path=PurePosixPath(name.replace('\\','/'))
-    reasons=[]
+    path = PurePosixPath(name.replace('\\', '/'))
+    reasons = []
     if not path.parts or path.is_absolute() or '..' in path.parts or path.parts[0] in PRIVATE_DIRS:
         reasons.append('private or unsafe path')
-    if (path.name=='.env' or path.name.startswith('.env.') and path.name!='.env.example'
-            or path.name.startswith('.dev.vars') or path.suffix.lower() in PRIVATE_SUFFIXES):
+    if len(path.parts) == 1 and path.suffix.lower() in {'.py', '.pyw', '.ps1'}:
+        reasons.append('source file at repository root. Use workbox/, scripts/ or tests/')
+    if GENERATED_DIRS.intersection(path.parts[:-1]):
+        reasons.append('generated test, browser or worktree output')
+    if (
+        path.name == '.env'
+        or (path.name.startswith('.env.') and path.name != '.env.example')
+        or path.name.startswith('.dev.vars')
+        or path.suffix.lower() in PRIVATE_SUFFIXES
+    ):
         reasons.append('credentials, live data or distribution payload')
     if SECRET.search(content):
         reasons.append('possible credential/private key')
-    if len(content)>25*1024*1024:
+    if len(content) > 25 * 1024 * 1024:
         reasons.append('oversized file; publish artifacts through Releases')
     return reasons
 

@@ -4,8 +4,8 @@ from zipfile import ZipFile
 
 import pytest
 
-from desktop_service import DesktopService
-from parser import ParsedProject
+from workbox.desktop.desktop_service import DesktopService
+from workbox.projects.parser import ParsedProject
 
 
 def write_zip(path):
@@ -176,10 +176,10 @@ def test_snapshot_write_entries_refuse_recovery_block(tmp_path, operation):
 
 
 def test_snapshot_manager_keeps_base_service_compatibility(tmp_path):
-    from app import WorkBox
-    from managed_archive import ManagedArchive
-    from snapshot_manager import SnapshotManager
-    from workspace_manager import WorkspaceManager
+    from workbox.app import WorkBox
+    from workbox.storage.managed_archive import ManagedArchive
+    from workbox.storage.snapshot_manager import SnapshotManager
+    from workbox.storage.workspace_manager import WorkspaceManager
 
     service = WorkBox(tmp_path / 'data' / 'workbox.db')
     service.archive = ManagedArchive(service, tmp_path / 'packages')

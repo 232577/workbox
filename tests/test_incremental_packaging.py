@@ -43,15 +43,17 @@ def test_missing_or_non_program_helper_rejected_before_output(tmp_path, helper):
 
 
 def test_build_script_builds_helper_before_main_and_checks_same_byte_copy():
-    script = (ROOT / 'build.ps1').read_text(encoding='utf-8')
+    script = (ROOT / 'scripts/build.ps1').read_text(encoding='utf-8')
     invocations = script.split('& $Python -m PyInstaller ')
     assert len(invocations) == 3
     helper, main = invocations[1], invocations[2]
     command = helper.split('if ($LASTEXITCODE')[0]
     assert '--onefile' in command and '--windowed' in command and '--noupx' in command
-    assert '--name WorkBoxUpdater' in command and 'update_helper_main.py' in command
+    assert '--name WorkBoxUpdater' in command and 'workbox/updates/update_helper_main.py' in command
+    assert '--paths $RepositoryRoot' in command
     assert '--exclude-module PySide6' in command and '--collect-data' not in command
     assert '--onedir' in main and '--name WorkBox ' in main
+    assert '--paths $RepositoryRoot' in main and 'workbox/__main__.py' in main
     assert '--self-check' in helper and '--noninteractive' in helper
     assert 'Start-Process' in helper and '-Wait' in helper and '-WindowStyle Hidden' in helper
     assert 'ExitCode' in helper

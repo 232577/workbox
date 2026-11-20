@@ -3,9 +3,9 @@ import time
 import sqlite3
 import pytest
 from PySide6.QtWidgets import QApplication, QDialog
-from compact_ui import DirectorySettingsDialog, CompactPanel
-from desktop_service import DesktopService
-from desktop_controller import FloatingController
+from workbox.desktop.compact_ui import DirectorySettingsDialog, CompactPanel
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.desktop_controller import FloatingController
 
 
 @pytest.fixture(scope='module')

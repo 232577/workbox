@@ -7,9 +7,9 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QObject, Signal
 from types import SimpleNamespace
 
-from desktop_controller import FloatingController
-from desktop_service import DesktopService
-from ui import FileJob
+from workbox.desktop.desktop_controller import FloatingController
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.ui import FileJob
 
 
 @pytest.fixture
@@ -100,7 +100,7 @@ def test_pending_feedback_selects_exact_receipt(controller):
 
 
 def test_late_page_wait_callback_never_replaces_active_file_worker(controller, monkeypatch):
-    import desktop_controller
+    from workbox.desktop import desktop_controller
     callbacks, started = [], []
     class Job(QObject):
         finished = Signal()
@@ -137,8 +137,8 @@ def test_late_page_wait_callback_never_replaces_active_file_worker(controller, m
 
 def test_update_backup_failure_restores_business_pages_and_unsaved_rules(controller, monkeypatch, tmp_path):
     import sys
-    import update_client
-    import update_install
+    from workbox.updates import update_client
+    from workbox.updates import update_install
     controller.show_panel()
     controller.panel.show_archive_classification()
     wait(controller)
