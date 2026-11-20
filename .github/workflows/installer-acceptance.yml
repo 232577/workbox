@@ -20,6 +20,11 @@ on:
         required: true
         default: v1.0.0.20261112.2
         type: string
+      annotate_tag:
+        description: Create the annotated tag after acceptance, leaving the release as a draft
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -112,3 +117,70 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14
+
+  annotate_tag:
+    needs: verify
+    if: >-
+      inputs.annotate_tag && needs.verify.result == 'success' &&
+      github.repository == '232577/workbox' && github.ref == 'refs/heads/main' &&
+      github.actor == '232577'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Verify draft identity and create an annotated tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          INSTALLER_SHA: ${{ inputs.installer_sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ && "$INSTALLER_SHA" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$CANDIDATE_TAG" =~ ^v1\.0\.0\.(20[0-9]{6})(\.([1-9][0-9]{0,3}))?$ ]]
+          date="${BASH_REMATCH[1]}"
+          revision="${BASH_REMATCH[3]:-}"
+          filename="WorkBox-1.0.0-Setup-x64-$date${revision:+-r$revision}.exe"
+          repo="repos/$GITHUB_REPOSITORY"
+          ref="refs/tags/$CANDIDATE_TAG"
+
+          gh api --paginate "$repo/releases?per_page=100" |
+            jq -es --arg tag "$CANDIDATE_TAG" --arg file "$filename" --arg digest "sha256:$INSTALLER_SHA" '
+              [.[][] | select(.tag_name == $tag)] |
+              length == 1 and (.[0] | .draft == true and .prerelease == false and
+                ([.assets[] | select(.name | ascii_downcase | endswith(".exe"))] |
+                 length == 1 and (.[0] | .name == $file and .state == "uploaded" and .digest == $digest)))
+            ' > /dev/null
+
+          # Only a successful list of refs can establish the absence of the exact name.
+          matches=$(gh api "$repo/git/matching-refs/tags/$CANDIDATE_TAG" |
+            jq -ce --arg ref "$ref" 'select(type == "array") | [.[] | select(.ref == $ref)]')
+          if [[ "$matches" != '[]' ]]; then
+            existing=$(jq -er 'select(length == 1 and .[0].object.type == "tag") |
+              .[0].object.sha | select(test("^[0-9a-f]{40}$"))' <<< "$matches")
+            gh api "$repo/git/tags/$existing" |
+              jq -e --arg tag "$CANDIDATE_TAG" --arg source "$SOURCE_SHA" --arg object "$existing" '
+                .tag == $tag and .sha == $object and .object.type == "commit" and .object.sha == $source
+              ' > /dev/null
+            printf 'Verified existing annotated tag %s at %s\n' "$CANDIDATE_TAG" "$SOURCE_SHA"
+            exit 0
+          fi
+
+          message=$(printf 'WorkBox %s\n\nInstaller SHA-256: %s\nInstaller acceptance run: %s\n' \
+            "$CANDIDATE_TAG" "$INSTALLER_SHA" "$GITHUB_RUN_ID")
+          object=$(gh api --method POST "$repo/git/tags" -f tag="$CANDIDATE_TAG" \
+            -f message="$message" -f object="$SOURCE_SHA" -f type=commit \
+            -f 'tagger[name]=github-actions[bot]' \
+            -f 'tagger[email]=41898282+github-actions[bot]@users.noreply.github.com' |
+            jq -er --arg tag "$CANDIDATE_TAG" --arg source "$SOURCE_SHA" '
+              select(.tag == $tag and .object.type == "commit" and .object.sha == $source) |
+              .sha | select(test("^[0-9a-f]{40}$"))
+            ')
+          gh api --method POST "$repo/git/refs" -f ref="$ref" -f sha="$object" --silent
+          gh api "$repo/git/ref/tags/$CANDIDATE_TAG" |
+            jq -e --arg ref "$ref" --arg object "$object" '
+              .ref == $ref and .object.type == "tag" and .object.sha == $object
+            ' > /dev/null
+          printf 'Created annotated tag %s at %s\n' "$CANDIDATE_TAG" "$SOURCE_SHA"
