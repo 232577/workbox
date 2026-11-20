@@ -5,13 +5,13 @@ import { readFile } from 'node:fs/promises';
 import { documents } from './public-documents.test-helper.mjs';
 import { handleRequest, release, releases } from './worker.mjs';
 
-const source = '10004160f30dba072f35e88f7e84c89b16a3edef';
-const tag = 'v1.0.0.20261120.1';
-const filename = 'WorkBox-1.0.0-Setup-x64-20261120-r1.exe';
-const size = 47949074;
-const sha256 = '8b347731061a9f1a81585c2296a9cf756e4c62eeb53dc887c7005e144e8b0366';
+const source = 'f1a398be813905df8505cd2fefbf1ef6c22cf23d';
+const tag = 'v1.0.0.20261120.2';
+const filename = 'WorkBox-1.0.0-Setup-x64-20261120-r2.exe';
+const size = 47955414;
+const sha256 = '01b3524ed03da757b46312c4496b4c6ea5804a3da96ba9e19c49b7cf96638803';
 
-test('11月20日r1当前下载与在线更新绑定新构建，全部36项旧目录逐字保留', async () => {
+test('11月20日r2当前下载与在线更新绑定新构建，全部37项旧目录逐字保留', async () => {
   assert.equal(release.tag, tag);
   assert.equal(release.filename, filename);
   assert.equal(release.size, size);
@@ -19,9 +19,9 @@ test('11月20日r1当前下载与在线更新绑定新构建，全部36项旧目
   assert.equal(release.version, '1.0.0');
   assert.equal(release.edition, '正式安装版');
   assert.equal(release.date, '2026-11-20');
-  assert.equal(releases.length, 37);
+  assert.equal(releases.length, 38);
   assert.equal(createHash('sha256').update(JSON.stringify(releases.slice(1))).digest('hex'),
-    '30542c7ae0ba4069d1bd3ce83556e294220875a965f8a8f9b54737763571a7e2');
+    'a897762e95d9399cddb45c041afb1b0d9868f919251c71ea4417f1f66e1da6ee');
   assert.notEqual(release.sha256, releases[1].sha256, '新安装包不能复用旧摘要');
   const metadata = await (await handleRequest(new Request('https://example.com/updates/stable.json'), {})).json();
   assert.equal(metadata.tag_name, tag);
@@ -40,21 +40,22 @@ test('11月20日r1当前下载与在线更新绑定新构建，全部36项旧目
   const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
   const notes = await readFile(new URL('../RELEASE_NOTES.md', import.meta.url), 'utf8');
   const currentNotes = notes.replaceAll('\r\n', '\n').split('\n---\n')[0];
-  assert.ok(currentNotes.includes('a400595fd68f959a060d5e793da8fa914f732f0d8801cd2fa2306a0fd840eacd'));
+  assert.ok(currentNotes.includes('fabea27d9a2d2835193c1429ed88c090dbb5543b88442046a77911dd5fd18531'));
   for (const text of [readme, currentNotes]) {
     for (const value of [source, tag, filename, release.sha256, release.size.toLocaleString('en-US')]) assert.ok(text.includes(value), value);
   }
 });
 
-test('当前摘要说明源码整理、构建核验与完整包升级，历史下载仍可查', async () => {
+test('当前摘要说明日期控件修复和完整包升级，历史下载仍可查', async () => {
   const page = documents['/releases.html'];
   const highlights = page.match(/<ul class="release-highlights">([\s\S]*?)<\/ul>/)?.[1];
   assert.ok(highlights);
   assert.equal([...highlights.matchAll(/<li>/g)].length, 3);
-  assert.match(highlights, /源码按职责整理/);
-  assert.match(highlights, /构建来源可核对/);
+  assert.match(highlights, /今日工作量.*日期/);
+  assert.match(highlights, /日历.*键盘.*粘贴/);
   assert.match(highlights, /完整安装包.*原安装目录/);
-  assert.match(page, /查看 36 个历史安装包/);
+  assert.match(page, /查看 37 个历史安装包/);
+  assert.ok(page.includes('/download/WorkBox-1.0.0-Setup-x64-20261120-r1.exe'));
   assert.ok(page.includes('/download/WorkBox-1.0.0-Setup-x64-20261116-r1.exe'));
   assert.ok(page.includes('/download/WorkBox-1.0.0-Setup-x64-20261113-r2.exe'));
   assert.ok(page.includes('/download/WorkBox-1.0.0-Setup-x64-20261113-r1.exe'));
