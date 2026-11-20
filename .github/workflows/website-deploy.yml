@@ -1,0 +1,60 @@
+name: WorkBox website deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Full SHA of the reviewed current main commit
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workbox-website
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.repository == '232577/workbox' && github.ref == 'refs/heads/main' &&
+      github.actor == '232577' && github.triggering_actor == '232577' &&
+      github.sha == inputs.source_sha
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: workbox-website
+    env:
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Test the reviewed website source
+        run: node --test website/*.test.mjs
+      - name: Install pinned Wrangler
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/workbox-wrangler"
+          npm install --prefix "$RUNNER_TEMP/workbox-wrangler" --no-audit --no-fund --save-exact wrangler@4.127.1
+      - name: Verify current main and the public release
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          node scripts/verify_website_deploy.mjs preflight
+      - name: Deploy the existing WorkBox Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          : "${CLOUDFLARE_API_TOKEN:?Missing workbox-website API token}"
+          : "${CLOUDFLARE_ACCOUNT_ID:?Missing workbox-website account ID}"
+          "$RUNNER_TEMP/workbox-wrangler/node_modules/.bin/wrangler" deploy --config website/wrangler.jsonc
+      - name: Verify the public website
+        run: node scripts/verify_website_deploy.mjs online
