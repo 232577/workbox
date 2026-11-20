@@ -55,6 +55,13 @@ jobs:
         run: |
           : "${CLOUDFLARE_API_TOKEN:?Missing workbox-website API token}"
           : "${CLOUDFLARE_ACCOUNT_ID:?Missing workbox-website account ID}"
-          "$RUNNER_TEMP/workbox-wrangler/node_modules/.bin/wrangler" deploy --config website/wrangler.jsonc
+          wrangler="$RUNNER_TEMP/workbox-wrangler/node_modules/.bin/wrangler"
+          WRANGLER_OUTPUT_FILE_PATH="$(mktemp "$RUNNER_TEMP/workbox-wrangler-XXXXXX.jsonl")"
+          export WRANGLER_OUTPUT_FILE_PATH
+          "$wrangler" versions upload --config website/wrangler.jsonc
+          version_id=$(node scripts/verify_website_deploy.mjs version-upload "$WRANGLER_OUTPUT_FILE_PATH")
+          "$wrangler" versions deploy "$version_id@100%" --yes --config website/wrangler.jsonc --message "WorkBox site $GITHUB_SHA"
+          deployment_id=$(node scripts/verify_website_deploy.mjs version-deploy "$WRANGLER_OUTPUT_FILE_PATH")
+          printf 'WorkBox website source %s, Worker version %s, deployment %s\n' "$GITHUB_SHA" "$version_id" "$deployment_id"
       - name: Verify the public website
         run: node scripts/verify_website_deploy.mjs online
