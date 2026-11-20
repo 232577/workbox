@@ -258,6 +258,69 @@ def test_database_backup_is_consistent_and_preserves_source(client,tmp_path):
     assert database.read_bytes()==before and saved!=database
 
 
+def test_invalid_database_backup_releases_handles_and_cleans_only_new_attempt(tmp_path, monkeypatch):
+    install = importlib.import_module('update_install')
+    database = tmp_path / 'workbox.db'
+    connect = sqlite3.connect
+    source = connect(database)
+    try:
+        source.execute('CREATE TABLE example(value)')
+        source.execute('INSERT INTO example VALUES (?)', ('keep',))
+        source.commit()
+    finally:
+        source.close()
+    before = database.read_bytes()
+    backups = tmp_path / 'backups'
+    original = backups / 'existing'
+    original.mkdir(parents=True)
+    (original / 'workbox.db').write_bytes(b'previous recovery point')
+    closed = []
+
+    class RefusedBackup(sqlite3.Connection):
+        def execute(self, sql, *args):
+            if sql == 'PRAGMA quick_check':
+                return super().execute("SELECT 'simulated integrity failure'")
+            return super().execute(sql, *args)
+
+        def close(self):
+            super().close()
+            closed.append(self)
+
+    monkeypatch.setattr(install.sqlite3, 'connect',
+                        lambda *args, **kwargs: connect(*args, factory=RefusedBackup, **kwargs))
+    with pytest.raises(ValueError, match='恢复点校验失败'):
+        install.backup_database(database, backups)
+    assert len(closed) == 2
+    assert list(backups.iterdir()) == [original]
+    assert (original / 'workbox.db').read_bytes() == b'previous recovery point'
+    assert database.read_bytes() == before
+
+
+def test_database_backup_accounts_for_committed_wal_pages(tmp_path, monkeypatch):
+    install = importlib.import_module('update_install')
+    database = tmp_path / 'workbox.db'
+    db = sqlite3.connect(database)
+    try:
+        db.execute('PRAGMA journal_mode=WAL')
+        db.execute('PRAGMA wal_autocheckpoint=0')
+        db.execute('CREATE TABLE example(value)')
+        db.execute('INSERT INTO example VALUES (zeroblob(262144))')
+        db.commit()
+        logical_bytes = (db.execute('PRAGMA page_count').fetchone()[0]
+                         * db.execute('PRAGMA page_size').fetchone()[0])
+        assert logical_bytes > database.stat().st_size
+        available = database.stat().st_size * 2 + 64 * 1024 * 1024
+        monkeypatch.setattr(install.shutil, 'disk_usage',
+                            lambda path: type('Usage', (), {'free': available})())
+        backups = tmp_path / 'backups'
+        with pytest.raises(OSError, match='空间不足'):
+            install.backup_database(database, backups)
+        assert not list(backups.iterdir())
+        assert db.execute('SELECT length(value) FROM example').fetchone() == (262144,)
+    finally:
+        db.close()
+
+
 def test_handoff_is_encoded_and_waits_without_force_killing(client,tmp_path):
     import base64
     install=importlib.import_module('update_install')
