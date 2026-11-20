@@ -40,9 +40,11 @@ npx wrangler@4.127.1 dev --config website/wrangler.jsonc
 
 按[发布规程](../docs/RELEASING.md)从已审查 main 部署。先核对账户与域名，再确认对应 GitHub Release 已公开；官网部署使用 `website/wrangler.jsonc`。本地验证不能替代上线检查。
 
+仓库所有者也可从 `main` 手动运行 `WorkBox website deploy`，输入当前已审查的完整 SHA。工作流先运行网站测试，再核对 GitHub 当前 `main` 和最新公开安装包。在现有 GitHub `workbox-website` 环境设置 `CLOUDFLARE_API_TOKEN` 密钥和 `CLOUDFLARE_ACCOUNT_ID` 变量，供 Wrangler 发布现有 `workbox-downloads` Worker。部署后检查公开更新清单、页面链接、上一版安装包入口、统计接口的匿名访问限制，以及当前安装包和教程视频的完整 SHA-256 和 Range 响应。按发布规程另行验证浏览器交互与视频播放，并记录部署 ID。
+
 - 下载与更新清单的文件名、标签、来源提交、大小和 SHA-256 必须对应同一资产。已发布标签和安装包不替换；历史下载路由继续有效。
 - 安装包由 GitHub Releases 托管，Worker 流式转发并支持断点续传，不把二进制塞进静态目录；保留 GitHub 备用链接。
 - 上线后以未登录请求完整下载安装包并校验摘要，再检查更新清单、媒体播放和范围请求。只检查首页返回成功不算验收完成。
 - `MEDIA.json` 登记的媒体保留原始字节与出处；历史视频保留日期、字幕和播放控件。固定匿名演示不处理真实文件。
 - 匿名浏览、下载开始和 GitHub 备用点击保持独立口径；不把下载开始写成安装成功，不把统计失败写成零。
-- `public/support.json` 保持关闭；统计页权限、会话、许可和页脚隐私说明保留。凭据只由发布设备自行登录，不进入 Git 或 CI。
+- `public/support.json` 保持关闭。统计页权限、会话、许可和页脚隐私说明保留。统计管理密钥保存在 Cloudflare Worker Secret。部署凭据使用发布设备本机登录或现有 GitHub 部署环境的密钥，凭据值不进入 Git。
