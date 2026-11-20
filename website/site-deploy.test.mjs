@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { handleRequest, release } from './worker.mjs';
+import { handleRequest, release, releaseAssets, releases } from './worker.mjs';
 
 test('the website deploy is manual, restricted to the reviewed main, and scopes credentials to Wrangler', async () => {
   const workflow = (await readFile(new URL('../.github/workflows/website-deploy.yml', import.meta.url), 'utf8'))
     .replaceAll('\r\n', '\n');
   const triggers = workflow.split('\non:\n')[1].split('\npermissions:', 1)[0];
   assert.deepEqual([...triggers.matchAll(/^  (\w+):/gm)].map(match => match[1]), ['workflow_dispatch']);
+  assert.match(triggers, /verify_only:\n(?:[^\n]+\n)*?        default: false\n        type: boolean/);
   assert.match(workflow, /permissions:\n  contents: read\n/);
   assert.doesNotMatch(workflow, /:\s*write\b/);
   assert.match(workflow, /group: workbox-website\n  cancel-in-progress: false/);
@@ -27,8 +28,11 @@ test('the website deploy is manual, restricted to the reviewed main, and scopes 
   const [deployment, onlineCheck] = deploy.split('      - name: Verify the public website\n');
   assert.match(checks, /node --test website\/\*\.test\.mjs/);
   assert.match(checks, /wrangler@4\.127\.1\b/);
+  assert.match(checks, /- name: Install pinned Wrangler\n        if: \$\{\{ !inputs\.verify_only \}\}/);
   assert.match(checks, /node scripts\/verify_website_deploy\.mjs preflight/);
+  assert.doesNotMatch(checks.split('- name: Verify current main and the public release')[1], /if:/);
   assert.doesNotMatch(checks + onlineCheck, /CLOUDFLARE_(API_TOKEN|ACCOUNT_ID)|\$\{\{ secrets\./);
+  assert.match(deployment, /^        if: \$\{\{ !inputs\.verify_only \}\}\n/);
   assert.match(deployment, /CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}/);
   assert.match(deployment, /CLOUDFLARE_ACCOUNT_ID: \$\{\{ vars\.CLOUDFLARE_ACCOUNT_ID \}\}/);
   assert.match(deployment, /export WRANGLER_OUTPUT_FILE_PATH/);
@@ -40,6 +44,7 @@ test('the website deploy is manual, restricted to the reviewed main, and scopes 
   assert.match(deployment, /printf [^\n]+"\$GITHUB_SHA" "\$version_id" "\$deployment_id"/);
   assert.doesNotMatch(deployment, /" (?:deploy\b|triggers\b)/);
   assert.match(onlineCheck, /node scripts\/verify_website_deploy\.mjs online/);
+  assert.doesNotMatch(onlineCheck, /if:/);
 });
 
 test('Wrangler deployment evidence requires a unique result for the existing Worker and a valid ID', async () => {
@@ -105,6 +110,40 @@ test('release verification rejects a stale main or any changed public asset iden
   }), /asset metadata/);
 });
 
+test('online byte checks wait only for known release propagation', async () => {
+  const { waitForLiveRelease } = await import('../scripts/verify_website_deploy.mjs');
+  const previous = releases[2];
+  const asManifest = item => ({ tag_name: item.tag, draft: false, prerelease: false,
+    html_url: `https://github.com/232577/workbox/releases/tag/${item.tag}`, assets: releaseAssets(item) });
+  const currentManifest = asManifest(release);
+  const olderManifest = asManifest(previous);
+  const opts = { timeoutMs: 1_000, intervalMs: 1 };
+  function mockVersions(pairs) {
+    let calls = 0;
+    const fetcher = async address => {
+      const [health, stable] = pairs[Math.min(Math.floor(calls++ / 2), pairs.length - 1)];
+      const path = new URL(address).pathname;
+      if (path === '/healthz') return Response.json(health);
+      assert.equal(path, '/updates/stable.json');
+      return Response.json(stable, { headers: { 'Cache-Control': 'no-store' } });
+    };
+    return { fetcher, calls: () => calls };
+  }
+  const converges = mockVersions([[previous, olderManifest], [release, olderManifest], [release, currentManifest]]);
+  assert.equal(await waitForLiveRelease(release, currentManifest, releases.slice(1), converges.fetcher, opts), 3);
+  assert.equal(converges.calls(), 6);
+
+  const corrupt = mockVersions([[release, { ...currentManifest, assets: [] }]]);
+  await assert.rejects(waitForLiveRelease(release, currentManifest, releases.slice(1), corrupt.fetcher, opts), /stable manifest/);
+  assert.equal(corrupt.calls(), 2);
+  const unknown = mockVersions([[{ ...previous, tag: 'v1.0.0.20261201.1' }, olderManifest]]);
+  await assert.rejects(waitForLiveRelease(release, currentManifest, releases.slice(1), unknown.fetcher, opts), /unexpected.*health/i);
+  assert.equal(unknown.calls(), 2);
+  const stale = mockVersions([[previous, olderManifest]]);
+  await assert.rejects(waitForLiveRelease(release, currentManifest, releases.slice(1), stale.fetcher,
+    { timeoutMs: 30, intervalMs: 5 }), /did not converge/);
+});
+
 test('online verification checks anonymous bytes, range, page links, history, stats and video', async () => {
   const { verifyOnlineSite } = await import('../scripts/verify_website_deploy.mjs');
   const installer = Buffer.alloc(2048, 65);
@@ -122,6 +161,7 @@ test('online verification checks anonymous bytes, range, page links, history, st
   function mockFetch(changes = {}) {
     return async (address, options) => {
       const url = new URL(address);
+      changes.paths?.push(url.pathname);
       assert.equal(url.origin, 'https://workbox.ltxiangzi.dpdns.org');
       assert.equal(new Headers(options.headers).has('Cookie'), false);
       const range = new Headers(options.headers).get('Range');
@@ -134,7 +174,7 @@ test('online verification checks anonymous bytes, range, page links, history, st
         case '/api/admin/stats': return new Response(null, { status: changes.statsStatus ?? 401 });
         case previousPath:
           assert.equal(options.method, 'HEAD');
-          return new Response(null, { headers: { 'Content-Length': String(previous.size) } });
+          return new Response(null, { status: changes.historyStatus ?? 200, headers: { 'Content-Length': String(previous.size) } });
         case downloadPath:
           if (!url.search) {
             assert.equal(options.redirect, 'manual');
@@ -161,7 +201,13 @@ test('online verification checks anonymous bytes, range, page links, history, st
     };
   }
 
-  await verifyOnlineSite(primary, manifest, previous, media, mockFetch());
+  const paths = [];
+  await verifyOnlineSite(primary, manifest, previous, media, mockFetch({ paths }));
+  assert.deepEqual(paths.slice(0, 2), ['/healthz', '/updates/stable.json']);
+  const brokenHistoryPaths = [];
+  await assert.rejects(verifyOnlineSite(primary, manifest, previous, media,
+    mockFetch({ historyStatus: 404, paths: brokenHistoryPaths })), /HTTP 404/);
+  assert.equal(brokenHistoryPaths.filter(path => path === previousPath).length, 1);
   for (const [changes, expectedError] of [
     [{ installerFull: Buffer.alloc(installer.length + 1) }, /exceeds/],
     [{ installerFull: Buffer.alloc(installer.length) }, /SHA-256/],

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import { uuid } from '../website/admin.mjs';
 import { handleRequest, release, releaseAssets, releases } from '../website/worker.mjs';
@@ -104,14 +105,53 @@ async function verifyFile(path, asset, fetcher, installer = false) {
   assert.deepEqual(range.prefix, downloaded.prefix, `${path} Range bytes differ from the complete download`);
 }
 
+export async function waitForLiveRelease(primary, manifest, history, fetcher = fetch,
+  { timeoutMs = 60_000, intervalMs = 5_000 } = {}) {
+  const deadline = performance.now() + timeoutMs;
+  let attempts = 0;
+  let observed = '';
+  while (performance.now() < deadline) {
+    const options = { timeout: Math.min(15_000, Math.ceil(deadline - performance.now())) };
+    const [health, { feed, cacheControl }] = await Promise.all([
+      request(`${site}/healthz`, options, fetcher).then(response => response.json()),
+      request(site + stablePath, options, fetcher).then(async response => ({
+        feed: await response.json(), cacheControl: response.headers.get('cache-control'),
+      })),
+    ]);
+    attempts++;
+    observed = `health ${health?.tag}, stable ${feed?.tag_name}`;
+    assert.equal(cacheControl, 'no-store');
+    const currentHealth = health?.tag === primary.tag;
+    const currentFeed = feed?.tag_name === primary.tag;
+    if (currentHealth) {
+      assert.deepEqual(health, primary, 'Public Worker release differs from the deployed source');
+    } else {
+      const prior = history.find(item => item.tag === health?.tag);
+      assert.ok(prior, `Unexpected public health release ${health?.tag}`);
+      assert.deepEqual(health, prior, 'Public health response differs from its historical release');
+    }
+    if (currentFeed) {
+      assert.deepEqual(feed, manifest, 'Public stable manifest differs from the deployed source');
+    } else {
+      const prior = history.find(item => item.tag === feed?.tag_name);
+      assert.ok(prior && feed.draft === false && feed.prerelease === false
+        && feed.html_url === `https://github.com/${repository}/releases/tag/${prior.tag}`,
+      `Unexpected public stable release ${feed?.tag_name}`);
+      assert.deepEqual(feed.assets, releaseAssets(prior), 'Public stable manifest differs from its historical release');
+    }
+    if (currentHealth && currentFeed) return attempts;
+    await delay(Math.min(intervalMs, Math.max(0, deadline - performance.now())));
+  }
+  throw new Error(`Public release ${primary.tag} did not converge after ${attempts} probes (${observed})`);
+}
+
 export async function verifyOnlineSite(primary, manifest, previous, media, fetcher = fetch) {
+  const attempts = await waitForLiveRelease(primary, manifest, releases.slice(1), fetcher);
   const get = (path, options) => request(site + path, options, fetcher);
   const download = `/download/${primary.filename}`;
   const history = `/download/${previous.filename}`;
   const fallback = `https://github.com/${repository}/releases/download/${primary.tag}/${primary.filename}`;
-  const [health, stable, home, guide, releasePage, previousHead, stats] = await Promise.all([
-    get('/healthz').then(response => response.json()),
-    get(stablePath),
+  const [home, guide, releasePage, previousHead, stats] = await Promise.all([
     get('/').then(response => response.text()),
     get('/guide.html').then(response => response.text()),
     get('/releases.html').then(response => response.text()),
@@ -119,9 +159,6 @@ export async function verifyOnlineSite(primary, manifest, previous, media, fetch
     get('/api/admin/stats', { status: 401 }),
   ]);
   await stats.body?.cancel();
-  assert.deepEqual(health, primary, 'Public Worker release differs from the deployed source');
-  assert.deepEqual(await stable.json(), manifest, 'Public stable manifest differs from the deployed source');
-  assert.equal(stable.headers.get('cache-control'), 'no-store');
 
   const linksTo = (html, path) => html.includes(`href="${path}"`);
   const homeDownload = home.match(/<a\b[^>]*\bid="download-title"[^>]*>/)?.[0] ?? '';
@@ -134,6 +171,7 @@ export async function verifyOnlineSite(primary, manifest, previous, media, fetch
   assert.equal(previousHead.headers.get('content-length'), String(previous.size), 'Previous installer size changed');
 
   await Promise.all([verifyFile(download, primary, fetcher, true), verifyFile(media.path, media, fetcher)]);
+  return attempts;
 }
 
 async function main(mode, resultPath) {
@@ -157,8 +195,8 @@ async function main(mode, resultPath) {
     const media = JSON.parse(await readFile(new URL('../website/MEDIA.json', import.meta.url), 'utf8'));
     assert.match(media.active_video, /^public\/media\/[\w-]+\.mp4$/);
     const activeVideo = { ...media.files[media.active_video], path: media.active_video.slice('public'.length) };
-    await verifyOnlineSite(release, manifest, releases[1], activeVideo);
-    console.log(`Verified ${release.tag} public links, installer and video digests and ranges, history and anonymous stats denial`);
+    const attempts = await verifyOnlineSite(release, manifest, releases[1], activeVideo);
+    console.log(`Verified ${release.tag} after ${attempts} public version probes, with public links, installer and video digests and ranges, history and anonymous stats denial`);
   } else {
     throw new Error('Use preflight, online, version-upload or version-deploy');
   }

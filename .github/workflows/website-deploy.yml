@@ -7,6 +7,10 @@ on:
         description: Full SHA of the reviewed current main commit
         required: true
         type: string
+      verify_only:
+        description: Verify the live website without uploading or deploying a Worker version
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -38,6 +42,7 @@ jobs:
       - name: Test the reviewed website source
         run: node --test website/*.test.mjs
       - name: Install pinned Wrangler
+        if: ${{ !inputs.verify_only }}
         shell: bash
         run: |
           mkdir -p "$RUNNER_TEMP/workbox-wrangler"
@@ -48,6 +53,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           node scripts/verify_website_deploy.mjs preflight
       - name: Deploy the existing WorkBox Worker
+        if: ${{ !inputs.verify_only }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
