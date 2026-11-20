@@ -14,6 +14,11 @@ from concurrent.futures import CancelledError
 from pathlib import Path
 
 
+DISCOVERY_EXCLUDED_DIRECTORIES = frozenset({
+    '.git', 'node_modules', '.venv', 'venv', '__pycache__', '.cache',
+})
+
+
 def cancelled(event):
     if event is not None and event.is_set():
         raise CancelledError('已取消；尚未完成移动的原件不会被删除。')

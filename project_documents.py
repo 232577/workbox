@@ -15,8 +15,7 @@ import stat
 from datetime import datetime, timezone
 from pathlib import Path
 
-from native_files import cancelled
-from snapshot_manager import DISCOVERY_EXCLUDED_DIRECTORIES
+from native_files import DISCOVERY_EXCLUDED_DIRECTORIES, cancelled
 from workspace_manager import _path
 
 

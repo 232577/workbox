@@ -10,14 +10,14 @@ from PySide6.QtWidgets import (QAbstractItemView, QDialog, QDialogButtonBox,
     QHBoxLayout, QHeaderView, QMenu, QSizePolicy, QTextBrowser,
     QTableWidgetItem, QVBoxLayout, QTabBar, QWidget, QSplitter)
 
-from compact_ui import button, label
-from theme import apply_to
-from ui_components import LineEdit as QLineEdit
-from fluent_views import WorkbenchTableWidget
 from database import DELIVERY_TIMEZONE
-from ui import FileJob
-from project_types_ui import choose_project_type
 from date_edit import DateEdit
+from fluent_views import WorkbenchTableWidget
+from project_types_ui import choose_project_type
+from theme import apply_to
+from ui import FileJob, label
+from ui_components import LineEdit as QLineEdit
+from ui_components import button
 
 KIND_TEXT = {'auto-zip':'ZIP 自动交付','manual-zip':'手动 ZIP 交付',
              'manual-files':'手动材料交付','legacy':'旧交付事实'}

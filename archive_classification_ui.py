@@ -5,10 +5,9 @@ from PySide6.QtWidgets import (
     QSizePolicy, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
-from compact_ui import button, label, local_timestamp
 from fluent_views import WorkbenchTableWidget
-from ui import FileJob
-from ui_components import CheckBox, ComboBox, SpinBox
+from ui import FileJob, label, local_timestamp
+from ui_components import CheckBox, ComboBox, SpinBox, button
 
 
 class ArchiveClassificationPane(QWidget):

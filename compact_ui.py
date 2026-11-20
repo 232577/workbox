@@ -1,25 +1,26 @@
 """Compact project/ZIP management, opened only on demand from the floating ball."""
 
-from pathlib import Path
-from datetime import date, datetime
-import sqlite3
 import re
+import sqlite3
+from datetime import date
+from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal, QSize, QDate, QLocale, QPoint, QRect, QSignalBlocker, QTimer
-from PySide6.QtGui import QColor, QPalette, QContextMenuEvent, QActionGroup, QFontMetrics
+from PySide6.QtGui import QContextMenuEvent, QActionGroup, QFontMetrics
 from PySide6.QtWidgets import (
-    QAbstractItemView, QButtonGroup, QCheckBox, QComboBox, QDialog, QFrame,
-    QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem, QFileDialog, QSpinBox, QScrollArea,
-    QMessageBox, QPlainTextEdit, QPushButton, QTabWidget, QTableWidget, QMenu, QListView,
-    QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QSizePolicy, QScrollBar, QStyleFactory, QProxyStyle, QStyle, QSplitter,
-    QStyledItemDelegate, QStyleOptionViewItem, QGridLayout,
+    QAbstractItemView, QButtonGroup, QDialog, QFileDialog, QFrame, QGridLayout,
+    QHBoxLayout, QHeaderView, QLabel, QListView, QListWidget, QListWidgetItem,
+    QMenu, QMessageBox, QPlainTextEdit, QProxyStyle, QScrollArea, QScrollBar,
+    QSizePolicy, QSplitter, QStyle, QStyledItemDelegate, QStyleFactory,
+    QStyleOptionViewItem, QTabWidget, QTableWidget, QTableWidgetItem, QVBoxLayout,
+    QWidget,
 )
-
-from theme import apply_to, apply_scrollbar, stylesheet, install_theme, set_theme, current_mode, theme_signal
-from dialog_lifecycle import transient_dialog
-from ui_components import button as fluent_button, LineEdit as QLineEdit, CheckBox as QCheckBox, SpinBox as QSpinBox, ComboBox as QComboBox
-from ui_components import StatusSegments
 from qfluentwidgets import FluentIcon, setCustomStyleSheet
+
+from theme import apply_to, apply_scrollbar, current_mode, set_theme, theme_signal
+from dialog_lifecycle import transient_dialog
+from ui_components import CheckBox as QCheckBox, ComboBox as QComboBox, LineEdit as QLineEdit, SpinBox as QSpinBox
+from ui_components import StatusSegments, button
 from control_styles import control_style
 from fluent_views import (WorkbenchListWidget, WorkbenchTableWidget, configure_native_scroll,
                           batch_progress_summary, batch_progress_details, ProjectListDelegate, PROJECT_NAME_ROLE,
@@ -28,29 +29,13 @@ from database import STATUSES
 from project_date_filter import ProjectDateFilter
 from floating import DropSurface
 from parser import ParsedProject
-from ui import human_size, app_icon
+from ui import app_icon, human_size, label as shared_label, local_timestamp
 
-STYLE = stylesheet('light')
 PROJECT_ADDED_DATE_ROLE = int(Qt.UserRole) + 14
 
 
 def label(text='', name='', wrap=False):
-    item = QLabel(text)
-    item.setTextFormat(Qt.PlainText)
-    item.setWordWrap(wrap)
-    item.setObjectName(name)
-    return item
-
-
-def button(text, primary=False):
-    return fluent_button(text, primary)
-
-
-def local_timestamp(value):
-    try:
-        return datetime.fromisoformat(value.replace('Z', '+00:00')).astimezone().strftime('%Y-%m-%d %H:%M:%S')
-    except (ValueError, AttributeError):
-        return str(value)
+    return shared_label(text, name, wrap)
 
 
 def selected(widget):

@@ -6,12 +6,12 @@ from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QHeaderView, QMenu, QTableWidgetItem, QVBoxLayout, QWidget, QSizePolicy, QMessageBox
 from qfluentwidgets import FluentIcon
 
-from compact_ui import button, label, local_timestamp
 from fluent_views import ITEM_TEXT_TONE_ROLE, WorkbenchTableWidget
 from native_files import plain_path
 from project_documents import list_project_documents
 from theme import theme_signal, tokens
-from ui import FileJob, human_size
+from ui import FileJob, human_size, label, local_timestamp
+from ui_components import button
 
 
 DOCUMENT_EXTENSIONS = {'.txt', '.md', '.pdf', '.doc', '.docx', '.rtf', '.odt',

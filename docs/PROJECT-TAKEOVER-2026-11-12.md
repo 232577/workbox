@@ -26,15 +26,16 @@ WorkBox 是 Windows 项目材料与交付工作台：收进项目文字和材料
 | 启动与应用组织 | `main.py`、`app.py`、`desktop_service.py`、`desktop_controller.py` | CLI / Qt 初始化、业务组合、单实例数据锁、串行任务与退出；活动主窗口是 CompactPanel |
 | 项目和交付数据 | `database.py`、`task_schema.py`、`task_groups.py`、`project_batches.py` | SQLite/WAL、短连接、规范项目、追加交付事实；任务兼容不能增加原项目首交计数 |
 | 名称与收件判断 | `parser.py`、`project_names.py`、`text_intake.py`、`file_matcher.py`、`zip_manager.py`、`bundle_analyzer.py`、`zip_content.py`、`folder_intake.py` | 普通文稿、ZIP、合包与目录分开处理；支持已有项目复用和显式歧义选择 |
-| 文件与恢复 | `native_files.py`、`workspace_manager.py`、`document_versions.py`、`managed_archive.py`、`snapshot_manager.py`、`intake_log.py` | 文件身份、复制校验、历史轮换、稳定 ZIP 发现、恢复日志；不能绕过服务保护直接写文件 |
+| 文件与恢复 | `native_files.py`、`workspace_manager.py`、`document_versions.py`、`managed_archive.py`、`snapshot_manager.py`、`intake_log.py` | 文件身份、复制校验、历史轮换、稳定 ZIP 发现、恢复日志。项目文档与 ZIP 发现共用 `native_files.py` 的目录排除规则 |
 | 改名与合并 | `project_changes.py`、`project_directory_changes.py`、`project_change_ui.py` | 预览令牌、当前状态复核、目录恢复、合并后的历史身份 |
 | 交付与分类 | `delivery_archive.py`、`archive_facts.py`、`archive_classification.py`、`delivery_export.py`、`workflow_policy.py` | 交付材料快照、事实解释、分类策略、只读导出；分类阈值不等于自动交付阈值 |
 | 材料与名单 | `material_matching.py`、`material_check_store.py`、`checklist_reader.py`、`checklist_review.py`、`project_documents.py` | 纯匹配与规则、外部名单读取、当前文件视图；不凭名单自动建项或认定交付 |
 | 当前业务页面 | `compact_ui.py`、`project_documents_ui.py`、`delivery_ui.py`、`material_check_ui.py`、`checklist_ui.py`、`archive_classification_ui.py`、`project_types_ui.py`、`export_ui.py` | 主清单、文件、交付、核对与设置入口；各后台读取的取消和过期结果处理必须保留 |
 | 窗口与首次配置 | `floating.py`、`floating_settings.py`、`window_environment.py`、`window_zorder.py`、`global_shortcut.py`、`shortcut_settings.py`、`first_run.py`、`onboarding_ui.py` | 悬浮/托盘/窗口恢复、尺寸和快捷键、首次目录选择；收件是用户主动动作 |
 | 视觉与控件 | `theme.py`、`studio_design.py`、`control_styles.py`、`ui_components.py`、`fluent_views.py`、`branding.py`、`date_edit.py`、`dialog_chrome.py`、`dialog_lifecycle.py` | 主题和语义样式、Fluent 适配、原生控件、对话框安全释放；修改共享层影响多页 |
-| 更新与安装 | `update_client.py`、`update_install.py`、`update_ui.py`、`scripts/`、`packaging/` | 受限下载来源、摘要与长度校验、安全退出、原目录升级、构建身份和数据保留 |
-| 共用界面工具 | `ui.py` | 保留当前页面使用的 FileJob、按钮、标签、图标和大小格式化接口；旧 MainWindow、CaptureDialog 和独立任务组页面已于 2026-11-13 清理，任务组后台及历史导出仍保留 |
+| 更新与安装 | `update_client.py`、`update_install.py`、`update_ui.py`、`update_helper_main.py`、`installer_runtime.py`、`scripts/`、`packaging/` | 客户端校验更新来源和包摘要。更新助手负责增量更新与恢复，安装程序处理全量升级时的运行库 |
+| 增量更新 | `delta_format.py`、`incremental_update.py`、`incremental_apply.py`、`update_file_ops.py` | 包格式、清单验证、文件级增量应用、事务日志与恢复。详细边界见 [增量更新](INCREMENTAL-UPDATES.md) |
+| 共用界面工具 | `ui.py`、`ui_components.py` | 文件工作线程、标签、显示格式和通用 Fluent 控件。工作台、独立对话框和交付视图共用这些入口 |
 | 官网 | `website/worker.mjs`、`admin.mjs`、`analytics.mjs`、`public/` | 下载目录/更新清单、统计认证、独立统计对象和静态内容；与桌面数据库无共享通道 |
 
 ```mermaid

@@ -9,6 +9,8 @@ artifacts/
 *.key
 *.pem
 .local/
+.worktrees/
+.playwright-mcp/
 .wrangler/
 build/
 dist/

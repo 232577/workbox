@@ -9,7 +9,6 @@ from contextlib import nullcontext
 import hashlib
 import json
 from pathlib import Path
-import sqlite3
 from uuid import uuid4
 
 from archive_facts import delivery_archive_facts

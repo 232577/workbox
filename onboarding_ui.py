@@ -2,17 +2,16 @@
 
 import sqlite3
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QDialog, QFileDialog, QHBoxLayout, QLineEdit, QRadioButton, QScrollArea,
-    QSizePolicy, QSpinBox, QStackedWidget, QVBoxLayout, QWidget,
+    QDialog, QFileDialog, QHBoxLayout, QRadioButton, QScrollArea,
+    QSizePolicy, QStackedWidget, QVBoxLayout, QWidget,
 )
 
-from compact_ui import button, label
+from dialog_chrome import InlineError, InstructionCard, add_actions, add_header
 from theme import apply_to
+from ui import app_icon, label
 from ui_components import LineEdit as QLineEdit, SpinBox as QSpinBox
-from ui import app_icon
-from dialog_chrome import add_header, add_actions, InlineError, InstructionCard
+from ui_components import button
 
 
 def _identify(widget, name):
