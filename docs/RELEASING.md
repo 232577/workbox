@@ -38,6 +38,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1
 
 新标签使用附注标签，并仅在核验后通过一次性 `WORKBOX_RELEASE_TAGS=1` 允许本地 hook 创建；该变量不允许覆盖或删除已有标签。服务器端标签规则仍然生效。推送后核对远端标签目标，不使用 `--force` 或资产 `--clobber`。
 
+本地无法推送已验证的标签时，仓库所有者可在主线手动运行安装验收并勾选 `annotate_tag`。默认关闭。只有本轮安装验收成功且草稿安装包摘要仍相同，独立任务才创建指向已核验提交的附注标签。发行保持草稿，已有标签只核对。
+
 网站部署凭据由发布者本机登录或受保护的 CI environment 提供，不复制个人 OAuth 到源码或 PR。当前 CI **只检查，不自动部署，也不自动公开安装包**。执行部署时，应直接针对已核验的干净克隆 `website/wrangler.jsonc`，保存 SHA 和部署 ID；不得改其他站点或重置 Durable Object。
 
 ## 干净 Windows 安装验收

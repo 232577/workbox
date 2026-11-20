@@ -267,3 +267,19 @@ def test_frozen_release_workflow_builds_only_exact_main_without_publication():
     assert 'dist/WorkBox/' in workflow
     assert 'final-tests.xml' in workflow
     assert 'gh release' not in workflow
+
+
+def test_installer_acceptance_annotates_only_an_explicit_verified_draft():
+    workflow = (ROOT / '.github/workflows/installer-acceptance.yml').read_text(encoding='utf-8')
+    original_jobs, annotation = workflow.split('\n  annotate_tag:\n', 1)
+    tag_input = original_jobs.split('      annotate_tag:\n', 1)[1].split('\npermissions:', 1)[0]
+    assert 'type: boolean' in tag_input and 'default: false' in tag_input
+    assert 'needs: verify' in annotation and "needs.verify.result == 'success'" in annotation
+    assert 'inputs.annotate_tag' in annotation
+    assert "github.repository == '232577/workbox'" in annotation
+    assert "github.ref == 'refs/heads/main'" in annotation and "github.actor == '232577'" in annotation
+    assert 'runs-on: ubuntu-latest' in annotation and 'contents: write' in annotation
+    assert 'draft == true' in annotation and '--arg digest "sha256:$INSTALLER_SHA"' in annotation
+    assert 'git/matching-refs/tags/' in annotation
+    assert annotation.count('gh api --method POST') == 2
+    assert 'gh release' not in annotation and 'scripts.verify_installer_windows' not in annotation
