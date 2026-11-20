@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import threading
 from concurrent.futures import CancelledError
+from datetime import datetime
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QLabel, QPushButton
 
-from ui_components import button as fluent_button
 from branding import brand_icon
+from ui_components import button as fluent_button
 
 
 def label(text: str = "", role: str = "", wrap: bool = False) -> QLabel:
@@ -24,6 +25,14 @@ def label(text: str = "", role: str = "", wrap: bool = False) -> QLabel:
 
 def button(text: str, role: str = "") -> QPushButton:
     return fluent_button(text, role)
+
+
+def local_timestamp(value):
+    try:
+        timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return timestamp.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    except (ValueError, AttributeError):
+        return str(value)
 
 
 def human_size(size: int) -> str:

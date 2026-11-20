@@ -2,9 +2,10 @@
 import sqlite3
 
 from PySide6.QtCore import Qt, Signal, QSignalBlocker
-from PySide6.QtWidgets import QDialog, QHBoxLayout, QInputDialog, QListWidget, QListWidgetItem, QListView, QVBoxLayout, QSizePolicy
+from PySide6.QtWidgets import QDialog, QHBoxLayout, QInputDialog, QListWidgetItem, QListView, QVBoxLayout, QSizePolicy
 
 from theme import apply_to
+from ui import label
 from ui_components import button, ComboBox
 from dialog_chrome import add_header, add_actions, InlineError, FilterEdit
 from dialog_lifecycle import transient_dialog
@@ -17,7 +18,6 @@ class ProjectTypePickerDialog(QDialog):
 
     def __init__(self, service, projects, parent=None):
         super().__init__(parent)
-        from compact_ui import label
         self.service = service
         self.projects = list(projects)
         self.selected_type_id = None
@@ -159,7 +159,7 @@ class ProjectTypesDialog(QDialog):
 
     def __init__(self, service, parent=None):
         super().__init__(parent)
-        from compact_ui import label, standard_list_scrolling, WrappedNameDelegate
+        from compact_ui import standard_list_scrolling, WrappedNameDelegate
         from qfluentwidgets import CardWidget
         self.service = service
         self.setWindowTitle('项目类型')

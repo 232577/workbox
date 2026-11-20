@@ -4,6 +4,7 @@ import importlib
 import os
 import sqlite3
 import subprocess
+import sys
 import threading
 from concurrent.futures import CancelledError
 from contextlib import contextmanager
@@ -11,6 +12,18 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
+
+def test_read_only_document_module_does_not_load_zip_snapshot_manager():
+    subprocess.run(
+        [
+            sys.executable, '-c',
+            "import sys; import project_documents; assert 'snapshot_manager' not in sys.modules",
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        check=True,
+        timeout=15,
+    )
 
 
 class FixtureDB:

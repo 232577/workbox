@@ -13,8 +13,15 @@ from uuid import uuid4
 from zipfile import BadZipFile, ZipFile
 
 from managed_archive import segment
-from native_files import ZipLease, cancelled, identity, plain_path, path_is_within
-from bundle_analyzer import analyze_bundle, bundle_hint
+from native_files import (
+    DISCOVERY_EXCLUDED_DIRECTORIES,
+    ZipLease,
+    cancelled,
+    identity,
+    path_is_within,
+    plain_path,
+)
+from bundle_analyzer import analyze_bundle
 from zip_content import count_project_files
 
 
@@ -50,9 +57,6 @@ CREATE TABLE IF NOT EXISTS zip_work_copies (
 
 class InvalidZipStructure(ValueError):
     """确定的结构错误须等来源变化；临时 I/O 错误仍可重试。"""
-
-
-DISCOVERY_EXCLUDED_DIRECTORIES = {'.git', 'node_modules', '.venv', 'venv', '__pycache__', '.cache'}
 
 
 class SnapshotManager:

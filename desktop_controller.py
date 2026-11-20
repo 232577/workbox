@@ -12,10 +12,11 @@ from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QDialog, QFileDialog, QFrame, QHBoxLayout, QMessageBox, QPlainTextEdit, QSystemTrayIcon, QVBoxLayout
 import shiboken6
 
-from compact_ui import CompactPanel, button, label, zip_delivery_hint
+from compact_ui import CompactPanel, zip_delivery_hint
 from floating import FloatingBall, decode_mime
 from floating_settings import DEFAULT_FLOATING_SIZE, validate_floating_size
-from ui import FileJob, app_icon
+from ui import FileJob, app_icon, label
+from ui_components import button
 from native_files import plain_path
 from theme import apply_to
 from dialog_lifecycle import transient_dialog
