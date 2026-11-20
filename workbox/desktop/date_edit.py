@@ -3,7 +3,7 @@ import re
 
 from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtGui import QKeySequence, QValidator
-from PySide6.QtWidgets import QApplication, QDateEdit, QLineEdit, QWidget
+from PySide6.QtWidgets import QAbstractSpinBox, QApplication, QDateEdit, QLineEdit, QWidget
 
 
 class DateEdit(QDateEdit):
@@ -13,6 +13,7 @@ class DateEdit(QDateEdit):
     def __init__(self, parent=None):
         self._replacing_date = False
         super().__init__(parent)
+        self.setButtonSymbols(QAbstractSpinBox.NoButtons)
         self.setKeyboardTracking(False)
         self.dateChanged.connect(self._date_was_set)
 
@@ -101,6 +102,10 @@ class DateEdit(QDateEdit):
             QWidget.focusOutEvent(self, event)
             return
         super().focusOutEvent(event)
+
+    def wheelEvent(self, event):
+        # Let the enclosing page scroll without stepping the selected date section.
+        event.ignore()
 
     def stepBy(self, steps):
         if self._replacing_date and not self.commit_date():

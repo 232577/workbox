@@ -1,4 +1,6 @@
 """Date filters must preserve native edits while periodic results refresh."""
+from datetime import datetime, timezone
+
 import pytest
 
 from PySide6.QtCore import QDate, Qt, QTimer, QPoint, QPointF
@@ -8,6 +10,7 @@ from PySide6.QtWidgets import QApplication, QDateTimeEdit, QMenu, QMessageBox, Q
 
 from workbox.desktop.compact_ui import CompactPanel, ProjectDetailsDialog
 from workbox.desktop.desktop_service import DesktopService
+import workbox.projects.database as database
 
 
 @pytest.fixture
@@ -287,6 +290,50 @@ def test_date_scope_switches_return_matching_delivery_rows(delivery_page):
     assert edit.isEnabled() and not page.all_dates.isChecked()
     assert edit.text() == today
     assert [row['project_id'] for row in page.rows] == [3]
+
+
+@pytest.mark.parametrize('interaction', ['padding-click', 'focused-wheel', 'unfocused-wheel'])
+def test_incidental_mouse_input_keeps_today_and_its_records(delivery_page, monkeypatch, interaction):
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            value = datetime(2026, 11, 30, 4, tzinfo=timezone.utc)
+            return value.astimezone(tz) if tz else value.replace(tzinfo=None)
+
+    monkeypatch.setattr(database, 'datetime', FrozenDateTime)
+    page = delivery_page
+    edit = page.date_edit
+    day = '2026-11-30'
+    page.service.db.create_capture('匿名日期验收', '匿名批次', [('匿名今天项目', False)])
+    with page.service.db.connect() as connection:
+        connection.execute('''INSERT INTO delivery_events
+            (project_id,project_name,batch_name,kind,archive_path,occurred_at)
+            VALUES (1,'匿名今天项目','匿名批次','manual-files','','2026-11-30T04:00:00Z')''')
+    page.go_today()
+    assert page._day.isoformat() == day
+    assert [row['project_id'] for row in page.rows] == [1]
+
+    if interaction == 'padding-click':
+        position = QPoint(edit.lineEdit().geometry().left() - 2, edit.height() // 2)
+        assert edit.childAt(position) is None
+        window = edit.window()
+        QTest.mouseClick(window.windowHandle(), Qt.LeftButton, pos=edit.mapTo(window, position))
+    else:
+        edit.setFocus()
+        edit.setSelectedSection(QDateTimeEdit.YearSection)
+        if interaction == 'unfocused-wheel':
+            page.search.setFocus()
+        assert edit.hasFocus() == (interaction == 'focused-wheel')
+        position = edit.rect().center()
+        event = QWheelEvent(QPointF(position), QPointF(edit.mapToGlobal(position)), QPoint(), QPoint(0, 360),
+                            Qt.NoButton, Qt.NoModifier, Qt.NoScrollPhase, False)
+        QApplication.sendEvent(edit, event)
+    QApplication.processEvents()
+
+    assert edit.text() == day
+    assert page._day.isoformat() == day
+    assert page._following_today
+    assert [row['project_id'] for row in page.rows] == [1]
 
 
 def test_wheel_cannot_clamp_an_invalid_full_date_into_a_different_day(delivery_page):
