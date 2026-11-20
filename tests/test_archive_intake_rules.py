@@ -3,7 +3,7 @@ from zipfile import ZipFile
 
 import pytest
 
-from desktop_service import DesktopService
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture

@@ -8,6 +8,12 @@ Run `python scripts/dev.py doctor`, inspect current status and fetch before work
 
 Run `python scripts/dev.py setup` once per clone. Hooks are local guardrails; server-side protection and CI are authoritative. Do not bypass them merely to publish faster. See CONTRIBUTING.md and docs/RELEASING.md.
 
+## Source layout
+
+Keep Python application modules in the `workbox/` package. Use `workbox/desktop/` for desktop coordination and Qt, `workbox/projects/` for project identities and rules, `workbox/storage/` for local files and recovery, and `workbox/updates/` for update packages and installation recovery. Use qualified package imports. Run the source with `python -m workbox` from the repository root.
+
+Keep maintenance and build scripts in `scripts/` and test code in `tests/`. The repository guard rejects Python and PowerShell source files directly at the repository root. The desktop build entry is `scripts/build.ps1`.
+
 ## Product constraints
 
 Stack: Python, PySide6, SQLite and PyInstaller; software version remains 1.0.0. Four project states: 待开发、开发中、待交付、已交付. Urgency, project type and workload eligibility are independent. Never add accounts, cloud data sync, clipboard monitoring, approval workflows or background message reading without a new request.

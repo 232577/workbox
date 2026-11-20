@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from app import WorkBox
-from native_files import identity
-from workspace_manager import WorkspaceManager, copy_verified
+from workbox.app import WorkBox
+from workbox.storage.native_files import identity
+from workbox.storage.workspace_manager import WorkspaceManager, copy_verified
 from test_document_versions import documents, rows
 
 
@@ -242,9 +242,9 @@ def test_manual_history_restart_recovers_rename_and_commit_boundaries(documents,
     service, manager, pid, source, first = documents
     script = '''
 import os, sys
-from app import WorkBox
-from workspace_manager import WorkspaceManager
-from native_files import ZipLease
+from workbox.app import WorkBox
+from workbox.storage.workspace_manager import WorkspaceManager
+from workbox.storage.native_files import ZipLease
 manager = WorkspaceManager(WorkBox(sys.argv[1]))
 phase = sys.argv[4]
 original = ZipLease.rename_to

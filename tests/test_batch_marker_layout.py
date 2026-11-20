@@ -3,9 +3,9 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QFontMetrics
 from PySide6.QtWidgets import QApplication
 
-import fluent_views
-from compact_ui import ProjectList, populate
-from theme import manager, set_theme
+import workbox.desktop.fluent_views as fluent_views
+from workbox.desktop.compact_ui import ProjectList, populate
+from workbox.desktop.theme import manager, set_theme
 
 
 def test_batch_metadata_shares_a_line_when_it_fits_and_wraps_when_needed():

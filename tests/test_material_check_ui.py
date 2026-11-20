@@ -9,8 +9,8 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
-from desktop_service import DesktopService
-from material_matching import Requirement
+from workbox.desktop.desktop_service import DesktopService
+from workbox.projects.material_matching import Requirement
 
 
 @pytest.fixture(scope='module')
@@ -28,7 +28,7 @@ def service(tmp_path):
 
 
 def load(name):
-    assert (Path(__file__).resolve().parents[1]/(name+'.py')).is_file(), 'missing '+name
+    assert importlib.util.find_spec(name) is not None, 'missing '+name
     return importlib.import_module(name)
 
 
@@ -47,7 +47,7 @@ def snapshots(service):
 
 
 def make_dialog(service):
-    return load('material_check_ui').MaterialCheckDialog(service,1)
+    return load('workbox.desktop.material_check_ui').MaterialCheckDialog(service,1)
 
 
 def test_open_edit_and_cancel_do_not_save_or_change_business_data(qapp,service):
@@ -62,7 +62,7 @@ def test_open_edit_and_cancel_do_not_save_or_change_business_data(qapp,service):
 
 
 def test_saved_rules_are_project_scoped_and_restored(qapp,service):
-    store=load('material_check_store')
+    store=load('workbox.projects.material_check_store')
     rules=(Requirement('a','手册','word',2,'软件名称 手册'),)
     assert store.load_rules(service,1) is None
     d=make_dialog(service)
@@ -78,14 +78,14 @@ def test_saved_rules_are_project_scoped_and_restored(qapp,service):
 
 
 def test_store_rejects_invalid_project_and_bad_rule_without_changes(service):
-    store=load('material_check_store');before=snapshots(service)
+    store=load('workbox.projects.material_check_store');before=snapshots(service)
     for pid,rules in [(999,[]),(True,[]),(1,[Requirement('a','a','word',0,'')])]:
         with pytest.raises((ValueError,KeyError)):store.save_rules(service,pid,rules)
     assert snapshots(service)==before
 
 
 def test_corrupt_saved_rules_are_visible_and_not_rewritten(qapp,service):
-    store=load('material_check_store')
+    store=load('workbox.projects.material_check_store')
     with service.db.connect() as db:
         db.execute('INSERT INTO desktop_settings VALUES (?,?)',(store.setting_key(1),'not json'))
     before=snapshots(service);d=make_dialog(service)
@@ -138,7 +138,7 @@ def test_ambiguity_requires_choice_and_is_never_double_counted(qapp,service):
 
 
 def test_partial_read_cannot_show_all_collected(qapp,service,monkeypatch):
-    module=load('material_check_ui')
+    module=load('workbox.desktop.material_check_ui')
     monkeypatch.setattr(module,'list_project_documents',lambda *a,**k:dict(project_id=1,workspace_path='registered',
         errors=['部分目录不可读'],documents=[dict(id='a',name='说明书.docx',kind='工作文件',exists=True,is_directory=False)]))
     d=make_dialog(service)
@@ -149,7 +149,7 @@ def test_partial_read_cannot_show_all_collected(qapp,service,monkeypatch):
 
 
 def test_reader_error_and_wrong_project_result_are_visible(qapp,service,monkeypatch):
-    module=load('material_check_ui')
+    module=load('workbox.desktop.material_check_ui')
     for response in ('error','wrong'):
         def query(*a,**k):
             if response=='error':raise OSError('isolated failure')
@@ -163,7 +163,7 @@ def test_reader_error_and_wrong_project_result_are_visible(qapp,service,monkeypa
 
 
 def test_cancel_waits_for_reader_without_forcing_thread(qapp,service,monkeypatch):
-    module=load('material_check_ui');entered=Event()
+    module=load('workbox.desktop.material_check_ui');entered=Event()
     def query(*a,cancel_event=None,**kw):
         entered.set();assert cancel_event.wait(5)
         from concurrent.futures import CancelledError
@@ -179,7 +179,7 @@ def test_cancel_waits_for_reader_without_forcing_thread(qapp,service,monkeypatch
 
 
 def test_project_menu_has_read_only_material_entry(qapp,service,monkeypatch):
-    from compact_ui import CompactPanel
+    from workbox.desktop.compact_ui import CompactPanel
     panel=CompactPanel(service)
     try:
         called=[]
@@ -193,7 +193,7 @@ def test_project_menu_has_read_only_material_entry(qapp,service,monkeypatch):
 
 
 def test_controller_stops_material_reader_before_disposal(qapp,service):
-    from desktop_controller import FloatingController
+    from workbox.desktop.desktop_controller import FloatingController
     controller=FloatingController(service,tray_enabled=False)
     assert controller.start()
     calls=[]
@@ -209,14 +209,14 @@ def test_controller_stops_material_reader_before_disposal(qapp,service):
 
 
 def test_json_null_is_corrupt_setting_not_an_unconfigured_project(service):
-    store=load('material_check_store')
+    store=load('workbox.projects.material_check_store')
     with service.db.connect() as db:
         db.execute('INSERT INTO desktop_settings VALUES (?,?)',(store.setting_key(1),'null'))
     with pytest.raises(ValueError):store.load_rules(service,1)
 
 
 def test_rules_changed_during_read_do_not_display_old_success(qapp,service,monkeypatch):
-    module=load('material_check_ui');entered,release=Event(),Event()
+    module=load('workbox.desktop.material_check_ui');entered,release=Event(),Event()
     def query(*a,**kw):
         entered.set();assert release.wait(5)
         return dict(project_id=1,workspace_path='registered',errors=[],documents=[])
@@ -231,7 +231,7 @@ def test_rules_changed_during_read_do_not_display_old_success(qapp,service,monke
 
 
 def test_failed_material_shutdown_keeps_controller_and_lock(qapp,service):
-    from desktop_controller import FloatingController
+    from workbox.desktop.desktop_controller import FloatingController
     controller=FloatingController(service,tray_enabled=False)
     assert controller.start()
     class Pending:
@@ -246,7 +246,7 @@ def test_failed_material_shutdown_keeps_controller_and_lock(qapp,service):
 
 
 def test_merged_project_rejects_rule_save_without_mutation(service,monkeypatch):
-    store=load('material_check_store');before=snapshots(service)
+    store=load('workbox.projects.material_check_store');before=snapshots(service)
     project=service.get_project(1);project['merged_into_id']=2
     monkeypatch.setattr(service,'get_project',lambda _:project)
     with pytest.raises(ValueError):store.save_rules(service,1,[Requirement('a','文档','word')])

@@ -18,9 +18,9 @@ from PySide6.QtCore import QThread
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog
 
-from desktop_controller import FloatingController
-from desktop_service import DesktopService
-from ui import FileJob
+from workbox.desktop.desktop_controller import FloatingController
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.ui import FileJob
 
 
 @pytest.fixture(scope='module')
@@ -109,7 +109,7 @@ def test_dispose_detaches_tray_menu_before_its_orb_owner_is_destroyed(qapp, tmp_
 
 
 def test_background_reader_and_business_job_stop_before_roots_are_destroyed(controller, qapp, monkeypatch):
-    import project_documents_ui
+    from workbox.desktop import project_documents_ui
     reader_entered, reader_stopped = Event(), Event()
     business_entered, business_stopped = Event(), Event()
 
@@ -234,9 +234,9 @@ from pathlib import Path
 import shiboken6
 from PySide6.QtCore import QThread, QTimer
 from PySide6.QtWidgets import QApplication
-import desktop_controller
-from desktop_service import DesktopService
-import main
+from workbox.desktop import desktop_controller
+from workbox.desktop.desktop_service import DesktopService
+from workbox import __main__ as main
 data = Path(sys.argv[1])
 service = DesktopService(data / 'workbox.db')
 settings = service.workspaces.settings()

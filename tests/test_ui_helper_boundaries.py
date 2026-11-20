@@ -6,16 +6,16 @@ import pytest
 
 
 @pytest.mark.parametrize('module_name', [
-    'archive_classification_ui',
-    'delivery_ui',
-    'onboarding_ui',
-    'project_documents_ui',
+    'workbox.desktop.archive_classification_ui',
+    'workbox.desktop.delivery_ui',
+    'workbox.desktop.onboarding_ui',
+    'workbox.desktop.project_documents_ui',
 ])
 def test_standalone_ui_import_does_not_load_workbench(module_name):
     probe = (
         'import importlib, sys\n'
         'importlib.import_module(sys.argv[1])\n'
-        'assert "compact_ui" not in sys.modules, "standalone UI loaded the workbench"\n'
+        'assert "workbox.desktop.compact_ui" not in sys.modules, "standalone UI loaded the workbench"\n'
     )
     result = subprocess.run(
         [sys.executable, '-c', probe, module_name],

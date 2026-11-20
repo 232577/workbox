@@ -1,7 +1,7 @@
 """交付历史与导出附加数据必须读取同一个调用方快照。"""
 import pytest
 
-from database import Database
+from workbox.projects.database import Database
 
 
 @pytest.fixture

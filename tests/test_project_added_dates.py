@@ -3,8 +3,8 @@ from contextlib import contextmanager
 
 import pytest
 
-from desktop_service import DesktopService
-from database import STATUSES
+from workbox.desktop.desktop_service import DesktopService
+from workbox.projects.database import STATUSES
 
 
 def service_at(tmp_path, moments):
@@ -136,7 +136,7 @@ def test_merge_retains_canonical_added_date_and_original_source_history(tmp_path
 
 def test_concurrent_writer_cannot_change_date_options_mid_snapshot(tmp_path, monkeypatch):
     service = service_at(tmp_path, ['2026-11-08T16:00:00Z'])
-    import project_batches
+    from workbox.projects import project_batches
     original = project_batches.read_project_batch_index
 
     def write_between_reads(connection):
@@ -237,7 +237,7 @@ def test_range_rows_and_counts_share_one_read_only_snapshot(tmp_path, monkeypatc
     service.set_status(2, '开发中')
     original_connect = service.db.connect
     connections, statements = [], []
-    import project_batches
+    from workbox.projects import project_batches
     original_index = project_batches.read_project_batch_index
 
     @contextmanager

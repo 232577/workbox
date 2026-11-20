@@ -10,8 +10,8 @@ import pytest
 def engine():
     class Engine:
         def __getattr__(self, name):
-            assert (Path(__file__).resolve().parents[1] / 'material_matching.py').is_file(), 'missing material matching engine'
-            return getattr(importlib.import_module('material_matching'), name)
+            assert (Path(__file__).resolve().parents[1] / 'workbox/projects/material_matching.py').is_file(), 'missing material matching engine'
+            return getattr(importlib.import_module('workbox.projects.material_matching'), name)
     return Engine()
 
 

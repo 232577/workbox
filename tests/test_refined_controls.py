@@ -7,8 +7,8 @@ from PySide6.QtWidgets import (
     QApplication, QLineEdit, QMenu, QPushButton, QStyle, QStyleOptionComboBox, QVBoxLayout, QWidget,
 )
 
-import theme
-from ui_components import CheckBox, ComboBox, LineEdit
+from workbox.desktop import theme
+from workbox.desktop.ui_components import CheckBox, ComboBox, LineEdit
 
 
 @pytest.fixture(params=['light', 'dark'])

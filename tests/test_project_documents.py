@@ -18,7 +18,7 @@ def test_read_only_document_module_does_not_load_zip_snapshot_manager():
     subprocess.run(
         [
             sys.executable, '-c',
-            "import sys; import project_documents; assert 'snapshot_manager' not in sys.modules",
+            "import sys; from workbox.storage import project_documents; assert 'workbox.storage.snapshot_manager' not in sys.modules",
         ],
         cwd=Path(__file__).resolve().parents[1],
         check=True,
@@ -67,7 +67,7 @@ def context(tmp_path):
 
 
 def query(service, project_id=1):
-    return importlib.import_module('project_documents').list_project_documents(service, project_id)
+    return importlib.import_module('workbox.storage.project_documents').list_project_documents(service, project_id)
 
 
 def register_file(service, root, name, file_id=1, project_id=1):
@@ -111,7 +111,7 @@ def test_history_requires_explicit_metadata_and_is_excluded_from_workspace_scan(
     (history_root/'未登记.txt').write_bytes(b'not current')
     (root/'说明 (deadbeef).docx').write_bytes(b'current despite its name')
     assert [row['name'] for row in query(service)['documents']]==['说明 (deadbeef).docx']
-    result=importlib.import_module('project_documents').list_project_documents(service,1,include_history=True)
+    result=importlib.import_module('workbox.storage.project_documents').list_project_documents(service,1,include_history=True)
     histories=[row for row in result['documents'] if row['kind']=='历史文稿']
     assert len(histories)==1 and histories[0]['path']==str(old)
     assert histories[0]['superseded_at']=='2026-11-09T01:00:00Z'
@@ -125,7 +125,7 @@ def test_history_displays_original_relative_path_and_accepts_manual_archive(cont
     register_history(service,history_root,old)
     with service.db.connect() as connection:
         connection.execute('UPDATE work_file_supersessions SET new_file_id=NULL,relative_path=?',('资料/说明.docx',))
-    row,=importlib.import_module('project_documents').list_project_documents(service,1,include_history=True)['documents']
+    row,=importlib.import_module('workbox.storage.project_documents').list_project_documents(service,1,include_history=True)['documents']
     assert row['relative_path']=='资料/说明.docx' and row['path']==str(old)
 
 
@@ -136,7 +136,7 @@ def test_history_replaced_directory_is_not_presented_as_the_original(context,tmp
     register_history(service,history_root,old)
     with service.db.connect() as connection:
         connection.execute('UPDATE document_history_roots SET directory_inode=?',(str(history_root.stat().st_ino+1),))
-    result=importlib.import_module('project_documents').list_project_documents(service,1,include_history=True)
+    result=importlib.import_module('workbox.storage.project_documents').list_project_documents(service,1,include_history=True)
     assert result['documents']==[] and result['errors']
 
 
@@ -148,7 +148,7 @@ def test_current_project_query_does_not_inspect_other_projects_history_paths(con
     register_history(service,history_root,old,project_id=2)
     with service.db.connect() as connection:
         connection.execute('UPDATE work_files SET path=? WHERE project_id=2',('unrelated-invalid-relative-path',))
-    result=importlib.import_module('project_documents').list_project_documents(service,1,include_history=True)
+    result=importlib.import_module('workbox.storage.project_documents').list_project_documents(service,1,include_history=True)
     assert result['errors']==[] and [row['name'] for row in result['documents']]==['当前.txt']
 
 
@@ -157,7 +157,7 @@ def test_history_outside_workspace_follows_current_work_file_project_after_merge
     history_root=tmp_path/'history';history_root.mkdir()
     old=history_root/'说明.docx';old.write_bytes(b'old')
     register_history(service,history_root,old,project_id=2)
-    module=importlib.import_module('project_documents')
+    module=importlib.import_module('workbox.storage.project_documents')
     assert not module.list_project_documents(service,1,include_history=True)['documents']
     row,=module.list_project_documents(service,2,include_history=True)['documents']
     assert row['kind']=='历史文稿' and row['path']==str(old)
@@ -175,7 +175,7 @@ def test_history_metadata_cannot_publish_outside_its_registered_root(context,tmp
     unrelated=tmp_path/'unrelated.txt';unrelated.write_bytes(b'private')
     with service.db.connect() as connection:
         connection.execute('UPDATE work_files SET path=? WHERE id=1',(str(unrelated),))
-    result=importlib.import_module('project_documents').list_project_documents(service,1,include_history=True)
+    result=importlib.import_module('workbox.storage.project_documents').list_project_documents(service,1,include_history=True)
     assert not result['documents'] and result['errors']
 
 
@@ -184,14 +184,14 @@ def test_history_query_on_read_only_legacy_database_never_creates_tables(context
     (root/'当前.txt').write_bytes(b'current')
     service.db.read_only=True
     before=service.db.path.read_bytes()
-    result=importlib.import_module('project_documents').list_project_documents(service,1,include_history=True)
+    result=importlib.import_module('workbox.storage.project_documents').list_project_documents(service,1,include_history=True)
     assert [row['name'] for row in result['documents']]==['当前.txt']
     assert service.db.path.read_bytes()==before and not result['errors']
 
 
 def test_real_rotation_and_manual_history_stay_accessible_without_becoming_current(tmp_path):
-    from desktop_service import DesktopService
-    from project_documents import list_project_documents
+    from workbox.desktop.desktop_service import DesktopService
+    from workbox.storage.project_documents import list_project_documents
     service=DesktopService(tmp_path/'data'/'fixture.db')
     service.receive_text('1. 匿名文稿系统')
     source=tmp_path/'说明.docx';source.write_bytes(b'first')
@@ -390,14 +390,14 @@ def test_listing_does_not_read_content_and_supports_cancellation(context, monkey
     event = threading.Event()
     event.set()
     with pytest.raises(CancelledError):
-        importlib.import_module('project_documents').list_project_documents(service, 1, cancel_event=event)
+        importlib.import_module('workbox.storage.project_documents').list_project_documents(service, 1, cancel_event=event)
 
 
 def test_bounded_listing_reports_partial_results(context, monkeypatch):
     service, root = context
     for index in range(8):
         (root / f'{index}.txt').write_bytes(b'fixture')
-    module = importlib.import_module('project_documents')
+    module = importlib.import_module('workbox.storage.project_documents')
     monkeypatch.setattr(module, 'MAX_DOCUMENTS', 3)
     result = query(service)
     assert len(result['documents']) == 3

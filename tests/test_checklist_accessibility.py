@@ -11,10 +11,10 @@ from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from checklist_ui import ChecklistDialog
-from desktop_service import DesktopService
-from native_files import cancelled
-from theme import install_theme, set_theme
+from workbox.desktop.checklist_ui import ChecklistDialog
+from workbox.desktop.desktop_service import DesktopService
+from workbox.storage.native_files import cancelled
+from workbox.desktop.theme import install_theme, set_theme
 
 
 def wait_for(app, predicate):

@@ -14,13 +14,13 @@ def record(value):
 
 
 def module():
-    return importlib.import_module('update_file_ops')
+    return importlib.import_module('workbox.updates.update_file_ops')
 
 
 def _reparse(path, target=None):
     """只用于匿名空目录的真实 FSCTL，不通过 shell 创建或删除链接。"""
     from ctypes import wintypes as w
-    from native_files import _api, _windows_path
+    from workbox.storage.native_files import _api, _windows_path
     api = _api()
     api.DeviceIoControl.argtypes = [w.HANDLE, w.DWORD, ctypes.c_void_p, w.DWORD,
                                    ctypes.c_void_p, w.DWORD, ctypes.POINTER(w.DWORD), ctypes.c_void_p]
@@ -110,7 +110,7 @@ def test_move_never_overwrites_and_new_target_can_be_created(files):
 
 @pytest.mark.skipif(os.name != 'nt', reason='Windows handle operations')
 def test_final_rename_holds_writer_and_parent_guards(files, monkeypatch):
-    from native_files import _api, _windows_path
+    from workbox.storage.native_files import _api, _windows_path
     source, destination, retired = files
     original = module()._MoveLease.rename_to
     attempts = []

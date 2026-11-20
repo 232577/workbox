@@ -8,9 +8,9 @@ import pytest
 from PySide6.QtTest import QSignalSpy
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
-from desktop_service import DesktopService
-from delivery_ui import TodayDeliveryDialog
-from native_files import identity
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.delivery_ui import TodayDeliveryDialog
+from workbox.storage.native_files import identity
 
 
 @pytest.fixture
@@ -50,7 +50,7 @@ def test_export_ignores_filters_and_reports_success_without_mutation(page, tmp_p
     def export(db, path, **kwargs):
         calls.append((db, path, kwargs))
         return {'project_count': 3, 'path': str(path)}
-    monkeypatch.setitem(sys.modules, 'delivery_export', types.SimpleNamespace(export_delivered_projects=export))
+    monkeypatch.setitem(sys.modules, 'workbox.storage.delivery_export', types.SimpleNamespace(export_delivered_projects=export))
     monkeypatch.setattr(QFileDialog, 'getSaveFileName', lambda *a, **k: (str(target), 'Excel 工作簿 (*.xlsx)'))
     monkeypatch.setattr(QMessageBox, 'question', lambda *a, **k: QMessageBox.Yes)
     page.search.setText('无匹配')
@@ -71,7 +71,7 @@ def test_export_reports_retained_original_until_next_action(page, tmp_path, monk
     def export(db, path, **kwargs):
         return {'project_count': 2, 'path': str(path), 'recovery_path': str(recovery)}
 
-    monkeypatch.setitem(sys.modules, 'delivery_export', types.SimpleNamespace(export_delivered_projects=export))
+    monkeypatch.setitem(sys.modules, 'workbox.storage.delivery_export', types.SimpleNamespace(export_delivered_projects=export))
     monkeypatch.setattr(QFileDialog, 'getSaveFileName', lambda *a, **k: (str(target), ''))
     page.export_button.click()
     wait(page)
@@ -86,13 +86,13 @@ def test_export_error_and_cancelled_worker_are_safe(page, tmp_path, monkeypatch)
     monkeypatch.setattr(QFileDialog, 'getSaveFileName', lambda *a, **k: (str(tmp_path / 'out.xlsx'), ''))
     def fail(*a, **k):
         raise ValueError('隔离错误')
-    monkeypatch.setitem(sys.modules, 'delivery_export', types.SimpleNamespace(export_delivered_projects=fail))
+    monkeypatch.setitem(sys.modules, 'workbox.storage.delivery_export', types.SimpleNamespace(export_delivered_projects=fail))
     page.export_button.click()
     wait(page)
     assert '隔离错误' in page.status_note.text()
     def cancel(*a, **k):
         raise CancelledError()
-    monkeypatch.setitem(sys.modules, 'delivery_export', types.SimpleNamespace(export_delivered_projects=cancel))
+    monkeypatch.setitem(sys.modules, 'workbox.storage.delivery_export', types.SimpleNamespace(export_delivered_projects=cancel))
     page.export_button.click()
     wait(page)
     assert '取消' in page.status_note.text()
@@ -115,7 +115,7 @@ def test_busy_cannot_start_twice_and_shutdown_waits(page, tmp_path, monkeypatch)
         entered.set()
         assert release.wait(4)
         return {'project_count': 0, 'path': str(path)}
-    monkeypatch.setitem(sys.modules, 'delivery_export', types.SimpleNamespace(export_delivered_projects=export))
+    monkeypatch.setitem(sys.modules, 'workbox.storage.delivery_export', types.SimpleNamespace(export_delivered_projects=export))
     monkeypatch.setattr(QFileDialog, 'getSaveFileName', lambda *a, **k: (str(tmp_path / 'out.xlsx'), ''))
     page.export_button.click()
     assert entered.wait(2)

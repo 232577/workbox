@@ -2,10 +2,10 @@
 import pytest
 from PySide6.QtWidgets import QApplication, QComboBox, QTableWidget, QScrollBar
 from qfluentwidgets import PushButton, PrimaryPushButton, CheckBox, ListWidget, TableWidget, isDarkTheme
-from compact_ui import CompactPanel, DirectorySettingsDialog
-from desktop_service import DesktopService
-from theme import install_theme, set_theme
-from ui_components import LineEdit, SpinBox, NavigationMenuButton
+from workbox.desktop.compact_ui import CompactPanel, DirectorySettingsDialog
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.theme import install_theme, set_theme
+from workbox.desktop.ui_components import LineEdit, SpinBox, NavigationMenuButton
 
 
 @pytest.fixture(scope='module')

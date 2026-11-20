@@ -6,8 +6,8 @@ from unittest.mock import ANY
 
 import pytest
 
-from database import Database
-from intake_log import FileIntakeLog
+from workbox.projects.database import Database
+from workbox.storage.intake_log import FileIntakeLog
 
 
 @pytest.fixture

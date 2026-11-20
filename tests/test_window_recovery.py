@@ -9,9 +9,9 @@ from PySide6.QtCore import QPoint, QRect, QTimer
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
-from desktop_controller import FloatingController
-from desktop_service import DesktopService
-from window_environment import DesktopEnvironmentWatcher
+from workbox.desktop.desktop_controller import FloatingController
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.window_environment import DesktopEnvironmentWatcher
 
 
 @pytest.fixture(scope='module')
@@ -172,7 +172,7 @@ class GeometryScreen:
 
 def test_small_screen_constrains_panel_then_restores_normal_minimum(
         controller, qapp, monkeypatch):
-    import desktop_controller
+    from workbox.desktop import desktop_controller
 
     normal_area = normal_panel(controller, qapp)
     normal_minimum = controller.panel.minimumSize()
@@ -198,7 +198,7 @@ def test_small_screen_constrains_panel_then_restores_normal_minimum(
 
 def test_recovery_keeps_panel_on_negative_origin_screen_independently_of_ball(
         controller, qapp, monkeypatch):
-    import desktop_controller
+    from workbox.desktop import desktop_controller
 
     normal_panel(controller, qapp)
     left_area = QRect(-1280, 0, 1280, 1024)
@@ -243,7 +243,7 @@ def test_destroyed_background_tray_recovers_entry_and_allows_fallback_and_shutdo
                          ids=['spanning-adjacent-screens', 'touching-screen-origin'])
 def test_recovery_and_reopen_keep_windows_fully_covered_by_connected_screens(
         controller, qapp, monkeypatch, position):
-    import desktop_controller
+    from workbox.desktop import desktop_controller
 
     normal_panel(controller, qapp)
     controller.panel.move(position)

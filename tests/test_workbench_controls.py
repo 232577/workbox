@@ -3,8 +3,8 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QStyle, QStyleOptionButton, QVBoxLayout, QWidget
 
-from theme import install_theme, set_theme
-from ui_components import CheckBox, button
+from workbox.desktop.theme import install_theme, set_theme
+from workbox.desktop.ui_components import CheckBox, button
 
 
 @pytest.fixture(scope='module')

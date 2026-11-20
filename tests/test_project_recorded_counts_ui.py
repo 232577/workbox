@@ -4,9 +4,9 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 from PySide6.QtTest import QTest
 
-from compact_ui import CompactPanel
-from desktop_service import DesktopService
-from fluent_views import PROJECT_BATCH_MARKERS_ROLE, _batch_badge_parts
+from workbox.desktop.compact_ui import CompactPanel
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.fluent_views import PROJECT_BATCH_MARKERS_ROLE, _batch_badge_parts
 
 
 @pytest.fixture

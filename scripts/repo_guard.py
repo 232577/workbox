@@ -1,4 +1,4 @@
-"""Reject private payloads and common secret patterns without printing their contents."""
+"""Check repository layout, private paths and common secret patterns."""
 from __future__ import annotations
 
 import argparse
@@ -32,6 +32,8 @@ def inspect_file(name: str, content: bytes) -> list[str]:
     reasons = []
     if not path.parts or path.is_absolute() or '..' in path.parts or path.parts[0] in PRIVATE_DIRS:
         reasons.append('private or unsafe path')
+    if len(path.parts) == 1 and path.suffix.lower() in {'.py', '.pyw', '.ps1'}:
+        reasons.append('source file at repository root. Use workbox/, scripts/ or tests/')
     if GENERATED_DIRS.intersection(path.parts[:-1]):
         reasons.append('generated test, browser or worktree output')
     if (

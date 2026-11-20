@@ -37,9 +37,20 @@ PR 必须通过仓库边界、网站和四组 Windows 测试。页面改动附�
 
 ## 模块职责与代码风格
 
-- 修改前查阅[代码地图](docs/PROJECT-TAKEOVER-2026-11-12.md#代码地图)。界面通过控制器和服务发起任务。文件校验、目录扫描和数据库事务留在各自的非界面模块。
-- 页面共用的标签和显示函数放在 `ui.py`，Fluent 控件适配由 `ui_components.py` 维护。独立对话框直接引用这两处通用实现。
-- Python 导入依次排列标准库、第三方库和项目模块。每行写一条语句，跨行的调用按参数缩进，公共函数用名称和注解说明输入输出。改动集中在当前任务涉及的代码。
+| 路径 | 职责 |
+| --- | --- |
+| [`workbox/`](workbox/) | 应用入口与运行时源码。子包按桌面界面、项目业务、文件归档和程序更新划分 |
+| [`scripts/`](scripts/) | 开发检查、构建与发布工具 |
+| [`tests/`](tests/) | 桌面和工具的隔离回归 |
+| [`website/`](website/) | 官网、Worker 和网站回归 |
+| [`assets/`](assets/) · [`packaging/`](packaging/) | 品牌资源和安装器定义 |
+| [`docs/`](docs/) | 技术说明、验证证据和发布规程 |
+
+在仓库根目录运行 `python -m workbox`，依赖沿用 `requirements-lock.txt`。顶层保留文档、许可和项目配置。仓库检查拒绝放在根目录的 Python 和 PowerShell 源文件。 [Python 包](https://docs.python.org/3.11/tutorial/modules.html#packages) · [PyPA 目录布局](https://packaging.python.org/en/latest/discussions/src-layout-vs-flat-layout/)
+
+- 修改前查阅[代码地图](docs/PROJECT-TAKEOVER-2026-11-12.md#代码地图)。界面通过控制器和服务发起任务。文件校验、目录扫描和数据库事务留在各自负责的模块。
+- 页面共用的标签和显示函数放在 `workbox/desktop/ui.py`，Fluent 控件适配由 `workbox/desktop/ui_components.py` 维护。独立对话框直接引用这两处通用实现。
+- Python 导入依次排列标准库、第三方库和项目模块。项目内使用完整包名，例如 `from workbox.storage.native_files import plain_path`。每行写一条语句，跨行的调用按参数缩进。公共函数用名称和注解说明输入输出。
 - 并发操作及写入流程要核对失败、取消和重试的结果。重构时先用实际入口或隔离测试确认现有行为。
 
 ## 换地点、接续与冲突

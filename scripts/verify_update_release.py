@@ -10,9 +10,9 @@ import re
 import stat
 import sys
 
-from native_files import plain_path
 from scripts.build_installer import PRIVATE_NAMES, PRIVATE_SUFFIXES
-from update_client import MAX_INSTALLER, RELEASE_ROOT, build_key
+from workbox.storage.native_files import plain_path
+from workbox.updates.update_client import MAX_INSTALLER, RELEASE_ROOT, build_key
 
 MAX_JSON_BYTES = 1024 * 1024
 MAX_PAYLOAD_FILES = 20000

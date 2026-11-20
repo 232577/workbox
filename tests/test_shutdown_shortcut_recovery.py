@@ -7,11 +7,11 @@ import sys
 import pytest
 from PySide6.QtWidgets import QApplication
 
-import desktop_controller
-from desktop_controller import FloatingController
-from desktop_service import DesktopService
-from global_shortcut import GlobalShortcut
-from update_client import Release, RELEASE_ROOT
+from workbox.desktop import desktop_controller
+from workbox.desktop.desktop_controller import FloatingController
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.global_shortcut import GlobalShortcut
+from workbox.updates.update_client import Release, RELEASE_ROOT
 
 
 class Backend:
@@ -101,7 +101,7 @@ def test_failed_normal_exit_keeps_registered_shortcut_usable(controller, qapp, m
 
 def test_failed_update_backup_keeps_registered_shortcut_usable(
         controller, qapp, tmp_path, monkeypatch):
-    import update_install
+    from workbox.updates import update_install
     value, backend = controller
     registration = dict(backend.active)
     release, package = installer(tmp_path)

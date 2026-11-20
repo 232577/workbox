@@ -10,12 +10,12 @@ from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtGui import QColor, QEnterEvent, QFont, QImage, QPainter
 from PySide6.QtWidgets import QApplication, QMenu
 
-from branding import ICON_SIZES, icon_image, write_ico
-from desktop_controller import FloatingController
-from desktop_service import DesktopService
-from floating import FloatingBall
-from floating_settings import FLOATING_SIZES
-from theme import set_theme
+from workbox.desktop.branding import ICON_SIZES, icon_image, write_ico
+from workbox.desktop.desktop_controller import FloatingController
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.floating import FloatingBall
+from workbox.desktop.floating_settings import FLOATING_SIZES
+from workbox.desktop.theme import set_theme
 
 
 def save(image, path: Path) -> None:

@@ -1,5 +1,5 @@
 """Integrated workbench fixes need a new immutable update, not an r5 replacement."""
-import update_client
+import workbox.updates.update_client as update_client
 
 
 def test_collaborative_workbench_build_is_newer_than_published_r5():

@@ -4,8 +4,8 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QDialog
 
-from desktop_service import DesktopService
-import project_types_ui
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop import project_types_ui
 
 
 @pytest.fixture(scope='module')

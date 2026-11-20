@@ -36,10 +36,10 @@ Windows 上的个人项目工作箱：收材料、找文件、核对交付。数
 
 技术栈为 Python 3.11、PySide6、SQLite 和 PyInstaller。Git 只同步代码，不同步个人数据和材料；正式构建来自审查通过的 main。
 
-先读[协作指南](CONTRIBUTING.md)、[项目约定](AGENTS.md)和[接手地图](docs/PROJECT-TAKEOVER-2026-11-12.md)。安装依赖和分支流程见协作指南，构建与上线见[发布规程](docs/RELEASING.md)。
+桌面源码位于 [`workbox/`](workbox/)。按职责查看[代码地图](docs/PROJECT-TAKEOVER-2026-11-12.md#代码地图)，按[协作指南](CONTRIBUTING.md)和[项目约定](AGENTS.md)开展开发。构建使用 [`scripts/build.ps1`](scripts/build.ps1)，见[发布规程](docs/RELEASING.md)。
 
 ```powershell
-.\.venv\Scripts\python.exe main.py --panel
+.\.venv\Scripts\python.exe -m workbox --panel
 .\.venv\Scripts\python.exe -m scripts.run_tests -q
 node --test website/*.test.mjs
 ```

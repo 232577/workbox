@@ -4,9 +4,9 @@ from zipfile import ZipFile
 
 import pytest
 
-from bundle_analyzer import analyze_bundle
-from desktop_service import DesktopService
-from file_matcher import match_work_file_projects
+from workbox.storage.bundle_analyzer import analyze_bundle
+from workbox.desktop.desktop_service import DesktopService
+from workbox.storage.file_matcher import match_work_file_projects
 
 
 @pytest.mark.parametrize('spacing', [' ', '\u3000', '\t'])

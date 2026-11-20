@@ -3,8 +3,8 @@ from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QSignalSpy
 from PySide6.QtWidgets import QApplication, QAbstractItemView, QListWidget, QStyle, QStyleOptionSlider
 
-from compact_ui import CompactPanel, populate, selected
-from desktop_service import DesktopService
+from workbox.desktop.compact_ui import CompactPanel, populate, selected
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture(scope='module')

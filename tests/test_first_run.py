@@ -5,9 +5,9 @@ import sqlite3
 
 import pytest
 
-from app import WorkBox
-from intake_log import FileIntakeLog
-from workspace_manager import SCHEMA, WorkspaceManager
+from workbox.app import WorkBox
+from workbox.storage.intake_log import FileIntakeLog
+from workbox.storage.workspace_manager import SCHEMA, WorkspaceManager
 
 
 def test_fresh_core_database_stays_pending_after_reopen(tmp_path):
@@ -145,13 +145,13 @@ def test_corrupt_setup_metadata_is_not_silently_replaced(tmp_path, corruption):
 
 @pytest.mark.parametrize('automatic, expected', [(True, 'automatic'), (False, 'manual')])
 def test_mode_follows_zip_delivery_preference(automatic, expected):
-    from first_run import mode_key
+    from workbox.storage.first_run import mode_key
     assert mode_key({'auto_deliver_zip': automatic, 'auto_create_projects': not automatic}) == expected
 
 
 @pytest.mark.parametrize('invalid', [None, 0, 1, 'false'])
 def test_mode_rejects_corrupt_zip_delivery_preference(invalid):
-    from first_run import mode_key
+    from workbox.storage.first_run import mode_key
     with pytest.raises(ValueError):
         mode_key({'auto_deliver_zip': invalid})
 

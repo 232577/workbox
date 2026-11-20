@@ -5,10 +5,10 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication
 
-from delivery_ui import TodayDeliveryDialog
-from desktop_service import DesktopService
-from project_documents_ui import ProjectDocumentsPane
-from theme import install_theme, tokens
+from workbox.desktop.delivery_ui import TodayDeliveryDialog
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.project_documents_ui import ProjectDocumentsPane
+from workbox.desktop.theme import install_theme, tokens
 
 
 @pytest.fixture(scope='module')

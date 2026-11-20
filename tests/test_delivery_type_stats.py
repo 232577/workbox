@@ -5,7 +5,7 @@ import sqlite3
 
 import pytest
 
-from database import Database
+from workbox.projects.database import Database
 
 
 DAY = date(2026, 10, 23)

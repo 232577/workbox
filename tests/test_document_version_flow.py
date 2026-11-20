@@ -4,11 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from desktop_service import DesktopService
-from folder_intake import FolderIntake
-from native_files import identity
-from project_documents import list_project_documents
-from workspace_manager import copy_verified
+from workbox.desktop.desktop_service import DesktopService
+from workbox.storage.folder_intake import FolderIntake
+from workbox.storage.native_files import identity
+from workbox.storage.project_documents import list_project_documents
+from workbox.storage.workspace_manager import copy_verified
 
 
 @pytest.fixture

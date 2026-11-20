@@ -24,11 +24,11 @@ git status --short
 git rev-parse HEAD
 git rev-parse origin/main
 .\.venv\Scripts\python.exe scripts/dev.py check
-powershell -ExecutionPolicy Bypass -File build.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1
 .\.venv\Scripts\python.exe -m scripts.build_installer --help
 ```
 
-`build.ps1` 使用当前克隆的 `.venv`，Inno Setup 6 在发布机单独安装。不要以更新日期为由重建或重新安装一个字节相同的正式版本。
+`scripts/build.ps1` 使用当前克隆的 `.venv`，Inno Setup 6 在发布机单独安装。不要以更新日期为由重建或重新安装一个字节相同的正式版本。
 
 新标签使用附注标签，并仅在核验后通过一次性 `WORKBOX_RELEASE_TAGS=1` 允许本地 hook 创建；该变量不允许覆盖或删除已有标签。服务器端标签规则仍然生效。推送后核对远端标签目标，不使用 `--force` 或资产 `--clobber`。
 

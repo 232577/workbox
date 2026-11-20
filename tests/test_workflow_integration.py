@@ -5,9 +5,9 @@ import time
 import pytest
 from PySide6.QtCore import QMimeData, QUrl
 
-from desktop_service import DesktopService
-from floating import decode_mime
-from parser import ParsedProject
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.floating import decode_mime
+from workbox.projects.parser import ParsedProject
 
 
 def package(path, text='version one'):
@@ -96,7 +96,7 @@ def test_explicit_import_preserves_source_instead_of_legacy_moving(tmp_path):
 
 def test_workflow_controller_has_background_monitor_and_new_controls(tmp_path):
     from PySide6.QtWidgets import QApplication
-    from desktop_controller import FloatingController
+    from workbox.desktop.desktop_controller import FloatingController
     app = QApplication.instance() or QApplication([])
     service = DesktopService(tmp_path / 'data/workbox.db')
     controller = FloatingController(service, tray_enabled=False)

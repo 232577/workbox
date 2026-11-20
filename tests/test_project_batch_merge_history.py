@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from delivery_export import collect_project_table
-from desktop_service import DesktopService
-from project_batches import read_project_batch_index
+from workbox.storage.delivery_export import collect_project_table
+from workbox.desktop.desktop_service import DesktopService
+from workbox.projects.project_batches import read_project_batch_index
 
 
 def read_index(db):

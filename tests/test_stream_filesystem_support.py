@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-import native_files
-from workspace_manager import copy_verified
+from workbox.storage import native_files
+from workbox.storage.workspace_manager import copy_verified
 
 
 pytestmark = pytest.mark.skipif(os.name != 'nt', reason='Windows 文件流 API')

@@ -15,9 +15,9 @@ from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 if __package__ in (None, ''):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import delta_format as fmt
-from delta_format import read_manifest
-from native_files import ZipLease, plain_path
+from workbox.storage.native_files import ZipLease, plain_path
+from workbox.updates import delta_format as fmt
+from workbox.updates.delta_format import read_manifest
 
 CONTENTS = 'PACKAGE_CONTENTS.sha256'
 CHUNK = 1024 * 1024

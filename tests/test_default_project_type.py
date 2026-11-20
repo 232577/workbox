@@ -5,11 +5,11 @@ from zipfile import ZipFile
 
 import pytest
 
-from app import WorkBox
-from database import Database
-from desktop_service import DesktopService
-from parser import ParsedProject
-from workspace_manager import WorkspaceManager
+from workbox.app import WorkBox
+from workbox.projects.database import Database
+from workbox.desktop.desktop_service import DesktopService
+from workbox.projects.parser import ParsedProject
+from workbox.storage.workspace_manager import WorkspaceManager
 
 
 def test_fresh_default_and_factory_origin_do_not_skip_setup(tmp_path):

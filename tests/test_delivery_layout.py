@@ -4,9 +4,9 @@ from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QSplitter
 
-from delivery_ui import TodayDeliveryDialog
-from compact_ui import CompactPanel
-from desktop_service import DesktopService
+from workbox.desktop.delivery_ui import TodayDeliveryDialog
+from workbox.desktop.compact_ui import CompactPanel
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture

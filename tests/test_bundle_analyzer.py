@@ -10,8 +10,8 @@ SECOND = '隔离测试项目8系统'
 
 
 def analyzer():
-    assert importlib.util.find_spec('bundle_analyzer') is not None, 'bundle analyzer is missing'
-    return importlib.import_module('bundle_analyzer')
+    assert importlib.util.find_spec('workbox.storage.bundle_analyzer') is not None, 'bundle analyzer is missing'
+    return importlib.import_module('workbox.storage.bundle_analyzer')
 
 
 def project(pid, name, batch=1, archived=None):

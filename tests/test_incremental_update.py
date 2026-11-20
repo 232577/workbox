@@ -13,7 +13,7 @@ import threading
 from zipfile import ZipFile, ZIP_DEFLATED
 
 import pytest
-import update_client as client
+import workbox.updates.update_client as client
 
 
 FROM = client.CURRENT_TAG
@@ -39,8 +39,8 @@ def record(delta=None):
 
 
 def module():
-    assert (Path(__file__).resolve().parents[1] / 'incremental_update.py').is_file(), '缺少增量下载器'
-    return importlib.import_module('incremental_update')
+    assert (Path(__file__).resolve().parents[1] / 'workbox/updates/incremental_update.py').is_file(), '缺少增量下载器'
+    return importlib.import_module('workbox.updates.incremental_update')
 
 
 def test_release_six_fields_remain_compatible_and_matching_delta_is_optional():
@@ -267,7 +267,7 @@ def test_failed_delta_attempt_never_removes_an_unowned_file(candidate, tmp_path,
 
 def test_unresolved_update_blocks_delta_and_full_without_network(candidate, tmp_path, monkeypatch):
     app, release, _, calls = candidate
-    apply = importlib.import_module('incremental_apply')
+    apply = importlib.import_module('workbox.updates.incremental_apply')
     monkeypatch.setattr(apply, 'has_pending_update', lambda _: True)
     for value in (release, replace(release, delta=None)):
         with pytest.raises(RuntimeError, match='恢复'):

@@ -3,7 +3,7 @@ from zipfile import ZipFile
 
 import pytest
 
-from desktop_service import DesktopService
+from workbox.desktop.desktop_service import DesktopService
 
 
 NAMES = ['甲视觉检测平台', '乙资源调度平台']

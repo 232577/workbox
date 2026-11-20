@@ -9,7 +9,7 @@ import zipfile
 
 import pytest
 
-from delta_format import REQUIRED_FILES, FORMAT, delta_filename
+from workbox.updates.delta_format import REQUIRED_FILES, FORMAT, delta_filename
 
 
 OLD, NEW = 'v1.0.0.20261113.2', 'v1.0.0.20261113.3'
@@ -52,7 +52,7 @@ def candidate(tmp_path):
 
 
 def module():
-    return importlib.import_module('incremental_apply')
+    return importlib.import_module('workbox.updates.incremental_apply')
 
 
 def preserved(app):
@@ -260,7 +260,7 @@ def test_recovery_rejects_changed_backup_origin_metadata(candidate):
 
 @pytest.mark.skipif(os.name != 'nt', reason='Windows handle-bound publication')
 def test_last_moment_destination_occupant_is_preserved(candidate, monkeypatch):
-    import update_file_ops
+    import workbox.updates.update_file_ops as update_file_ops
     app, package, manifest, args = candidate
     original = update_file_ops._native_rename
     def occupy(lease, parent, leaf):

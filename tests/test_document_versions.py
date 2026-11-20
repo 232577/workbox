@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from app import WorkBox
-from workspace_manager import WorkspaceManager
-from native_files import ZipLease
+from workbox.app import WorkBox
+from workbox.storage.workspace_manager import WorkspaceManager
+from workbox.storage.native_files import ZipLease
 
 
 @pytest.fixture
@@ -89,7 +89,7 @@ def test_subdirectory_and_case_collision_keep_requested_document_name(documents)
 
 @pytest.mark.parametrize('failure', ['cancel', 'copy', 'log', 'sql', 'commit', 'pending'])
 def test_failure_restores_canonical_old_row_and_logs(documents, monkeypatch, failure):
-    import workspace_manager
+    import workbox.storage.workspace_manager as workspace_manager
     service, manager, pid, source, first = documents
     original_rows = rows(service, 'work_files')
     original_logs = rows(service, 'file_intake_events')
@@ -179,9 +179,9 @@ def test_restart_recovers_interrupted_rotation_without_rewriting_history(documen
     script = '''
 import os, sys
 from pathlib import Path
-from app import WorkBox
-from workspace_manager import WorkspaceManager
-from native_files import ZipLease
+from workbox.app import WorkBox
+from workbox.storage.workspace_manager import WorkspaceManager
+from workbox.storage.native_files import ZipLease
 service = WorkBox(sys.argv[1])
 manager = WorkspaceManager(service)
 original = ZipLease.rename_to
@@ -291,7 +291,7 @@ def test_external_edit_is_not_silently_versioned_or_overwritten(documents):
 
 
 def test_journal_write_failure_restores_file_and_removes_stage(documents, monkeypatch):
-    import document_versions
+    import workbox.storage.document_versions as document_versions
     service, manager, pid, source, first = documents
     source.write_bytes(b'new document')
     before = rows(service, 'work_files')
@@ -334,15 +334,15 @@ def test_marked_reparse_old_document_is_rejected(documents, monkeypatch):
 
 
 def test_interruption_before_journal_does_not_expose_stage_as_project_material(documents):
-    from desktop_service import DesktopService
-    from project_documents import list_project_documents
+    from workbox.desktop.desktop_service import DesktopService
+    from workbox.storage.project_documents import list_project_documents
     from PySide6.QtCore import QLockFile
     service, manager, pid, source, first = documents
     source.write_bytes(b'new document')
     script = '''
 import os, sys
-import workspace_manager
-from app import WorkBox
+import workbox.storage.workspace_manager as workspace_manager
+from workbox.app import WorkBox
 service = WorkBox(sys.argv[1])
 manager = workspace_manager.WorkspaceManager(service)
 original = workspace_manager.copy_verified
@@ -378,7 +378,7 @@ manager.import_file(sys.argv[2], int(sys.argv[3]))
 
 @pytest.mark.parametrize('value', ['[]', '{"project_id":1}', '{broken'])
 def test_malformed_journal_blocks_service_writes_but_keeps_reads(documents, value):
-    from desktop_service import DesktopService
+    from workbox.desktop.desktop_service import DesktopService
     service, manager, pid, source, first = documents
     journal = manager.document_versions.journal_root
     journal.mkdir()
@@ -397,7 +397,7 @@ def test_malformed_journal_blocks_service_writes_but_keeps_reads(documents, valu
 
 
 def test_same_process_failed_rollback_blocks_other_service_writes(documents, monkeypatch):
-    from desktop_service import DesktopService
+    from workbox.desktop.desktop_service import DesktopService
     service, manager, pid, source, first = documents
     desktop = DesktopService(service.db.path)
     desktop.recover_project_changes()
@@ -423,16 +423,16 @@ def test_same_process_failed_rollback_blocks_other_service_writes(documents, mon
 
 def test_external_replacement_during_interruption_is_preserved_and_blocks_recovery(documents):
     import json
-    from desktop_service import DesktopService
+    from workbox.desktop.desktop_service import DesktopService
     from PySide6.QtCore import QLockFile
     service, manager, pid, source, first = documents
     source.write_bytes(b'new document')
     script = '''
 import os, sys
 from pathlib import Path
-from app import WorkBox
-from workspace_manager import WorkspaceManager
-from native_files import ZipLease
+from workbox.app import WorkBox
+from workbox.storage.workspace_manager import WorkspaceManager
+from workbox.storage.native_files import ZipLease
 manager = WorkspaceManager(WorkBox(sys.argv[1]))
 original = ZipLease.rename_to
 def interrupted(self, target):

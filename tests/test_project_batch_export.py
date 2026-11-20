@@ -1,9 +1,9 @@
 """全部交付导出沿用同一只读批次索引，并保留旧表契约。"""
 from openpyxl import load_workbook
 
-from delivery_export import collect_delivery_report, export_delivered_projects
-from desktop_service import DesktopService
-from project_batches import read_project_batch_index
+from workbox.storage.delivery_export import collect_delivery_report, export_delivered_projects
+from workbox.desktop.desktop_service import DesktopService
+from workbox.projects.project_batches import read_project_batch_index
 
 
 def test_delivery_project_rows_include_same_read_only_batch_codes(tmp_path):

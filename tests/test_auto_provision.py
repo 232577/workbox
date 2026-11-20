@@ -6,8 +6,8 @@ from zipfile import ZipFile
 
 import pytest
 
-from desktop_service import DesktopService
-from native_files import _windows_path
+from workbox.desktop.desktop_service import DesktopService
+from workbox.storage.native_files import _windows_path
 
 
 @pytest.fixture
@@ -196,7 +196,7 @@ def test_copy_failure_keeps_explicit_project_and_failed_receipt_for_retry(servic
 
 
 def test_word_only_delivery_calls_project_archive(service, monkeypatch):
-    import delivery_archive
+    import workbox.storage.delivery_archive as delivery_archive
     calls = []
     class Archive:
         def __init__(self, owner, workspaces):
@@ -249,7 +249,7 @@ def test_archive_library_zip_is_rejected_before_automatic_project_creation(servi
 
 @pytest.mark.parametrize('bundle', [False, True])
 def test_zip_work_copy_failure_can_retry_without_duplicate_projects(service, tmp_path, monkeypatch, bundle):
-    import workspace_manager
+    import workbox.storage.workspace_manager as workspace_manager
     source = package(tmp_path, '甲系统-2.zip', ('甲系统/a.txt', '乙系统/b.txt')) if bundle else package(tmp_path)
     original = workspace_manager.copy_verified
     def fail(*args, **kwargs):

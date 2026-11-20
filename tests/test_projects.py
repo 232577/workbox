@@ -2,8 +2,8 @@ import sqlite3
 
 import pytest
 
-from app import WorkBox
-from database import STATUSES
+from workbox.app import WorkBox
+from workbox.projects.database import STATUSES
 
 
 @pytest.fixture

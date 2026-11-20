@@ -3,8 +3,8 @@ import sqlite3
 
 import pytest
 
-from desktop_service import DesktopService
-from parser import ParsedProject
+from workbox.desktop.desktop_service import DesktopService
+from workbox.projects.parser import ParsedProject
 
 
 def groups(tmp_path):
@@ -17,7 +17,7 @@ def event(service, project_id=1):
     with service.db.connect() as connection:
         project = connection.execute('SELECT name FROM projects WHERE id=?', (project_id,)).fetchone()
         eid = connection.execute("INSERT INTO delivery_events(project_id,project_name,batch_name,kind,archive_path) VALUES (?,?,'匿名批次','manual-files','anonymous/archive')", (project_id, project['name'])).lastrowid
-        from task_groups import observe_delivery_event
+        from workbox.projects.task_groups import observe_delivery_event
         observe_delivery_event(connection, eid)
     return eid
 
@@ -99,7 +99,7 @@ def test_ambiguous_observation_never_guesses_after_task_withdrawn(tmp_path):
     eid = event(service)
     assert task(api, one)['needs_review'] and task(api, two)['needs_review']
     api.withdraw([two], confirmed=True)
-    from task_groups import observe_delivery_event
+    from workbox.projects.task_groups import observe_delivery_event
     with service.db.connect() as connection:
         observe_delivery_event(connection, eid)
     assert not task(api, one)['material_ready']
@@ -154,7 +154,7 @@ def test_lifecycle_keeps_ids_and_invalidates_prior_handoff(tmp_path):
 
 
 def test_cross_day_continuation_keeps_original_code_and_today_filter(tmp_path, monkeypatch):
-    import task_groups
+    from workbox.projects import task_groups
     service, api = groups(tmp_path)
     monkeypatch.setattr(task_groups, '_now', lambda: '2026-11-05T15:59:59Z')
     first = api.receive('1. 匿名跨日系统')
@@ -268,7 +268,7 @@ def test_reopen_does_not_bind_an_unobserved_pre_reopen_delivery(tmp_path):
     with service.db.connect() as connection:
         eid = connection.execute("INSERT INTO delivery_events(project_id,project_name,batch_name,kind,archive_path) VALUES (1,'匿名客户系统','匿名批次','manual-files','anonymous/archive')").lastrowid
     api.reopen([tid], confirmed=True)
-    from task_groups import observe_delivery_event
+    from workbox.projects.task_groups import observe_delivery_event
     with service.db.connect() as connection:
         observe_delivery_event(connection, eid)
     assert not task(api, tid)['material_ready']
@@ -336,8 +336,8 @@ def test_explicit_old_version_resolves_known_ambiguity_but_not_future_ambiguity(
 
 
 def test_observation_floor_schema_upgrade_preserves_old_binding_rows(tmp_path):
-    from task_schema import initialize
-    from task_groups import read_task_snapshot
+    from workbox.projects.task_schema import initialize
+    from workbox.projects.task_groups import read_task_snapshot
     service, api = groups(tmp_path)
     api.receive('1. 匿名客户系统')
     event(service)
@@ -407,7 +407,7 @@ def test_handoff_can_confirm_exact_ready_old_binding_despite_newer_candidates(tm
 
 @pytest.mark.parametrize('archive_path', ['', '   '])
 def test_legacy_delivery_without_archive_cannot_make_task_material_ready(tmp_path, archive_path):
-    from task_groups import observe_delivery_event
+    from workbox.projects.task_groups import observe_delivery_event
     service, api = groups(tmp_path)
     tid = api.receive('1. 匿名客户系统')['task_ids'][0]
     with service.db.connect() as connection:

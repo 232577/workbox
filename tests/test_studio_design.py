@@ -1,6 +1,6 @@
 """Semantic design contract; shared colors are not per-page literals."""
 import pytest
-from theme import tokens, stylesheet
+from workbox.desktop.theme import tokens, stylesheet
 
 
 def contrast(a, b):
@@ -38,7 +38,7 @@ def test_token_copy_cannot_mutate_global_style():
 def test_progress_percentage_uses_readable_foreground_on_filled_track(mode):
     from PySide6.QtWidgets import QApplication,QProgressBar
     from PySide6.QtGui import QPalette
-    from theme import install_theme,set_theme
+    from workbox.desktop.theme import install_theme,set_theme
     app=QApplication.instance() or QApplication([])
     install_theme();set_theme(mode,persist=False)
     bar=QProgressBar();bar.setValue(65);bar.ensurePolished()

@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
-from update_client import CURRENT_TAG, build_key
+from workbox.updates.update_client import CURRENT_TAG, build_key
 
 
 # Transport/security fixtures stay newer than the binary; ordering tests below
@@ -22,8 +22,8 @@ FIXTURE_TAG = 'v1.0.0.' + _next_day.strftime('%Y%m%d') + '.1'
 
 @pytest.fixture
 def client():
-    assert (Path(__file__).resolve().parents[1] / 'update_client.py').is_file(), 'Missing verified update client'
-    return importlib.import_module('update_client')
+    assert (Path(__file__).resolve().parents[1] / 'workbox/updates/update_client.py').is_file(), 'Missing verified update client'
+    return importlib.import_module('workbox.updates.update_client')
 
 
 def payload(data=b'MZisolated installer', tag=FIXTURE_TAG):
@@ -248,7 +248,7 @@ def test_modified_cached_file_rejected(client,tmp_path):
 
 
 def test_database_backup_is_consistent_and_preserves_source(client,tmp_path):
-    install=importlib.import_module('update_install')
+    install=importlib.import_module('workbox.updates.update_install')
     database=tmp_path/'data'/'workbox.db';database.parent.mkdir()
     with sqlite3.connect(database) as db:
         db.execute('CREATE TABLE example(value)');db.execute('INSERT INTO example VALUES (?)',('preserve',))
@@ -260,7 +260,7 @@ def test_database_backup_is_consistent_and_preserves_source(client,tmp_path):
 
 def test_handoff_is_encoded_and_waits_without_force_killing(client,tmp_path):
     import base64
-    install=importlib.import_module('update_install')
+    install=importlib.import_module('workbox.updates.update_install')
     release=client.parse_release(payload());path=tmp_path/release.filename;path.write_bytes(b'MZisolated installer')
     app=tmp_path/"安装 ' path";app.mkdir();(app/'WorkBox.exe').write_bytes(b'fixture')
     args=install.handoff_command(path,release,app,1234)
@@ -305,7 +305,7 @@ def test_download_retains_windows_internet_origin(client,tmp_path,monkeypatch):
 
 
 def test_windowed_build_probe_writes_identity_without_opening_data(client,tmp_path,monkeypatch):
-    import main
+    from workbox import __main__ as main
     data=tmp_path/'untouched custom data';report=tmp_path/'build-info.json'
     with monkeypatch.context() as patch:
         patch.setattr(main.sys,'stdout',None)
@@ -320,7 +320,7 @@ def test_windowed_build_probe_writes_identity_without_opening_data(client,tmp_pa
 
 def test_handoff_checks_installed_build_and_data_before_relaunch(client,tmp_path):
     import base64
-    from update_install import handoff_command
+    from workbox.updates.update_install import handoff_command
     release=client.parse_release(payload());installer=tmp_path/release.filename;installer.write_bytes(b'MZisolated installer')
     app=tmp_path/'custom app';app.mkdir();(app/'WorkBox.exe').write_bytes(b'fixture')
     script=base64.b64decode(handoff_command(installer,release,app,1234,tmp_path/'custom data')[-1]).decode('utf-16le')

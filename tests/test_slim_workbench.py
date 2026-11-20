@@ -7,8 +7,8 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtTest import QSignalSpy, QTest
 from PySide6.QtWidgets import QApplication, QDialog, QMenu, QTreeWidget
 
-from compact_ui import CompactPanel
-from desktop_service import DesktopService
+from workbox.desktop.compact_ui import CompactPanel
+from workbox.desktop.desktop_service import DesktopService
 
 
 @pytest.fixture
@@ -291,8 +291,8 @@ def test_busy_keeps_native_advanced_menu_and_read_only_tools_openable(panel):
 
 
 def test_all_delivery_export_completion_restores_scan_without_reopening_menu(panel, tmp_path, monkeypatch):
-    import export_ui
-    import delivery_export
+    from workbox.desktop import export_ui
+    from workbox.storage import delivery_export
     panel.show_today_deliveries()
     page = panel.today_dialog
     started, release = threading.Event(), threading.Event()

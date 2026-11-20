@@ -5,8 +5,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from app import WorkBox
-from database import Database
+from workbox.app import WorkBox
+from workbox.projects.database import Database
 
 
 @pytest.fixture

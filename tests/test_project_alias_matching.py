@@ -5,11 +5,11 @@ from zipfile import ZipFile
 
 import pytest
 
-from bundle_analyzer import analyze_bundle
-from file_matcher import match_work_file_projects
-from folder_intake import FolderIntake
-from zip_content import count_project_files
-from zip_manager import match_projects
+from workbox.storage.bundle_analyzer import analyze_bundle
+from workbox.storage.file_matcher import match_work_file_projects
+from workbox.storage.folder_intake import FolderIntake
+from workbox.storage.zip_content import count_project_files
+from workbox.storage.zip_manager import match_projects
 
 
 def project(pid, name, aliases=(), batch=1, **extra):

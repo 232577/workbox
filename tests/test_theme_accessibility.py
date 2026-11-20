@@ -19,7 +19,7 @@ import sys
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog, QLineEdit, QVBoxLayout, QWidget
-from theme import apply_to, install_theme, set_theme
+from workbox.desktop.theme import apply_to, install_theme, set_theme
 
 app = QApplication([])
 app.setQuitOnLastWindowClosed(False)

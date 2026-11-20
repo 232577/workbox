@@ -1,7 +1,7 @@
 """匿名真实归档链路：材料就绪不等于人工交接。"""
 from pathlib import Path
 
-from desktop_service import DesktopService
+from workbox.desktop.desktop_service import DesktopService
 
 
 def task(service, task_id):

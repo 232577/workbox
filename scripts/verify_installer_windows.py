@@ -16,9 +16,9 @@ import sqlite3
 import subprocess
 import time
 
-from native_files import plain_path
 from scripts.verify_update_release import CONTENTS, payload_name
-from update_client import build_key
+from workbox.storage.native_files import plain_path
+from workbox.updates.update_client import build_key
 
 APP_KEY = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\{94062298-8991-4FF2-9E56-6B837B20A5FD}_is1'
 
@@ -53,7 +53,7 @@ def _manifest_records(manifest: str) -> dict:
 
 
 def verify_installed_payload(root: Path, manifest: str, app_sha: str, *, require_updater=False) -> int:
-    from incremental_apply import _inventory
+    from workbox.updates.incremental_apply import _inventory
 
     root = plain_path(root)
     records = _manifest_records(manifest)
@@ -78,7 +78,7 @@ def verify_installed_payload(root: Path, manifest: str, app_sha: str, *, require
 
 def verify_runtime_history(root: Path, obsolete: dict, manifest_sha256: str) -> dict[Path, str]:
     """核对旧、新清单差集的可恢复保留，并返回卸载后必须保留的记录及文件摘要。"""
-    import installer_runtime as runtime
+    from workbox.updates import installer_runtime as runtime
 
     root = plain_path(root)
     if runtime._histories(root, manifest_sha256):
@@ -115,11 +115,12 @@ def source_requires_updater(source: str) -> bool:
     """仅以已核验提交的树判断能力，不读取工作树的新增或缺失文件。"""
     if not isinstance(source, str) or not re.fullmatch(r'[0-9a-f]{40}', source):
         raise ValueError('Invalid source commit identity')
-    output = subprocess.check_output(['git', 'ls-tree', source, '--', 'update_helper_main.py'],
-                                     text=True, encoding='utf-8')
+    paths = ('update_helper_main.py', 'workbox/updates/update_helper_main.py')
+    output = subprocess.check_output(['git', 'ls-tree', source, '--', *paths], text=True, encoding='utf-8')
     if not output.strip():
         return False
-    if re.fullmatch(r'100(?:644|755) blob [0-9a-f]{40}\tupdate_helper_main\.py\n?', output) is None:
+    match = re.fullmatch(r'100(?:644|755) blob [0-9a-f]{40}\t([^\n]+)\n?', output)
+    if match is None or match[1] not in paths:
         raise ValueError('Ambiguous updater capability in exact source tree')
     return True
 

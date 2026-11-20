@@ -12,7 +12,7 @@ import zlib
 
 import pytest
 
-from delta_format import (build_key, delta_filename, validate_path, validate_manifest,
+from workbox.updates.delta_format import (build_key, delta_filename, validate_path, validate_manifest,
                           changed_paths, removed_paths, read_manifest, stage_package)
 
 
@@ -164,7 +164,7 @@ def test_package_rejection_before_staging(tmp_path, failure):
 
 
 def test_declared_budget_checked_before_read(monkeypatch, tmp_path):
-    import delta_format
+    import workbox.updates.delta_format as delta_format
     path, _ = package(tmp_path)
     monkeypatch.setattr(delta_format, 'MAX_MANIFEST_SIZE', 8)
     with pytest.raises(ValueError):
@@ -173,7 +173,7 @@ def test_declared_budget_checked_before_read(monkeypatch, tmp_path):
 
 @pytest.mark.parametrize('limit', ['MAX_FILES', 'MAX_FILE_SIZE', 'MAX_TOTAL_SIZE', 'MAX_PACKAGE_SIZE'])
 def test_each_resource_budget(monkeypatch, tmp_path, limit):
-    import delta_format
+    import workbox.updates.delta_format as delta_format
     path, _ = package(tmp_path)
     monkeypatch.setattr(delta_format, limit, 1)
     with pytest.raises(ValueError):
@@ -199,7 +199,7 @@ def test_directory_count_budget_is_checked_before_zip_parser(tmp_path, monkeypat
     end = data.rindex(b'PK\x05\x06')
     struct.pack_into('<HH', data, end + 8, 10002, 10002)
     path.write_bytes(data)
-    import delta_format
+    import workbox.updates.delta_format as delta_format
     def forbidden(*args, **options):
         raise AssertionError('超限目录不得交给 ZIP parser 先分配内存')
     monkeypatch.setattr(delta_format.zipfile, 'ZipFile', forbidden)
@@ -235,7 +235,7 @@ def test_real_deflate_length_cannot_be_hidden_by_false_central_size(tmp_path):
 def test_windows_package_handle_denies_concurrent_writers(tmp_path):
     if os.name != 'nt':
         pytest.skip('Windows 文件共享租约仅在 Windows 验证')
-    import delta_format
+    import workbox.updates.delta_format as delta_format
     path, _ = package(tmp_path)
     with delta_format._open_package(path):
         with pytest.raises(OSError):
@@ -244,7 +244,7 @@ def test_windows_package_handle_denies_concurrent_writers(tmp_path):
 
 
 def test_staged_disk_bytes_are_rechecked_before_success(monkeypatch, tmp_path):
-    import delta_format
+    import workbox.updates.delta_format as delta_format
     path, _ = package(tmp_path)
     original = delta_format._read_member
     def corrupt(*args, **options):
@@ -259,7 +259,7 @@ def test_staged_disk_bytes_are_rechecked_before_success(monkeypatch, tmp_path):
 
 
 def test_stage_flush_failure_cannot_report_files_ready(monkeypatch, tmp_path):
-    import delta_format
+    import workbox.updates.delta_format as delta_format
     path, _ = package(tmp_path)
     def fail_flush(fd):
         raise OSError('anonymous disk flush failure')
@@ -270,8 +270,8 @@ def test_stage_flush_failure_cannot_report_files_ready(monkeypatch, tmp_path):
 
 def test_stage_uses_exclusive_creator_and_preserves_failed_file(monkeypatch, tmp_path):
     from contextlib import contextmanager
-    import delta_format
-    import update_file_ops
+    import workbox.updates.delta_format as delta_format
+    import workbox.updates.update_file_ops as update_file_ops
     path, manifest = package(tmp_path)
     destination = tmp_path / 'stage'
     created = []

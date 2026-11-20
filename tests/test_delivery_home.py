@@ -8,9 +8,9 @@ from PySide6.QtCore import QTimer
 from PySide6.QtTest import QSignalSpy
 from PySide6.QtWidgets import QApplication
 
-from desktop_controller import FloatingController
-from desktop_service import DesktopService
-from compact_ui import ProjectDeliveryDialog
+from workbox.desktop.desktop_controller import FloatingController
+from workbox.desktop.desktop_service import DesktopService
+from workbox.desktop.compact_ui import ProjectDeliveryDialog
 
 
 @pytest.fixture(scope='module')

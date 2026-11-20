@@ -1,7 +1,7 @@
 """Explicit failed previews leave a bounded local diagnostic, never business mutations."""
 import json
 
-from desktop_service import DesktopService
+from workbox.desktop.desktop_service import DesktopService
 
 
 def test_blocked_preview_records_ids_states_and_reason_without_project_names(tmp_path):
@@ -37,5 +37,5 @@ def test_unwritable_diagnostic_never_changes_the_blocked_preview(tmp_path):
 
 
 def test_bugfix_build_is_distinct_from_the_unreleased_first_candidate():
-    from update_client import CURRENT_TAG, build_key
+    from workbox.updates.update_client import CURRENT_TAG, build_key
     assert build_key(CURRENT_TAG) > build_key('v1.0.0.20261104.1')

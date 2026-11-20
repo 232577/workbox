@@ -5,8 +5,8 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtTest import QTest, QSignalSpy
 from PySide6.QtWidgets import QApplication, QDialogButtonBox
 
-from compact_ui import CompactPanel
-from desktop_service import DesktopService
+from workbox.desktop.compact_ui import CompactPanel
+from workbox.desktop.desktop_service import DesktopService
 from test_delivery_cleanup_ui import answer_correction
 
 

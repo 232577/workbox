@@ -6,8 +6,8 @@ from zipfile import ZipFile
 
 import pytest
 
-from desktop_service import DesktopService
-from project_documents import list_project_documents
+from workbox.desktop.desktop_service import DesktopService
+from workbox.storage.project_documents import list_project_documents
 
 
 pytestmark = pytest.mark.skipif(os.name != 'nt', reason='文稿轮换与项目目录租约使用 Windows API')

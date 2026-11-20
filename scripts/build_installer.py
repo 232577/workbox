@@ -9,7 +9,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from native_files import plain_path
+from workbox.storage.native_files import plain_path
 
 
 PRIVATE_SUFFIXES = {'.db', '.db-wal', '.db-shm', '.sqlite', '.sqlite3', '.csv',

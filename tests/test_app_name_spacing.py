@@ -6,11 +6,11 @@ from zipfile import ZipFile
 
 import pytest
 
-from desktop_service import DesktopService
-from file_matcher import match_work_file_projects
-from folder_intake import FolderIntake
-from parser import ParsedProject, parse_message
-from zip_manager import match_projects
+from workbox.desktop.desktop_service import DesktopService
+from workbox.storage.file_matcher import match_work_file_projects
+from workbox.storage.folder_intake import FolderIntake
+from workbox.projects.parser import ParsedProject, parse_message
+from workbox.storage.zip_manager import match_projects
 
 
 def project(pid, name, aliases=()):

@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from desktop_service import DesktopService
-import fluent_views
-from fluent_views import _batch_badge_parts, batch_progress_summary
+from workbox.desktop.desktop_service import DesktopService
+import workbox.desktop.fluent_views as fluent_views
+from workbox.desktop.fluent_views import _batch_badge_parts, batch_progress_summary
 
 
 @pytest.mark.parametrize('total', [1, 5])
