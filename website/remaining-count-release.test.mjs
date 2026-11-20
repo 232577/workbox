@@ -69,7 +69,7 @@ test('11月13日r1历史身份保留，首页与稳定清单继续绑定当前�
   assert.ok(releaseNotes.includes('7760e997ded567dd5c1aec4435f023b82b64664ae757e249568999aac4f690fc'));
   const metadata = await (await handleRequest(new Request('https://example.com/updates/stable.json'), {})).json();
   assert.equal(metadata.tag_name, release.tag);
-  assert.ok(metadata.body.includes('来源提交 afe99d53107346a24751bb923fffa7692f385ada。'));
+  assert.ok(metadata.body.includes('来源提交 10004160f30dba072f35e88f7e84c89b16a3edef。'));
   assert.deepEqual(metadata.assets, [{ name: release.filename, size: release.size, state: 'uploaded',
     digest: `sha256:${release.sha256}`,
     browser_download_url: `https://github.com/232577/workbox/releases/download/${release.tag}/${release.filename}` }]);
@@ -78,7 +78,7 @@ test('11月13日r1历史身份保留，首页与稳定清单继续绑定当前�
   }
   const primary = [...documents['/index.html'].matchAll(/class="[^"]*download-link[^"]*" href="([^"#]+)"/g)].map(match => match[1]);
   assert.equal(primary.filter(value => value === `/download/${release.filename}`).length, 1);
-  assert.ok(documents['/index.html'].includes(`${(release.size / 1000000).toFixed(1)} MB`));
+  assert.ok(documents['/index.html'].includes(`${(release.size / 1000000).toFixed(2)} MB`));
   assert.ok(html.includes(`href="https://github.com/232577/workbox/releases/download/${release.tag}/${release.filename}"`));
   for (const text of [html, readme, siteReadme, metadata.body]) {
     assert.match(text, /Studio/);
