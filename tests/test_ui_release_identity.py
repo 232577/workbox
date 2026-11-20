@@ -91,6 +91,10 @@ def test_packaged_source_layout_build_has_its_own_release_identity():
     assert update_client.build_key(update_client.CURRENT_TAG) >= update_client.build_key('v1.0.0.20261120.1')
 
 
+def test_calendar_fix_can_upgrade_the_first_packaged_source_release():
+    assert update_client.build_key(update_client.CURRENT_TAG) > update_client.build_key('v1.0.0.20261120.1')
+
+
 def test_build_probe_reports_release_without_creating_business_data(tmp_path):
     data = tmp_path / 'unused-data'
     result = tmp_path / 'identity.json'
@@ -123,6 +127,8 @@ def test_build_probe_reports_release_without_creating_business_data(tmp_path):
     ('v1.0.0.20261116.1', 'v1.0.0.20261113.2', 'WorkBox-1.0.0-Setup-x64-20261116-r1.exe'),
     ('v1.0.0.20261116.1', 'v1.0.0.20261116', 'WorkBox-1.0.0-Setup-x64-20261116-r1.exe'),
     ('v1.0.0.20261120.1', 'v1.0.0.20261116.1', 'WorkBox-1.0.0-Setup-x64-20261120-r1.exe'),
+    ('v1.0.0.20261120.2', 'v1.0.0.20261116.1', 'WorkBox-1.0.0-Setup-x64-20261120-r2.exe'),
+    ('v1.0.0.20261120.2', 'v1.0.0.20261120.1', 'WorkBox-1.0.0-Setup-x64-20261120-r2.exe'),
 ])
 def test_release_upgrades_previous_without_reoffering_installed_or_older(tag, previous, filename):
     payload = {'tag_name': tag, 'draft': False, 'prerelease': False,
