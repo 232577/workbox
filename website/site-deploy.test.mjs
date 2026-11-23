@@ -85,7 +85,7 @@ test('release verification rejects a stale main or any changed public asset iden
     ...release, version: '2.0.0',
   }, localManifest, published), /version/);
   for (const changed of [
-    { tag_name: 'v1.0.0.20261120.1' },
+    { tag_name: 'v1.0.0.20261120.2' },
     { draft: true },
     { prerelease: true },
     { html_url: 'https://example.com/release' },
@@ -150,7 +150,7 @@ test('online verification checks anonymous bytes, range, page links, history, st
   const video = Buffer.alloc(2050, 66);
   const hash = bytes => createHash('sha256').update(bytes).digest('hex');
   const primary = { ...release, size: installer.length, sha256: hash(installer) };
-  const previous = { filename: 'WorkBox-1.0.0-Setup-x64-20261120-r1.exe', size: 100 };
+  const previous = { filename: 'WorkBox-1.0.0-Setup-x64-20261120-r2.exe', size: 100 };
   const media = { path: '/media/test.mp4', size: video.length, sha256: hash(video) };
   const manifest = { tag_name: primary.tag };
   const downloadPath = `/download/${primary.filename}`;
