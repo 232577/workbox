@@ -175,8 +175,10 @@ class ProjectChanges:
             public['result_type_name'] = (target['type_name'] or '未分类') if target else None
             public['result_included'] = bool(target['included'] and plan['source']['included']) if target else None
             if plan['kind'] == 'merge':
-                public['warning'] = ('文件直接并入保留项目工作目录；同名文件会编号保留。原工作目录保留作恢复备份。'
+                public['warning'] = ('文件直接并入保留项目工作目录；同名文件会编号保留。原工作目录移入同盘恢复位置。'
                                      '原交付明细保留，按同一项目统计首次交付，不新增交付记录。')
+            elif plan['kind'] == 'rename' and plan['directory_plan'].get('keeps_shared_group'):
+                public['warning'] = '原工作目录同时用于整个批次，修改项目名称后继续使用该目录。'
             elif plan['kind'] == 'blocked':
                 self._record_failed_preview(public)
             return public
@@ -310,13 +312,17 @@ class ProjectChanges:
             directory_result = self.directories.execute(plan['directory_plan'],
                 lambda operation_id, mapping, result: self.service._commit_project_change(
                     plan, operation_id, mapping, result, cancel_event=cancel_event),
-                cancel_event=cancel_event, progress=progress)
+                retire_source=plan['kind'] == 'merge', cancel_event=cancel_event, progress=progress)
             self.service.snapshots._observed.clear()
             retained = plan['target'] or plan['source']
             message = ('项目已合并，文件位于保留项目目录；原文件和交付记录已保留。'
                        if plan['kind']=='merge' else '项目名称和工作目录已同步。')
+            if plan['directory_plan'].get('keeps_shared_group'):
+                message = '项目名称已更新，继续使用原批次工作目录。'
             if directory_result.get('cleanup_error'):
-                message += ' 旧目标备份清理未完成，请保留现场并检查目录变更记录。'
-            return dict(operation=plan['kind'], project_id=retained['id'], project_ids=[retained['id']],
-                        name=retained['name'] if plan['kind']=='merge' else plan['new_name'],
-                        message=message)
+                message += ' ' + directory_result['cleanup_error']
+            result = dict(operation=plan['kind'], project_id=retained['id'], project_ids=[retained['id']],
+                          name=retained['name'] if plan['kind']=='merge' else plan['new_name'], message=message)
+            if directory_result.get('recovery_path'):
+                result['recovery_path'] = directory_result['recovery_path']
+            return result
