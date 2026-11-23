@@ -6,9 +6,9 @@ from datetime import date
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal, QSize, QDate, QLocale, QPoint, QRect, QSignalBlocker, QTimer
-from PySide6.QtGui import QContextMenuEvent, QActionGroup, QFontMetrics
+from PySide6.QtGui import QContextMenuEvent, QActionGroup, QFontMetrics, QKeySequence
 from PySide6.QtWidgets import (
-    QAbstractItemView, QButtonGroup, QDialog, QFileDialog, QFrame, QGridLayout,
+    QAbstractItemView, QApplication, QButtonGroup, QDialog, QFileDialog, QFrame, QGridLayout,
     QHBoxLayout, QHeaderView, QLabel, QListView, QListWidget, QListWidgetItem,
     QMenu, QMessageBox, QPlainTextEdit, QProxyStyle, QScrollArea, QScrollBar,
     QSizePolicy, QSplitter, QStyle, QStyledItemDelegate, QStyleFactory,
@@ -111,6 +111,18 @@ class ProjectList(WorkbenchListWidget):
             point = self.visualItemRect(item).center() if keyboard else event.pos()
             self.project_context_requested.emit(item.data(Qt.UserRole), self.viewport().mapToGlobal(point))
         event.accept()
+
+    def keyPressEvent(self, event):
+        if event.matches(QKeySequence.Copy):
+            names = [item.data(PROJECT_NAME_ROLE)
+                     for item in sorted(self.selectedItems(), key=self.row)
+                     if not item.isHidden()]
+            names = [name for name in names if name]
+            if names:
+                QApplication.clipboard().setText('\n'.join(names))
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def resizeEvent(self, event):
         if event.size().width() == event.oldSize().width():

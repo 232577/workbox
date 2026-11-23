@@ -1,22 +1,26 @@
 """项目已有文档的只读异步列表，未变化时保持条目、选择和滚动。"""
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, QSignalBlocker, QUrl, QSize, Signal
-from PySide6.QtGui import QColor, QDesktopServices
-from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QHeaderView, QMenu, QTableWidgetItem, QVBoxLayout, QWidget, QSizePolicy, QMessageBox
+from PySide6.QtCore import QMimeData, QSize, QSignalBlocker, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QColor, QDesktopServices, QDrag, QKeySequence
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QHBoxLayout, QHeaderView,
+                               QMenu, QMessageBox, QSizePolicy, QTableWidgetItem, QVBoxLayout, QWidget)
 from qfluentwidgets import FluentIcon
 
+from workbox.desktop.floating import DOCUMENT_DRAG_MIME
 from workbox.desktop.fluent_views import ITEM_TEXT_TONE_ROLE, WorkbenchTableWidget
-from workbox.storage.native_files import plain_path
-from workbox.storage.project_documents import list_project_documents
 from workbox.desktop.theme import theme_signal, tokens
 from workbox.desktop.ui import FileJob, human_size, label, local_timestamp
 from workbox.desktop.ui_components import button
+from workbox.storage.native_files import plain_path
+from workbox.storage.project_documents import list_project_documents
 
 
 DOCUMENT_EXTENSIONS = {'.txt', '.md', '.pdf', '.doc', '.docx', '.rtf', '.odt',
     '.xls', '.xlsx', '.csv', '.ppt', '.pptx', '.png', '.jpg', '.jpeg', '.gif',
     '.bmp', '.webp', '.zip', '.7z', '.rar', '.json', '.xml', '.yaml', '.yml', '.log'}
+FILE_PATH_ROLE = int(Qt.UserRole) + 1
+PREFERRED_DROP_EFFECT = 'application/x-qt-windows-mime;value="Preferred DropEffect"'
 
 
 class DocumentTable(WorkbenchTableWidget):
@@ -25,7 +29,44 @@ class DocumentTable(WorkbenchTableWidget):
     width_about_to_change = Signal()
     width_changed = Signal()
 
+    def selected_file_path(self) -> str | None:
+        rows = self.selectionModel().selectedRows(0)
+        return rows[0].data(FILE_PATH_ROLE) if rows else None
+
+    def _file_mime_data(self) -> QMimeData | None:
+        selected_path = self.selected_file_path()
+        if not selected_path:
+            return None
+        try:
+            path = plain_path(selected_path)
+            if not path.is_file():
+                return None
+        except (OSError, ValueError):
+            return None
+        mime = QMimeData()
+        mime.setUrls([QUrl.fromLocalFile(str(path))])
+        return mime
+
+    def copy_selected_file(self) -> None:
+        mime = self._file_mime_data()
+        if mime is not None:
+            # Windows Shell DROPEFFECT_COPY is a little-endian DWORD.
+            mime.setData(PREFERRED_DROP_EFFECT, b'\x01\x00\x00\x00')
+            QApplication.clipboard().setMimeData(mime)
+
+    def startDrag(self, _supported_actions):
+        mime = self._file_mime_data()
+        if mime is not None:
+            mime.setData(DOCUMENT_DRAG_MIME, b'1')
+            drag = QDrag(self)
+            drag.setMimeData(mime)
+            drag.exec(Qt.CopyAction, Qt.CopyAction)
+
     def keyPressEvent(self, event):
+        if event.matches(QKeySequence.Copy):
+            event.accept()
+            self.copy_selected_file()
+            return
         if (event.key() in (Qt.Key_Return, Qt.Key_Enter)
                 and event.modifiers() in (Qt.NoModifier, Qt.KeypadModifier)):
             event.accept()
@@ -81,10 +122,13 @@ class ProjectDocumentsPane(QWidget):
         self.file_menu_button = button('文件操作')
         self.file_menu_button.setObjectName('documentActionsButton')
         self.file_menu_button.setAccessibleName('更多文件操作')
-        self.file_menu_button.setToolTip('定位所选文件、查看历史文稿或刷新列表。')
+        self.file_menu_button.setToolTip('复制或定位所选文件、查看历史文稿或刷新列表。')
         self.file_menu = QMenu(self.file_menu_button)
         self.file_menu.setToolTipsVisible(True)
         self.file_menu_button.setMenu(self.file_menu)
+        self.copy_action = self.file_menu.addAction('复制文件')
+        self.copy_action.setEnabled(False)
+        self.copy_action.setToolTip('复制文件（Ctrl+C），可粘贴到资源管理器。')
         self.folder_action = self.file_menu.addAction('所在目录', self.open_selected_folder)
         self.folder_action.setToolTip('打开所选文件或归档的上一级目录。')
         self.file_menu.addAction('刷新文档', self.request_refresh)
@@ -121,6 +165,8 @@ class ProjectDocumentsPane(QWidget):
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.setDragDropMode(QAbstractItemView.DragOnly)
+        self.copy_action.triggered.connect(self.table.copy_selected_file)
         self.table.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.table.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
@@ -330,6 +376,10 @@ class ProjectDocumentsPane(QWidget):
                 self.table.setRowCount(len(self.documents))
             for row_index, record in enumerate(self.documents):
                 name=record['relative_path']
+                file_path = record['path'] if record['exists'] and not record.get('is_directory') else None
+                flags = Qt.ItemIsEnabled | Qt.ItemIsSelectable
+                if file_path:
+                    flags |= Qt.ItemIsDragEnabled
                 if record.get('is_directory') and record['kind']=='材料归档':
                     name='交付材料 · '+local_timestamp(record.get('archived_at') or record.get('modified_at'))
                 elif record['kind']=='ZIP归档':
@@ -350,15 +400,17 @@ class ProjectDocumentsPane(QWidget):
                     item = self.table.item(row_index, column)
                     if item is None:
                         item = QTableWidgetItem()
-                        item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
                         if column == 2:
                             item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
                         self.table.setItem(row_index, column, item)
+                    if item.flags() != flags:
+                        item.setFlags(flags)
                     if item.text() != value:
                         item.setText(value)
                     item.setToolTip(tooltip)
                     if column == 0:
                         item.setData(Qt.UserRole, record['id'])
+                        item.setData(FILE_PATH_ROLE, file_path)
                         item.setIcon(icons[bool(record.get('is_directory'))])
                     elif column == 1:
                         item.setData(ITEM_TEXT_TONE_ROLE, None if record['exists'] else 'error')
@@ -478,6 +530,7 @@ class ProjectDocumentsPane(QWidget):
 
     def update_actions(self):
         record = self.current_document()
+        self.copy_action.setEnabled(bool(self.table.selected_file_path()))
         self.history_action.setEnabled(self.project_id is not None)
         self.archive_history_action.setEnabled(self._can_archive_history(record))
         self.open_button.setVisible(record is not None)

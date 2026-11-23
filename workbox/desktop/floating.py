@@ -19,6 +19,9 @@ from workbox.desktop.theme import tokens, theme_signal
 from workbox.desktop.window_zorder import keep_window_topmost
 
 
+DOCUMENT_DRAG_MIME = 'application/x-workbox-document-drag'
+
+
 class _TextHTML(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -65,7 +68,11 @@ def decode_mime(mime):
 
 class DropSurface:
     def dragEnterEvent(self, event):
-        data = decode_mime(event.mimeData())
+        mime = event.mimeData()
+        if mime.hasFormat(DOCUMENT_DRAG_MIME):
+            event.ignore()
+            return
+        data = decode_mime(mime)
         if data['kind'] != 'unsupported':
             event.setDropAction(Qt.CopyAction)
             event.accept()
@@ -83,7 +90,13 @@ class DropSurface:
         event.accept()
 
     def dropEvent(self, event):
-        data = decode_mime(event.mimeData())
+        mime = event.mimeData()
+        if mime.hasFormat(DOCUMENT_DRAG_MIME):
+            if hasattr(self, 'set_drop_hint'):
+                self.set_drop_hint('')
+            event.ignore()
+            return
+        data = decode_mime(mime)
         if data['kind'] == 'unsupported':
             event.ignore()
         else:

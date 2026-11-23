@@ -2,8 +2,8 @@ import time
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QPoint, Qt, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import QPoint, QPointF, Qt, QUrl
+from PySide6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent
 from PySide6.QtTest import QSignalSpy, QTest
 from PySide6.QtWidgets import QApplication, QHeaderView, QMessageBox
 
@@ -221,6 +221,100 @@ def test_document_refresh_preserves_selection_and_handles_external_new_files(pan
     pane.request_refresh()
     wait(lambda: pane.table.rowCount()==2 and pane.worker is None)
     assert pane.current_document()['name']=='甲说明.txt'
+
+
+def test_document_copy_uses_actual_selected_file_for_clipboard_and_menu(panel, qapp, monkeypatch):
+    choose(panel, 1)
+    pane = panel.document_pane
+    wait(lambda: pane.table.rowCount() == 1 and pane.worker is None)
+    path = Path(panel.service.workspaces.get_workspace(1)['path']) / '甲说明.txt'
+    copied = []
+
+    class Clipboard:
+        def setMimeData(self, mime):
+            copied.append(([url.toLocalFile() for url in mime.urls()], {
+                name: bytes(mime.data(name)) for name in mime.formats()
+            }))
+
+    monkeypatch.setattr(QApplication, 'clipboard', lambda: Clipboard())
+    pane.table.selectRow(0)
+    pane.table.setFocus()
+    QTest.keyClick(pane.table, Qt.Key_C, Qt.ControlModifier)
+    action = next(action for action in pane.file_menu.actions() if action.text() == '复制文件')
+    assert action.isEnabled()
+    action.trigger()
+    assert [list(map(Path, urls)) for urls, _ in copied] == [[path], [path]]
+    assert all(formats['application/x-qt-windows-mime;value="Preferred DropEffect"']
+               == b'\x01\x00\x00\x00' for _, formats in copied)
+    assert path.read_text(encoding='utf-8') == '隔离文档'
+
+    path.unlink()
+    QTest.keyClick(pane.table, Qt.Key_C, Qt.ControlModifier)
+    assert len(copied) == 2
+    pane.table.clearSelection()
+    assert not action.isEnabled()
+    QTest.keyClick(pane.table, Qt.Key_C, Qt.ControlModifier)
+    assert len(copied) == 2
+
+
+def test_document_drag_from_selected_row_only_offers_copy(panel, monkeypatch):
+    from workbox.desktop import project_documents_ui
+
+    choose(panel, 2)
+    pane = panel.document_pane
+    wait(lambda: pane.table.rowCount() == 1 and pane.worker is None)
+    path = Path(panel.service.workspaces.get_workspace(2)['path']) / '乙说明.docx'
+    drags = []
+
+    class Drag:
+        def __init__(self, source):
+            assert source is pane.table
+
+        def setMimeData(self, mime):
+            self.mime = mime
+
+        def exec(self, actions, default_action):
+            drags.append(([url.toLocalFile() for url in self.mime.urls()], actions, default_action))
+            enter = QDragEnterEvent(QPoint(5, 5), Qt.CopyAction, self.mime, Qt.LeftButton, Qt.NoModifier)
+            panel.dragEnterEvent(enter)
+            assert not enter.isAccepted()
+            drop = QDropEvent(QPointF(5, 5), Qt.CopyAction, self.mime, Qt.LeftButton, Qt.NoModifier)
+            panel.dropEvent(drop)
+            assert not drop.isAccepted()
+            return Qt.CopyAction
+
+    monkeypatch.setattr(project_documents_ui, 'QDrag', Drag)
+    intake = QSignalSpy(panel.intake)
+    pane.table.selectRow(0)
+    assert pane.table.dragEnabled()
+    for column in range(3):
+        assert pane.table.item(0, column).flags() & Qt.ItemIsDragEnabled
+    start = pane.table.visualItemRect(pane.table.item(0, 0)).center()
+    QTest.mousePress(pane.table.viewport(), Qt.LeftButton, pos=start)
+    QTest.mouseMove(pane.table.viewport(), start + QPoint(32, 0))
+    QTest.mouseMove(pane.table.viewport(), start + QPoint(50, 0))
+    QTest.mouseRelease(pane.table.viewport(), Qt.LeftButton, pos=start + QPoint(50, 0))
+    assert len(drags) == 1
+    urls, actions, default_action = drags[0]
+    assert list(map(Path, urls)) == [path]
+    assert actions == default_action == Qt.CopyAction
+    assert intake.count() == 0
+    assert path.exists() and pane.table.rowCount() == 1
+
+
+def test_archive_directory_row_is_not_a_file_transfer_source(panel, tmp_path):
+    choose(panel, 1)
+    pane = panel.document_pane
+    wait(lambda: pane.table.rowCount() == 1 and pane.worker is None)
+    archive = tmp_path / 'archive'
+    archive.mkdir()
+    row = dict(pane.documents[0], id='archive:1', path=str(archive), name=archive.name,
+               relative_path=archive.name, kind='材料归档', is_directory=True, size=None)
+    pane.apply_result(dict(project_id=1, workspace_path=None, errors=[], documents=[row]))
+    pane.table.selectRow(0)
+    assert not pane.copy_action.isEnabled()
+    assert not pane.table.item(0, 0).flags() & Qt.ItemIsDragEnabled
+    assert pane.open_button.isEnabled()
 
 
 def test_open_document_requires_explicit_action_and_never_runs_program_files(panel,monkeypatch):
