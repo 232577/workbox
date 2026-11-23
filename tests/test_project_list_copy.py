@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QAbstractItemView, QApplication
 
-from workbox.desktop.compact_ui import ProjectList, populate
+from workbox.desktop.compact_ui import CompactPanel, ProjectList, populate
 
 
 @pytest.fixture
@@ -17,12 +17,14 @@ def project_list(monkeypatch):
     monkeypatch.setattr(QApplication, 'clipboard', lambda: clipboard)
     view = ProjectList()
     rows = [
-        {'id': 2, 'name': '样例（C#）管理平台'},
+        {'id': 2, 'name': '样例（C#）管理平台', 'urgent': True, 'zip_count': 2},
         {'id': 3, 'name': '样例测试项目'},
         {'id': 1, 'name': '文档 2.0 分发工具'},
         {'id': 4, 'name': '未选择的样例项目'},
     ]
-    populate(view, rows, lambda row: row['name'] + '\n待交付 · 生成材料 · R20261123-1')
+    projects = [dict({'status': '待交付', 'project_type_name': '生成材料', 'urgent': False,
+                      'zip_count': 0}, **row) for row in rows]
+    populate(view, projects, CompactPanel.project_caption)
     yield view, copied
     view.close()
 
@@ -34,7 +36,7 @@ def test_copy_selected_project_uses_plain_name(project_list):
     QTest.keyClick(view, Qt.Key_C, Qt.ControlModifier)
 
     assert copied == ['样例（C#）管理平台']
-    assert view.currentItem().text() == '样例（C#）管理平台\n待交付 · 生成材料 · R20261123-1'
+    assert view.currentItem().text() == '加急  样例（C#）管理平台\n待交付 · 生成材料 · ZIP 2'
 
 
 def test_copy_multiple_visible_projects_uses_list_order(project_list):

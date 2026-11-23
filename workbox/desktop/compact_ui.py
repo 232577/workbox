@@ -37,6 +37,7 @@ from workbox.projects.parser import ParsedProject
 from workbox.desktop.ui import app_icon, human_size, label as shared_label, local_timestamp
 
 PROJECT_ADDED_DATE_ROLE = int(Qt.UserRole) + 14
+PROJECT_COPY_NAME_ROLE = int(Qt.UserRole) + 15
 
 
 def label(text='', name='', wrap=False):
@@ -114,7 +115,7 @@ class ProjectList(WorkbenchListWidget):
 
     def keyPressEvent(self, event):
         if event.matches(QKeySequence.Copy):
-            names = [item.data(PROJECT_NAME_ROLE)
+            names = [item.data(PROJECT_COPY_NAME_ROLE)
                      for item in sorted(self.selectedItems(), key=self.row)
                      if not item.isHidden()]
             names = [name for name in names if name]
@@ -218,6 +219,9 @@ def populate(widget, rows, caption, *, clear_selection=False):
 
     def project_metadata(item, pid, text):
         row = row_by_id[pid]
+        raw_name = row.get('name')
+        if item.data(PROJECT_COPY_NAME_ROLE) != raw_name:
+            item.setData(PROJECT_COPY_NAME_ROLE, raw_name)
         markers = row.get('batch_markers') or []
         details = []
         for marker in markers:
