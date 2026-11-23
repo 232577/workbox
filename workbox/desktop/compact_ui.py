@@ -6,9 +6,9 @@ from datetime import date
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal, QSize, QDate, QLocale, QPoint, QRect, QSignalBlocker, QTimer
-from PySide6.QtGui import QContextMenuEvent, QActionGroup, QFontMetrics
+from PySide6.QtGui import QContextMenuEvent, QActionGroup, QFontMetrics, QKeySequence
 from PySide6.QtWidgets import (
-    QAbstractItemView, QButtonGroup, QDialog, QFileDialog, QFrame, QGridLayout,
+    QAbstractItemView, QApplication, QButtonGroup, QDialog, QFileDialog, QFrame, QGridLayout,
     QHBoxLayout, QHeaderView, QLabel, QListView, QListWidget, QListWidgetItem,
     QMenu, QMessageBox, QPlainTextEdit, QProxyStyle, QScrollArea, QScrollBar,
     QSizePolicy, QSplitter, QStyle, QStyledItemDelegate, QStyleFactory,
@@ -37,6 +37,7 @@ from workbox.projects.parser import ParsedProject
 from workbox.desktop.ui import app_icon, human_size, label as shared_label, local_timestamp
 
 PROJECT_ADDED_DATE_ROLE = int(Qt.UserRole) + 14
+PROJECT_COPY_NAME_ROLE = int(Qt.UserRole) + 15
 
 
 def label(text='', name='', wrap=False):
@@ -111,6 +112,18 @@ class ProjectList(WorkbenchListWidget):
             point = self.visualItemRect(item).center() if keyboard else event.pos()
             self.project_context_requested.emit(item.data(Qt.UserRole), self.viewport().mapToGlobal(point))
         event.accept()
+
+    def keyPressEvent(self, event):
+        if event.matches(QKeySequence.Copy):
+            names = [item.data(PROJECT_COPY_NAME_ROLE)
+                     for item in sorted(self.selectedItems(), key=self.row)
+                     if not item.isHidden()]
+            names = [name for name in names if name]
+            if names:
+                QApplication.clipboard().setText('\n'.join(names))
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def resizeEvent(self, event):
         if event.size().width() == event.oldSize().width():
@@ -206,6 +219,9 @@ def populate(widget, rows, caption, *, clear_selection=False):
 
     def project_metadata(item, pid, text):
         row = row_by_id[pid]
+        raw_name = row.get('name')
+        if item.data(PROJECT_COPY_NAME_ROLE) != raw_name:
+            item.setData(PROJECT_COPY_NAME_ROLE, raw_name)
         markers = row.get('batch_markers') or []
         details = []
         for marker in markers:
@@ -1782,7 +1798,8 @@ class CompactPanel(DropSurface, QWidget):
     @staticmethod
     def project_caption(project):
         # 将核心状态/类型和来源信息分行，避免批次挤散“生成材料”等短类型名。
-        metadata = [project['status'], project.get('project_type_name') or '未分类']
+        status = project['status']
+        metadata = [status, project.get('project_type_name') or '未分类']
         if project['zip_count']:
             metadata.append(f"ZIP {project['zip_count']}")
         state = ' · '.join(metadata)
@@ -1791,7 +1808,7 @@ class CompactPanel(DropSurface, QWidget):
             due = date.fromisoformat(project['due_date'])
             days = (date.today() - due).days
             caption = f"截止 {project['due_date']}"
-            if project['status'] != '已交付' and not project.get('archived_at'):
+            if status != '已交付' and not project.get('archived_at'):
                 caption = f'逾期 {days} 天' if days > 0 else ('今天截止' if days == 0 else caption)
             parts.append(caption)
         if project.get('notes'):
@@ -1800,7 +1817,8 @@ class CompactPanel(DropSurface, QWidget):
             parts.append('已删除')
         elif project.get('archived_at'):
             parts.append('已归档')
-        return f"{'加急  ' if project['urgent'] else ''}{project['name']}\n{state}" + ('\n' + ' · '.join(parts) if parts else '')
+        urgent_prefix = '加急  ' if project['urgent'] and status != '已交付' else ''
+        return f"{urgent_prefix}{project['name']}\n{state}" + ('\n' + ' · '.join(parts) if parts else '')
 
     def toggle_bulk(self, enabled):
         self.project_list.clearSelection()

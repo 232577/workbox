@@ -1,5 +1,6 @@
 """项目名与详情独立排版，仍使用 Fluent 原有交互状态。"""
 import math
+from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QItemSelectionModel, QPointF, QRect, Qt
@@ -54,6 +55,41 @@ def test_real_project_list_populates_separate_text_and_updates_in_place(qapp,tmp
         assert panel.project_list.item(0) is item and item.isSelected()
         assert '开发中' in item.data(fluent_views.PROJECT_DETAIL_ROLE)
         assert item.data(Qt.UserRole)==1
+    finally:
+        panel.document_pane.shutdown()
+        panel.hide()
+
+
+def test_delivered_project_hides_name_prefix_and_retains_urgency(qapp, tmp_path):
+    from workbox.desktop.compact_ui import CompactPanel
+    from workbox.desktop.desktop_service import DesktopService
+
+    service = DesktopService(tmp_path / 'data' / 'workbox.db')
+    project_name = '隔离交付样例项目'
+    service.receive_text(f'1. {project_name}')
+    service.set_urgent(1, True)
+    workspace = Path(service.workspaces.get_workspace(1)['path'])
+    (workspace / '样例材料.txt').write_text('隔离材料', encoding='utf-8')
+    panel = CompactPanel(service)
+    try:
+        assert panel.project_list.item(0).data(fluent_views.PROJECT_NAME_ROLE) == f'加急  {project_name}'
+
+        delivered = service.confirm_delivery(1, confirmed=True)
+        panel.refresh()
+
+        project = service.get_project(1)
+        assert project['status'] == '已交付' and project['urgent'] == 1
+        item = panel.project_list.item(0)
+        assert item.data(fluent_views.PROJECT_NAME_ROLE) == project_name
+        assert item.text().splitlines()[0] == project_name
+        assert '已交付' in item.data(fluent_views.PROJECT_DETAIL_ROLE)
+
+        service.db.set_delivery_events_voided([delivered['event_id']], voided=True, confirmed=True)
+        panel.refresh()
+
+        item = panel.project_list.item(0)
+        assert item.data(fluent_views.PROJECT_NAME_ROLE) == f'加急  {project_name}'
+        assert '待交付' in item.data(fluent_views.PROJECT_DETAIL_ROLE)
     finally:
         panel.document_pane.shutdown()
         panel.hide()
