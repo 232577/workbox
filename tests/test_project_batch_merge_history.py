@@ -83,6 +83,66 @@ def test_existing_chain_of_legacy_merges_recovers_every_original_batch_without_w
     assert not index['warnings']
 
 
+def test_opening_unregistered_batch_peer_never_recreates_retired_workspace(tmp_path):
+    service = DesktopService(tmp_path / 'data/workbox.db')
+    original = service.db.create_capture('匿名原文', '匿名原批次', [('原第一项目', False), ('同批项目', False)])
+    source, peer = original['project_ids']
+    retired = Path(service.workspaces.ensure_projects([source])[0]['path'])
+    target = service.capture_message('1. 保留项目', '匿名另一批次')['project_ids'][0]
+    record_old_merge(service.db, source, target)
+    parked = tmp_path / '已保全旧目录'
+    retired.rename(parked)
+
+    peer_path = Path(service.ensure_workspaces(peer)[0]['path'])
+
+    assert parked.is_dir()
+    assert not retired.exists()
+    assert peer_path == retired.parent / '同批项目'
+    assert service.get_project(peer)['batch_id'] == original['batch_id']
+    assert f"batch:{original['batch_id']}" in keys(read_index(service.db), target)
+
+
+def test_opening_unregistered_batch_peer_keeps_shared_group_with_a_registered_peer(tmp_path):
+    service = DesktopService(tmp_path / 'data/workbox.db')
+    original = service.db.create_capture('匿名原文', '匿名原批次',
+                                         [('原第一项目', False), ('已登记项目', False), ('同批项目', False)])
+    source, registered, peer = original['project_ids']
+    _, retained = service.workspaces.ensure_projects([source, registered])
+    shared = Path(retained['group_path'])
+    target = service.capture_message('1. 保留项目', '匿名另一批次')['project_ids'][0]
+    record_old_merge(service.db, source, target)
+
+    service.ensure_workspaces(peer)
+
+    assert Path(service.workspaces.get_workspace(peer)['path']) == shared / '同批项目'
+    assert Path(retained['path']).is_dir()
+    assert service.get_project(peer)['batch_id'] == original['batch_id']
+
+
+def test_nested_registered_peer_owns_its_files_under_a_retired_parent(tmp_path):
+    service = DesktopService(tmp_path / 'data/workbox.db')
+    original = service.db.create_capture('匿名原文', '匿名原批次', [('原第一项目', False), ('同批项目', False)])
+    source, peer = original['project_ids']
+    retired = Path(service.workspaces.ensure_projects([source])[0]['path'])
+    peer_path = Path(service.workspaces.ensure_projects([peer])[0]['path'])
+    assert peer_path.parent == retired
+    target = service.capture_message('1. 保留项目', '匿名另一批次')['project_ids'][0]
+    record_old_merge(service.db, source, target)
+    inside_peer = peer_path / '说明.txt'
+    inside_retired = retired / '说明.txt'
+    for path in (inside_peer, inside_retired):
+        path.write_text('匿名资料', encoding='utf-8')
+
+    kept_route = service.file_routing(inside_retired)
+    assert kept_route['requires_choice']
+    assert [row['id'] for row in kept_route['candidates']] == [target]
+    peer_route = service.file_routing(inside_peer)
+    assert not peer_route.get('requires_choice'), peer_route['basis']
+    received = service.receive_path(inside_peer)
+    assert received['file']['project_id'] == peer
+    assert inside_peer.read_text(encoding='utf-8') == '匿名资料'
+
+
 def test_shared_original_batch_is_counted_once_after_merge_and_follows_target_visibility(tmp_path):
     service = DesktopService(tmp_path / 'data/workbox.db')
     capture = service.db.create_capture('匿名同批原文', '匿名同批', [('匿名甲', False), ('匿名乙', False)])

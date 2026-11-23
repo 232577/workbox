@@ -57,6 +57,40 @@ def test_rename_changes_registered_folder_and_paths_but_preserves_basename_sourc
     assert service.db.counts()['projects']==1 and service.list_projects()[0]['id']==pid
 
 
+def test_rename_legacy_batch_parent_keeps_the_original_batch_tree(service, tmp_path):
+    first_capture = service.capture_message('1. 首个匿名项目', '匿名原批次')
+    later_capture = service.capture_message('1. 同批匿名项目', '匿名原批次')
+    first, sibling = first_capture['project_ids'][0], later_capture['project_ids'][0]
+    batch_id = first_capture['batch_id']
+    assert later_capture['batch_id'] == batch_id
+    registered = service.workspaces.get_workspace(first)
+    old_parent = Path(registered['path'])
+    sibling_path = Path(service.workspaces.get_workspace(sibling)['path'])
+    assert str(old_parent) == registered['group_path'] and sibling_path.parent == old_parent
+    source = tmp_path / '同批匿名项目_操作手册.txt'
+    source.write_bytes(b'preserved material')
+    service.receive_path(source)
+    first_identity = old_parent.stat().st_ino
+    sibling_identity = sibling_path.stat().st_ino
+
+    plan = service.preview_project_rename(first, '首个匿名项目更名')
+    assert plan['kind'] == 'rename', plan['warning']
+    assert plan['folder_from'] == plan['folder_to'] == str(old_parent)
+    service.rename_project(first, '首个匿名项目更名', expected_token=plan['token'])
+
+    assert service.get_project(first)['name'] == '首个匿名项目更名'
+    assert old_parent.stat().st_ino == first_identity and sibling_path.stat().st_ino == sibling_identity
+    assert (sibling_path / source.name).read_bytes() == source.read_bytes()
+    assert rows(service, 'work_files')[0]['path'] == str(sibling_path / source.name)
+    assert {folder.name for folder in old_parent.parent.iterdir()} == {old_parent.name}
+    for project_id, expected_path in ((first, old_parent), (sibling, sibling_path)):
+        workspace = service.workspaces.get_workspace(project_id)
+        assert workspace['path'] == str(expected_path) and workspace['group_path'] == str(old_parent)
+        assert workspace['batch_id'] == service.get_project(project_id)['batch_id'] == batch_id
+    service.ensure_workspaces(sibling)
+    assert {folder.name for folder in old_parent.parent.iterdir()} == {old_parent.name}
+
+
 def test_same_name_requires_confirmation_and_merges_pending_progress_with_preserved_originals(service,tmp_path):
     target = service.receive_text('1. 正确项目')['project_ids'][0]
     source_id, source, old_folder = receive(service,tmp_path,'错误名称')
@@ -72,7 +106,9 @@ def test_same_name_requires_confirmation_and_merges_pending_progress_with_preser
     assert result['project_ids']==[target] and service.get_project(target)['status']=='待交付'
     assert [row['id'] for row in service.list_projects()]==[target]
     assert service.get_project(source_id)['merged_into_id']==target
-    assert old_folder.exists() and (old_folder/source.name).read_bytes()==source.read_bytes()
+    retired_folder = Path(service.workspaces.get_workspace(source_id)['path'])
+    assert not old_folder.exists() and retired_folder == Path(result['recovery_path'])
+    assert (retired_folder / source.name).read_bytes() == source.read_bytes()
     record=rows(service,'work_files')[0]
     assert record['project_id']==target and Path(record['path']).is_relative_to(Path(plan['folder_to']))
     assert Path(record['path']).name==source.name and Path(record['path']).read_bytes()==source.read_bytes()
@@ -80,6 +116,189 @@ def test_same_name_requires_confirmation_and_merges_pending_progress_with_preser
     assert service.db.counts()['projects']==1
     with pytest.raises(ValueError,match='合并'):
         service.workspaces.import_file(source,source_id)
+
+
+def test_merge_into_original_batch_retires_only_the_erroneous_workspace(service, tmp_path):
+    capture = service.capture_message('1. 保留匿名项目\n2. 同批匿名项目', '匿名原批次')
+    target_id, sibling_id = capture['project_ids']
+    before = {pid: service.workspaces.get_workspace(pid) for pid in capture['project_ids']}
+    source_id, external, old_folder = receive(service, tmp_path, '误建匿名项目')
+    original_identity = old_folder.stat().st_ino
+    service.confirm_delivery(source_id, confirmed=True)
+    delivery_events = rows(service, 'delivery_events')
+
+    _, result = apply(service, source_id, '保留匿名项目')
+
+    assert not old_folder.exists()
+    recovery = Path(result['recovery_path'])
+    assert recovery.stat().st_ino == original_identity
+    assert (recovery / external.name).read_bytes() == external.read_bytes()
+    assert (Path(before[target_id]['path']) / external.name).read_bytes() == external.read_bytes()
+    assert rows(service, 'delivery_events') == delivery_events
+    for project_id in (target_id, sibling_id):
+        assert service.workspaces.get_workspace(project_id) == before[project_id]
+        assert service.get_project(project_id)['batch_id'] == capture['batch_id']
+    assert {p.name for p in old_folder.parent.iterdir()} == {Path(before[target_id]['group_path']).name}
+    assert service.recover_project_changes() == []
+    assert Path(service.workspaces.get_workspace(source_id)['path']) == recovery
+
+
+def test_recovery_registers_a_retired_directory_after_interrupted_move(service, tmp_path, monkeypatch):
+    from workbox.storage import project_directory_changes
+
+    target_id = service.receive_text('1. 保留项目')['project_ids'][0]
+    source_id, external, old_folder = receive(service, tmp_path, '误建项目')
+    original_identity = old_folder.stat().st_ino
+    rename = project_directory_changes._DirectoryLease.rename
+    moved = []
+
+    def interrupt_after_move(lease, target):
+        retiring = lease.path == old_folder and target.name.startswith('.workbox-merge-source-')
+        rename(lease, target)
+        if retiring:
+            moved.append(target)
+            raise KeyboardInterrupt('模拟移动后程序中断')
+
+    with monkeypatch.context() as switched:
+        switched.setattr(project_directory_changes._DirectoryLease, 'rename', interrupt_after_move)
+        with pytest.raises(KeyboardInterrupt, match='模拟移动后程序中断'):
+            apply(service, source_id, '保留项目')
+
+    assert service.get_project(source_id)['merged_into_id'] == target_id
+    assert not old_folder.exists() and len(moved) == 1
+    assert service.workspaces.get_workspace(source_id)['path'] == str(old_folder)
+    old_folder.mkdir()
+    (old_folder / '外部文件.txt').write_bytes(b'independent directory created after interruption')
+
+    assert service.recover_project_changes() == []
+
+    retired = service.workspaces.get_workspace(source_id)
+    assert retired['path'] == retired['group_path'] == str(moved[0])
+    assert moved[0].stat().st_ino == original_identity
+    assert (moved[0] / external.name).read_bytes() == external.read_bytes()
+    assert (old_folder / '外部文件.txt').read_bytes() == b'independent directory created after interruption'
+
+
+def test_merge_with_occupied_recovery_path_keeps_source_and_reports_the_path(service, tmp_path, monkeypatch):
+    target_id = service.receive_text('1. 保留项目')['project_ids'][0]
+    source_id, external, old_folder = receive(service, tmp_path, '误建项目')
+    retire = service.directory_changes._retire_source_backup
+    occupied = []
+
+    def occupy_path(record):
+        path = Path(record['source_backup']['path'])
+        path.mkdir()
+        (path / '外部文件.txt').write_bytes(b'independent recovery location')
+        occupied.append(path)
+        return retire(record)
+
+    monkeypatch.setattr(service.directory_changes, '_retire_source_backup', occupy_path)
+    _, result = apply(service, source_id, '保留项目')
+
+    assert result['project_id'] == target_id and '收纳未完成' in result['message']
+    assert str(old_folder) in result['message'] and str(occupied[0]) in result['message']
+    assert service.workspaces.get_workspace(source_id)['path'] == str(old_folder)
+    assert (old_folder / external.name).read_bytes() == external.read_bytes()
+    assert (occupied[0] / '外部文件.txt').read_bytes() == b'independent recovery location'
+
+
+def test_pending_source_retirement_can_retry_after_target_rename(service, tmp_path, monkeypatch):
+    target_id = service.receive_text('1. 保留项目')['project_ids'][0]
+    source_id, external, old_folder = receive(service, tmp_path, '误建项目')
+    original = service.directory_changes._retire_source_backup
+
+    def refuse_retirement(record):
+        if record.get('source_backup'):
+            raise PermissionError('模拟源目录暂时占用')
+        return original(record)
+
+    with monkeypatch.context() as switched:
+        switched.setattr(service.directory_changes, '_retire_source_backup', refuse_retirement)
+        _, result = apply(service, source_id, '保留项目')
+        assert '收纳未完成' in result['message'] and old_folder.is_dir()
+        apply(service, target_id, '保留项目更名')
+
+    assert service.recover_project_changes() == []
+
+    retired = Path(service.workspaces.get_workspace(source_id)['path'])
+    active = Path(service.workspaces.get_workspace(target_id)['path'])
+    assert not old_folder.exists()
+    assert (retired / external.name).read_bytes() == (active / external.name).read_bytes()
+
+
+@pytest.mark.parametrize('owner', ['workspace', 'work-root'])
+def test_retirement_retry_leaves_newly_protected_nested_directory_in_place(service, tmp_path, monkeypatch, owner):
+    service.receive_text('1. 保留项目')
+    source_id, external, old_folder = receive(service, tmp_path, '误建项目')
+    with monkeypatch.context() as switched:
+        def refuse_retirement(_record):
+            raise PermissionError('模拟源目录暂时占用')
+
+        switched.setattr(service.directory_changes, '_retire_source_backup', refuse_retirement)
+        _, result = apply(service, source_id, '保留项目')
+        assert '收纳未完成' in result['message']
+
+    nested = old_folder / '已登记子目录'
+    nested.mkdir()
+    (nested / '另一项目资料.txt').write_bytes(b'separately registered workspace')
+    if owner == 'workspace':
+        late_id = service.receive_text('1. 独立匿名项目')['project_ids'][0]
+        with service.db.connect() as connection:
+            connection.execute('UPDATE project_workspaces SET path=?,group_path=? WHERE project_id=?',
+                               (str(nested), str(nested), late_id))
+    else:
+        settings = dict(service.workspaces.settings(), work_root=str(nested))
+        monkeypatch.setattr(service.workspaces, 'settings', lambda: settings)
+
+    assert service.recover_project_changes() == []
+
+    assert service.workspaces.get_workspace(source_id)['path'] == str(old_folder)
+    if owner == 'workspace':
+        assert service.workspaces.get_workspace(late_id)['path'] == str(nested)
+    assert (old_folder / external.name).read_bytes() == external.read_bytes()
+    assert (nested / '另一项目资料.txt').read_bytes() == b'separately registered workspace'
+
+
+def test_recovery_fallback_uses_the_original_work_root_volume(service, tmp_path, monkeypatch):
+    from workbox.storage import project_directory_changes
+
+    service.receive_text('1. 保留项目')
+    capture = service.receive_text('1. 误建项目\n2. 同批匿名项目')
+    source_id, sibling_id = capture['project_ids']
+    old = service.workspaces.get_workspace(source_id)
+    sibling = service.workspaces.get_workspace(sibling_id)
+    source_group = Path(old['group_path'])
+    identity = project_directory_changes._directory_identity
+
+    def alternate_journal_volume(path):
+        original = identity(path)
+        if Path(path) == service.directory_changes.journal_root:
+            return [original[0] + 1, original[1]]
+        return original
+
+    monkeypatch.setattr(project_directory_changes, '_directory_identity', alternate_journal_volume)
+    _, result = apply(service, source_id, '保留项目')
+
+    recovery = Path(result['recovery_path'])
+    assert recovery.parent == source_group.parent.parent
+    assert not recovery.is_relative_to(source_group.parent)
+    assert not Path(old['path']).exists() and source_group.is_dir()
+    assert service.workspaces.get_workspace(sibling_id) == sibling and Path(sibling['path']).is_dir()
+
+
+def test_no_independent_same_volume_location_keeps_original_with_warning(service, tmp_path, monkeypatch):
+    target_id = service.receive_text('1. 保留项目')['project_ids'][0]
+    source_id, external, old_folder = receive(service, tmp_path, '误建项目')
+    settings = service.workspaces.settings()
+    # A work root covering every permitted candidate mirrors selecting a drive root.
+    settings['work_root'] = str(tmp_path)
+    monkeypatch.setattr(service.workspaces, 'settings', lambda: settings)
+
+    _, result = apply(service, source_id, '保留项目')
+
+    assert result['project_id'] == target_id and '没有独立的同盘恢复位置' in result['message']
+    assert str(old_folder) in result['message'] and 'recovery_path' not in result
+    assert (old_folder / external.name).read_bytes() == external.read_bytes()
 
 
 def test_merge_places_files_in_target_root_and_numbers_different_name_collisions(service,tmp_path):
@@ -98,7 +317,8 @@ def test_merge_places_files_in_target_root_and_numbers_different_name_collisions
     assert result['project_id'] == target
     assert (target_root/'共有.txt').read_text(encoding='utf-8') == '目标原件'
     assert (target_root/'共有 (2).txt').read_text(encoding='utf-8') == '来源原件'
-    assert (source_root/'共有.txt').read_text(encoding='utf-8') == '来源原件'
+    assert not source_root.exists()
+    assert (Path(result['recovery_path'])/'共有.txt').read_text(encoding='utf-8') == '来源原件'
     assert not (target_root/'合并资料').exists()
     assert {Path(row['path']).name for row in rows(service,'work_files')} == {'共有.txt','共有 (2).txt'}
 
@@ -304,8 +524,9 @@ def test_zip_with_explicit_merged_id_uses_retained_project_and_never_creates_stu
 def test_retired_merge_backup_never_auto_creates_project_from_generic_filename(service,tmp_path):
     target=service.receive_text('1. 保留项目')['project_ids'][0]
     source,_,old=receive(service,tmp_path,'来源项目')
-    apply(service,source,'保留项目')
-    late=old/'附件.txt'
+    _, result = apply(service,source,'保留项目')
+    assert not old.exists()
+    late = Path(result['recovery_path']) / '附件.txt'
     late.write_text('保留目录内的新材料',encoding='utf-8')
     result=service.receive_path(late)
     assert result.get('intake_choice')==str(late)

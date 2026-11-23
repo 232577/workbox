@@ -6,6 +6,7 @@ import ctypes
 import hashlib
 import json
 import os
+import sqlite3
 import stat
 import uuid
 from contextlib import ExitStack, contextmanager
@@ -386,6 +387,13 @@ class ProjectDirectoryChanges:
                 old = plain_path(source_workspace['path'])
                 _directory_identity(old)
                 other = plain_path(target_workspace['path']) if target_workspace else None
+                shared_members = set()
+                if other is None and old == Path(source_workspace['group_path']):
+                    # Older registrations can use the first project's directory as the whole batch container.
+                    shared_members = {row['project_id'] for row in all_workspaces
+                                      if row['project_id'] != source_id and row['batch_id'] == source_workspace['batch_id']
+                                      and Path(row['group_path']) == old and Path(row['path']) != old
+                                      and Path(row['path']).is_relative_to(old)}
                 if other is not None:
                     _directory_identity(other)
                     if _overlap(old, other):
@@ -396,16 +404,16 @@ class ProjectDirectoryChanges:
                     merge_files, path_mapping, merge_inventory = self._merge_layout(
                         old, other, source_inventory, target_inventory)
                 else:
-                    destination = old.parent / _folder_name(new_name.strip())
+                    destination = old if shared_members else old.parent / _folder_name(new_name.strip())
                     if destination.exists() and destination != old:
                         raise FileExistsError('同名工作目录已存在，请先核对项目和合并方式。')
-                    source_inventory = self._inventory(old, cancel_event=cancel_event)
+                    source_inventory = [] if shared_members else self._inventory(old, cancel_event=cancel_event)
                     target_inventory, merge_files, merge_inventory = [], {}, []
                     path_mapping = {} if str(old) == str(destination) else {str(old): str(destination)}
                 plain_path(destination)
                 for row in all_workspaces:
                     cancelled(cancel_event)
-                    if row['project_id'] in (source_id, target_id):
+                    if row['project_id'] in (source_id, target_id) or row['project_id'] in shared_members:
                         continue
                     registered = Path(os.path.abspath(row['path']))
                     if _overlap(old, registered) or _overlap(destination, registered):
@@ -424,7 +432,8 @@ class ProjectDirectoryChanges:
                     source_identity=_directory_identity(old), parent_identity=dict(path=str(parent), identity=_directory_identity(parent)),
                     target_identity=None if other is None else _directory_identity(other),
                     inventory=source_inventory, target_inventory=target_inventory,
-                    merge_files=merge_files, merge_inventory=merge_inventory)
+                    merge_files=merge_files, merge_inventory=merge_inventory,
+                    keeps_shared_group=bool(shared_members))
             cancelled(cancel_event)
             plan['fingerprint'] = hashlib.sha256(_json(plan).encode('utf-8')).hexdigest()
             return plan
@@ -436,8 +445,7 @@ class ProjectDirectoryChanges:
             raise ValueError('目录变更日志标识不一致。')
         return value
 
-    @staticmethod
-    def _validate_record(record):
+    def _validate_record(self, record):
         operation_id = record['operation_id']
         if uuid.UUID(hex=operation_id).hex != operation_id:
             raise ValueError('目录变更日志操作标识无效。')
@@ -453,6 +461,11 @@ class ProjectDirectoryChanges:
             expected = Path(plan['target_path']).parent / ('.workbox-merge-backup-' + operation_id)
             if plan['kind'] != 'merge' or Path(record['backup_path']) != expected:
                 raise ValueError('目录变更备份路径与计划不一致。')
+        if record.get('source_backup'):
+            path = Path(record['source_backup']['path'])
+            if (plan['kind'] != 'merge' or path.parent not in self._source_backup_parents(plan) or
+                    path.name != '.workbox-merge-source-' + operation_id):
+                raise ValueError('合并源目录的恢复路径与计划不一致。')
 
     def _write(self, record):
         root = plain_path(self.journal_root)
@@ -503,6 +516,97 @@ class ProjectDirectoryChanges:
         expected = plan['source_identity'] if plan['kind'] == 'rename' else record.get('stage_identity')
         if not expected or not self._same(Path(plan['target_path']), expected):
             raise RuntimeError('已提交项目的目标目录缺失或被替换，已保护项目且不回滚已提交变更。')
+
+    def _source_backup_parents(self, plan):
+        return self.journal_root, Path(plan['source_group_path']).parent.parent
+
+    def _plan_source_backup(self, record):
+        plan = record['plan']
+        old = plain_path(plan['source_path'])
+        group = plain_path(plan['source_group_path'])
+        if not old.is_relative_to(group) or group.parent == group:
+            raise ValueError('来源工作目录的批次边界无法确认，未合并。')
+        if any(row['project_id'] != plan['source_id'] and Path(row['group_path']).is_relative_to(old)
+               for row in plan['workspaces']):
+            raise ValueError('来源目录仍是其他项目的批次容器，未移动该目录。')
+        boundaries = [group.parent, Path(self.workspaces.settings()['work_root'])]
+        boundaries.extend(Path(value) for value in plan['protected_paths'])
+        boundaries.extend(Path(row[key]) for row in plan['workspaces'] for key in ('path', 'group_path'))
+        for parent in self._source_backup_parents(plan):
+            path = parent / ('.workbox-merge-source-' + record['operation_id'])
+            if any(_overlap(path, other) for other in boundaries):
+                continue
+            try:
+                identity = _directory_identity(parent)
+                path = plain_path(path)
+            except (OSError, ValueError):
+                continue
+            if identity[0] == plan['source_identity'][0] and not path.exists():
+                record['source_backup'] = dict(path=str(path), parent_identity=identity)
+                return
+        record['source_backup_warning'] = f'没有独立的同盘恢复位置，原工作目录保留在 {old}。'
+
+    def _retire_source_backup(self, record):
+        backup = record.get('source_backup')
+        if not backup:
+            return None
+        plan = record['plan']
+        old, retired = plain_path(plan['source_path']), plain_path(backup['path'])
+        work_root = Path(self.workspaces.settings()['work_root'])
+        with _parents_locked((old.parent, retired.parent)), ExitStack() as leases, self.db.connect() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            row = connection.execute('''SELECT w.path,w.group_path FROM project_workspaces w
+                JOIN project_merges m ON m.source_id=w.project_id
+                WHERE w.project_id=? AND m.operation_id=?''', (plan['source_id'], record['operation_id'])).fetchone()
+            if row is None or Path(row['path']) not in (old, retired):
+                raise RuntimeError('已合并项目的工作目录登记已变化，未收纳旧目录。')
+            if _directory_identity(retired.parent) != backup['parent_identity']:
+                raise RuntimeError('旧目录的恢复位置已被替换，未收纳。')
+            registered = connection.execute('SELECT path,group_path FROM project_workspaces WHERE project_id!=?',
+                                            (plan['source_id'],)).fetchall()
+            protected = self._protected(connection)
+            if (any(_overlap(retired, Path(item[key])) for item in registered for key in ('path', 'group_path')) or
+                    any(_overlap(retired, path) for path in (work_root, *protected))):
+                raise RuntimeError('旧目录的恢复位置与其他登记目录重叠，未收纳。')
+            if retired.exists():
+                lease = leases.enter_context(_DirectoryLease(retired, movable=False))
+            elif Path(row['path']) == old:
+                lease = leases.enter_context(_DirectoryLease(old))
+            else:
+                raise RuntimeError('已登记的旧目录恢复位置缺失，未操作任何目录。')
+            if lease.identity != plan['source_identity']:
+                raise RuntimeError('待收纳旧目录的身份已变化，未操作任何目录。')
+            if lease.path == old:
+                if (work_root.is_relative_to(old) or
+                        any(_overlap(old, Path(item['path'])) or Path(item['group_path']).is_relative_to(old)
+                        for item in registered) or any(_overlap(old, path) for path in protected)):
+                    raise RuntimeError('旧目录仍供其他项目、批次或归档使用，未收纳。')
+                lease.rename(retired)
+            # 重启可从原目录身份恢复已经完成的移动；原批次和历史事实不改动。
+            if Path(row['path']) != retired:
+                group = str(retired) if Path(row['group_path']) == old else row['group_path']
+                connection.execute('UPDATE project_workspaces SET path=?,group_path=? WHERE project_id=?',
+                                   (str(retired), group, plan['source_id']))
+        return str(retired)
+
+    def _finalize_files(self, record, *, verify_target=False):
+        warning = record.get('source_backup_warning')
+        errors = [warning] if warning else []
+        recovery_path = None
+        try:
+            recovery_path = self._retire_source_backup(record)
+        except (OSError, RuntimeError, ValueError, sqlite3.Error) as error:
+            original = record['plan']['source_path']
+            destination = record['source_backup']['path']
+            errors.append(f'旧项目目录收纳未完成，请检查 {original} 和 {destination}。{error}')
+        try:
+            if verify_target and record.get('backup_path') and Path(record['backup_path']).exists():
+                self._verify_committed(record)
+            self._discard_backup(record)
+        except (OSError, RuntimeError, ValueError) as error:
+            errors.append('旧目标备份清理未完成：' + str(error))
+        record['error'] = '；'.join(errors)
+        return recovery_path
 
     def _discard_backup(self, record):
         if record['plan']['kind'] != 'merge' or not record.get('backup_path'):
@@ -628,25 +732,21 @@ class ProjectDirectoryChanges:
                     record = self._read(path)
                     self._validate_record(record)
                     if record.get('state') == 'complete':
-                        if record.get('error') and record.get('backup_path'):
-                            try:
-                                self._verify_committed(record)
-                                self._discard_backup(record)
-                                record['error'] = ''
-                                self._write(record)
-                            except (OSError, RuntimeError, ValueError):
-                                pass
+                        backup = record.get('backup_path')
+                        if record.get('error') and (record.get('source_backup') or (backup and Path(backup).exists())):
+                            previous_error = record['error']
+                            self._finalize_files(record, verify_target=True)
+                            if record['error'] != previous_error:
+                                try:
+                                    self._write(record)
+                                except (OSError, RuntimeError, ValueError):
+                                    pass
                         continue
                     if record.get('state') == 'rolled_back':
                         continue
                     if self._committed(record['operation_id']):
                         self._verify_committed(record)
-                        try:
-                            self._discard_backup(record)
-                        except (OSError, RuntimeError, ValueError) as cleanup_error:
-                            record['error'] = '合并已完成，旧目标备份清理失败：' + str(cleanup_error)
-                        else:
-                            record['error'] = ''
+                        self._finalize_files(record)
                         record['state'] = 'complete'
                     else:
                         self._rollback(record)
@@ -672,7 +772,7 @@ class ProjectDirectoryChanges:
                                        global_block=global_block, project_ids=project_ids))
         return errors
 
-    def execute(self, fs_plan, commit_callback, *, cancel_event=None, progress=None):
+    def execute(self, fs_plan, commit_callback, *, retire_source=False, cancel_event=None, progress=None):
         with self.lock, self._session_owned():
             cancelled(cancel_event)
             if self.recover():
@@ -688,6 +788,9 @@ class ProjectDirectoryChanges:
                           stage_path='', stage_identity=None, backup_path='', backup_identity=None, error='')
             self._write(record)
             try:
+                if retire_source and current['kind'] == 'merge':
+                    self._plan_source_backup(record)
+                    self._write(record)
                 if current['source_path'] and current['path_mapping']:
                     old, new = Path(current['source_path']), Path(current['target_path'])
                     roots = [str(old), current['parent_identity']['path']]
@@ -715,10 +818,8 @@ class ProjectDirectoryChanges:
                     callback_result = commit_callback(operation_id, current['path_mapping'], result)
                 if not self._committed(operation_id):
                     raise RuntimeError('数据库未登记变更提交标记，目录变更未确认。')
-                try:
-                    self._discard_backup(record)
-                except (OSError, RuntimeError, ValueError) as cleanup_error:
-                    record['error'] = '合并已完成，旧目标备份清理失败：' + str(cleanup_error)
+                result['recovery_path'] = self._finalize_files(record)
+                if record['error']:
                     result['cleanup_error'] = record['error']
                 record['state'] = 'complete'
                 self._write(record)

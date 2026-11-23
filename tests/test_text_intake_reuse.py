@@ -133,6 +133,7 @@ def test_same_named_pending_and_new_project_merge_in_both_directions(service, tm
     source_id, target_id = (file_id,new_id) if from_file_project else (new_id,file_id)
     before_events = rows(service, 'delivery_events')
     original_root = Path(service.workspaces.get_workspace(source_id)['path'])
+    original_identity = original_root.stat().st_ino
     retained_root = Path(service.workspaces.get_workspace(target_id)['path'])
     plan = service.preview_project_rename(source_id, '匿名数据归集系统', target_id)
     assert plan['kind'] == 'merge', plan.get('warning')
@@ -140,6 +141,11 @@ def test_same_named_pending_and_new_project_merge_in_both_directions(service, tm
         expected_token=plan['token'], confirmed_merge=True)
     assert result['project_id'] == target_id
     assert service.get_project(target_id)['status'] == '待交付'
-    assert original_root.is_dir()
+    retired_root = Path(service.workspaces.get_workspace(source_id)['path'])
+    assert not original_root.exists()
+    assert retired_root == Path(result['recovery_path'])
+    assert retired_root.stat().st_ino == original_identity
+    if from_file_project:
+        assert (retired_root / source.name).read_bytes() == b'original'
     assert (retained_root / source.name).read_bytes() == b'original'
     assert rows(service, 'delivery_events') == before_events

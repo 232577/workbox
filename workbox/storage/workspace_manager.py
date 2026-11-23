@@ -364,7 +364,10 @@ class WorkspaceManager:
                     groups.setdefault(row['batch_id'], []).append(dict(row))
                 root = _path(self.settings()['work_root'])
                 for batch_id, rows in groups.items():
-                    existing = connection.execute('SELECT * FROM project_workspaces WHERE batch_id=? ORDER BY project_id LIMIT 1', (batch_id,)).fetchone()
+                    # 已合并项目的路径用于保护旧材料，不能再为同批项目分配目录。
+                    existing = connection.execute('''SELECT w.* FROM project_workspaces w WHERE w.batch_id=?
+                        AND NOT EXISTS (SELECT 1 FROM project_merges m WHERE m.source_id=w.project_id)
+                        ORDER BY w.project_id LIMIT 1''', (batch_id,)).fetchone()
                     group = _path(existing['group_path']) if existing else None
                     if existing:
                         self._assert_workspace_history(existing)

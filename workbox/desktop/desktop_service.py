@@ -453,18 +453,25 @@ class DesktopService(WorkBox):
     def file_routing(self, path):
         source = plain_path(path, allow_network=True)
         all_projects = {row['id']: row for row in self.list_projects(archived=None, deleted=None)}
+        registered = [row for row in self.workspaces.list_workspaces(include_archived=True)
+                      if path_is_within(source, row['path'])]
+        registered_paths = [Path(row['path']) for row in registered]
         with self.db.connect() as connection:
             retired = [dict(row) for row in connection.execute('''SELECT w.path,c.canonical_id
                 FROM project_workspaces w JOIN project_merges m ON m.source_id=w.project_id
                 JOIN project_canonical c ON c.project_id=w.project_id''')]
-        retained_ids = {row['canonical_id'] for row in retired if path_is_within(source, row['path'])}
+        retained_ids = set()
+        for row in retired:
+            root = Path(row['path'])
+            # 旧布局有活动项目登记在保留目录下，归属以其独立登记边界为准。
+            if path_is_within(source, root) and not any(
+                    directory != root and directory.is_relative_to(root) for directory in registered_paths):
+                retained_ids.add(row['canonical_id'])
         if retained_ids:
             return dict(candidates=[row for pid, row in all_projects.items() if pid in retained_ids
                                     and not row.get('archived_at') and not row.get('deleted_at')],
                         basis='来源位于已合并项目的保留备份目录，请明确选择保留项目后再收录。', requires_choice=True)
-        registered = self.workspaces.list_workspaces(include_archived=True)
-        protected = [all_projects.get(row['project_id'], {}) for row in registered
-                     if path_is_within(source, row['path'])]
+        protected = [all_projects.get(row['project_id'], {}) for row in registered]
         if any(row.get('deleted_at') for row in protected):
             return dict(candidates=[], basis='来源位于已删除项目工作目录，请恢复项目或人工选择', requires_choice=True)
         if any(row.get('archived_at') for row in protected):
@@ -472,8 +479,7 @@ class DesktopService(WorkBox):
         retained = [row for row in all_projects.values() if not row.get('deleted_at')]
         active = self.list_projects()
         by_id = {row['id']: row for row in active}
-        inside = [by_id[row['project_id']] for row in self.workspaces.list_workspaces()
-                  if row['project_id'] in by_id and path_is_within(source, row['path'])]
+        inside = [by_id[row['project_id']] for row in registered if row['project_id'] in by_id]
         if source.suffix.casefold() == '.zip':
             named = match_projects(source.name, retained, include_annotations=False)
             if not named:
