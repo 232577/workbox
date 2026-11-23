@@ -1798,7 +1798,8 @@ class CompactPanel(DropSurface, QWidget):
     @staticmethod
     def project_caption(project):
         # 将核心状态/类型和来源信息分行，避免批次挤散“生成材料”等短类型名。
-        metadata = [project['status'], project.get('project_type_name') or '未分类']
+        status = project['status']
+        metadata = [status, project.get('project_type_name') or '未分类']
         if project['zip_count']:
             metadata.append(f"ZIP {project['zip_count']}")
         state = ' · '.join(metadata)
@@ -1807,7 +1808,7 @@ class CompactPanel(DropSurface, QWidget):
             due = date.fromisoformat(project['due_date'])
             days = (date.today() - due).days
             caption = f"截止 {project['due_date']}"
-            if project['status'] != '已交付' and not project.get('archived_at'):
+            if status != '已交付' and not project.get('archived_at'):
                 caption = f'逾期 {days} 天' if days > 0 else ('今天截止' if days == 0 else caption)
             parts.append(caption)
         if project.get('notes'):
@@ -1816,7 +1817,8 @@ class CompactPanel(DropSurface, QWidget):
             parts.append('已删除')
         elif project.get('archived_at'):
             parts.append('已归档')
-        return f"{'加急  ' if project['urgent'] else ''}{project['name']}\n{state}" + ('\n' + ' · '.join(parts) if parts else '')
+        urgent_prefix = '加急  ' if project['urgent'] and status != '已交付' else ''
+        return f"{urgent_prefix}{project['name']}\n{state}" + ('\n' + ' · '.join(parts) if parts else '')
 
     def toggle_bulk(self, enabled):
         self.project_list.clearSelection()
