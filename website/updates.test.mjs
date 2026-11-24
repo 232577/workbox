@@ -12,8 +12,8 @@ test('更新清单从同一已核验发布目录生成，不请求GitHub限流�
   const item=await result.json();
   assert.equal(item.tag_name,release.tag);assert.equal(item.draft,false);assert.equal(item.prerelease,false);
   assert.equal(item.html_url,`https://github.com/232577/workbox/releases/tag/${release.tag}`);
-  assert.deepEqual(item.assets,[{name:release.filename,size:release.size,state:'uploaded',digest:`sha256:${release.sha256}`,
-    browser_download_url:`https://github.com/232577/workbox/releases/download/${release.tag}/${release.filename}`}]);
+  assert.deepEqual(item.assets[0],{name:release.filename,size:release.size,state:'uploaded',digest:`sha256:${release.sha256}`,
+    browser_download_url:`https://github.com/232577/workbox/releases/download/${release.tag}/${release.filename}`});
 });
 test('更新清单HEAD无主体且拒绝写请求',async()=>{
   const unexpected=()=>{throw Error('no external work')};

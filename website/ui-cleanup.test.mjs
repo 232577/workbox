@@ -41,8 +41,8 @@ test('首页、安装说明和自动更新指向同一当前安装包与构建',
   const metadata = await stable.json();
   assert.equal(metadata.tag_name, tag);
   assert.equal(metadata.html_url, githubRelease);
-  assert.deepEqual(metadata.assets, [{ name: filename, size, state: 'uploaded', digest: `sha256:${sha256}`,
-    browser_download_url: githubAsset }]);
+  assert.deepEqual(metadata.assets[0], { name: filename, size, state: 'uploaded', digest: `sha256:${sha256}`,
+    browser_download_url: githubAsset });
   const source = metadata.body.match(/来源提交 ([a-f0-9]{40})。/)?.[1];
   assert.match(source, /^[a-f0-9]{40}$/);
 

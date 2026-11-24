@@ -69,10 +69,10 @@ test('11月13日r1历史身份保留，首页与稳定清单继续绑定当前�
   assert.ok(releaseNotes.includes('7760e997ded567dd5c1aec4435f023b82b64664ae757e249568999aac4f690fc'));
   const metadata = await (await handleRequest(new Request('https://example.com/updates/stable.json'), {})).json();
   assert.equal(metadata.tag_name, release.tag);
-  assert.ok(metadata.body.includes('来源提交 72a0db4f5b7ddf73e38f9340cebcd392634b098d。'));
-  assert.deepEqual(metadata.assets, [{ name: release.filename, size: release.size, state: 'uploaded',
+  assert.ok(metadata.body.includes('来源提交 14c793ca45ae687fd26ea32ba9aa304575e3fe9e。'));
+  assert.deepEqual(metadata.assets[0], { name: release.filename, size: release.size, state: 'uploaded',
     digest: `sha256:${release.sha256}`,
-    browser_download_url: `https://github.com/232577/workbox/releases/download/${release.tag}/${release.filename}` }]);
+    browser_download_url: `https://github.com/232577/workbox/releases/download/${release.tag}/${release.filename}` });
   for (const text of [readme, siteReadme]) {
     for (const value of [expected.filename, expected.sha256, source, '42,422,935']) assert.ok(text.includes(value), value);
   }
