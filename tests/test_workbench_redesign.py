@@ -104,6 +104,65 @@ def test_wide_default_leaves_room_for_files_and_manual_split_still_wins(panel):
     assert split.sizes()[0] > 440, '手动宽度不能被默认分配覆盖'
 
 
+@pytest.mark.parametrize('width, height, manual_split', [(913, 610, False), (1200, 500, True)])
+def test_bulk_selection_keeps_window_and_project_split_widths(panel, width, height, manual_split):
+    panel.resize(width, height)
+    QTest.qWait(100)
+    split = panel.project_splitter
+    if manual_split:
+        split.moveSplitter(split.sizes()[0] + 20, 1)
+    before_size = panel.size()
+    before_split = split.sizes()
+    assert panel.document_side.isVisible() and all(before_split)
+
+    panel.bulk_mode.click()
+    QTest.qWait(100)
+    assert panel.size() == before_size
+    assert panel.document_side.isVisible()
+    assert split.sizes() == before_split
+    for control in (panel.bulk_action, panel.bulk_apply, panel.change_type_button,
+                    panel.select_all_button, panel.clear_selection_button):
+        assert control.isVisible()
+        assert panel.rect().contains(control.mapTo(panel, control.rect().bottomRight()))
+
+    panel.project_list.item(0).setSelected(True)
+    panel.project_list.item(1).setSelected(True)
+    QTest.qWait(100)
+    assert panel.size() == before_size
+    assert split.sizes() == before_split
+    assert panel.bulk_apply.isEnabled()
+
+    panel.bulk_mode.click()
+    QTest.qWait(100)
+    assert panel.size() == before_size
+    assert split.sizes() == before_split
+
+
+def test_bulk_selection_keeps_narrow_queue_and_detail_navigation(panel):
+    panel.resize(660, 480)
+    panel.show_project_queue()
+    QTest.qWait(100)
+    before_size = panel.size()
+    before_split = panel.project_splitter.sizes()
+    assert panel.project_side.isVisible() and not panel.document_side.isVisible()
+
+    panel.bulk_mode.click()
+    QTest.qWait(100)
+    assert panel.size() == before_size
+    assert panel.project_splitter.sizes() == before_split
+    assert panel.project_side.isVisible() and not panel.document_side.isVisible()
+    assert panel.bulk_apply.isVisible() and not panel.project_back_button.isVisible()
+    assert panel.rect().contains(panel.bulk_apply.mapTo(panel, panel.bulk_apply.rect().bottomRight()))
+
+    panel.bulk_mode.click()
+    panel.project_list.setCurrentRow(0)
+    panel.show_project_detail()
+    assert panel.document_side.isVisible() and panel.project_back_button.isVisible()
+    panel.project_back_button.click()
+    assert panel.project_side.isVisible() and not panel.document_side.isVisible()
+    assert panel.size() == before_size
+
+
 def test_bulk_type_action_stays_visible_and_targets_all_selected_projects(panel, monkeypatch):
     calls = []
     def choose(service, parent, projects):

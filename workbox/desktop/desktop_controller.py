@@ -25,6 +25,7 @@ from workbox.desktop.global_shortcut import GlobalShortcut
 
 STORAGE_RECOVERY_NOTICE = ('项目目录或文档版本需要恢复，收录与修改已暂停。\n'
                            '未开始的任务已取消；请保留现场并检查恢复记录。')
+BULK_DELIVERY_CANCELLED = '已取消批量交付，所选项目的交付状态未变更。'
 
 
 def screen_for_rect(rect):
@@ -241,6 +242,7 @@ class FloatingController(QObject):
         self.panel.project_change_preview_requested.connect(self.preview_project_change)
         self.panel.project_change_requested.connect(self.apply_project_change)
         self.panel.bulk_requested.connect(self.update_projects)
+        self.panel.bulk_delivery_requested.connect(self.deliver_projects)
         self.panel.delete_requested.connect(lambda pid: self.set_project_deleted(pid, True))
         self.panel.restore_deleted_requested.connect(lambda pid: self.set_project_deleted(pid, False))
         self.panel.workspace_requested.connect(self.open_workspace)
@@ -324,6 +326,27 @@ class FloatingController(QObject):
         ids, changes = list(project_ids), dict(options)
         operation = '已归档' if changes.get('archived') else ('已恢复' if changes.get('archived') is False else '已更新')
         self.enqueue(f'{operation} {len(ids)} 个项目', lambda **_: self.service.bulk_update_projects(ids, **changes))
+
+    def deliver_projects(self, project_ids):
+        if self.foreground_busy:
+            return
+        ids = list(project_ids)
+        self.enqueue(
+            f'正在归档并核对 {len(ids)} 个项目',
+            lambda **kw: self.service.confirm_project_deliveries(ids, confirmed=True, **kw),
+            on_cancel=lambda: self.notify(BULK_DELIVERY_CANCELLED),
+            on_complete=self._complete_bulk_delivery,
+        )
+
+    def _complete_bulk_delivery(self, worker):
+        self.refresh()
+        if worker.cancelled:
+            self.notify(BULK_DELIVERY_CANCELLED)
+        elif worker.error:
+            self.notify('批量交付未完成。\n' + worker.error)
+        else:
+            ids = worker.result['project_ids']
+            self.notify(f'已归档并确认交付 {len(ids)} 个项目。', kind='page-success')
 
     def set_project_deleted(self, project_id, deleted):
         if self.foreground_busy:
@@ -1048,13 +1071,14 @@ class FloatingController(QObject):
 
     def cancel_jobs(self, *, shutting_down=False):
         pending = list(self.queue)
-        # 导出尚未开始时，取消名单不打断已经运行的静默扫描。
-        cancel_queued_export_only = (self.worker is not None and self.silent_current
+        # 仅取消排队中的交付或导出时，正在运行的静默扫描可以继续。
+        cancel_queued_action_only = (self.worker is not None and self.silent_current
                                      and self.worker.operation == self.service.scan_archives
                                      and not (self.quitting or shutting_down) and len(pending) == 1
                                      and pending[0][4] in (self._pending_export_finished,
-                                                          self._project_table_export_finished))
-        if self.worker and not cancel_queued_export_only:
+                                                          self._project_table_export_finished,
+                                                          self._complete_bulk_delivery))
+        if self.worker and not cancel_queued_action_only:
             self.worker.cancel_event.set()
         self.queue.clear()
         for _, _, _, on_cancel, _ in pending:
@@ -1063,7 +1087,7 @@ class FloatingController(QObject):
                     on_cancel()
                 except Exception as error:
                     self.notify('取消收录的记录写入失败：' + str(error))
-        if cancel_queued_export_only:
+        if cancel_queued_action_only:
             self._sync_panel_busy()
 
     def show_updates(self):

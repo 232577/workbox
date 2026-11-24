@@ -752,6 +752,13 @@ class DesktopService(WorkBox):
         return ProjectDeliveryArchive(self, self.workspaces).confirm(project_id, confirmed=confirmed,
             cancel_event=cancel_event, progress=progress)
 
+    @_serialized_storage
+    def confirm_project_deliveries(self, project_ids, *, confirmed=False, cancel_event=None, progress=None) -> dict:
+        """Copy and verify each project's work files before recording all deliveries."""
+        from workbox.storage.delivery_archive import ProjectDeliveryArchive
+        return ProjectDeliveryArchive(self, self.workspaces).confirm_many(project_ids, confirmed=confirmed,
+            cancel_event=cancel_event, progress=progress)
+
     def preview_project_rename(self, project_id, name, merge_target_id=None, *, cancel_event=None, progress=None):
         return self.project_changes.preview(project_id, name, merge_target_id,
                                             cancel_event=cancel_event, progress=progress)

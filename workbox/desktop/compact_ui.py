@@ -327,6 +327,7 @@ class CompactPanel(DropSurface, QWidget):
     project_change_preview_requested = Signal(object, object)
     project_change_requested = Signal(object)
     bulk_requested = Signal(object, object)
+    bulk_delivery_requested = Signal(object)
     delete_requested = Signal(int)
     restore_deleted_requested = Signal(int)
     workspace_requested = Signal(int)
@@ -801,7 +802,7 @@ class CompactPanel(DropSurface, QWidget):
         self.bulk_action.setAccessibleName('对所选项目执行的操作')
         for caption, value in (
             ('设为待开发', 'status:待开发'), ('设为开发中', 'status:开发中'),
-            ('设为待交付', 'status:待交付'), ('标记加急', 'urgent'),
+            ('设为待交付', 'status:待交付'), ('设为已交付…', 'deliver'), ('标记加急', 'urgent'),
             ('取消加急', 'normal'), ('归档所选项目', 'archive'), ('恢复所选项目', 'restore'),
         ):
             self.bulk_action.addItem(caption, value)
@@ -1408,12 +1409,17 @@ class CompactPanel(DropSurface, QWidget):
         self.refresh_today_count()
 
     def refresh_today_count(self):
-        summary = self.service.db.today_delivery_summary()
+        try:
+            summary = self.service.db.today_delivery_summary()
+        except (OSError, RuntimeError, sqlite3.Error) as error:
+            self.today_button.setAccessibleDescription('今日工作量暂不可读，请再次点击刷新。')
+            self.today_button.setToolTip(f'今日工作量读取失败：{error}。再次点击可刷新。')
+            return
         self._today_caption = f"今日工作量 {summary['project_count']}"
         self._today_compact_caption = str(summary['project_count']) if summary['project_count']<100 else '99+'
         self.today_button.setAccessibleDescription(self._today_caption)
         self.resize_navigation()
-        self.today_button.setToolTip(f"{summary['day']}（北京时间）：{summary['project_count']} 个首次交付项目计入个人工作量，{summary['event_count']} 次交付记录。每个项目只计首次有效交付；补交只保留记录。代交项目可排除个人工作量并随时恢复，项目的已交付状态不变。点击查看并管理。")
+        self.today_button.setToolTip(f"{summary['day']}（北京时间）：{summary['project_count']} 个首次交付项目计入个人工作量，{summary['event_count']} 次交付记录。每个项目只计首次有效交付；补交只保留记录。代交项目可排除个人工作量并随时恢复，项目的已交付状态不变。点击刷新并管理。")
 
     def show_today_deliveries(self):
         from workbox.desktop.delivery_ui import TodayDeliveryDialog
@@ -1432,10 +1438,14 @@ class CompactPanel(DropSurface, QWidget):
             self.delivery_page_container.setWidget(self.today_dialog)
             self.tabs.insertTab(3, self.delivery_page_container, '交付记录')
         self.today_dialog.set_busy(self.busy)
-        self.today_dialog.refresh()
+        was_visible = self.today_dialog.isVisible()
         self.tabs.setCurrentWidget(self.delivery_page_container)
+        # 页面切换时由 showEvent 刷新。再次点击或在窗口隐藏时打开则主动刷新。
+        if was_visible or not self.today_dialog.isVisible():
+            self.today_dialog.refresh()
         self.sync_navigation()
         self.today_dialog._sync_embedded_layout()
+        self.refresh_today_count()
 
     def _finish_scroll(self):
         if self._refresh_after_drag:
@@ -1825,8 +1835,6 @@ class CompactPanel(DropSurface, QWidget):
         self.project_list.setSelectionMode(QAbstractItemView.MultiSelection if enabled else QAbstractItemView.SingleSelection)
         actions = self.bulk_selection_layout if enabled else self.project_actions_layout
         actions.insertWidget(1, self.change_type_button)
-        self.change_type_button.show()
-        self.document_side.setVisible(not enabled)
         self.change_type_button.setVisible(enabled)
         if enabled:
             self._project_detail_open = False
@@ -1866,10 +1874,13 @@ class CompactPanel(DropSurface, QWidget):
             self.restore_deleted_requested.emit(project_id)
 
     def apply_bulk(self):
-        ids = [item.data(Qt.UserRole) for item in self.project_list.selectedItems()]
+        ids = [item.data(Qt.UserRole) for item in self.project_list.selectedItems() if not item.isHidden()]
         if not ids or self.busy or self.archive_filter.currentData() == 'deleted':
             return
         action = self.bulk_action.currentData()
+        if action == 'deliver':
+            self.request_bulk_delivery(ids)
+            return
         if action.startswith('type:'):
             type_id = int(action.split(':', 1)[1])
             self.assign_project_types(ids, type_id or None)
@@ -1881,6 +1892,26 @@ class CompactPanel(DropSurface, QWidget):
         else:
             options = {'archived': action == 'archive'}
         self.request_bulk(ids, options)
+
+    def request_bulk_delivery(self, ids):
+        if self.busy or not 1 <= len(ids) <= 500:
+            return
+        try:
+            pending_ids = {project['id'] for project in self.service.list_projects(status='待交付')}
+        except (OSError, RuntimeError, sqlite3.Error) as error:
+            self.show_notice('暂时无法读取待交付项目。\n' + str(error))
+            return
+        if not pending_ids.issuperset(ids):
+            self.show_notice('批量交付要求所选项目均为日常列表中的待交付项目。')
+            return
+        answer = QMessageBox.question(
+            self, '批量确认交付',
+            f'归档并核对所选 {len(ids)} 个待交付项目的当前工作文件？\n\n'
+            '全部核验成功后将它们设为已交付并登记交付记录。',
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        )
+        if answer == QMessageBox.Yes and not self.busy:
+            self.bulk_delivery_requested.emit(ids)
 
     def assign_project_types(self, project_ids, type_id):
         if self.busy or not project_ids:
@@ -2259,7 +2290,7 @@ class CompactPanel(DropSurface, QWidget):
 
     def _remember_project_split(self, *_):
         self._project_split_manual = True
-        if not self._project_narrow and not self.bulk_mode.isChecked():
+        if not self._project_narrow:
             self._project_wide_sizes = self.project_splitter.sizes()
 
     def show_project_detail(self, *_):
@@ -2300,14 +2331,14 @@ class CompactPanel(DropSurface, QWidget):
             + margins.left() + margins.right())
         narrow = self.workbench.width() < 900
         changed = narrow != self._project_narrow
-        if changed and narrow and not self.bulk_mode.isChecked() and not self._project_wide_sizes:
+        if changed and narrow and not self._project_wide_sizes:
             sizes = self.project_splitter.sizes()
             if all(sizes):
                 self._project_wide_sizes = sizes
         self._project_narrow = narrow
         detail = self._project_detail_open and self.current_project is not None and not self.bulk_mode.isChecked()
         self.project_side.setVisible(not narrow or not detail)
-        self.document_side.setVisible(not self.bulk_mode.isChecked() and (not narrow or detail))
+        self.document_side.setVisible(not narrow or detail)
         detail_command = self.tabs.currentIndex() == 0 and narrow and detail
         if detail_command:
             self.project_filter_panel.hide()
