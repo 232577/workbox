@@ -274,12 +274,15 @@ def test_installer_acceptance_annotates_only_an_explicit_verified_draft():
     original_jobs, annotation = workflow.split('\n  annotate_tag:\n', 1)
     tag_input = original_jobs.split('      annotate_tag:\n', 1)[1].split('\npermissions:', 1)[0]
     assert 'type: boolean' in tag_input and 'default: false' in tag_input
-    assert 'needs: verify' in annotation and "needs.verify.result == 'success'" in annotation
+    assert 'needs: [download, verify]' in annotation and "needs.verify.result == 'success'" in annotation
     assert 'inputs.annotate_tag' in annotation
     assert "github.repository == '232577/workbox'" in annotation
     assert "github.ref == 'refs/heads/main'" in annotation and "github.actor == '232577'" in annotation
     assert 'runs-on: ubuntu-latest' in annotation and 'contents: write' in annotation
     assert 'draft == true' in annotation and '--arg digest "sha256:$INSTALLER_SHA"' in annotation
+    assert '.target_commitish == $source' in annotation
+    assert 'DELTA_NAME: ${{ needs.download.outputs.delta_name }}' in annotation
+    assert '--arg delta_digest "sha256:$DELTA_SHA"' in annotation
     assert 'git/matching-refs/tags/' in annotation
     assert annotation.count('gh api --method POST') == 2
     assert 'gh release' not in annotation and 'scripts.verify_installer_windows' not in annotation

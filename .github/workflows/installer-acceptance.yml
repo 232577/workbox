@@ -20,6 +20,11 @@ on:
         required: true
         default: v1.0.0.20261112.2
         type: string
+      delta_sha256:
+        description: Independent SHA-256 of the optional previous-to-candidate delta asset
+        required: false
+        default: ''
+        type: string
       annotate_tag:
         description: Create the annotated tag after acceptance, leaving the release as a draft
         required: false
@@ -37,11 +42,14 @@ jobs:
     permissions:
       # Draft releases require push access. This job never executes installers.
       contents: write
+    outputs:
+      delta_name: ${{ steps.fetch.outputs.delta_name }}
     env:
       CANDIDATE_TAG: ${{ inputs.candidate_tag }}
       SOURCE_SHA: ${{ inputs.source_sha }}
       INSTALLER_SHA: ${{ inputs.installer_sha256 }}
       PREVIOUS_TAG: ${{ inputs.previous_tag }}
+      DELTA_SHA: ${{ inputs.delta_sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -49,6 +57,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: Download draft bytes without executing them
+        id: fetch
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -57,6 +66,7 @@ jobs:
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ && "$INSTALLER_SHA" =~ ^[0-9a-f]{64}$ ]]
           [[ "$CANDIDATE_TAG" =~ ^v1\.0\.0\.20[0-9]{6}(\.[1-9][0-9]{0,3})?$ ]]
           [[ "$PREVIOUS_TAG" =~ ^v1\.0\.0\.20[0-9]{6}(\.[1-9][0-9]{0,3})?$ ]]
+          [[ -z "$DELTA_SHA" || "$DELTA_SHA" =~ ^[0-9a-f]{64}$ ]]
           git merge-base --is-ancestor "$SOURCE_SHA" origin/main
           mkdir -p .local/installer-inputs/candidate .local/installer-inputs/previous
           gh release download "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" --dir .local/installer-inputs/candidate --pattern '*.exe' --pattern BUILD_PROVENANCE.json --pattern PACKAGE_CONTENTS.sha256
@@ -65,6 +75,17 @@ jobs:
           files=(.local/installer-inputs/candidate/*.exe)
           [[ ${#files[@]} == 1 ]]
           printf '%s  %s\n' "$INSTALLER_SHA" "${files[0]}" | sha256sum --check
+          if [[ -n "$DELTA_SHA" ]]; then
+            delta_name=$(python -c 'import sys; from workbox.updates.delta_format import delta_filename; print(delta_filename(*sys.argv[1:]))' "$PREVIOUS_TAG" "$CANDIDATE_TAG")
+            gh release download "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" --dir .local/installer-inputs/candidate --pattern "$delta_name"
+            printf '%s  %s\n' "$DELTA_SHA" ".local/installer-inputs/candidate/$delta_name" | sha256sum --check
+            gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" |
+              jq -es --arg tag "$CANDIDATE_TAG" '
+                [.[][] | select(.tag_name == $tag and .draft == true)] |
+                select(length == 1) | .[0]
+              ' > .local/installer-inputs/candidate/release.json
+            printf 'delta_name=%s\n' "$delta_name" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: installer-inputs
@@ -88,6 +109,7 @@ jobs:
       SOURCE_SHA: ${{ inputs.source_sha }}
       INSTALLER_SHA: ${{ inputs.installer_sha256 }}
       PREVIOUS_TAG: ${{ inputs.previous_tag }}
+      DELTA_SHA: ${{ inputs.delta_sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -104,7 +126,9 @@ jobs:
       - name: Run exact installer upgrade and uninstall with anonymous data
         shell: pwsh
         run: |
-          python -m scripts.verify_installer_windows --candidate-dir .local/installer-inputs/candidate --previous-dir .local/installer-inputs/previous --expected-tag $env:CANDIDATE_TAG --previous-tag $env:PREVIOUS_TAG --expected-sha $env:INSTALLER_SHA --expected-source $env:SOURCE_SHA --output .local/installer-acceptance
+          $deltaArgs = @()
+          if ($env:DELTA_SHA) { $deltaArgs = @('--delta-sha', $env:DELTA_SHA) }
+          python -m scripts.verify_installer_windows --candidate-dir .local/installer-inputs/candidate --previous-dir .local/installer-inputs/previous --expected-tag $env:CANDIDATE_TAG --previous-tag $env:PREVIOUS_TAG --expected-sha $env:INSTALLER_SHA --expected-source $env:SOURCE_SHA --output .local/installer-acceptance @deltaArgs
           if ($LASTEXITCODE -ne 0) { throw 'Installer acceptance failed' }
       - name: Retain acceptance evidence
         if: always()
@@ -119,7 +143,7 @@ jobs:
           retention-days: 14
 
   annotate_tag:
-    needs: verify
+    needs: [download, verify]
     if: >-
       inputs.annotate_tag && needs.verify.result == 'success' &&
       github.repository == '232577/workbox' && github.ref == 'refs/heads/main' &&
@@ -135,6 +159,8 @@ jobs:
           CANDIDATE_TAG: ${{ inputs.candidate_tag }}
           SOURCE_SHA: ${{ inputs.source_sha }}
           INSTALLER_SHA: ${{ inputs.installer_sha256 }}
+          DELTA_SHA: ${{ inputs.delta_sha256 }}
+          DELTA_NAME: ${{ needs.download.outputs.delta_name }}
         shell: bash
         run: |
           set -euo pipefail
@@ -147,11 +173,18 @@ jobs:
           ref="refs/tags/$CANDIDATE_TAG"
 
           gh api --paginate "$repo/releases?per_page=100" |
-            jq -es --arg tag "$CANDIDATE_TAG" --arg file "$filename" --arg digest "sha256:$INSTALLER_SHA" '
+            jq -es --arg tag "$CANDIDATE_TAG" --arg source "$SOURCE_SHA" --arg file "$filename" --arg digest "sha256:$INSTALLER_SHA" \
+              --arg delta "$DELTA_NAME" --arg delta_digest "sha256:$DELTA_SHA" '
               [.[][] | select(.tag_name == $tag)] |
-              length == 1 and (.[0] | .draft == true and .prerelease == false and
+              length == 1 and (.[0] | .draft == true and .prerelease == false and .target_commitish == $source and
                 ([.assets[] | select(.name | ascii_downcase | endswith(".exe"))] |
-                 length == 1 and (.[0] | .name == $file and .state == "uploaded" and .digest == $digest)))
+                 length == 1 and (.[0] | .name == $file and .state == "uploaded" and .digest == $digest)) and
+                (if $delta_digest == "sha256:" then
+                  $delta == "" and ([.assets[] | select(.name | ascii_downcase | endswith(".wbdelta"))] | length == 0)
+                 else
+                  $delta != "" and ([.assets[] | select(.name == $delta)] |
+                    length == 1 and (.[0] | .state == "uploaded" and .digest == $delta_digest))
+                 end))
             ' > /dev/null
 
           # Only a successful list of refs can establish the absence of the exact name.

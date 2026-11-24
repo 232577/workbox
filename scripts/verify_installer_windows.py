@@ -16,6 +16,7 @@ import sqlite3
 import subprocess
 import time
 
+from scripts.verify_incremental_windows import validate_candidate_delta, verify_incremental_upgrade
 from scripts.verify_update_release import CONTENTS, payload_name
 from workbox.storage.native_files import plain_path
 from workbox.updates.update_client import build_key
@@ -220,6 +221,7 @@ def main(argv=None) -> int:
     parser.add_argument('--previous-tag', required=True)
     parser.add_argument('--expected-sha', required=True)
     parser.add_argument('--expected-source', required=True)
+    parser.add_argument('--delta-sha', help='Independent SHA-256 pin of the optional previous-to-candidate delta')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args(argv)
     if (os.name != 'nt' or os.environ.get('GITHUB_ACTIONS') != 'true'
@@ -255,6 +257,13 @@ def main(argv=None) -> int:
             or not re.fullmatch(r'[0-9a-f]{64}', info['updater_sha256'])
             or info['updater_sha256'] != records.get('WorkBoxUpdater.exe'))):
         raise ValueError('Candidate updater digest evidence mismatch')
+    delta_inputs = ()
+    if args.delta_sha is not None:
+        if not require_updater:
+            raise ValueError('Incremental acceptance requires an updater-capable candidate source')
+        delta_inputs = validate_candidate_delta(
+            candidate, info, records, previous_tag=args.previous_tag, expected_sha=args.delta_sha,
+        )
     old = json.loads((previous / 'release.json').read_text(encoding='utf-8-sig'))
     if (old['tag_name'] != args.previous_tag or old['draft'] or old['prerelease']
             or build_key(args.previous_tag) >= build_key(args.expected_tag)):
@@ -275,6 +284,7 @@ def main(argv=None) -> int:
     verify_installed_payload(target, old_manifest, old_records.get('WorkBox.exe', ''))
     obsolete = {name: value for name, value in old_records.items() if name not in records}
     legacy_busy = _verify_legacy_busy_upgrade(installer, target, old_manifest, old_records['WorkBox.exe'], out)
+    incremental = verify_incremental_upgrade(target, out, *delta_inputs) if delta_inputs else {}
     data = target / 'data'
     subprocess.run([str(target / 'WorkBox.exe'), '--check', '--data-dir', str(data)], check=True, timeout=45)
     database = data / 'workbox.db'
@@ -316,6 +326,7 @@ def main(argv=None) -> int:
         'updater_required_by_source': require_updater, 'updater_self_check_verified': require_updater,
         'physical_device_claimed': False}
     report.update(legacy_busy)
+    report.update(incremental)
     (out / 'acceptance.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(json.dumps(report))
     return 0

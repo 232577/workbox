@@ -144,15 +144,19 @@ test('online byte checks wait only for known release propagation', async () => {
     { timeoutMs: 30, intervalMs: 5 }), /did not converge/);
 });
 
-test('online verification checks anonymous bytes, range, page links, history, stats and video', async () => {
+test('online verification checks anonymous bytes, range, page links, history, stats and video', async t => {
   const { verifyOnlineSite } = await import('../scripts/verify_website_deploy.mjs');
   const installer = Buffer.alloc(2048, 65);
   const video = Buffer.alloc(2050, 66);
   const hash = bytes => createHash('sha256').update(bytes).digest('hex');
-  const primary = { ...release, size: installer.length, sha256: hash(installer) };
+  const primary = {
+    version: '1.0.0', tag: 'v1.0.0.20261124.2', edition: '正式安装版', date: '2026-11-24',
+    filename: 'WorkBox-1.0.0-Setup-x64-20261124-r2.exe', size: installer.length, sha256: hash(installer),
+  };
   const previous = { filename: 'WorkBox-1.0.0-Setup-x64-20261123-r1.exe', size: 100 };
   const media = { path: '/media/test.mp4', size: video.length, sha256: hash(video) };
-  const manifest = { tag_name: primary.tag };
+  const asManifest = item => ({ tag_name: item.tag, assets: releaseAssets(item) });
+  const manifest = asManifest(primary);
   const downloadPath = `/download/${primary.filename}`;
   const previousPath = `/download/${previous.filename}`;
   const fallback = `https://github.com/232577/workbox/releases/download/${primary.tag}/${primary.filename}`;
@@ -166,8 +170,8 @@ test('online verification checks anonymous bytes, range, page links, history, st
       assert.equal(new Headers(options.headers).has('Cookie'), false);
       const range = new Headers(options.headers).get('Range');
       switch (url.pathname) {
-        case '/healthz': return Response.json(primary);
-        case '/updates/stable.json': return Response.json(manifest, { headers: { 'Cache-Control': 'no-store' } });
+        case '/healthz': return Response.json(changes.primary ?? primary);
+        case '/updates/stable.json': return Response.json(changes.manifest ?? manifest, { headers: { 'Cache-Control': 'no-store' } });
         case '/': return new Response(`<a id="download-title" href="${changes.homeLink ?? downloadPath}"></a><a href="${fallback}"></a>`);
         case '/guide.html': return new Response(`<a href="${fallback}"></a>`);
         case '/releases.html': return new Response(`<section id="current-release"><a href="${downloadPath}"></a><a href="${fallback}"></a>${primary.tag} ${primary.sha256}</section><a href="${previousPath}"></a>`);
@@ -219,4 +223,71 @@ test('online verification checks anonymous bytes, range, page links, history, st
   ]) {
     await assert.rejects(verifyOnlineSite(primary, manifest, previous, media, mockFetch(changes)), expectedError);
   }
+
+  const packages = [
+    ['20261123', Buffer.alloc(1030, 67)],
+    ['20261124', Buffer.alloc(512, 68)],
+  ].map(([date, bytes]) => {
+    const name = `WorkBox-1.0.0-Delta-x64-${date}-r1-to-20261124-r2.wbdelta`;
+    return {
+      bytes,
+      descriptor: {
+        name, from_tag: `v1.0.0.${date}.1`, to_tag: primary.tag,
+        size: bytes.length, sha256: hash(bytes), state: 'uploaded',
+        url: `https://github.com/232577/workbox/releases/download/${primary.tag}/${name}`,
+      },
+      redirect: `https://release-assets.githubusercontent.com/${name}?key=fixture`,
+    };
+  });
+  const current = { ...primary, deltas: packages.map(item => item.descriptor) };
+  const currentManifest = asManifest(current);
+
+  function mockDeltas(changes = {}) {
+    const fetchSite = mockFetch({ primary: current, manifest: changes.manifest ?? currentManifest });
+    return async (address, options) => {
+      if (new URL(address).origin === 'https://workbox.ltxiangzi.dpdns.org') return fetchSite(address, options);
+      const item = packages.find(entry => [entry.descriptor.url, entry.redirect].includes(address));
+      assert.ok(item, 'Only the expected GitHub assets may be requested');
+      assert.equal(options.redirect, 'manual');
+      const headers = new Headers(options.headers);
+      const range = headers.get('Range');
+      assert.equal(headers.has('Authorization') || headers.has('Cookie'), false);
+      changes.requests?.push([address, range]);
+      if (address === item.descriptor.url)
+        return new Response(null, { status: 302, headers: { Location: changes.redirect ?? item.redirect } });
+      if (!range) return new Response(changes.full?.(item.bytes) ?? item.bytes);
+      const count = Math.min(1024, item.bytes.length);
+      assert.equal(range, `bytes=0-${count - 1}`);
+      return new Response(changes.range?.(count) ?? item.bytes.subarray(0, count), {
+        status: 206, headers: { 'Content-Range': changes.contentRange ?? `bytes 0-${count - 1}/${item.bytes.length}` },
+      });
+    };
+  }
+
+  await t.test('reads the full and ranged contents of both advertised GitHub deltas', async () => {
+    const requests = [];
+    await verifyOnlineSite(current, currentManifest, previous, media, mockDeltas({ requests }));
+    assert.equal(requests.length, 8);
+    for (const { bytes, descriptor, redirect } of packages) {
+      for (const url of [descriptor.url, redirect]) {
+        assert.deepEqual(requests.filter(([address]) => address === url).map(([, range]) => range),
+          [null, `bytes=0-${Math.min(1024, bytes.length) - 1}`]);
+      }
+    }
+  });
+
+  await t.test('rejects wrong delta bytes, ranges or destinations', async () => {
+    for (const [changes, error] of [
+      [{ full: () => Buffer.alloc(1) }, /Download size/],
+      [{ full: bytes => Buffer.alloc(bytes.length) }, /SHA-256/],
+      [{ contentRange: 'bytes 0-1023/9999' }, /Content-Range/],
+      [{ range: count => Buffer.alloc(count) }, /Range bytes/],
+      [{ redirect: 'https://example.com/foreign.wbdelta' }, /Untrusted GitHub asset URL/],
+    ]) {
+      await assert.rejects(verifyOnlineSite(current, currentManifest, previous, media, mockDeltas(changes)), error);
+    }
+    const changedManifest = { ...currentManifest, assets: currentManifest.assets.slice(0, -1) };
+    await assert.rejects(verifyOnlineSite(current, changedManifest, previous, media,
+      mockDeltas({ manifest: changedManifest })), /Invalid local asset metadata/);
+  });
 });
