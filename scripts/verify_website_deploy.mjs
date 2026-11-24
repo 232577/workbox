@@ -13,6 +13,10 @@ const workerName = 'workbox-downloads';
 const stablePath = '/updates/stable.json';
 const assetFields = ['name', 'size', 'state', 'digest', 'browser_download_url'];
 const rangeBytes = 1024;
+const githubAssetOrigins = new Set([
+  'https://github.com', 'https://release-assets.githubusercontent.com', 'https://objects.githubusercontent.com',
+]);
+const redirectStatuses = new Set([301, 302, 303, 307, 308]);
 
 export function wranglerResultId(output, type) {
   assert.ok(type === 'version-upload' || type === 'version-deploy', 'Unknown Wrangler result type');
@@ -78,6 +82,16 @@ async function readBytes(response, size) {
   return { sha256: hash.digest('hex'), prefix };
 }
 
+async function verifyFileBytes(full, url, { size, sha256 }, fetcher) {
+  const downloaded = await readBytes(full, size);
+  assert.equal(downloaded.sha256, sha256, `${url} SHA-256 differs from the catalog`);
+  const count = Math.min(rangeBytes, size);
+  const partial = await request(url, { status: 206, headers: { Range: `bytes=0-${count - 1}` } }, fetcher);
+  assert.equal(partial.headers.get('content-range'), `bytes 0-${count - 1}/${size}`, `${url} Content-Range`);
+  const range = await readBytes(partial, count);
+  assert.deepEqual(range.prefix, downloaded.prefix, `${url} Range bytes differ from the complete download`);
+}
+
 async function verifyFile(path, asset, fetcher, installer = false) {
   let url = site + path;
   let full = await request(url, installer
@@ -94,15 +108,29 @@ async function verifyFile(path, asset, fetcher, installer = false) {
     url = target.href;
     full = await request(url, { timeout: 120_000 }, fetcher);
   }
-  const downloaded = await readBytes(full, asset.size);
-  assert.equal(downloaded.sha256, asset.sha256, `${path} SHA-256 differs from the catalog`);
-
   // Keep the WorkBox download ID so a repeat range does not add a download start.
-  const lastByte = rangeBytes - 1;
-  const partial = await request(url, { status: 206, headers: { Range: `bytes=0-${lastByte}` } }, fetcher);
-  assert.equal(partial.headers.get('content-range'), `bytes 0-${lastByte}/${asset.size}`, `${path} Content-Range`);
-  const range = await readBytes(partial, rangeBytes);
-  assert.deepEqual(range.prefix, downloaded.prefix, `${path} Range bytes differ from the complete download`);
+  await verifyFileBytes(full, url, asset, fetcher);
+}
+
+async function verifyDeltaFile({ browser_download_url: url, size, digest }, fetcher) {
+  const fetchAsset = async (address, options) => {
+    let target = new URL(address);
+    const headers = new Headers(options.headers);
+    headers.set('Accept', 'application/octet-stream');
+    for (let redirects = 0; redirects <= 5; redirects++) {
+      assert.ok(githubAssetOrigins.has(target.origin) && !target.username && !target.password && !target.hash,
+        'Untrusted GitHub asset URL');
+      const response = await fetcher(target.href, { ...options, headers, redirect: 'manual' });
+      if (!redirectStatuses.has(response.status)) return response;
+      const location = response.headers.get('location');
+      await response.body?.cancel();
+      assert.ok(location, 'Missing GitHub asset redirect location');
+      target = new URL(location, target);
+    }
+    throw new Error('Too many GitHub asset redirects');
+  };
+  const full = await request(url, { timeout: 120_000 }, fetchAsset);
+  await verifyFileBytes(full, url, { size, sha256: digest.slice('sha256:'.length) }, fetchAsset);
 }
 
 export async function waitForLiveRelease(primary, manifest, history, fetcher = fetch,
@@ -146,6 +174,8 @@ export async function waitForLiveRelease(primary, manifest, history, fetcher = f
 }
 
 export async function verifyOnlineSite(primary, manifest, previous, media, fetcher = fetch) {
+  const assets = releaseAssets(primary);
+  assert.deepEqual(manifest.assets, assets, 'Invalid local asset metadata');
   const attempts = await waitForLiveRelease(primary, manifest, releases.slice(1), fetcher);
   const get = (path, options) => request(site + path, options, fetcher);
   const download = `/download/${primary.filename}`;
@@ -170,7 +200,11 @@ export async function verifyOnlineSite(primary, manifest, previous, media, fetch
   assert.ok(linksTo(releasePage, history), 'The release page is missing the previous installer');
   assert.equal(previousHead.headers.get('content-length'), String(previous.size), 'Previous installer size changed');
 
-  await Promise.all([verifyFile(download, primary, fetcher, true), verifyFile(media.path, media, fetcher)]);
+  await Promise.all([
+    verifyFile(download, primary, fetcher, true),
+    verifyFile(media.path, media, fetcher),
+    ...assets.slice(1).map(asset => verifyDeltaFile(asset, fetcher)),
+  ]);
   return attempts;
 }
 
@@ -196,7 +230,7 @@ async function main(mode, resultPath) {
     assert.match(media.active_video, /^public\/media\/[\w-]+\.mp4$/);
     const activeVideo = { ...media.files[media.active_video], path: media.active_video.slice('public'.length) };
     const attempts = await verifyOnlineSite(release, manifest, releases[1], activeVideo);
-    console.log(`Verified ${release.tag} after ${attempts} public version probes, with public links, installer and video digests and ranges, history and anonymous stats denial`);
+    console.log(`Verified ${release.tag} after ${attempts} public version probes, with public links, installer, ${manifest.assets.length - 1} GitHub deltas and video digests and ranges, history and anonymous stats denial`);
   } else {
     throw new Error('Use preflight, online, version-upload or version-deploy');
   }
