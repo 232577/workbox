@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QPoint, Qt, QTimer
 from PySide6.QtGui import QContextMenuEvent
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog, QInputDialog, QMenu, QMessageBox, QPlainTextEdit
 
 from workbox.desktop.compact_ui import CompactPanel
@@ -146,13 +147,53 @@ def test_delivery_dialog_supports_explicit_material_choice_and_guards_review(pan
     project['zips'] = [dict(id=7, filename='甲系统.zip', path='D:/isolated/甲系统.zip',
                             sha256='0' * 64, bundle_state='needs-review')]
     dialog = ProjectDeliveryDialog(project, panel)
-    assert dialog.version_box.findData(None) >= 0
-    dialog.version_box.setCurrentIndex(dialog.version_box.findData(7))
-    assert not dialog.confirm_button.isEnabled()
-    dialog.version_box.setCurrentIndex(dialog.version_box.findData(None))
-    assert dialog.confirm_button.isEnabled()
-    assert '保留原件' in dialog.explanation.text()
-    assert dialog.cancel_button.isDefault()
+    assert dialog.version_box.currentData() is None
+    dialog.show()
+    try:
+        dialog.version_box.setCurrentIndex(dialog.version_box.findData(7))
+        dialog.version_box.setFocus()
+        assert not dialog.confirm_button.isEnabled()
+        QTest.keyClick(dialog.version_box, Qt.Key_Return)
+        assert dialog.isVisible(), '待核对的 ZIP 不能由回车确认或关闭弹窗'
+        dialog.version_box.setCurrentIndex(dialog.version_box.findData(None))
+        assert dialog.confirm_button.isEnabled()
+        assert '保留原件' in dialog.explanation.text()
+    finally:
+        dialog.close()
+
+
+@pytest.mark.parametrize('key', [Qt.Key_Return, Qt.Key_Enter])
+def test_delivery_dialog_starts_on_confirm_and_accepts_enter(panel, qapp, key):
+    from workbox.desktop.compact_ui import ProjectDeliveryDialog
+    dialog = ProjectDeliveryDialog(panel.service.get_project(1), panel)
+    dialog.open()
+    qapp.processEvents()
+    try:
+        assert dialog.focusWidget() is dialog.confirm_button
+        assert dialog.confirm_button.isDefault()
+        QTest.keyClick(dialog.focusWidget(), key)
+        assert dialog.result() == QDialog.Accepted
+        assert not dialog.isVisible()
+    finally:
+        dialog.close()
+
+
+def test_delivery_dialog_escape_and_focused_cancel_reject(panel, qapp):
+    from workbox.desktop.compact_ui import ProjectDeliveryDialog
+    dialog = ProjectDeliveryDialog(panel.service.get_project(1), panel)
+    dialog.open()
+    qapp.processEvents()
+    QTest.keyClick(dialog.focusWidget(), Qt.Key_Escape)
+    assert dialog.result() == QDialog.Rejected and not dialog.isVisible()
+
+    dialog.open()
+    dialog.cancel_button.setFocus()
+    qapp.processEvents()
+    try:
+        QTest.keyClick(dialog.cancel_button, Qt.Key_Return)
+        assert dialog.result() == QDialog.Rejected and not dialog.isVisible()
+    finally:
+        dialog.close()
 
 
 def test_invalid_id_has_no_menu_and_double_click_still_emits_clicked_id(panel):

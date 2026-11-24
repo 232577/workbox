@@ -2350,7 +2350,7 @@ class CompactPanel(DropSurface, QWidget):
 
 
 class ProjectDeliveryDialog(QDialog):
-    """只确认一个项目及一个明确版本，默认取消，不承载其他项目操作。"""
+    """确认单个项目的交付内容。"""
     def __init__(self, project, parent=None):
         super().__init__(parent)
         self.project = project
@@ -2383,8 +2383,8 @@ class ProjectDeliveryDialog(QDialog):
         controls.addStretch()
         self.cancel_button = button('取消')
         self.confirm_button = button('确认交付', True)
-        self.confirm_button.setAutoDefault(False)
-        self.cancel_button.setDefault(True)
+        self.cancel_button.setToolTip('按 Esc 取消')
+        self.confirm_button.setToolTip('按 Enter 确认交付')
         self.cancel_button.clicked.connect(self.reject)
         self.confirm_button.clicked.connect(self.confirm)
         controls.addWidget(self.cancel_button)
@@ -2392,7 +2392,8 @@ class ProjectDeliveryDialog(QDialog):
         add_actions(layout, controls)
         self.version_box.currentIndexChanged.connect(self.update_choice)
         self.update_choice()
-        self.cancel_button.setFocus(Qt.OtherFocusReason)
+        self.confirm_button.setDefault(True)
+        self.confirm_button.setFocus(Qt.OtherFocusReason)
 
     def update_choice(self, *_):
         zid = self.version_box.currentData()

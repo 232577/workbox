@@ -178,7 +178,7 @@ def test_project_zip_tooltip_preserves_historical_count_after_new_work(controlle
     assert '普通文件' in panel.status_buttons['待交付'].toolTip()
 
 
-def test_manual_exception_confirmation_explains_override_and_defaults_no(controller, tmp_path):
+def test_manual_exception_confirmation_explains_override_and_allows_cancel(controller, tmp_path):
     zip_id = archive(controller, tmp_path / '甲系统.zip', {'甲系统': 3})['zip']['id']
     controller.refresh()
     select_project(controller, 1)
@@ -187,7 +187,7 @@ def test_manual_exception_confirmation_explains_override_and_defaults_no(control
         for dialog in QApplication.topLevelWidgets():
             if isinstance(dialog, ProjectDeliveryDialog) and dialog.isVisible():
                 dialog.version_box.setCurrentIndex(dialog.version_box.findData(zip_id))
-                seen.append((dialog.windowTitle(), dialog.explanation.text(), dialog.cancel_button.isDefault()))
+                seen.append((dialog.windowTitle(), dialog.explanation.text(), dialog.confirm_button.isDefault()))
                 dialog.cancel_button.click()
     QTimer.singleShot(40, decline)
     project_action(controller.panel, 1, '确认交付…').trigger()

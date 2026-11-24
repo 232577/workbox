@@ -178,16 +178,21 @@ def test_manager_selection_changes_state_and_urgency_without_a_different_page(qa
         app.shutdown()
 
 
-def test_manager_delivery_confirmation_defaults_no_then_explicit_yes(qapp, tmp_path):
+def test_manager_delivery_confirmation_cancels_on_escape_and_confirms_on_enter(qapp, tmp_path):
     app = controller(tmp_path)
     defaults = []
+    closed_by_key = []
     zip_id = None
     def answer(accept):
         for widget in QApplication.topLevelWidgets():
             if isinstance(widget, ProjectDeliveryDialog) and widget.isVisible():
                 widget.version_box.setCurrentIndex(widget.version_box.findData(zip_id))
-                defaults.append(widget.cancel_button.isDefault())
-                (widget.confirm_button if accept else widget.cancel_button).click()
+                defaults.append(widget.confirm_button.isDefault())
+                focused = widget.focusWidget()
+                QTest.keyClick(focused, Qt.Key_Return if accept else Qt.Key_Escape)
+                closed_by_key.append(not widget.isVisible())
+                if widget.isVisible():
+                    widget.reject()
                 return
     try:
         app.service.receive_text('客户档案系统')
@@ -202,6 +207,7 @@ def test_manager_delivery_confirmation_defaults_no_then_explicit_yes(qapp, tmp_p
         project_action(app.panel, 1, '确认交付…').trigger()
         wait(lambda: not app.busy)
         assert defaults == [True, True]
+        assert closed_by_key == [True, True]
         assert app.service.get_project(1)['status'] == '已交付'
         assert app.service.get_project(1)['delivered_zip_id'] == zip_id
     finally:

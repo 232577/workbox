@@ -58,7 +58,7 @@ def deliver_work_files(panel, *, accept=True, seen=None):
             if isinstance(dialog, ProjectDeliveryDialog) and dialog.isVisible():
                 dialog.version_box.setCurrentIndex(dialog.version_box.findData(None))
                 if seen is not None:
-                    seen.append((dialog.explanation.text(), dialog.cancel_button.isDefault()))
+                    seen.append((dialog.explanation.text(), dialog.confirm_button.isDefault()))
                 (dialog.confirm_button if accept else dialog.cancel_button).click()
     QTimer.singleShot(40, answer)
     project_action(panel, '确认交付…').trigger()
