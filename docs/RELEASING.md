@@ -63,6 +63,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1
 记录实际文件名、大小和 SHA-256，只在增量包小于本次完整安装包时发布该资产。
 
 草稿保留完整安装包，同步上传对应 `.wbdelta` 并核对资产摘要。对每个支持的来源构建运行 `WorkBox installer acceptance`，填写 `previous_tag` 和该增量包的 `delta_sha256`。验收核对来源版本的更新助手实际应用增量包、最终运行时和匿名数据。只有对应验收和完整安装包验收都通过，才公开新版本并在官网更新清单加入该增量资产。未匹配来源构建的客户端继续可用完整安装包。
+应用重启可初始化表或触发 SQLite 检查点。重启后的数据库验收检查完整性和已写入的匿名记录，并核对材料字节。
 
 官网上线验收核对 `/updates/stable.json` 与 GitHub Release，并验证每个已列出的增量包可匿名完整下载、支持范围读取且校验一致。
 增量格式、客户端选择和失败恢复见 [文件级增量更新协议](INCREMENTAL-UPDATES.md)。

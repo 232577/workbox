@@ -1,6 +1,7 @@
 """Validate a draft delta and exercise the authentic previous helper in CI."""
 from __future__ import annotations
 
+from contextlib import closing
 import ctypes
 from ctypes import wintypes
 import hashlib
@@ -116,7 +117,7 @@ def verify_incremental_upgrade(previous_install, output, package, release, manif
     options = dict(cwd=app, env=environment, creationflags=subprocess.CREATE_NO_WINDOW)
     subprocess.run([str(exe), '--check', '--data-dir', str(data)], check=True, timeout=45, **options)
     database = data / 'workbox.db'
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         connection.execute('CREATE TABLE delta_acceptance_sentinel (value TEXT NOT NULL)')
         connection.execute('INSERT INTO delta_acceptance_sentinel VALUES (?)', ('anonymous-data',))
     database_sha = _digest(database)
@@ -159,13 +160,14 @@ def verify_incremental_upgrade(previous_install, output, package, release, manif
             raise ValueError('Incrementally updated program identity or original data path differs')
         if _digest(material) != material_sha:
             raise ValueError('Incremental update changed anonymous material bytes')
-        with sqlite3.connect(database.as_uri() + '?mode=ro', uri=True) as connection:
+        with closing(sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)) as connection:
             if (connection.execute('PRAGMA quick_check').fetchone() != ('ok',)
                     or connection.execute('SELECT value FROM delta_acceptance_sentinel').fetchall()
                     != [('anonymous-data',)]):
                 raise ValueError('Incremental update did not preserve anonymous database evidence')
     finally:
         _stop_owned_relaunch(receipt, exe)
+    # The relaunched desktop may initialize schema or checkpoint SQLite without changing existing rows.
     return dict(incremental_update_verified=True, incremental_delta_sha256=release.delta.sha256,
                 incremental_receipt_status=receipt['status'],
                 incremental_delta_size=release.delta.size, incremental_target_inventory_verified=True,
