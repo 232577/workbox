@@ -1,11 +1,12 @@
+import sqlite3
 import time
+from datetime import date
 from pathlib import Path
 from zipfile import ZipFile
-from datetime import date
 
 import pytest
-from PySide6.QtCore import QTimer
-from PySide6.QtTest import QSignalSpy
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtTest import QSignalSpy, QTest
 from PySide6.QtWidgets import QApplication
 
 from workbox.desktop.desktop_controller import FloatingController
@@ -142,6 +143,53 @@ def test_today_count_refresh_is_lightweight_and_dialog_is_modeless(controller, t
     panel.resize(660,492)
     qapp.processEvents()
     assert panel.width()==660 and panel.rect().contains(panel.today_button.geometry().center())
+
+
+@pytest.mark.parametrize('already_open', [False, True], ids=['first-click', 'repeat-click'])
+def test_today_navigation_refreshes_records_and_button_count(controller, already_open):
+    panel = controller.panel
+    page = None
+    if already_open:
+        QTest.mouseClick(panel.today_button, Qt.LeftButton)
+        page = panel.today_dialog
+        page.timer.stop()
+        page.search.setText('甲平台')
+        selected_day = page.date_edit.date()
+        assert page.table.rowCount() == 0
+
+    controller.service.confirm_delivery(1, confirmed=True)
+    assert panel.today_button.accessibleDescription() == '今日工作量 0'
+
+    QTest.mouseClick(panel.today_button, Qt.LeftButton)
+
+    assert panel.today_button.isChecked()
+    assert panel.today_dialog.table.rowCount() == 1
+    assert panel.today_button.text() == '今日工作量 1'
+    assert panel.today_button.accessibleDescription() == '今日工作量 1'
+    if already_open:
+        assert panel.today_dialog is page
+        assert page.search.text() == '甲平台'
+        assert page.date_edit.date() == selected_day
+
+
+def test_today_navigation_can_retry_when_workload_query_fails(controller, monkeypatch):
+    panel, service = controller.panel, controller.service
+    service.confirm_delivery(1, confirmed=True)
+
+    def fail():
+        raise sqlite3.OperationalError('隔离测试暂时无法读取统计')
+
+    with monkeypatch.context() as patch:
+        patch.setattr(service.db, 'today_delivery_summary', fail)
+        QTest.mouseClick(panel.today_button, Qt.LeftButton)
+        assert panel.today_dialog.isVisible()
+        assert '今日工作量读取失败' in panel.today_button.toolTip()
+        assert '读取交付记录失败' in panel.today_dialog.summary.text()
+
+    QTest.mouseClick(panel.today_button, Qt.LeftButton)
+    assert panel.today_button.text() == '今日工作量 1'
+    assert panel.today_dialog.table.rowCount() == 1
+    assert '读取失败' not in panel.today_button.toolTip()
 
 
 def test_unknown_file_creates_project_without_selected_project_fallback(controller,tmp_path,monkeypatch):

@@ -11,7 +11,9 @@ import os
 import re
 import stat
 import threading
-from contextlib import ExitStack
+from concurrent.futures import CancelledError
+from contextlib import ExitStack, nullcontext
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -55,6 +57,18 @@ def _serialized(value):
 def _signature(manifest):
     material = [[row['path'], row['sha256']] for row in manifest]
     return hashlib.sha256(_serialized(material).encode('utf-8')).hexdigest()
+
+
+@dataclass(frozen=True)
+class _PreparedDelivery:
+    project_id: int
+    root: Path
+    excluded: tuple[Path, ...]
+    original: tuple[list[dict], dict[str, list[int]]]
+    signature: str
+    target: Path
+    existing_id: int | None
+    operation_id: str | None
 
 
 class ProjectDeliveryArchive:
@@ -124,11 +138,12 @@ class ProjectDeliveryArchive:
                                                value.relative_to(root).as_posix()))
 
     @classmethod
-    def _snapshot(cls, root, excluded=(), *, cancel_event=None, include_temporary=False):
+    def _snapshot(cls, root, excluded=(), *, cancel_event=None, include_temporary=False, leases=None):
         manifest, identities = [], {}
         for path in cls._files(root, excluded, cancel_event=cancel_event, include_temporary=include_temporary):
             cancelled(cancel_event)
-            with ZipLease(path, movable=False) as lease:
+            file_lease = ZipLease(path, movable=False)
+            with (file_lease if leases is None else nullcontext(leases.enter_context(file_lease))) as lease:
                 initial = identity(os.fstat(lease.stream.fileno()))
                 sha256, size = _hash_stream(lease.stream, cancel_event=cancel_event)
                 if identity(os.fstat(lease.stream.fileno())) != initial or identity(path.stat()) != initial:
@@ -138,12 +153,28 @@ class ProjectDeliveryArchive:
             identities[relative] = initial
         return manifest, identities
 
-    def _assert_unchanged(self, project_id, root, excluded, original, *, cancel_event=None):
+    def _assert_unchanged(self, project_id, root, excluded, original, *, cancel_event=None, leases=None):
         current_root, current_excluded, _ = self._source(project_id)
         if current_root != root or current_excluded != excluded:
             raise RuntimeError('项目登记目录或材料归属在归档期间变化，未确认交付。')
-        if self._snapshot(root, excluded, cancel_event=cancel_event) != original:
+        if self._snapshot(root, excluded, cancel_event=cancel_event, leases=leases) != original:
             raise RuntimeError('项目材料在归档期间新增、删除或发生变化，未确认交付。')
+
+    def _assert_batch_inventory(self, prepared, *, cancel_event=None):
+        # 文件租约保护已打开的内容。新增文件由提交前的目录复核发现。
+        root, target = prepared.root, prepared.target
+        manifest, expected_identities = prepared.original
+        source_paths = self._files(root, prepared.excluded, cancel_event=cancel_event)
+        actual_identities = {}
+        for path in source_paths:
+            cancelled(cancel_event)
+            actual_identities[path.relative_to(root).as_posix()] = identity(path.stat())
+        if actual_identities != expected_identities:
+            raise RuntimeError('项目材料在归档期间新增、删除或发生变化，未确认交付。')
+
+        archive_paths = self._files(target, cancel_event=cancel_event, include_temporary=True)
+        if [path.relative_to(target).as_posix() for path in archive_paths] != [row['path'] for row in manifest]:
+            raise ValueError('材料归档副本文件集合发生变化，未确认交付。')
 
     def _verify_archive(self, target, manifest, *, cancel_event=None):
         actual, _ = self._snapshot(target, cancel_event=cancel_event)
@@ -252,6 +283,139 @@ class ProjectDeliveryArchive:
                 progress(completed, total)
         cancelled(cancel_event)
 
+    def _prepare(self, project_id, *, cancel_event=None):
+        cancelled(cancel_event)
+        root, excluded, archive_root = self._source(project_id)
+        original = self._snapshot(root, excluded, cancel_event=cancel_event)
+        manifest = original[0]
+        if not manifest:
+            raise ValueError('项目工作目录没有可交付文件，不能确认空项目已交付。')
+        signature = _signature(manifest)
+        with self.db.connect() as connection:
+            existing = connection.execute('''SELECT id,path FROM project_delivery_archives
+                WHERE project_id=? AND signature=? ORDER BY id DESC LIMIT 1''',
+                (project_id, signature)).fetchone()
+        if existing:
+            operation_id, existing_id, target = None, existing['id'], plain_path(existing['path'])
+        else:
+            existing_id = None
+            operation_id, target = self._attempt(project_id, root, archive_root, signature, manifest,
+                                                 cancel_event=cancel_event)
+        return _PreparedDelivery(project_id, root, excluded, original, signature,
+                                 target, existing_id, operation_id)
+
+    def _register(self, connection, file_leases, prepared, *, cancel_event=None, hold_sources=False):
+        project_id, root, target = prepared.project_id, prepared.root, prepared.target
+        manifest = prepared.original[0]
+        self.db._assert_projects_editable(connection, project_id)
+        workspace = connection.execute('SELECT path FROM project_workspaces WHERE project_id=?',
+                                       (project_id,)).fetchone()
+        if workspace is None or plain_path(workspace['path']) != root:
+            raise RuntimeError('项目工作目录已变化，未确认交付。')
+        self._assert_unchanged(project_id, root, prepared.excluded, prepared.original,
+                               cancel_event=cancel_event, leases=file_leases if hold_sources else None)
+        self._hold_verified_archive(file_leases, target, manifest, cancel_event=cancel_event)
+        archive_id = prepared.existing_id
+        if archive_id is None:
+            archive_id = connection.execute('''INSERT INTO project_delivery_archives
+                (project_id,path,source_root,signature,manifest) VALUES (?,?,?,?,?)''',
+                (project_id, str(target), str(root), prepared.signature, _serialized(manifest))).lastrowid
+        verified = dict(archive_id=archive_id, path=str(target), source_root=str(root),
+                        signature=prepared.signature, manifest=manifest, file_count=len(manifest),
+                        reused=prepared.existing_id is not None)
+        event_id = self.db._complete_file_delivery(connection, project_id, verified)
+        cancelled(cancel_event)
+        if prepared.operation_id:
+            connection.execute('''UPDATE project_delivery_archive_attempts
+                SET state='registered',archive_id=?,error='' WHERE id=?''', (archive_id, prepared.operation_id))
+        return archive_id, event_id
+
+    def _pending_project_names(self, connection, project_ids):
+        names = {}
+        for project_id in project_ids:
+            row = connection.execute('SELECT name,status FROM projects WHERE id=?', (project_id,)).fetchone()
+            if row is None:
+                raise ValueError(f'项目 WB-{project_id:06d} 不存在，请刷新后重新选择。')
+            try:
+                self.db._assert_projects_editable(connection, project_id)
+            except ValueError as error:
+                raise ValueError(f'“{row["name"]}”：{error}') from error
+            if row['status'] != '待交付':
+                raise ValueError(f'“{row["name"]}”当前为{row["status"]}，请重新选择待交付项目。')
+            names[project_id] = row['name']
+        return names
+
+    def _confirm_projects(self, project_ids, *, pending_only=False, cancel_event=None, progress=None):
+        cancelled(cancel_event)
+        project_names = {}
+        if pending_only:
+            with self.db.connect() as connection:
+                connection.execute('BEGIN')
+                project_names = self._pending_project_names(connection, project_ids)
+
+        active_project = None
+        prepared_deliveries = []
+        results = []
+        total_projects = len(project_ids)
+        batch_progress_total = 2000 * total_projects
+        try:
+            for index, project_id in enumerate(project_ids):
+                active_project = project_names.get(project_id)
+                prepared = self._prepare(project_id, cancel_event=cancel_event)
+                prepared_deliveries.append(prepared)
+                manifest = prepared.original[0]
+                if prepared.existing_id is None:
+                    copy_progress = progress
+                    if pending_only and progress:
+                        def copy_progress(done, total, offset=1000 * index):
+                            progress(offset + 1000 * done // max(total, 1), batch_progress_total)
+
+                    self._copy(prepared.root, prepared.target, manifest,
+                               cancel_event=cancel_event, progress=copy_progress)
+                self._verify_archive(prepared.target, manifest, cancel_event=cancel_event)
+                if pending_only and progress:
+                    progress(1000 * (index + 1), batch_progress_total)
+
+            active_project = None
+            cancelled(cancel_event)
+            # 单项保持副本租约，批量还保持原件租约，直到 SQLite 提交完成。
+            with ExitStack() as file_leases, self.db.connect() as connection:
+                connection.execute('BEGIN IMMEDIATE')
+                if pending_only:
+                    project_names = self._pending_project_names(connection, project_ids)
+                for index, prepared in enumerate(prepared_deliveries):
+                    active_project = project_names.get(prepared.project_id)
+                    archive_id, event_id = self._register(connection, file_leases, prepared,
+                                                          cancel_event=cancel_event, hold_sources=pending_only)
+                    record = dict(connection.execute('SELECT * FROM project_delivery_archives WHERE id=?',
+                                                     (archive_id,)).fetchone())
+                    record['manifest'] = json.loads(record['manifest'])
+                    record['file_count'] = len(record['manifest'])
+                    results.append(dict(archive=record, event_id=event_id, duplicate=prepared.existing_id is not None))
+                    if pending_only and progress:
+                        progress(1000 * (total_projects + index + 1), batch_progress_total)
+                if pending_only:
+                    for prepared in prepared_deliveries:
+                        active_project = project_names[prepared.project_id]
+                        self._assert_batch_inventory(prepared, cancel_event=cancel_event)
+                active_project = None
+                cancelled(cancel_event)
+        except BaseException as error:
+            operations = [prepared.operation_id for prepared in prepared_deliveries if prepared.operation_id]
+            if operations:
+                try:
+                    with self.db.connect() as connection:
+                        connection.executemany('UPDATE project_delivery_archive_attempts SET error=? WHERE id=?',
+                                               [(str(error), operation) for operation in operations])
+                except Exception as log_error:
+                    error.add_note(f'交付归档恢复日志更新失败：{log_error}')
+            if active_project and isinstance(error, Exception) and not isinstance(error, CancelledError):
+                message = f'“{active_project}”：{str(error) or type(error).__name__}'
+                error_type = ValueError if isinstance(error, ValueError) else RuntimeError
+                raise error_type(message) from error
+            raise
+        return results
+
     def confirm(self, project_id, *, confirmed=False, cancel_event=None, progress=None):
         """返回 archive、event_id、duplicate 和当前项目；确认失败不会改变状态。
 
@@ -264,63 +428,15 @@ class ProjectDeliveryArchive:
         if type(project_id) is not int or project_id <= 0:
             raise ValueError('项目编号无效。')
         with self._lock:
-            cancelled(cancel_event)
-            root, excluded, archive_root = self._source(project_id)
-            original = self._snapshot(root, excluded, cancel_event=cancel_event)
-            manifest = original[0]
-            if not manifest:
-                raise ValueError('项目工作目录没有可交付文件，不能确认空项目已交付。')
-            signature = _signature(manifest)
-            with self.db.connect() as connection:
-                existing = connection.execute('''SELECT * FROM project_delivery_archives
-                    WHERE project_id=? AND signature=? ORDER BY id DESC LIMIT 1''',
-                    (project_id, signature)).fetchone()
-            operation = None
-            if existing:
-                target = plain_path(existing['path'])
-                self._verify_archive(target, manifest, cancel_event=cancel_event)
-            else:
-                operation, target = self._attempt(project_id, root, archive_root, signature, manifest,
-                                                  cancel_event=cancel_event)
-            try:
-                if not existing:
-                    self._copy(root, target, manifest, cancel_event=cancel_event, progress=progress)
-                    self._verify_archive(target, manifest, cancel_event=cancel_event)
-                cancelled(cancel_event)
-                # 先完成源材料的最终复核，再锁定并验证全部副本。
-                # 数据库上下文先退出提交，ExitStack 后退出，防止验证后副本被改写。
-                with ExitStack() as archive_leases, self.db.connect() as connection:
-                    connection.execute('BEGIN IMMEDIATE')
-                    self.db._assert_projects_editable(connection, project_id)
-                    workspace = connection.execute('SELECT path FROM project_workspaces WHERE project_id=?',
-                                                   (project_id,)).fetchone()
-                    if workspace is None or plain_path(workspace['path']) != root:
-                        raise RuntimeError('项目工作目录已变化，未确认交付。')
-                    self._assert_unchanged(project_id, root, excluded, original, cancel_event=cancel_event)
-                    self._hold_verified_archive(archive_leases, target, manifest, cancel_event=cancel_event)
-                    if existing:
-                        archive_id = existing['id']
-                    else:
-                        archive_id = connection.execute('''INSERT INTO project_delivery_archives
-                            (project_id,path,source_root,signature,manifest) VALUES (?,?,?,?,?)''',
-                            (project_id, str(target), str(root), signature, _serialized(manifest))).lastrowid
-                    verified = dict(archive_id=archive_id, path=str(target), source_root=str(root),
-                                    signature=signature, manifest=manifest, file_count=len(manifest),
-                                    reused=bool(existing))
-                    event_id = self.db._complete_file_delivery(connection, project_id, verified)
-                    cancelled(cancel_event)
-                    if operation:
-                        connection.execute('''UPDATE project_delivery_archive_attempts
-                            SET state='registered',archive_id=?,error='' WHERE id=?''', (archive_id, operation))
-                    record = dict(connection.execute('SELECT * FROM project_delivery_archives WHERE id=?',
-                                                     (archive_id,)).fetchone())
-                record['manifest'] = json.loads(record['manifest'])
-                record['file_count'] = len(record['manifest'])
-                return dict(archive=record, event_id=event_id, duplicate=bool(existing),
-                            project=self.db.get_project(project_id))
-            except BaseException as error:
-                if operation:
-                    with self.db.connect() as connection:
-                        connection.execute('UPDATE project_delivery_archive_attempts SET error=? WHERE id=?',
-                                           (str(error), operation))
-                raise
+            result, = self._confirm_projects([project_id], cancel_event=cancel_event, progress=progress)
+            return dict(result, project=self.db.get_project(project_id))
+
+    def confirm_many(self, project_ids, *, confirmed=False, cancel_event=None, progress=None) -> dict:
+        """在一个事务内登记全部待交付项目的归档、状态和交付事实。"""
+        if confirmed is not True:
+            raise ValueError('批量材料交付必须由你明确确认。')
+        selected = self.db._validated_project_ids(project_ids)
+        with self._lock:
+            results = self._confirm_projects(selected, pending_only=True, cancel_event=cancel_event, progress=progress)
+        return dict(kind='bulk_delivery_result', project_ids=selected,
+                    event_ids=[result['event_id'] for result in results])
