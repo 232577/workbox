@@ -179,7 +179,7 @@ def test_archive_is_read_only_and_can_be_restored_from_single_project(app):
     wait(app)
     panel.archive_filter.setCurrentIndex(panel.archive_filter.findData(True))
     choose(panel, 1)
-    assert not project_action(panel, 1, '开发状态').isEnabled() and not project_action(panel, 1, '改项目名…').isEnabled()
+    assert not project_action(panel, 1, '开发中').isEnabled() and not project_action(panel, 1, '改项目名…').isEnabled()
     assert project_action(panel, 1, '看原文').isEnabled() and project_action(panel, 1, '查看备注与日期…').isEnabled()
     project_action(panel, 1, '恢复项目').trigger()
     wait(app)

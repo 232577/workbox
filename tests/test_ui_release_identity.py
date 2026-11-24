@@ -103,6 +103,10 @@ def test_delivery_keyboard_build_can_upgrade_the_published_file_copy_release():
     assert update_client.build_key(update_client.CURRENT_TAG) > update_client.build_key('v1.0.0.20261123.1')
 
 
+def test_incremental_release_can_upgrade_the_published_batch_delivery_release():
+    assert update_client.build_key(update_client.CURRENT_TAG) > update_client.build_key('v1.0.0.20261124.1')
+
+
 def test_build_probe_reports_release_without_creating_business_data(tmp_path):
     data = tmp_path / 'unused-data'
     result = tmp_path / 'identity.json'
@@ -141,6 +145,8 @@ def test_build_probe_reports_release_without_creating_business_data(tmp_path):
     ('v1.0.0.20261123.1', 'v1.0.0.20261120.2', 'WorkBox-1.0.0-Setup-x64-20261123-r1.exe'),
     ('v1.0.0.20261124.1', 'v1.0.0.20261120.2', 'WorkBox-1.0.0-Setup-x64-20261124-r1.exe'),
     ('v1.0.0.20261124.1', 'v1.0.0.20261123.1', 'WorkBox-1.0.0-Setup-x64-20261124-r1.exe'),
+    ('v1.0.0.20261124.2', 'v1.0.0.20261123.1', 'WorkBox-1.0.0-Setup-x64-20261124-r2.exe'),
+    ('v1.0.0.20261124.2', 'v1.0.0.20261124.1', 'WorkBox-1.0.0-Setup-x64-20261124-r2.exe'),
 ])
 def test_release_upgrades_previous_without_reoffering_installed_or_older(tag, previous, filename):
     payload = {'tag_name': tag, 'draft': False, 'prerelease': False,

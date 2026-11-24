@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QPoint, Qt, QTimer
-from PySide6.QtGui import QContextMenuEvent
+from PySide6.QtGui import QAccessible, QContextMenuEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog, QInputDialog, QMenu, QMessageBox, QPlainTextEdit
 
@@ -52,11 +52,29 @@ def test_right_side_has_documents_and_no_retained_project_operation_widgets(pane
 def test_standard_menu_contains_all_project_actions(panel):
     menu = panel.project_context_menu(1)
     assert isinstance(menu, QMenu)
-    for text in ('建工作目录', '开发状态', '待开发', '开发中', '待交付', '加急',
+    for text in ('建工作目录', '待开发', '开发中', '待交付', '加急',
                  '备注与日期…', '改项目名…', '看原文', '归档项目', '确认交付…', 'ZIP 位置'):
         assert action(menu, text)
     assert action(menu, '待开发').isChecked()
     assert action(menu, '确认交付…').isEnabled() is False
+
+
+def test_development_statuses_are_direct_and_current_state_is_accessible(panel):
+    panel.service.set_status(1, '开发中')
+    menu = panel.project_context_menu(1)
+    statuses = ('待开发', '开发中', '待交付')
+    root_actions = menu.actions()
+    assert '开发状态' not in [item.text() for item in root_actions]
+    choices = [item for item in root_actions if item.text() in statuses]
+    assert [item.text() for item in choices] == list(statuses)
+    assert all(item.isCheckable() and item.menu() is None for item in choices)
+    assert [item.text() for item in choices if item.isChecked()] == ['开发中']
+    accessible = QAccessible.queryAccessibleInterface(menu)
+    child_interfaces = (accessible.child(index) for index in range(accessible.childCount()))
+    states = {child.text(QAccessible.Name): child.state() for child in child_interfaces if child}
+    assert all(states[status].checkable for status in statuses)
+    assert [status for status in statuses if states[status].checked] == ['开发中']
+    assert '已交付' not in [item.text() for item in root_actions]
 
 
 def test_menu_keeps_other_actions_on_clicked_project_and_applies_urgency_to_selection(panel):
@@ -106,13 +124,20 @@ def test_keyboard_menu_uses_focused_row(panel, monkeypatch):
 def test_archived_and_busy_menu_guards(panel):
     panel.service.db.bulk_update_projects([1], archived=True)
     menu = panel.project_context_menu(1)
-    for text in ('开发状态', '加急', '改项目名…', '确认交付…', '建工作目录'):
+    for text in ('待开发', '开发中', '待交付', '加急', '改项目名…', '确认交付…', '建工作目录'):
         assert not action(menu, text).isEnabled()
     assert action(menu, '恢复项目').isEnabled()
     assert action(menu, '查看备注与日期…').isEnabled()
     panel.set_busy(True)
     menu = panel.project_context_menu(2)
     assert all(not item.isEnabled() for item in menu.actions() if not item.isSeparator())
+
+
+def test_deleted_project_cannot_change_development_state(panel):
+    panel.service.delete_project(1, confirmed=True)
+    menu = panel.project_context_menu(1)
+    assert all(not action(menu, state).isEnabled() for state in ('待开发', '开发中', '待交付'))
+    assert action(menu, '恢复已删除项目').isEnabled()
 
 
 def test_action_rechecks_busy_and_archival_after_menu_created(panel):
@@ -212,7 +237,8 @@ def test_real_menu_route_keeps_actual_clicked_id(panel, monkeypatch):
         menu = factory(project_id)
         def activate():
             try:
-                action(menu, '开发中').trigger()
+                menu.setActiveAction(action(menu, '开发中'))
+                QTest.keyClick(menu, Qt.Key_Return)
             finally:
                 menu.close()
         QTimer.singleShot(0, activate)

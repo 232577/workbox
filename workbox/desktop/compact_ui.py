@@ -1620,7 +1620,7 @@ class CompactPanel(DropSurface, QWidget):
         menu = QMenu(self)
         menu.setAccessibleName(project['name'] + ' · 项目操作')
         active = not self.busy
-        editable = active and not project.get('archived_at') and not project.get('block_reason')
+        editable = active and not any(project.get(key) for key in ('archived_at', 'deleted_at', 'block_reason'))
 
         def add(parent, text, callback, enabled=True):
             item = parent.addAction(text)
@@ -1658,16 +1658,15 @@ class CompactPanel(DropSurface, QWidget):
             lambda: self.open_project_workspace(project_id), active and (editable or project.get('workspace')))
         add(menu, '材料检查…', lambda: self.open_material_check(project_id),
             active and not project.get('deleted_at') and not project.get('block_reason'))
-        states = menu._states_menu = QMenu('开发状态', menu)
-        menu.addMenu(states)
-        states.setEnabled(bool(editable))
-        group = menu._state_group = QActionGroup(states)
+        menu.addSeparator()
+        group = QActionGroup(menu)
         group.setExclusive(True)
         for state in STATUSES[:3]:
-            item = add(states, state, lambda _checked=False, value=state: self.change_state(project_id, value), editable)
+            item = add(menu, state, lambda _checked=False, value=state: self.change_state(project_id, value), editable)
             item.setCheckable(True)
             item.setChecked(state == project['status'])
             group.addAction(item)
+        menu.addSeparator()
         if not batch_ids:
             urgent = add(menu, '加急', lambda checked: self.change_urgent(project_id, checked), editable)
             urgent.setCheckable(True)
@@ -1675,7 +1674,7 @@ class CompactPanel(DropSurface, QWidget):
         if hasattr(self.service, 'list_project_types'):
             type_menu = menu._type_menu = QMenu('项目类型', menu)
             menu.addMenu(type_menu)
-            type_menu.setEnabled(editable and not project.get('deleted_at'))
+            type_menu.setEnabled(editable)
             type_group = type_menu._type_group = QActionGroup(type_menu)
             type_group.setExclusive(True)
             available_types = self.service.list_project_types()

@@ -69,7 +69,7 @@ def test_repeated_real_timer_polls_do_not_toggle_controls_or_refresh(controller,
     for _ in range(3):
         controller.monitor_timer.timeout.emit()
         assert controller.worker is not None
-        assert project_action(panel, '开发状态').isEnabled(), '后台监视不应把项目菜单暂时禁用'
+        assert project_action(panel, '开发中').isEnabled(), '后台监视不应把项目菜单暂时禁用'
         assert panel.settings_button.isEnabled()
         assert panel.cancel_button.isHidden(), '静默监视不应闪出取消按钮'
         wait_until(lambda: not controller.busy)
@@ -136,7 +136,7 @@ def test_background_source_error_updates_notice_without_rebuilding_project(contr
     wait_until(lambda: not controller.busy)
     assert '暂未归档' in controller.panel.notice.text()
     assert calls == [], '归档来源错误只影响监视状态，不应重建当前项目详情'
-    assert project_action(controller.panel, '开发状态').isEnabled()
+    assert project_action(controller.panel, '开发中').isEnabled()
     assert controller.monitor_timer.isActive()
 
 
@@ -150,7 +150,7 @@ def test_explicit_task_retains_busy_cancel_and_safe_exit(controller, quit_after_
     controller.enqueue('隔离显式任务', operation)
     wait_until(entered.is_set)
     assert controller.panel.busy
-    assert not project_action(controller.panel, '开发状态').isEnabled()
+    assert not project_action(controller.panel, '开发中').isEnabled()
     assert not controller.panel.cancel_button.isHidden()
     if quit_after_cancel:
         controller.request_quit()
@@ -159,6 +159,6 @@ def test_explicit_task_retains_busy_cancel_and_safe_exit(controller, quit_after_
     else:
         controller.cancel_jobs()
         wait_until(lambda: not controller.busy)
-        assert project_action(controller.panel, '开发状态').isEnabled()
+        assert project_action(controller.panel, '开发中').isEnabled()
         assert controller.panel.cancel_button.isHidden()
         assert controller.monitor_timer.isActive()
