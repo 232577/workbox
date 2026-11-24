@@ -173,13 +173,15 @@ jobs:
           ref="refs/tags/$CANDIDATE_TAG"
 
           gh api --paginate "$repo/releases?per_page=100" |
-            jq -es --arg tag "$CANDIDATE_TAG" --arg file "$filename" --arg digest "sha256:$INSTALLER_SHA" \
+            jq -es --arg tag "$CANDIDATE_TAG" --arg source "$SOURCE_SHA" --arg file "$filename" --arg digest "sha256:$INSTALLER_SHA" \
               --arg delta "$DELTA_NAME" --arg delta_digest "sha256:$DELTA_SHA" '
               [.[][] | select(.tag_name == $tag)] |
-              length == 1 and (.[0] | .draft == true and .prerelease == false and
+              length == 1 and (.[0] | .draft == true and .prerelease == false and .target_commitish == $source and
                 ([.assets[] | select(.name | ascii_downcase | endswith(".exe"))] |
                  length == 1 and (.[0] | .name == $file and .state == "uploaded" and .digest == $digest)) and
-                (if $delta_digest == "sha256:" then $delta == "" else
+                (if $delta_digest == "sha256:" then
+                  $delta == "" and ([.assets[] | select(.name | ascii_downcase | endswith(".wbdelta"))] | length == 0)
+                 else
                   $delta != "" and ([.assets[] | select(.name == $delta)] |
                     length == 1 and (.[0] | .state == "uploaded" and .digest == $delta_digest))
                  end))

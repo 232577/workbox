@@ -11,6 +11,7 @@ from workbox.updates.delta_format import REQUIRED_FILES, delta_filename
 
 PREVIOUS = 'v1.0.0.20261123.1'
 TARGET = 'v1.0.0.20261124.2'
+SOURCE = 'a' * 40
 
 
 def sha(data):
@@ -42,6 +43,7 @@ def candidate_delta(tmp_path):
     result = build_delta(base, target, package, from_tag=PREVIOUS, to_tag=TARGET)
     info = {
         'release_tag': TARGET,
+        'source_commit': SOURCE,
         'installer_name': 'WorkBox-1.0.0-Setup-x64-20261124-r2.exe',
         'installer_sha256': '1' * 64,
         'installer_size': result['size'] + 500,
@@ -53,7 +55,7 @@ def candidate_delta(tmp_path):
         {'name': package.name, 'size': result['size'],
          'digest': 'sha256:' + result['sha256'], 'state': 'uploaded'},
     ]
-    draft = dict(tag_name=TARGET, draft=True, prerelease=False, assets=assets)
+    draft = dict(tag_name=TARGET, target_commitish=SOURCE, draft=True, prerelease=False, assets=assets)
     return package, result, info, records, draft
 
 
@@ -77,7 +79,7 @@ def test_draft_metadata_selects_exact_previous_asset(candidate_delta):
 
 
 @pytest.mark.parametrize('change', ['wrong-pin', 'duplicate', 'pending', 'wrong-size',
-                                    'unexpected-tag', 'not-draft', 'no-full-fallback',
+                                    'unexpected-tag', 'unexpected-source', 'not-draft', 'no-full-fallback',
                                     'wrong-target-manifest', 'wrong-target-byte'])
 def test_draft_delta_checks_fail_closed(candidate_delta, change):
     _, _, info, records, draft = candidate_delta
@@ -92,6 +94,8 @@ def test_draft_delta_checks_fail_closed(candidate_delta, change):
         draft['assets'][1]['size'] += 1
     elif change == 'unexpected-tag':
         draft['tag_name'] = PREVIOUS
+    elif change == 'unexpected-source':
+        draft['target_commitish'] = 'b' * 40
     elif change == 'not-draft':
         draft['draft'] = False
     elif change == 'no-full-fallback':

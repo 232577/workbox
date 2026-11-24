@@ -25,7 +25,8 @@ def validate_candidate_delta(candidate, info, records, *, previous_tag, expected
     name = delta_filename(previous_tag, target)
     draft = load_json(candidate / 'release.json')
     assets = draft.get('assets')
-    if (draft.get('tag_name') != target or draft.get('draft') is not True
+    if (draft.get('tag_name') != target or draft.get('target_commitish') != info['source_commit']
+            or draft.get('draft') is not True
             or draft.get('prerelease') is not False or not isinstance(assets, list)):
         raise ValueError('Candidate release is not the expected draft')
     stable_assets = [
@@ -109,7 +110,7 @@ def verify_incremental_upgrade(previous_install, output, package, release, manif
         _copy_checked(previous_install / name, app / name, record)
     verify_tree(app, manifest['base'])
     exe = app / 'WorkBox.exe'
-    data = plain_path(output / 'incremental-data')
+    data = plain_path(app / 'data')
     data.mkdir()
     environment = dict(os.environ, QT_QPA_PLATFORM='offscreen', PYINSTALLER_RESET_ENVIRONMENT='1')
     options = dict(cwd=app, env=environment, creationflags=subprocess.CREATE_NO_WINDOW)
