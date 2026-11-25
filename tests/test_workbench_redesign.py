@@ -4,7 +4,7 @@ from collections import Counter
 import time
 
 import pytest
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
@@ -117,18 +117,18 @@ def test_bulk_selection_keeps_window_and_project_split_widths(panel, width, heig
     before_document_rect = panel.document_side.geometry()
 
     panel.select_all_button.click()
+    panel.bulk_tools_button.click()
     QTest.qWait(100)
     assert panel.size() == before_size
     assert panel.document_side.isVisible()
     assert split.sizes() == before_split
     assert panel.document_side.geometry() == before_document_rect
-    assert panel.bulk_bar.parentWidget() is panel.project_side
+    assert panel.bulk_bar.parentWidget() is panel and panel.bulk_bar.isWindow()
     for control in (panel.bulk_action, panel.bulk_apply, panel.change_type_button,
-                    panel.select_all_button, panel.clear_selection_button):
+                    panel.bulk_select_all_button, panel.clear_selection_button):
         assert control.isVisible()
         assert control.width() >= control.minimumSizeHint().width()
-        assert panel.project_side.rect().contains(
-            control.mapTo(panel.project_side, control.rect().bottomRight()))
+        assert panel.bulk_bar.rect().contains(control.mapTo(panel.bulk_bar, control.rect().bottomRight()))
 
     panel.project_list.item(0).setSelected(True)
     panel.project_list.item(1).setSelected(True)
@@ -151,14 +151,18 @@ def test_bulk_selection_keeps_narrow_queue_and_detail_navigation(panel):
     before_split = panel.project_splitter.sizes()
     assert panel.project_side.isVisible() and not panel.document_side.isVisible()
 
-    panel.select_all_button.click()
+    panel.project_list.setCurrentRow(0)
+    panel.project_list.item(1).setSelected(True)
+    panel.bulk_tools_button.click()
     QTest.qWait(100)
     assert panel.size() == before_size
     assert panel.project_splitter.sizes() == before_split
     assert panel.project_side.isVisible() and not panel.document_side.isVisible()
     assert panel.bulk_apply.isVisible() and not panel.project_back_button.isVisible()
     assert panel.bulk_action.width() < panel.project_side.width() / 2
-    assert panel.rect().contains(panel.bulk_apply.mapTo(panel, panel.bulk_apply.rect().bottomRight()))
+    assert QRect(panel.mapToGlobal(QPoint()), panel.size()).contains(panel.bulk_bar.geometry())
+    panel.bulk_select_all_button.click()
+    assert len(panel.project_list.selectedItems()) == panel.project_list.count()
 
     panel.clear_selection_button.click()
     panel.project_list.setCurrentRow(0)
@@ -170,11 +174,64 @@ def test_bulk_selection_keeps_narrow_queue_and_detail_navigation(panel):
     assert panel.size() == before_size
 
 
+@pytest.mark.parametrize('width, height', [(913, 610), (660, 480)])
+def test_ctrl_selection_keeps_scrolled_project_rows_in_place(panel, width, height):
+    panel.show_project_queue()
+    panel.resize(width, height)
+    QTest.qWait(100)
+    projects = panel.project_list
+    bar = projects.verticalScrollBar()
+    assert bar.maximum() > 0
+    bar.setValue(bar.maximum())
+    viewport = projects.viewport()
+    items = [projects.item(i) for i in range(projects.count())
+             if viewport.rect().contains(projects.visualItemRect(projects.item(i)))]
+    first, second = items[:2]
+    QTest.mouseClick(viewport, Qt.LeftButton, pos=projects.visualItemRect(first).center())
+    QTest.qWait(30)
+    before = projects.geometry(), viewport.geometry(), bar.value(), projects.visualItemRect(first)
+
+    QTest.mouseClick(viewport, Qt.LeftButton, Qt.ControlModifier,
+                     pos=projects.visualItemRect(second).center())
+    QTest.qWait(30)
+    assert len(projects.selectedItems()) == 2 and panel.bulk_tools_button.isVisible()
+    assert not panel.bulk_bar.isVisible()
+    assert (projects.geometry(), viewport.geometry(), bar.value(), projects.visualItemRect(first)) == before
+
+    panel.bulk_tools_button.setFocus()
+    QTest.keyClick(panel.bulk_tools_button, Qt.Key_Space)
+    assert panel.bulk_bar.isVisible()
+    QTest.keyClick(panel.bulk_bar, Qt.Key_Escape)
+    assert not panel.bulk_bar.isVisible() and not panel.bulk_tools_button.isChecked()
+    assert len(projects.selectedItems()) == 2
+    assert (projects.geometry(), viewport.geometry(), bar.value(), projects.visualItemRect(first)) == before
+
+    QTest.mouseClick(viewport, Qt.LeftButton, Qt.ControlModifier,
+                     pos=projects.visualItemRect(second).center())
+    QTest.qWait(30)
+    assert projects.selectedItems() == [first] and panel.select_all_button.isVisible()
+    assert (projects.geometry(), viewport.geometry(), bar.value(), projects.visualItemRect(first)) == before
+
+
+def test_bulk_popup_closes_with_the_workbench(panel):
+    panel.select_all_button.click()
+    panel.bulk_tools_button.click()
+    assert panel.bulk_bar.isVisible()
+
+    panel.close()
+    assert not panel.bulk_bar.isVisible() and not panel.bulk_tools_button.isChecked()
+
+    panel.show()
+    panel.bulk_tools_button.click()
+    assert panel.bulk_bar.isVisible()
+
+
 def test_bulk_action_popup_fits_long_type_names_without_widening_toolbar(panel):
     name = '匿名自定义类型' * 4
     kind = panel.service.create_project_type(name)
     panel.refresh_type_controls()
     panel.select_all_button.click()
+    panel.bulk_tools_button.click()
     combo = panel.bulk_action
     width = combo.width()
     combo.showPopup()
@@ -199,10 +256,12 @@ def test_bulk_type_action_stays_visible_and_targets_all_selected_projects(panel,
     for item in items:
         item.setSelected(True)
     expected = {item.data(Qt.UserRole) for item in items}
+    panel.bulk_tools_button.click()
     assert panel.change_type_button.isVisible()
     assert panel.change_type_button.isEnabled()
     panel.change_type_button.click()
     assert calls == [expected]
+    panel.bulk_tools_button.click()
     panel.clear_selection_button.click()
     assert not panel.change_type_button.isVisible()
     panel.project_list.setCurrentItem(items[0])

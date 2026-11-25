@@ -249,7 +249,7 @@ class FloatingController(QObject):
         self.panel.scan_requested.connect(lambda: self.check_archives(silent=False))
         self.panel.approve_requested.connect(lambda zid: self.enqueue('已标记为可用版本', lambda **_: self.service.snapshots.approve_version(zid)))
         self.panel.bundle_requested.connect(lambda zid, batch: self.enqueue('核对包内项目', lambda **kw: self.service.snapshots.recognize_bundle(zid, batch_id=batch, **kw)))
-        self.panel.delivery_requested.connect(lambda pid, zid: self.enqueue('已手动设为已交付', lambda **kw: self.service.confirm_delivery(pid, zid, confirmed=True, **kw)))
+        self.panel.delivery_requested.connect(self.deliver_project)
         self.panel.history_archive_requested.connect(lambda pid, fid: self.enqueue(
             '移入历史文稿',
             lambda **kw: self.service.archive_work_file(pid, fid, confirmed=True, **kw)))
@@ -337,6 +337,43 @@ class FloatingController(QObject):
             lambda **kw: self.service.confirm_project_deliveries(ids, confirmed=True, **kw),
             on_cancel=lambda: self.notify(BULK_DELIVERY_CANCELLED),
             on_complete=self._complete_bulk_delivery,
+        )
+
+    def deliver_project(self, project_id, zip_id):
+        self.enqueue(
+            '正在确认交付',
+            lambda **kw: self.service.confirm_delivery(project_id, zip_id, confirmed=True, **kw),
+            on_complete=self._complete_project_delivery,
+        )
+
+    def _complete_project_delivery(self, worker):
+        self.refresh()
+        if worker.cancelled:
+            self.notify('已取消确认交付。')
+            return
+        if worker.error:
+            self.notify('确认交付失败：' + worker.error, kind='delivery-error')
+            return
+        result = worker.result
+        if 'archive' not in result:
+            self.notify('已确认交付。')
+            return
+        event = next(
+            (row for row in self.service.db.delivery_events_for_project(result['project']['id'])
+             if row['id'] == result['event_id']),
+            None,
+        )
+        if event and not event.get('included_in_workload', True):
+            counting = '该项目不计入个人工作量，交付记录已保留。'
+        elif event and event['counted']:
+            counting = '本次首次交付已计入今日统计。'
+        elif event and event['counting_role'] == 'repeat':
+            counting = '本次为补交，不增加今日首次交付数。'
+        else:
+            counting = '交付记录已保存。'
+        self.notify(
+            '项目工作文件已按原名归档，已设为已交付。' + counting + '\n' + result['archive']['path'],
+            target=self._result_target(result),
         )
 
     def _complete_bulk_delivery(self, worker):
@@ -873,14 +910,6 @@ class FloatingController(QObject):
         elif isinstance(worker.result, dict) and 'open_folder' in worker.result:
             self.open_folder(worker.result['open_folder'])
             message = '工作目录已打开。'
-        elif isinstance(worker.result, dict) and 'archive' in worker.result and 'project' in worker.result:
-            event = next((row for row in self.service.db.delivery_events_for_project(worker.result['project']['id'])
-                if row['id'] == worker.result.get('event_id')), None)
-            counting = ('该项目不计入个人工作量，交付记录已保留。' if event and not event.get('included_in_workload',True) else
-                        '本次首次交付已计入今日统计。' if event and event['counted'] else
-                        '本次为补交，不增加今日首次交付数。' if event and event['counting_role'] == 'repeat' else
-                        '交付记录已保存。')
-            message = '项目工作文件已按原名归档，已设为已交付。' + counting + '\n' + worker.result['archive']['path']
         elif isinstance(worker.result, dict) and 'archived_file_ids' in worker.result:
             message = '已移入历史文稿，以后交付仅包含当前文件。可在文件操作中查看历史文稿。'
         elif isinstance(worker.result, dict) and worker.result.get('operation') in ('rename', 'merge'):

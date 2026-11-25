@@ -61,7 +61,7 @@ def test_pending_export_menu_belongs_to_pending_queue_in_light_and_dark(controll
             assert panel.pending_export_action.isVisible()
             assert button.width() >= button.minimumSizeHint().width()
             assert panel.project_queue_header.rect().contains(button.geometry())
-            assert not button.geometry().intersects(panel.select_all_button.geometry())
+            assert not button.geometry().intersects(panel.project_selection_tools.geometry())
             panel.project_list.setCurrentRow(0)
             panel.show_project_detail()
             assert not button.isVisible()

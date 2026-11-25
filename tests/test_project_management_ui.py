@@ -169,15 +169,15 @@ def test_project_list_always_uses_native_mouse_and_keyboard_selection(app):
         return {item.data(Qt.UserRole) for item in view.selectedItems()}
 
     click(0)
-    assert not panel.bulk_bar.isVisible()
+    assert not panel.bulk_tools_button.isVisible()
     click(2, Qt.ShiftModifier)
     assert selected_ids() == set(ids)
-    assert panel.bulk_bar.isVisible()
+    assert panel.bulk_tools_button.isVisible()
     click(1, Qt.ControlModifier)
     assert selected_ids() == {ids[0], ids[2]}
     click(1)
     assert selected_ids() == {ids[1]}
-    assert not panel.bulk_bar.isVisible()
+    assert not panel.bulk_tools_button.isVisible()
     QTest.keyClick(view, Qt.Key_Up, Qt.ShiftModifier)
     assert selected_ids() == {ids[0], ids[1]}
     QTest.keyClick(view, Qt.Key_A, Qt.ControlModifier)
@@ -268,6 +268,7 @@ def test_new_controls_fit_compact_panel_and_batch_toolbar(app, qapp):
     dialog.cancel_button.click()
     panel.show_project_queue()
     panel.select_all_button.click()
+    panel.bulk_tools_button.click()
     qapp.processEvents()
     assert panel.bulk_apply.isVisible()
     assert panel.rect().contains(panel.bulk_apply.mapTo(panel, panel.bulk_apply.rect().bottomRight()))
