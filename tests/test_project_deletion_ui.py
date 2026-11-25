@@ -77,7 +77,8 @@ def test_delete_cancel_confirm_and_restore_target_actual_menu_project(controller
     panel.archive_filter.setCurrentIndex(trash)
     assert listed(panel)=={2}
     assert '已删除' in panel.project_list.item(0).text()
-    assert not panel.bulk_mode.isEnabled()
+    assert not panel.select_all_button.isEnabled()
+    assert not panel.bulk_bar.isVisible()
     assert menu_action(panel,2,'恢复项目') is None
     restore=menu_action(panel,2,'恢复已删除项目')
     assert restore is not None and restore.isEnabled()

@@ -30,7 +30,6 @@ def prepared_controller(tmp_path):
         controller.refresh()
         controller.show_panel()
         panel = controller.panel
-        panel.bulk_mode.setChecked(True)
         for index in range(panel.project_list.count()):
             row = panel.project_list.item(index)
             row.setSelected(row.data(Qt.UserRole) in project_ids[:2])

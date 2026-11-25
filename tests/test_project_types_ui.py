@@ -31,7 +31,6 @@ def test_project_type_filter_context_and_bulk_use_real_ids(qapp, tmp_path):
         assert '工具' in panel.project_list.item(0).text()
         panel.type_filter.setCurrentIndex(panel.type_filter.findData(0))
         assert panel.project_list.count() == 1
-        panel.bulk_mode.setChecked(True)
         panel.project_list.selectAll()
         panel.bulk_action.setCurrentIndex(panel.bulk_action.findData(f'type:{kind_id}'))
         panel.apply_bulk()
@@ -133,7 +132,6 @@ def test_visible_type_entry_uses_selected_ids_and_preserves_project_state(qapp, 
         for key in ('status', 'urgent', 'delivered_at', 'archived_at', 'deleted_at', 'notes', 'due_date'):
             assert before.get(key) == after.get(key)
         assert '入口分类' in panel.project_title.toolTip()
-        panel.bulk_mode.setChecked(True)
         panel.project_list.selectAll()
         panel.change_type_button.click()
         assert set(called[-1]) == {first['id'], second['id']}

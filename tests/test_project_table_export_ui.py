@@ -1,4 +1,4 @@
-"""Project table export captures the displayed or explicitly checked scope."""
+"""Project table export captures the displayed or selected scope."""
 from concurrent.futures import CancelledError
 import threading
 import time
@@ -48,7 +48,7 @@ def wait(controller):
     QApplication.processEvents()
 
 
-def test_export_menu_is_available_in_every_status_and_single_highlight_is_not_checked(controller):
+def test_export_menu_is_available_in_every_status_with_no_selection(controller):
     panel = controller.panel
     for state in (None, '待开发', '开发中', '待交付', '已交付'):
         panel.status_buttons[state].click()
@@ -56,7 +56,7 @@ def test_export_menu_is_available_in_every_status_and_single_highlight_is_not_ch
         assert panel.project_export_button.isVisible()
         assert panel.project_export_filtered_action.text() == f'导出当前筛选结果（{len(ids(panel))}项）'
         assert panel.project_export_filtered_action.isEnabled() == bool(ids(panel))
-        assert panel.project_export_checked_action.text() == '导出已勾选项目（0项）'
+        assert panel.project_export_checked_action.text() == '导出所选项目（0项）'
         assert not panel.project_export_checked_action.isEnabled()
         assert panel.pending_export_action.isVisible() == (state == '待开发')
 
@@ -97,26 +97,27 @@ def test_filtered_export_freezes_date_type_status_and_order_before_save_picker(c
     assert '当前筛选结果' in panel.notice.toolTip() and '2' in panel.notice.toolTip()
 
 
-def test_checked_export_uses_only_explicit_checks_and_never_falls_back(controller, tmp_path, monkeypatch):
+@pytest.mark.parametrize('rows', [(0,), (1, 3)])
+def test_selected_export_uses_only_selected_rows_and_never_falls_back(controller, tmp_path, monkeypatch, rows):
     panel = controller.panel
     calls = []
     monkeypatch.setattr(QFileDialog, 'getSaveFileName', lambda *a, **k: (str(tmp_path / 'table.xlsx'), ''))
     monkeypatch.setattr(delivery_export, 'export_project_table',
         lambda db, path, **kw: calls.append(kw) or {'path': str(path), 'project_count': len(kw['project_ids'])}, raising=False)
     panel.project_list.setCurrentRow(0)
+    panel.project_list.clearSelection()
     panel.request_project_table_export('checked')
     assert not calls and not controller.busy
-    panel.bulk_mode.setChecked(True)
-    panel.project_list.clearSelection()
-    panel.project_list.item(1).setSelected(True)
-    panel.project_list.item(3).setSelected(True)
-    expected = tuple(panel.project_list.item(i).data(Qt.UserRole) for i in (1, 3))
-    assert panel.project_export_checked_action.text() == '导出已勾选项目（2项）'
+    for row in rows:
+        panel.project_list.item(row).setSelected(True)
+    expected = tuple(panel.project_list.item(row).data(Qt.UserRole) for row in rows)
+    assert panel.project_export_checked_action.text() == f'导出所选项目（{len(rows)}项）'
+    assert panel.project_export_checked_action.isEnabled()
     panel.project_export_checked_action.trigger()
     panel.project_list.clearSelection()
     wait(controller)
     assert len(calls) == 1 and calls[0]['project_ids'] == expected
-    assert '已勾选项目' in calls[0]['scope_label']
+    assert '所选项目' in calls[0]['scope_label']
     panel.request_project_table_export('checked')
     assert len(calls) == 1
 

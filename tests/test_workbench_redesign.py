@@ -46,7 +46,7 @@ def test_common_window_gives_files_six_complete_rows_and_keeps_filters_reachable
     assert files.rowCount() == 12
     assert files.viewport().height() >= 6 * files.rowHeight(0)
     assert panel.project_list.viewport().height() >= 350
-    for control in (panel.added_date_filter, panel.bulk_mode, panel.project_filter_button):
+    for control in (panel.added_date_filter, panel.select_all_button, panel.project_filter_button):
         assert control.isVisible()
     panel.project_filter_button.click()
     for control in (panel.archive_filter, panel.due_filter, panel.type_filter, panel.urgent_filter):
@@ -116,7 +116,7 @@ def test_bulk_selection_keeps_window_and_project_split_widths(panel, width, heig
     assert panel.document_side.isVisible() and all(before_split)
     before_document_rect = panel.document_side.geometry()
 
-    panel.bulk_mode.click()
+    panel.select_all_button.click()
     QTest.qWait(100)
     assert panel.size() == before_size
     assert panel.document_side.isVisible()
@@ -137,7 +137,7 @@ def test_bulk_selection_keeps_window_and_project_split_widths(panel, width, heig
     assert split.sizes() == before_split
     assert panel.bulk_apply.isEnabled()
 
-    panel.bulk_mode.click()
+    panel.clear_selection_button.click()
     QTest.qWait(100)
     assert panel.size() == before_size
     assert split.sizes() == before_split
@@ -151,7 +151,7 @@ def test_bulk_selection_keeps_narrow_queue_and_detail_navigation(panel):
     before_split = panel.project_splitter.sizes()
     assert panel.project_side.isVisible() and not panel.document_side.isVisible()
 
-    panel.bulk_mode.click()
+    panel.select_all_button.click()
     QTest.qWait(100)
     assert panel.size() == before_size
     assert panel.project_splitter.sizes() == before_split
@@ -160,9 +160,10 @@ def test_bulk_selection_keeps_narrow_queue_and_detail_navigation(panel):
     assert panel.bulk_action.width() < panel.project_side.width() / 2
     assert panel.rect().contains(panel.bulk_apply.mapTo(panel, panel.bulk_apply.rect().bottomRight()))
 
-    panel.bulk_mode.click()
+    panel.clear_selection_button.click()
     panel.project_list.setCurrentRow(0)
-    panel.show_project_detail()
+    assert panel.project_detail_button.isVisible()
+    panel.project_detail_button.click()
     assert panel.document_side.isVisible() and panel.project_back_button.isVisible()
     panel.project_back_button.click()
     assert panel.project_side.isVisible() and not panel.document_side.isVisible()
@@ -173,7 +174,7 @@ def test_bulk_action_popup_fits_long_type_names_without_widening_toolbar(panel):
     name = '匿名自定义类型' * 4
     kind = panel.service.create_project_type(name)
     panel.refresh_type_controls()
-    panel.bulk_mode.click()
+    panel.select_all_button.click()
     combo = panel.bulk_action
     width = combo.width()
     combo.showPopup()
@@ -193,7 +194,7 @@ def test_bulk_type_action_stays_visible_and_targets_all_selected_projects(panel,
         calls.append({project['id'] for project in projects})
         return False, None
     monkeypatch.setattr('workbox.desktop.project_types_ui.choose_project_type', choose)
-    panel.bulk_mode.setChecked(True)
+    panel.project_list.clearSelection()
     items = [panel.project_list.item(i) for i in range(2)]
     for item in items:
         item.setSelected(True)
@@ -202,7 +203,7 @@ def test_bulk_type_action_stays_visible_and_targets_all_selected_projects(panel,
     assert panel.change_type_button.isEnabled()
     panel.change_type_button.click()
     assert calls == [expected]
-    panel.bulk_mode.setChecked(False)
+    panel.clear_selection_button.click()
     assert not panel.change_type_button.isVisible()
     panel.project_list.setCurrentItem(items[0])
     assert not panel.change_type_button.isVisible()

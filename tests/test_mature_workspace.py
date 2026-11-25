@@ -35,6 +35,10 @@ def test_narrow_detail_returns_to_same_reading_position_and_restores_wide_split(
     point = panel.project_list.visualItemRect(item).center()
     QTest.mouseClick(panel.project_list.viewport(), Qt.LeftButton, pos=point)
     QApplication.processEvents()
+    assert panel.project_side.isVisible() and not panel.document_side.isVisible()
+    assert panel.project_detail_button.isVisible()
+    QTest.keyClick(panel.project_list, Qt.Key_Return)
+    QApplication.processEvents()
     assert panel.document_side.isVisible() and not panel.project_side.isVisible()
     assert panel.project_back_button.isVisible()
     selected_id = panel.current_project['id']
@@ -124,4 +128,4 @@ def test_tab_after_receive_files_reaches_project_controls(panel):
         current = QApplication.focusWidget()
         assert current is not previous
         visited.append(current)
-    assert panel.search in visited or panel.bulk_mode in visited
+    assert panel.search in visited or panel.select_all_button in visited

@@ -133,7 +133,6 @@ def test_bulk_type_button_tracks_archival_state_after_refresh(panel):
     pid = panel.project_list.item(0).data(Qt.UserRole)
     panel.service.bulk_update_projects([pid], archived=True)
     panel.archive_filter.setCurrentIndex(panel.archive_filter.findData(None))
-    panel.bulk_mode.setChecked(True)
     panel.project_list.selectAll()
     assert len(panel.project_list.selectedItems()) == 3
     assert not panel.change_type_button.isEnabled()
@@ -144,7 +143,6 @@ def test_bulk_type_button_tracks_archival_state_after_refresh(panel):
 
 
 def test_bulk_cached_button_state_cannot_bypass_action_validation(panel, monkeypatch):
-    panel.bulk_mode.setChecked(True)
     panel.project_list.selectAll()
     ids = [item.data(Qt.UserRole) for item in panel.project_list.selectedItems()]
     assert panel.change_type_button.isEnabled()
@@ -172,7 +170,6 @@ def test_bulk_selection_uses_bounded_metadata_reads(panel, monkeypatch):
             yield connection
 
     monkeypatch.setattr(panel.service.db, 'connect', traced)
-    panel.bulk_mode.setChecked(True)
     calls.clear()
     panel.project_list.selectAll()
     assert len(panel.project_list.selectedItems()) == 500

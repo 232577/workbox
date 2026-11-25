@@ -40,7 +40,7 @@ def wait_for_reader(pane):
 def test_closed_filters_show_active_count_and_clear_without_touching_primary_scope(panel):
     panel.search.setText('匿名')
     panel.status_buttons['待开发'].click()
-    assert not panel.batch_filter.isVisible() and panel.bulk_mode.isVisible()
+    assert not panel.batch_filter.isVisible() and panel.select_all_button.isVisible()
     panel.added_date_filter.set_day(panel.service.project_workbench_snapshot()['projects'][0]['added_on'])
     day = panel.added_date_filter.selection()
     panel.batch_filter.setCurrentIndex(1)

@@ -125,9 +125,7 @@ def test_panel_opens_notes_editor_and_refreshes_searchable_result(app):
 
 def test_bulk_changes_only_selected_projects_and_archive_restore_keeps_details(app):
     panel = app.panel
-    assert hasattr(panel, 'bulk_mode'), '缺少批量选择入口'
     app.service.update_project_details(1, '必须保留的备注', '2026-11-05')
-    panel.bulk_mode.setChecked(True)
     for index in range(panel.project_list.count()):
         item = panel.project_list.item(index)
         item.setSelected(item.data(Qt.UserRole) in (1, 2))
@@ -155,10 +153,9 @@ def test_bulk_changes_only_selected_projects_and_archive_restore_keeps_details(a
     assert restored['status'] == '开发中' and restored['archived_at'] is None
 
 
-def test_project_bulk_mode_uses_native_mouse_and_keyboard_selection(app):
+def test_project_list_always_uses_native_mouse_and_keyboard_selection(app):
     panel = app.panel
     panel.resize(960, 620)
-    panel.bulk_mode.setChecked(True)
     QApplication.processEvents()
     view = panel.project_list
     ids = [view.item(row).data(Qt.UserRole) for row in range(view.count())]
@@ -172,22 +169,26 @@ def test_project_bulk_mode_uses_native_mouse_and_keyboard_selection(app):
         return {item.data(Qt.UserRole) for item in view.selectedItems()}
 
     click(0)
+    assert not panel.bulk_bar.isVisible()
     click(2, Qt.ShiftModifier)
     assert selected_ids() == set(ids)
+    assert panel.bulk_bar.isVisible()
     click(1, Qt.ControlModifier)
     assert selected_ids() == {ids[0], ids[2]}
     click(1)
     assert selected_ids() == {ids[1]}
+    assert not panel.bulk_bar.isVisible()
     QTest.keyClick(view, Qt.Key_Up, Qt.ShiftModifier)
     assert selected_ids() == {ids[0], ids[1]}
     QTest.keyClick(view, Qt.Key_A, Qt.ControlModifier)
     assert selected_ids() == set(ids)
 
-    panel.bulk_mode.setChecked(False)
-    QApplication.processEvents()
-    click(0)
-    click(2, Qt.ControlModifier)
-    assert selected_ids() == {ids[2]}
+    panel.search.setText('客户')
+    assert view.count() == 1
+    panel.search.setFocus()
+    QTest.keyClick(panel.search, Qt.Key_A, Qt.ControlModifier)
+    assert panel.search.selectedText() == '客户'
+    assert not selected_ids()
 
 
 def test_deadline_filter_clears_hidden_bulk_selection(app):
@@ -195,7 +196,6 @@ def test_deadline_filter_clears_hidden_bulk_selection(app):
     assert hasattr(panel, 'due_filter'), '缺少截止日期筛选'
     app.service.update_project_details(1, '', (date.today() - timedelta(days=1)).isoformat())
     panel.refresh()
-    panel.bulk_mode.setChecked(True)
     panel.select_all_button.click()
     assert len(panel.project_list.selectedItems()) == 3
     panel.due_filter.setCurrentIndex(panel.due_filter.findData('overdue'))
@@ -242,9 +242,8 @@ def test_new_small_package_returns_pending_and_selects_latest_without_deleting_h
     assert app.service.db.delivery_events_for_project(1)[0]['zip_id'] == confirmed_id
 
 
-def test_new_controls_fit_compact_panel_and_bulk_mode(app, qapp):
+def test_new_controls_fit_compact_panel_and_batch_toolbar(app, qapp):
     panel = app.panel
-    assert hasattr(panel, 'bulk_mode'), '缺少紧凑批量工具栏'
     panel.resize(660, 492)
     choose(panel, 1)
     qapp.processEvents()
@@ -267,8 +266,10 @@ def test_new_controls_fit_compact_panel_and_bulk_mode(app, qapp):
         assert widget.height() >= widget.minimumSizeHint().height()
         assert dialog.rect().contains(widget.mapTo(dialog, widget.rect().bottomRight()))
     dialog.cancel_button.click()
-    panel.bulk_mode.setChecked(True)
+    panel.show_project_queue()
+    panel.select_all_button.click()
     qapp.processEvents()
+    assert panel.bulk_apply.isVisible()
     assert panel.rect().contains(panel.bulk_apply.mapTo(panel, panel.bulk_apply.rect().bottomRight()))
 
 
