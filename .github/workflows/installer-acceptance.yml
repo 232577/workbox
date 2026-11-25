@@ -18,7 +18,7 @@ on:
       previous_tag:
         description: Previous public stable release
         required: true
-        default: v1.0.0.20261112.2
+        default: v1.0.0.20261125.1
         type: string
       delta_sha256:
         description: Independent SHA-256 of the optional previous-to-candidate delta asset

@@ -11,6 +11,7 @@ import uuid
 from workbox.updates import delta_format as fmt
 from workbox.updates.incremental_apply import (_file, _inventory, _record, _root, _zone_bytes, _zone_hash,
                                _publish_transaction, has_pending_update, runtime_guard, verify_tree)
+from workbox.updates.legacy_browser_files import LEGACY_BROWSER_FILES
 from workbox.storage.native_files import plain_path
 from workbox.updates.update_file_ops import move_checked
 
@@ -19,6 +20,8 @@ HISTORY = '.workbox-runtime-history'
 PLAN_FORMAT = 'workbox-full-install-runtime-plan-v1'
 RECEIPT_FORMAT = 'workbox-full-install-runtime-receipt-v1'
 MAX_HISTORY = 1000
+# 完整安装的受管桌面文件包括 QtWebEngine。增量 ZIP 和其基线保持原有限额。
+MAX_FULL_PAYLOAD_SIZE = 640 * 1024 * 1024
 
 # Public releases v1.0.0.20261113.1 / v1.0.0.20261113.2, PACKAGE_CONTENTS.sha256:
 # 3ccb6ede0811949e467b6a58bdb6ac74af733bfb1a63c366b769cb2477f94b34
@@ -53,6 +56,10 @@ KNOWN_OBSOLETE = {
 def _require(condition, message):
     if not condition:
         raise ValueError(message)
+
+
+def _obsolete_digests(name):
+    return KNOWN_OBSOLETE.get(name) or LEGACY_BROWSER_FILES.get(name, ())
 
 
 def _identity(path):
@@ -189,7 +196,8 @@ def _validate_pin(expected_sha256):
              '必须提供安装包固定的程序清单 SHA-256。')
 
 
-def _records(root, expected_sha256):
+def verify_program_manifest(root, expected_sha256):
+    """复核固定清单及其程序文件，适用于封装前和完整安装后。"""
     _validate_pin(expected_sha256)
     path = _file(root, CONTENTS)
     raw = _read_bytes(path, fmt.MAX_MANIFEST_SIZE)
@@ -213,9 +221,9 @@ def _records(root, expected_sha256):
         record = _bounded_record(_file(root, name))
         _require(record['sha256'] == digest, '安装后的程序文件与清单不一致：' + name)
         total += record['size']
-        _require(total <= fmt.MAX_TOTAL_SIZE, '程序载荷总长度超过限额。')
+        _require(total <= MAX_FULL_PAYLOAD_SIZE, '程序载荷总长度超过限额。')
         records[name] = record
-    return fmt._mapping(records)
+    return fmt._mapping(records, total_limit=MAX_FULL_PAYLOAD_SIZE)
 
 
 def _entry(path):
@@ -248,15 +256,14 @@ def _validate_plan(plan, root):
         fmt.validate_path(name)
         _require(type(entry) is dict and set(entry) == {'sha256', 'size', 'identity', 'zone_sha256'},
                  '旧运行库恢复文件记录无效。')
-        _require(name in KNOWN_OBSOLETE and isinstance(entry['sha256'], str)
-                 and entry['sha256'] in KNOWN_OBSOLETE[name],
+        _require(isinstance(entry['sha256'], str) and entry['sha256'] in _obsolete_digests(name),
                  '恢复计划包含未明确识别的旧运行库。')
         _require(type(entry['size']) is int and 0 <= entry['size'] <= fmt.MAX_FILE_SIZE
                  and _valid_identity(entry['identity']), '恢复计划文件长度或身份无效。')
         _require(entry['zone_sha256'] is None or (isinstance(entry['zone_sha256'], str)
                  and fmt.SHA256.fullmatch(entry['zone_sha256']) is not None), '恢复计划来源标记无效。')
         total += entry['size']
-    _require(total <= fmt.MAX_TOTAL_SIZE, '旧运行库恢复计划总长度超过限额。')
+    _require(total <= MAX_FULL_PAYLOAD_SIZE, '旧运行库恢复计划总长度超过限额。')
     fmt._validate_path_set(files)
 
 
@@ -365,7 +372,7 @@ def preflight_full_install(app_dir, expected_manifest_sha256):
 def _check_state(root, records, transaction, plan):
     _require(_identity(root) == plan['app_identity'], '程序目录身份发生变化。')
     _require(sum(value['size'] for value in records.values())
-             + sum(value['size'] for value in plan['files'].values()) <= fmt.MAX_TOTAL_SIZE,
+             + sum(value['size'] for value in plan['files'].values()) <= MAX_FULL_PAYLOAD_SIZE,
              '程序目录总长度超过校验限额。')
     remaining = _locations(root, transaction, plan)
     _require(not (set(plan['files']) & set(records)), '恢复计划与新程序文件发生冲突。')
@@ -382,7 +389,7 @@ def finalize_full_install(app_dir, expected_manifest_sha256):
     with runtime_guard(root, exclusive=True):
         _check_pending(root)
         pending = _histories(root, expected_manifest_sha256)
-        records = _records(root, expected_manifest_sha256)
+        records = verify_program_manifest(root, expected_manifest_sha256)
         extras = _inventory(root) - set(records)
         if pending:
             transaction, plan = pending[0]
@@ -390,12 +397,13 @@ def finalize_full_install(app_dir, expected_manifest_sha256):
             entries = {}
             for name in sorted(extras):
                 fmt.validate_path(name)
-                _require(name in KNOWN_OBSOLETE, '程序目录含有未知文件，未移动：' + name)
+                digests = _obsolete_digests(name)
+                _require(digests, '程序目录含有未知文件，未移动：' + name)
                 entry = _entry(_file(root, name))
-                _require(entry['sha256'] in KNOWN_OBSOLETE[name], '旧运行库字节未明确识别，未移动：' + name)
+                _require(entry['sha256'] in digests, '旧运行库字节未明确识别，未移动：' + name)
                 entries[name] = entry
             _require(sum(value['size'] for value in records.values())
-                     + sum(value['size'] for value in entries.values()) <= fmt.MAX_TOTAL_SIZE,
+                     + sum(value['size'] for value in entries.values()) <= MAX_FULL_PAYLOAD_SIZE,
                      '程序目录总长度超过校验限额。')
             plan = {'format': PLAN_FORMAT, 'app_dir': str(root), 'app_identity': _identity(root),
                     'manifest_sha256': expected_manifest_sha256, 'files': entries}

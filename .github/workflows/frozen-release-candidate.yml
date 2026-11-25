@@ -49,17 +49,28 @@ jobs:
       - name: Run full Windows tests and freeze the reviewed source
         shell: pwsh
         run: |
-          & ./scripts/build.ps1
+          & ./scripts/build.ps1 -Workstation
       - name: Verify frozen runtime and record its provenance
         shell: pwsh
         run: |
           if ((git rev-parse HEAD).Trim() -cne $env:EXPECTED_SOURCE -or (git status --porcelain)) {
             throw 'Source changed while building.'
           }
-          $runtime = (Resolve-Path -LiteralPath 'dist/WorkBox').Path
+          $runtime = (Resolve-Path -LiteralPath 'dist/workstation/WorkBox').Path
           $top = @(Get-ChildItem -LiteralPath $runtime -Force | Select-Object -ExpandProperty Name)
           if (Compare-Object $top @('WorkBox.exe', 'WorkBoxUpdater.exe', '_internal')) {
             throw 'Unrecognized file in the frozen runtime.'
+          }
+          & .\.venv\Scripts\python.exe -m scripts.workstation_payload --frozen $runtime
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen single-engine runtime verification failed.' }
+          $freeze = Get-Content -LiteralPath '.local/workstation-freeze/FREEZE_PROVENANCE.json' -Raw -Encoding utf8 | ConvertFrom-Json
+          $appHash = (Get-FileHash -LiteralPath (Join-Path $runtime 'WorkBox.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+          $updaterHash = (Get-FileHash -LiteralPath (Join-Path $runtime 'WorkBoxUpdater.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+          $qtHash = (Get-FileHash -LiteralPath '.local/workstation-freeze/qt-engine-files.json' -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($freeze.variant -cne 'workstation' -or $freeze.source_commit -cne $env:EXPECTED_SOURCE -or
+              $freeze.executable_sha256 -cne $appHash -or $freeze.updater_sha256 -cne $updaterHash -or
+              $freeze.qt_manifest_sha256 -cne $qtHash) {
+            throw 'Workstation freeze provenance differs from the reviewed source or artifact.'
           }
           $proof = New-Item -ItemType Directory -Path '.local/frozen-candidate'
           $probe = Join-Path $proof.FullName 'runtime-info.json'
@@ -89,8 +100,9 @@ jobs:
             workflow_run_id = $env:GITHUB_RUN_ID
             product_version = $info.version
             release_tag = $info.release_tag
-            app_sha256 = (Get-FileHash -LiteralPath (Join-Path $runtime 'WorkBox.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
-            updater_sha256 = (Get-FileHash -LiteralPath (Join-Path $runtime 'WorkBoxUpdater.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+            app_sha256 = $appHash
+            updater_sha256 = $updaterHash
+            qt_manifest_sha256 = $qtHash
             frozen_payload_sha256 = (Get-FileHash -LiteralPath $manifest -Algorithm SHA256).Hash.ToLowerInvariant()
             runtime_files = $files.Count
             validation = 'full-windows-tests-and-frozen-identity'
@@ -99,10 +111,12 @@ jobs:
         with:
           name: workbox-frozen-${{ github.sha }}
           path: |
-            dist/WorkBox/
+            dist/workstation/WorkBox/
             .local/frozen-candidate/FROZEN_PROVENANCE.json
             .local/frozen-candidate/FROZEN_PAYLOAD.sha256
-            .local/final-tests.xml
+            .local/workstation-freeze/FREEZE_PROVENANCE.json
+            .local/workstation-freeze/qt-engine-files.json
+            .local/workstation-freeze/final-tests.xml
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
