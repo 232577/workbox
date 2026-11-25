@@ -128,6 +128,36 @@ def test_rename_with_period_keeps_all_eight_projects_in_current_batch_view(contr
     assert panel.project_list.isVisible()
 
 
+def test_confirmed_merge_keeps_narrow_project_details_open_in_current_batch(controller):
+    service, panel = controller.service, controller.panel
+    receipt = service.receive_text('1. 匿名来源项目\n2. 匿名同批项目')
+    source, sibling = receipt['project_ids']
+    target_name = '匿名保留项目系统'
+    target = service.receive_text(target_name)['project_ids'][0]
+    controller.show_panel()
+    panel.resize(660, 480)
+    controller.refresh()
+    batch_key = f"receipt:{receipt['receipt_id']}"
+    batch_index = panel.batch_filter.findData(batch_key)
+    assert batch_index > 0
+    panel.batch_filter.setCurrentIndex(batch_index)
+    assert panel.focus_visible_project(source)
+    panel.show_project_detail()
+    assert panel.project_back_button.isVisible()
+
+    plan = service.preview_project_rename(source, target_name)
+    assert plan['kind'] == 'merge' and plan['target']['id'] == target
+    panel.project_change_requested.emit(dict(project_id=source, name=target_name, expected_token=plan['token'],
+        merge_target_id=target, confirmed_merge=True))
+    finish(controller)
+
+    assert service.get_project(source)['merged_into_id'] == target
+    assert panel.batch_filter.currentData() == batch_key
+    assert {panel.project_list.item(i).data(Qt.UserRole) for i in range(panel.project_list.count())} == {target, sibling}
+    assert panel.current_project['id'] == target
+    assert panel.project_back_button.isVisible()
+
+
 def test_retired_task_payload_does_not_create_hidden_tasks(controller):
     before = task_history(controller.service)
     controller.receive({'kind': 'text', 'text': '1. 匿名系统', 'group_id': 7, 'new_round': True})
