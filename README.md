@@ -2,7 +2,7 @@
 
 WorkBox 是 Windows 上的项目工作箱。个人项目、材料和交付记录保存在本机，个人工作台无需账号。使用团队交件时，在工作箱内登录办公室服务和原站。
 
-[下载 Windows 安装版](https://workbox.ltxiangzi.dpdns.org/#download) · [使用指南](https://workbox.ltxiangzi.dpdns.org/guide.html) · [更新记录](https://workbox.ltxiangzi.dpdns.org/releases.html)
+[下载 Windows 安装版](https://github.com/232577/workbox/releases/latest) · [使用指南](https://workbox.ltxiangzi.dpdns.org/guide.html) · [更新记录](https://workbox.ltxiangzi.dpdns.org/releases.html)
 
 ![WorkBox 项目工作台，匿名示例](docs/images/project-table-export-20261112/workbench-light.png)
 

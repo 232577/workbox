@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from json import dumps
 from pathlib import Path
@@ -5,6 +6,7 @@ from threading import Thread
 
 import pytest
 
+from workbox.team_delivery import live_site
 from workbox.team_delivery.contracts import Account, GatewayError, Material, Snapshot, Stage, Task
 from workbox.team_delivery.live_site import LiveBrowserGateway
 
@@ -234,6 +236,19 @@ def gateway(anonymous_site):
         instance.close()
 
 
+@contextmanager
+def _short_action_timeout(live, monkeypatch, timeout_ms):
+    page = live._page
+    default_timeout_ms = live_site._TIMEOUT_MS
+    with monkeypatch.context() as action:
+        action.setattr(live_site, '_TIMEOUT_MS', timeout_ms)
+        page.set_default_timeout(timeout_ms)
+        try:
+            yield
+        finally:
+            page.set_default_timeout(default_timeout_ms)
+
+
 def test_desktop_timer_updates_own_tasks_without_manual_refresh(anonymous_site, tmp_path, monkeypatch):
     from concurrent.futures import Future
     from time import monotonic
@@ -243,7 +258,6 @@ def test_desktop_timer_updates_own_tasks_without_manual_refresh(anonymous_site, 
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication
 
-    from workbox.team_delivery import live_site
     from workbox.team_delivery.application import IntakeController
     from workbox.team_delivery.desktop import DesktopWindow
 
@@ -477,13 +491,12 @@ def test_reads_all_pages_from_the_middle_and_keeps_identically_named_tasks(gatew
 ])
 def test_rejects_inconsistent_or_unverifiable_pagination(gateway, monkeypatch, problem, expected_clicks, reason):
     live, requests = gateway
-    monkeypatch.setattr('workbox.team_delivery.live_site._TIMEOUT_MS', 800)
     live.open_login()
     live._page.get_by_role('button', name='模拟登录甲').click()
     assert live.snapshot().tasks
     live._page.evaluate('(problem) => setupPages(1, problem)', problem)
 
-    with pytest.raises(GatewayError, match=reason):
+    with _short_action_timeout(live, monkeypatch, 800), pytest.raises(GatewayError, match=reason):
         live.snapshot()
     assert live._page.evaluate('pageClicks') == expected_clicks
     assert live._page.evaluate('refreshCount') == 0
@@ -655,10 +668,10 @@ def test_background_refresh_and_paging_do_not_depend_on_animation_frames(gateway
     live.open_login()
     page = live._page
     page.get_by_role('button', name='模拟登录甲').click()
-    live.snapshot()
+    assert live.snapshot().tasks
     page.evaluate('setupPages(1); window.requestAnimationFrame = () => 0')
-    monkeypatch.setattr('workbox.team_delivery.live_site._TIMEOUT_MS', 2000)
-    assert [task.id for task in live.poll_snapshot().tasks] == ['201', '203', '204']
+    with _short_action_timeout(live, monkeypatch, 2000):
+        assert [task.id for task in live.poll_snapshot().tasks] == ['201', '203', '204']
     assert page.evaluate('currentPage') == 1
 
 
@@ -849,15 +862,15 @@ def test_real_write_actions_are_disabled_without_opening_a_browser():
     "status.textContent = '已刷新 11:00'",
 ])
 def test_refresh_requires_a_new_loading_to_terminal_transition(gateway, monkeypatch, edit):
-    live, _ = gateway
-    monkeypatch.setattr('workbox.team_delivery.live_site._TIMEOUT_MS', 700)
+    live, requests = gateway
     live.open_login()
     live._page.get_by_role('button', name='模拟登录甲').click()
     assert live.refresh_snapshot().tasks
     live._page.locator('#refreshApp').evaluate(
         'node => { node.onclick = () => { const status = document.querySelector("#refreshStatus"); ' + edit + '; }; }')
-    with pytest.raises(GatewayError, match='刷新'):
+    with _short_action_timeout(live, monkeypatch, 700), pytest.raises(GatewayError, match='刷新'):
         live.refresh_snapshot()
+    assert not any(method == 'POST' for method, _ in requests)
 
 
 @pytest.mark.parametrize('url', [
