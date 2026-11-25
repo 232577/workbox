@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QButtonGroup, QDialog, QFileDialog, QFrame, QGridLayout,
     QHBoxLayout, QHeaderView, QLabel, QListView, QListWidget, QListWidgetItem,
     QMenu, QMessageBox, QPlainTextEdit, QProxyStyle, QScrollArea, QScrollBar,
-    QSizePolicy, QSplitter, QStyle, QStyledItemDelegate, QStyleFactory,
+    QSizePolicy, QSplitter, QStackedWidget, QStyle, QStyledItemDelegate, QStyleFactory,
     QStyleOptionViewItem, QTabWidget, QTableWidget, QTableWidgetItem, QVBoxLayout,
     QWidget,
 )
@@ -147,25 +147,29 @@ class ProjectList(WorkbenchListWidget):
                 self.verticalScrollBar().setValue(self.verticalScrollBar().value() - offset)
 
 
-class ProjectFilterPanel(QFrame):
-    """附加条件使用 Qt 弹出窗口，避免压缩小窗口中的项目清单。"""
+class ProjectPopup(QFrame):
+    """项目清单的次要控件在独立弹层中使用，不占用列表空间。"""
 
-    def __init__(self, parent, trigger):
+    def __init__(self, parent, trigger, title, *, max_width=480, align_right=False):
         super().__init__(parent, Qt.Popup)
         self.trigger = trigger
+        self.max_width = max_width
+        self.align_right = align_right
         self.setObjectName('surface')
-        self.setAccessibleName('更多筛选')
-        self.setWindowTitle('更多筛选')
+        self.setAccessibleName(title)
+        self.setWindowTitle(title)
         self.setAttribute(Qt.WA_NoMouseReplay)
         apply_to(self)
 
     def showEvent(self, event):
-        self.setFixedWidth(min(480, self.parentWidget().width() - 24))
+        self.setFixedWidth(min(self.max_width, self.parentWidget().width() - 24))
         self.adjustSize()
         bounds = self.parentWidget().rect()
         origin = self.parentWidget().mapToGlobal(bounds.topLeft())
-        anchor = self.trigger.mapToGlobal(QPoint(0, self.trigger.height()))
-        x = min(max(origin.x() + 12, anchor.x()), origin.x() + bounds.width() - self.width() - 12)
+        anchor_x = self.trigger.width() if self.align_right else 0
+        anchor = self.trigger.mapToGlobal(QPoint(anchor_x, self.trigger.height()))
+        left = anchor.x() - self.width() if self.align_right else anchor.x()
+        x = min(max(origin.x() + 12, left), origin.x() + bounds.width() - self.width() - 12)
         y = min(anchor.y() + 4, origin.y() + bounds.height() - self.height() - 12)
         self.move(x, max(origin.y() + 12, y))
         super().showEvent(event)
@@ -356,6 +360,7 @@ class CompactPanel(DropSurface, QWidget):
         self._project_read_error = ''
         self._storage_notice = ''
         self._notice_message = ''
+        self._notice_kind = 'persistent'
         self.current_project = None
         self.team_page = None
         self.team_page_container = None
@@ -600,7 +605,7 @@ class CompactPanel(DropSurface, QWidget):
         self.pending_export_action.setToolTip(export_scope)
         self.pending_export_action.triggered.connect(self.pending_export_button.click)
         self.project_export_menu.aboutToShow.connect(self.sync_project_export_actions)
-        self.project_filter_panel = ProjectFilterPanel(self, self.project_filter_button)
+        self.project_filter_panel = ProjectPopup(self, self.project_filter_button, '更多筛选')
         views = QGridLayout(self.project_filter_panel)
         views.setContentsMargins(12, 12, 12, 12)
         views.setSpacing(8)
@@ -680,7 +685,13 @@ class CompactPanel(DropSurface, QWidget):
         self.select_all_button = button('全选')
         self.select_all_button.setAccessibleName('全选当前结果')
         self.select_all_button.setToolTip('全选当前结果（Ctrl+A）')
-        project_heading.addWidget(self.select_all_button)
+        self.bulk_tools_button = button('批量操作')
+        self.bulk_tools_button.setCheckable(True)
+        self.project_selection_tools = QStackedWidget()
+        self.project_selection_tools.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.project_selection_tools.addWidget(self.select_all_button)
+        self.project_selection_tools.addWidget(self.bulk_tools_button)
+        project_heading.addWidget(self.project_selection_tools)
         project_layout.addWidget(self.project_queue_header)
         self.project_queue_tools = QWidget()
         self.project_queue_tools.setObjectName('projectQueueTools')
@@ -798,17 +809,20 @@ class CompactPanel(DropSurface, QWidget):
         self.project_splitter.splitterMoved.connect(self._remember_project_split)
         self.project_splitter.handle(1).setToolTip('左右拖动，调整项目与文件区域宽度')
         pl.addWidget(self.project_splitter,1)
-        self.bulk_bar = QFrame()
+        self.bulk_bar = ProjectPopup(self, self.bulk_tools_button, '批量操作', max_width=360, align_right=True)
         bulk_layout = QVBoxLayout(self.bulk_bar)
-        bulk_layout.setContentsMargins(0, 0, 0, 0)
-        bulk_layout.setSpacing(4)
+        bulk_layout.setContentsMargins(10, 8, 10, 8)
+        bulk_layout.setSpacing(6)
         selection = QHBoxLayout()
         selection.setSpacing(6)
         self.selection_count = label('已选 0 项', 'subtle')
         self.clear_selection_button = button('清空')
         self.clear_selection_button.setAccessibleName('清空选择')
         self.clear_selection_button.setToolTip('清空选择')
+        self.bulk_select_all_button = button('全选')
+        self.bulk_select_all_button.setAccessibleName('全选当前结果')
         selection.addWidget(self.selection_count)
+        selection.addWidget(self.bulk_select_all_button)
         selection.addWidget(self.clear_selection_button)
         selection.addWidget(self.change_type_button)
         selection.addStretch()
@@ -834,7 +848,7 @@ class CompactPanel(DropSurface, QWidget):
         bulk_actions.addStretch()
         bulk_layout.addLayout(bulk_actions)
         self.bulk_bar.hide()
-        project_layout.addWidget(self.bulk_bar)
+        self.bulk_tools_button.toggled.connect(self.bulk_bar.setVisible)
         self.tabs.addTab(projects, '项目')
         zips = QWidget()
         zl = QVBoxLayout(zips)
@@ -946,6 +960,7 @@ class CompactPanel(DropSurface, QWidget):
         self.due_filter.currentIndexChanged.connect(self._refresh_project_filters)
         self.urgent_filter.toggled.connect(self._refresh_project_filters)
         self.select_all_button.clicked.connect(self.project_list.selectAll)
+        self.bulk_select_all_button.clicked.connect(self.project_list.selectAll)
         self.clear_selection_button.clicked.connect(self.project_list.clearSelection)
         self.bulk_apply.clicked.connect(self.apply_bulk)
         self.link_button.clicked.connect(self.link_package)
@@ -1105,6 +1120,7 @@ class CompactPanel(DropSurface, QWidget):
         index = self.tabs.currentIndex()
         if index != 0:
             self.project_filter_panel.hide()
+            self.bulk_bar.hide()
         is_classification = getattr(self, 'archive_classification_page', None) is self.tabs.currentWidget()
         is_team = self.team_page_container is not None and self.tabs.currentWidget() is self.team_page_container
         self.setAcceptDrops(not is_team)
@@ -1640,9 +1656,17 @@ class CompactPanel(DropSurface, QWidget):
         count = len(items)
         self.selection_count.setText(f'已选 {count} 项')
         self.selection_count.setToolTip(f'已选 {count} 项 / 当前 {self.project_list.count()} 项')
+        self.bulk_tools_button.setToolTip(self.selection_count.toolTip())
+        self.bulk_tools_button.setAccessibleDescription(self.selection_count.toolTip())
         deleted_view = self.archive_filter.currentData() == 'deleted'
         bulk_allowed = not self.busy and not deleted_view
-        self.bulk_bar.setVisible(count > 1 and not deleted_view)
+        has_bulk_selection = count > 1 and not deleted_view
+        self.project_selection_tools.setCurrentWidget(
+            self.bulk_tools_button if has_bulk_selection else self.select_all_button)
+        self.bulk_tools_button.setEnabled(bulk_allowed)
+        self.bulk_select_all_button.setEnabled(bulk_allowed and count < self.project_list.count())
+        if not has_bulk_selection or not bulk_allowed:
+            self.bulk_bar.hide()
         self.select_all_button.setEnabled(bulk_allowed and self.project_list.count() > 0)
         self.bulk_apply.setEnabled(bool(count) and count <= 500 and bulk_allowed)
         self.bulk_action.setEnabled(bulk_allowed)
@@ -1943,6 +1967,7 @@ class CompactPanel(DropSurface, QWidget):
         ids = [item.data(Qt.UserRole) for item in self.project_list.selectedItems() if not item.isHidden()]
         if not ids or self.busy or self.archive_filter.currentData() == 'deleted':
             return
+        self.bulk_bar.hide()
         action = self.bulk_action.currentData()
         if action == 'deliver':
             self.request_bulk_delivery(ids)
@@ -2000,6 +2025,7 @@ class CompactPanel(DropSurface, QWidget):
         from workbox.desktop.project_types_ui import choose_project_type
         if self.busy:
             return
+        self.bulk_bar.hide()
         ids = [item.data(Qt.UserRole) for item in self.project_list.selectedItems()]
         if not 1 <= len(ids) <= 500:
             return
@@ -2246,6 +2272,7 @@ class CompactPanel(DropSurface, QWidget):
         if (self._project_read_error or self._storage_notice) and kind in ('intake-success', 'page-success'):
             return
         self._notice_message = message
+        self._notice_kind = kind
         self._notice_pages = ()
         if kind == 'intake-success':
             self._notice_pages = (self.tabs.widget(0), self.tabs.widget(1))
@@ -2255,10 +2282,16 @@ class CompactPanel(DropSurface, QWidget):
 
     def _render_notice(self):
         # 读取/恢复错误独立于任务进度，不能被后续成功提示或计时器冲掉。
-        message = self._storage_notice or self._project_read_error or self._notice_message
+        priority_error = self._storage_notice or self._project_read_error
+        message = priority_error or self._notice_message
         if self._storage_notice and self._project_read_error:
             message += '\n' + self._project_read_error
-        self.notice.setText(message.splitlines()[0] if message else '')
+        show_details = not priority_error and self._notice_kind == 'delivery-error'
+        self.notice.setWordWrap(show_details)
+        self.notice.setMaximumHeight(self.maximumHeight() if show_details else 72)
+        self.notice.setTextInteractionFlags(
+            Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard if show_details else Qt.NoTextInteraction)
+        self.notice.setText(message if show_details else (message.splitlines()[0] if message else ''))
         self.notice.setToolTip(message)
         self.notice.setAccessibleDescription(message)
         self.sync_notice_visibility()
@@ -2278,6 +2311,7 @@ class CompactPanel(DropSurface, QWidget):
 
     def hideEvent(self, event):
         self.project_filter_panel.hide()
+        self.bulk_bar.hide()
         super().hideEvent(event)
 
     def sync_theme_menu(self, *_):

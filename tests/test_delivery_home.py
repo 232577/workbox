@@ -124,6 +124,42 @@ def test_cancel_word_delivery_does_not_archive_or_count(controller):
     assert controller.service.db.today_delivery_summary()['project_count']==0
 
 
+def test_failed_single_delivery_displays_the_archive_reason(controller):
+    panel, service = controller.panel, controller.service
+    workspace = Path(service.workspaces.get_workspace(1)['path'])
+    (workspace / '甲平台_申请书.docx').unlink()
+
+    deliver_work_files(panel)
+    wait(controller)
+
+    assert panel.notice.text() == '确认交付失败：项目工作目录没有可交付文件，不能确认空项目已交付。'
+    assert panel.notice.toolTip() == panel.notice.accessibleDescription() == panel.notice.text()
+    assert panel.notice.isVisible()
+    assert service.get_project(1)['status'] == '待交付'
+    assert service.db.delivery_events_for_project(1) == []
+
+
+def test_single_delivery_failure_shows_full_copyable_details(controller, monkeypatch):
+    panel, service = controller.panel, controller.service
+    detail = '材料读取失败。\n检查正在使用该文件的程序，再重试。'
+
+    def fail_confirmation(*args, **kwargs):
+        raise OSError(detail)
+
+    monkeypatch.setattr(service, 'confirm_delivery', fail_confirmation)
+    panel.resize(660, 480)
+    deliver_work_files(panel)
+    wait(controller)
+
+    assert panel.notice.isVisible() and panel.notice.wordWrap()
+    assert panel.notice.text() == '确认交付失败：' + detail
+    assert panel.notice.textInteractionFlags() & Qt.TextSelectableByMouse
+    assert panel.notice.height() >= panel.notice.heightForWidth(panel.notice.width())
+
+    panel.show_notice('收件提示\n附加信息')
+    assert panel.notice.text() == '收件提示' and not panel.notice.wordWrap()
+
+
 def test_today_count_refresh_is_lightweight_and_dialog_is_modeless(controller, tmp_path, qapp):
     panel=controller.panel
     assert panel._today_caption=='今日工作量 0'
