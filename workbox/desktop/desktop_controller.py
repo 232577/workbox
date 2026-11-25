@@ -933,8 +933,9 @@ class FloatingController(QObject):
         else:
             self.refresh()
         if (not worker.error and not worker.cancelled and isinstance(worker.result, dict)
-                and worker.result.get('operation') in ('rename', 'merge') and worker.result.get('project_id')):
-            self.panel.focus_projects([worker.result['project_id']])
+                and worker.result.get('operation') in ('rename', 'merge') and worker.result.get('project_id')
+                and self.panel.tabs.currentIndex() == 0 and not self.panel.bulk_mode.isChecked()):
+            self.panel.focus_visible_project(worker.result['project_id'])
         if not self.queue and self.errors:
             message = f'本次有 {len(self.errors)} 项失败，其余文件独立处理。\n' + '\n'.join(self.errors)
             target = None

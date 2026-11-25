@@ -1,7 +1,9 @@
 """项目收件与批次提示不再依赖任务组页面；只使用匿名夹具。"""
 import time
+from pathlib import Path
 
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from workbox.desktop.desktop_controller import FloatingController
@@ -80,6 +82,50 @@ def test_view_intake_targets_reused_and_new_projects(controller, tmp_path):
     assert controller.panel.current_project['id'] == first
     assert controller.service.get_project(first)['status'] == '待交付'
     assert source.read_text(encoding='utf-8') == 'fixture'
+
+
+def test_rename_with_period_keeps_all_eight_projects_in_current_batch_view(controller):
+    service, panel = controller.service, controller.panel
+    names = [f'匿名资料系统{number}' for number in range(1, 9)]
+    names[2] = '匿名资料.V2系统'
+    receipt = service.receive_text('\n'.join(f'{i}. {name}' for i, name in enumerate(names, 1)))
+    ids = receipt['project_ids']
+    assert len(ids) == 8
+    service.receive_text('匿名资料批次外系统')
+    controller.show_panel()
+    panel.resize(660, 480)
+    controller.refresh()
+    panel.search.setText('匿名资料')
+    batch_key = f"receipt:{receipt['receipt_id']}"
+    batch_index = panel.batch_filter.findData(batch_key)
+    assert batch_index > 0
+    panel.batch_filter.setCurrentIndex(batch_index)
+
+    def visible_ids():
+        return {panel.project_list.item(i).data(Qt.UserRole) for i in range(panel.project_list.count())}
+
+    assert visible_ids() == set(ids)
+    project_id = ids[2]
+    before = service.get_project(project_id)
+    old_workspace = Path(before['workspace']['path'])
+    (old_workspace / '材料.txt').write_bytes(b'original work file')
+    name = names[2].replace('.', '')
+    plan = service.preview_project_rename(project_id, name)
+    assert plan['kind'] == 'rename'
+    panel.project_change_requested.emit(dict(project_id=project_id, name=name, expected_token=plan['token'],
+        merge_target_id=None, confirmed_merge=False))
+    finish(controller)
+
+    after = service.get_project(project_id)
+    assert after['name'] == name and after['batch_id'] == before['batch_id']
+    workspace = Path(after['workspace']['path'])
+    assert workspace.parent == old_workspace.parent
+    assert (workspace / '材料.txt').read_bytes() == b'original work file'
+    assert panel.batch_filter.currentData() == batch_key
+    assert panel.search.text() == '匿名资料'
+    assert visible_ids() == set(ids)
+    assert panel.current_project['id'] == project_id and panel.current_project['name'] == name
+    assert panel.project_list.isVisible()
 
 
 def test_retired_task_payload_does_not_create_hidden_tasks(controller):
