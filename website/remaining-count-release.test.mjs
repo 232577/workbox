@@ -40,7 +40,7 @@ test('11月12日r2批量加急使用独立安装包，并保留全部30项历史
 
 test('指南明确区分所选项目批量加急与当前项目操作，不增加首页可见说明', () => {
   const guide = documents['/guide.html'].match(/<details\b[^>]*id="bulk-urgency"[^>]*>([\s\S]*?)<\/details>/)?.[1];
-  assert.match(guide, /批量选择.*已选项目.*右击/);
+  assert.match(guide, /Ctrl 或 Shift.*已选项目.*右击/);
   assert.match(guide, /所选 N 个项目.*标记加急.*取消加急/);
   assert.match(guide, /当前项目.*其他操作只作用于当前项目/);
   assert.match(guide, /500.*已归档.*已删除/);
@@ -69,7 +69,7 @@ test('11月13日r1历史身份保留，首页与稳定清单继续绑定当前�
   assert.ok(releaseNotes.includes('7760e997ded567dd5c1aec4435f023b82b64664ae757e249568999aac4f690fc'));
   const metadata = await (await handleRequest(new Request('https://example.com/updates/stable.json'), {})).json();
   assert.equal(metadata.tag_name, release.tag);
-  assert.ok(metadata.body.includes('来源提交 14c793ca45ae687fd26ea32ba9aa304575e3fe9e。'));
+  assert.ok(metadata.body.includes('来源提交 5ececd9e3bef310bf08f9805aa2cd71b70d55e14。'));
   assert.deepEqual(metadata.assets[0], { name: release.filename, size: release.size, state: 'uploaded',
     digest: `sha256:${release.sha256}`,
     browser_download_url: `https://github.com/232577/workbox/releases/download/${release.tag}/${release.filename}` });

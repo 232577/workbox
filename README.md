@@ -10,7 +10,7 @@ Windows 上的个人项目工作箱：收材料、找文件、核对交付。数
 
 - **收好材料**：拖入消息、文件或文件夹，复制校验后归入项目，保留原件。
 - **找到当前文件**：按状态、类型、日期和批次筛选；旧稿单独保留。
-- **核对交付**：查看整批进度与交付记录，导出筛选结果或勾选项目。
+- **核对交付**：查看整批进度与交付记录，导出筛选结果或所选项目。
 
 ## 安装与更新
 
@@ -21,12 +21,12 @@ Windows 上的个人项目工作箱：收材料、找文件、核对交付。数
 <details>
 <summary>当前安装包与校验信息</summary>
 
-[GitHub 备用下载](https://github.com/232577/workbox/releases/tag/v1.0.0.20261124.2)
+[GitHub 备用下载](https://github.com/232577/workbox/releases/tag/v1.0.0.20261125.1)
 
-- 文件：`WorkBox-1.0.0-Setup-x64-20261124-r2.exe`
-- 大小：47,964,803 字节
-- SHA-256：`c43afd00f6a9b48698268115651f08a86e444638163ec12071844225dbce44c8`
-- 来源提交：`14c793ca45ae687fd26ea32ba9aa304575e3fe9e`
+- 文件：`WorkBox-1.0.0-Setup-x64-20261125-r1.exe`
+- 大小：47,961,533 字节
+- SHA-256：`ad935dd19d3e2717605492d5d1b9d1212aa3895a26a924eb02d534ff5bb5d295`
+- 来源提交：`5ececd9e3bef310bf08f9805aa2cd71b70d55e14`
 - 来源及载荷校验信息见该 Release 的 `BUILD_PROVENANCE.json` 与 `PACKAGE_CONTENTS.sha256`。构建验证范围见发布说明。
 
 </details>
