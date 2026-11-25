@@ -263,9 +263,13 @@ def test_frozen_release_workflow_builds_only_exact_main_without_publication():
     assert 'github.sha == inputs.source_sha' in workflow
     assert 'permissions:\n  contents: read' in workflow
     assert 'contents: write' not in workflow
-    assert 'scripts/build.ps1' in workflow
-    assert 'dist/WorkBox/' in workflow
-    assert 'final-tests.xml' in workflow
+    assert '& ./scripts/build.ps1 -Workstation' in workflow
+    assert "-LiteralPath 'dist/workstation/WorkBox'" in workflow
+    assert 'dist/workstation/WorkBox/' in workflow
+    assert '.local/workstation-freeze/final-tests.xml' in workflow
+    assert '.local/workstation-freeze/FREEZE_PROVENANCE.json' in workflow
+    assert '.local/workstation-freeze/qt-engine-files.json' in workflow
+    assert 'workstation_payload --frozen' in workflow
     assert 'gh release' not in workflow
 
 
