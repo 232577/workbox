@@ -5,7 +5,9 @@ import sqlite3
 from threading import Lock
 from collections.abc import Callable
 
-from workbox.team_delivery.contracts import Account, DropResult, Gateway, GatewayError, Material, Outcome, Stage, Task
+from workbox.team_delivery.contracts import (
+    MATERIAL_PREPARATION_STAGES, Account, DropResult, Gateway, GatewayError, Material, Outcome, Stage, Task,
+)
 from workbox.team_delivery.storage import Journal, MaterialStore, Operation, StorageError
 
 
@@ -32,6 +34,7 @@ class WorkflowService:
         self._store = MaterialStore(material_root)
         self._journal = Journal(journal_path)
         self._prepare_only = prepare_only
+        self._accepted_stages = MATERIAL_PREPARATION_STAGES if prepare_only else _WRITABLE
         self._check_preparation_account = check_preparation_account
         self._lock = Lock()
 
@@ -103,7 +106,7 @@ class WorkflowService:
 
     def _select(self, path, selected_id, snapshot):
         matches = {task.id for task in snapshot.tasks
-                   if task.title == path.stem and task.owner_id == snapshot.account.id and task.stage in _WRITABLE}
+                   if task.title == path.stem and task.owner_id == snapshot.account.id and task.stage in self._accepted_stages}
         if selected_id is not None:
             if matches and selected_id not in matches:
                 raise _Stop('文件名与所选任务冲突，请核对。', Outcome.NEEDS_SELECTION)
@@ -142,7 +145,7 @@ class WorkflowService:
         return task
 
     def _require_owner(self, account, task, name=None):
-        if task.owner_id != account.id or task.stage not in _WRITABLE:
+        if task.owner_id != account.id or task.stage not in self._accepted_stages:
             raise _Stop('责任人或材料工序已变化，请在原站核对。')
         if name is not None and task.title != Path(name).stem:
             raise _Stop('项目全名已变化，请核对本次材料。')

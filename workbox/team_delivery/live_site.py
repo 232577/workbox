@@ -11,7 +11,7 @@ from uuid import uuid4
 from playwright.sync_api import Error as BrowserError, TimeoutError as BrowserTimeout, sync_playwright
 
 from workbox.team_delivery.browser import open_browser
-from workbox.team_delivery.contracts import Account, GatewayError, Material, RefreshDeferred, Snapshot, Stage, Task
+from workbox.team_delivery.contracts import MATERIAL_PREPARATION_STAGES, Account, GatewayError, Material, RefreshDeferred, Snapshot, Stage, Task
 
 
 _LIVE_ORIGIN = 'https://zheshijia.dpdns.org'
@@ -567,7 +567,7 @@ class LiveBrowserGateway:
         """在已登录网页的本人清单定位已保存原件对应的项目行。"""
         if account.role != 'material' or expected.owner_id != account.id:
             raise GatewayError('请使用原来的材料账号定位该项目。')
-        if (expected.stage not in (Stage.READY, Stage.WORKING) or not expected.revision
+        if (expected.stage not in MATERIAL_PREPARATION_STAGES or not expected.revision
                 or not expected.id.isascii() or not expected.id.isdecimal() or not expected.id.lstrip('0')):
             raise GatewayError('原件记录的项目编号或工序无法核对。')
         self._refresh_snapshot(in_place=False, expected_account=account, reveal=expected)

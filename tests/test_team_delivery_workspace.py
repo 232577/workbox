@@ -56,6 +56,39 @@ def test_confirmed_office_and_original_receipts_remove_only_the_completed_row(tm
         page.close()
 
 
+def test_returned_same_name_task_is_selectable_only_for_its_owner(tmp_path, monkeypatch):
+    from workbox.team_delivery import application
+    from workbox.team_delivery.contracts import Account, Snapshot, Stage, Task
+    from workbox.team_delivery.desktop import DesktopWindow
+
+    app = QApplication.instance() or QApplication([])
+    page = DesktopWindow()
+    controller = application.IntakeController(page, 'http://127.0.0.1:1', tmp_path, tmp_path/'journal',
+                                               settings=tmp_path/'settings')
+    actor = Account('a', '材料员', 'material', 's')
+    same_name = '同名项目'
+    tasks = (Task('55', same_name, actor.id, Stage.RETURNED, 'r2'),
+             Task('56', same_name, actor.id, Stage.READY, 'r1'),
+             Task('57', same_name, 'other', Stage.RETURNED, 'r2'))
+    submitted = []
+
+    def choose(parent, title, label, items, *args):
+        assert items == ['请选择项目', '同名项目 · #55', '同名项目 · #56']
+        return items[1], True
+
+    try:
+        controller.start()
+        controller._show_snapshot(Snapshot(actor, tasks))
+        assert page._eligible(tasks[0]) and not page._eligible(tasks[2])
+        monkeypatch.setattr(application.QInputDialog, 'getItem', choose)
+        monkeypatch.setattr(controller, 'submit_file', lambda filename, number: submitted.append(number))
+        controller._resolve_project('同名项目.docx', actor.id)
+        assert submitted == ['55']
+    finally:
+        controller.stop()
+        page.close()
+
+
 def test_personal_manual_opens_one_team_page_without_transferring_before_login(tmp_path, monkeypatch):
     app = QApplication.instance() or QApplication([])
     service = DesktopService(tmp_path / 'anonymous.db')

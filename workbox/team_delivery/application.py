@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QFileDialog, QInputDialog, QMessageBox
 
 from workbox.team_delivery.configuration import load_shared_root, save_shared_root, shared_root, staging_journal
 from workbox.team_delivery.contracts import (
-    Account, DropResult, GatewayError, Material, Outcome, RefreshDeferred, Snapshot, Stage, Task,
+    MATERIAL_PREPARATION_STAGES, Account, DropResult, GatewayError, Material, Outcome, RefreshDeferred, Snapshot, Stage, Task,
 )
 from workbox.team_delivery.desktop import DesktopWindow
 from workbox.team_delivery.pair_guard import PairGuard
@@ -296,7 +296,7 @@ class _Worker(QObject):
         if not prior:
             return None
         active = [t for t in self._gateway.snapshot().tasks if t.owner_id == account.id
-                  and t.title == source.stem and t.stage in (Stage.READY, Stage.WORKING)]
+                  and t.title == source.stem and t.stage in MATERIAL_PREPARATION_STAGES]
         if active:
             return None
         with TemporaryDirectory(prefix='workbox-readback-') as temp:
@@ -695,7 +695,7 @@ class IntakeController(QObject):
     def _resolve_project(self, filename: str, actor_id: str) -> None:
         title = Path(filename).stem
         choices = {f'{task.title} · #{task.id}': task.id for task in self._snapshot.tasks
-                   if task.title == title and task.owner_id == actor_id and task.stage in {Stage.READY, Stage.WORKING}}
+                   if task.title == title and task.owner_id == actor_id and task.stage in MATERIAL_PREPARATION_STAGES}
         if not choices or not self._admit():
             return
         try:

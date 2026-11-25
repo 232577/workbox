@@ -9,11 +9,10 @@ from PySide6.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
-from workbox.team_delivery.contracts import DropResult, Outcome, Snapshot, Stage, Task
+from workbox.team_delivery.contracts import MATERIAL_PREPARATION_STAGES, DropResult, Outcome, Snapshot, Stage, Task
 
 
 _COPY = Qt.DropAction.CopyAction
-_ACCEPTED_STAGES = (Stage.READY, Stage.WORKING)
 _WAITING = '等待文件'
 _AWAITING_WEB = '待网页提交'
 
@@ -398,7 +397,7 @@ class DesktopWindow(_FileInbox):
     def _eligible(self, task: Task | None) -> bool:
         account = self._snapshot.account
         return bool(task and account and account.role == 'material' and task.owner_id == account.id
-                    and task.stage in _ACCEPTED_STAGES)
+                    and task.stage in MATERIAL_PREPARATION_STAGES)
 
     def _selected_task(self):
         if not self._tasks.selectedItems():

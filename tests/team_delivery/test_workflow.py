@@ -97,6 +97,29 @@ def setup(tmp_path):
     return source, tmp_path / 'materials', tmp_path / 'intake.sqlite'
 
 
+@pytest.mark.parametrize('explicit', [False, True])
+def test_prepare_returned_manual_checks_owner_and_archives_corrected_word(setup, explicit):
+    source, root, journal = setup
+    gateway = DemoGateway(Stage.RETURNED)
+    service = WorkflowService(gateway, root, journal, prepare_only=True)
+    if explicit:
+        gateway.other_projects = (replace(gateway.project, id='OTHER'),)
+        assert service.submit_file(source, None, ACCOUNT).outcome is Outcome.NEEDS_SELECTION
+    result = service.submit_file(source, TASK_ID if explicit else None, ACCOUNT)
+    assert result.prepared and result.prepared_task == gateway.project
+    assert result.material.path.read_bytes() == source.read_bytes()
+    assert not gateway.calls
+
+
+def test_legacy_direct_submission_refuses_returned_stage(setup):
+    source, root, journal = setup
+    gateway = DemoGateway(Stage.RETURNED)
+    service = WorkflowService(gateway, root, journal)
+    result = service.submit_file(source, TASK_ID, ACCOUNT)
+    assert result.outcome is Outcome.BLOCKED and result.material is None
+    assert not gateway.calls and Journal(journal).get(ACCOUNT.id, TASK_ID) is None
+
+
 @pytest.mark.parametrize('stage, actions', [
     (Stage.READY, ['begin', 'submit']), (Stage.WORKING, ['submit']),
 ])

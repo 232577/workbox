@@ -97,6 +97,15 @@ def drop(fixture, site, member='7', *, actor=None, material=None):
     return deliver_prepared(office, office.member, prepared, HandoffLog(db), lambda: None, site)
 
 
+def test_returned_task_completes_once_without_reopening_a_recorded_round(fixture):
+    site = Site(Stage.RETURNED)
+    assert drop(fixture, site).outcome is Outcome.SUBMITTED
+    assert site.posts == ['start', 'complete']
+    site.row = replace(site.row, stage=Stage.RETURNED, revision='later-return')
+    assert drop(fixture, site).outcome is Outcome.PENDING
+    assert site.posts == ['start', 'complete']
+
+
 def test_verified_start_readback_allows_one_completion_after_reopen(fixture):
     site = Site(Stage.READY, lose='start')
     assert drop(fixture, site).outcome is Outcome.PENDING

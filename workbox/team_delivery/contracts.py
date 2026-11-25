@@ -14,6 +14,9 @@ class Stage(str, Enum):
     UNKNOWN = '待核对'
 
 
+MATERIAL_PREPARATION_STAGES = (Stage.READY, Stage.WORKING, Stage.RETURNED)
+
+
 class Outcome(str, Enum):
     SUBMITTED = '已提交'
     NEEDS_SELECTION = '请选择任务'
