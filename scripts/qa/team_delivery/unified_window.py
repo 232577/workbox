@@ -331,11 +331,7 @@ def verify_personal_projects(service, controller, title, manual, output):
     split = panel.project_splitter.sizes()
     document_rect = panel.document_side.geometry()
     assert panel.document_side.isVisible() and all(split)
-    click(panel.bulk_mode)
-    QTest.qWait(100)
-    assert panel.size() == size and panel.project_splitter.sizes() == split
-    assert panel.document_side.geometry() == document_rect
-    assert panel.project_side.isAncestorOf(panel.bulk_bar)
+    assert not panel.bulk_bar.isVisible()
     ids = [view.item(row).data(Qt.UserRole) for row in range(3)]
     row_click(0)
     row_click(2, Qt.ShiftModifier)
@@ -344,8 +340,13 @@ def verify_personal_projects(service, controller, title, manual, output):
     assert selected_ids() == {ids[0], ids[2]}
     QTest.keyClick(view, Qt.Key_A, Qt.ControlModifier)
     assert selected_ids() == set(project_ids)
+    wait_for(panel.bulk_bar.isVisible, '多选操作栏没有显示。')
+    assert panel.project_side.isAncestorOf(panel.bulk_bar)
+    assert panel.size() == size and panel.project_splitter.sizes() == split
+    assert panel.document_side.geometry() == document_rect
     shot(panel, output, 'unified-project-bulk-selection.png')
-    click(panel.bulk_mode)
+    click(panel.clear_selection_button)
+    assert not selected_ids() and not panel.bulk_bar.isVisible()
 
     panel.resize(660, 480)
     rename_id = project_ids[2]
