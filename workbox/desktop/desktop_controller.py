@@ -258,6 +258,7 @@ class FloatingController(QObject):
         saved = self.service.get_setting('orb_position', [available.right()-100, available.center().y()])
         self.orb.move(clamp_position(saved, self.orb.size()))
         self._restore_panel_geometry()
+        self.panel.restore_team_start_page()
         self.orb.show()
         self.refresh()
         # 即使外壳暂未就绪也注册图标；Qt 会在托盘恢复可用时自动添加。
@@ -1100,7 +1101,11 @@ class FloatingController(QObject):
         from PySide6.QtWidgets import QDialog, QMessageBox
         from workbox.desktop.dialog_lifecycle import transient_dialog
         from workbox.desktop.update_ui import UpdateDialog
+        from workbox.team_delivery import TEAM_UPGRADE_MESSAGE, uses_team_installer
         if self.closed or self.quitting or self.update_dialog is not None:
+            return
+        if uses_team_installer():
+            QMessageBox.information(self.panel, '更新 WorkBox 团队版', TEAM_UPGRADE_MESSAGE)
             return
         selected = None
         try:
@@ -1120,6 +1125,9 @@ class FloatingController(QObject):
 
     def prepare_update_install(self, release, installer):
         import sys
+        from workbox.team_delivery import TEAM_UPGRADE_MESSAGE, uses_team_installer
+        if uses_team_installer():
+            raise ValueError(TEAM_UPGRADE_MESSAGE)
         if sys.platform != 'win32' or not getattr(sys, 'frozen', False):
             raise ValueError('只有Windows安装版可以退出并安装；源码运行不会替换开发目录。')
         if self.closed or self.quitting or self.busy or self.storage_blocked:
@@ -1223,6 +1231,9 @@ class FloatingController(QObject):
                 from workbox.updates.update_install import backup_database
                 self.update_backup = backup_database(self.service.db.path,
                     self.service.db.path.parent / '升级恢复点')
+        team_controller = getattr(self.panel, 'team_controller', None)
+        if team_controller is not None:
+            team_controller.stop()
         # Keep the effective shortcut if a reader, setting save or backup aborts
         # shutdown. Activation is already suppressed while quitting.
         self.shortcut.stop()

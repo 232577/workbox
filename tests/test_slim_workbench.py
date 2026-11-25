@@ -32,7 +32,7 @@ def test_daily_navigation_and_advanced_tools_remain_reachable(panel):
     assert isinstance(panel.advanced_menu, QMenu)
     assert panel.settings_button.menu() is panel.advanced_menu
     assert [control.accessibleName() for control, _ in panel.nav_controls
-            if control.isVisible()] == ['项目', '今日工作量', '高级设置']
+            if control.isVisible()] == ['项目', '今日工作量', '团队交件', '高级设置']
     assert panel.update_button.isHidden() and panel.advanced_actions['update'].isEnabled()
     for control in (panel.nav_zip, panel.appearance_button, panel.help_button,
                     panel.material_check_button, panel.intake_log_button):

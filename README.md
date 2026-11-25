@@ -1,6 +1,6 @@
 # WorkBox 工作箱
 
-Windows 上的个人项目工作箱：收材料、找文件、核对交付。数据保存在本机，无需账号。
+WorkBox 是 Windows 上的项目工作箱。个人项目、材料和交付记录保存在本机，个人工作台无需账号。使用团队交件时，在工作箱内登录办公室服务和原站。
 
 [下载 Windows 安装版](https://workbox.ltxiangzi.dpdns.org/#download) · [使用指南](https://workbox.ltxiangzi.dpdns.org/guide.html) · [更新记录](https://workbox.ltxiangzi.dpdns.org/releases.html)
 
@@ -11,15 +11,16 @@ Windows 上的个人项目工作箱：收材料、找文件、核对交付。数
 - **收好材料**：拖入消息、文件或文件夹，复制校验后归入项目，保留原件。
 - **找到当前文件**：按状态、类型、日期和批次筛选；旧稿单独保留。
 - **核对交付**：查看整批进度与交付记录，导出筛选结果或所选项目。
+- **团队交件**。拖入按项目全名命名的手册，工具箱保存原件并交接给办公室。核对代码人员可取回同一份 Word 后，再提交原站材料状态。[团队交件使用说明](docs/TEAM-DELIVERY.md)
 
 ## 安装与更新
 
-支持 Windows 10 1809+ / Windows 11 x64，自带运行环境，未做商业代码签名。当前版本 **1.0.0**，正式构建 **2026-11-24 r1**。
+支持 Windows 10 1809+ / Windows 11 x64，自带运行环境，未做商业代码签名。产品版本 **1.0.0**。各正式构建的安装包、来源及校验值见 [GitHub Releases](https://github.com/232577/workbox/releases/latest)。
 
 升级前备份 data、工作目录、归档目录及全部已登记历史文稿目录，再从“高级设置 → 检查更新”操作。[安装指南](https://workbox.ltxiangzi.dpdns.org/guide.html#installation) · [更新恢复](docs/UPDATE-RECOVERY.md)
 
 <details>
-<summary>当前安装包与校验信息</summary>
+<summary>2026-11-25 r1 安装包与校验信息</summary>
 
 [GitHub 备用下载](https://github.com/232577/workbox/releases/tag/v1.0.0.20261125.1)
 
@@ -48,4 +49,4 @@ node --test website/*.test.mjs
 
 </details>
 
-软件不读取聊天、不监听剪贴板、不上传项目数据。[GPL-3.0-only 许可](LICENSE) · [第三方许可](THIRD_PARTY_NOTICES.md)
+个人工作台在本机归档。团队交件会将你选定的文件发送到已配置的办公室服务。原站只接收对应任务的材料状态变更。软件不读取聊天或监听剪贴板。[GPL-3.0-only 许可](LICENSE) · [第三方许可](THIRD_PARTY_NOTICES.md)

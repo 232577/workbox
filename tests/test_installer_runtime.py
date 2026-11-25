@@ -96,6 +96,36 @@ def test_known_obsolete_files_are_preserved_and_exact_baseline_is_restored(candi
     assert len(list(recovery.parent.iterdir())) == 1
 
 
+@pytest.mark.parametrize('contents', [b'uv', b'modified runtime'])
+def test_unified_browser_upgrade_preserves_non_workstation_programs(candidate, contents):
+    app, _, _, _, records = candidate
+    old_browser = '_internal/playwright-1.62.0.dist-info/INSTALLER'
+    preserved = {'Chromium/chrome.exe': b'anonymous offline browser',
+                 'TeamServer/b55569cb672a1fa5/install-bundle.json': b'anonymous office payload',
+                 'data/手册留底/匿名原件.txt': b'anonymous personal original'}
+    for path, data in {old_browser: contents, **preserved}.items():
+        target = app / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    before = snapshot(app)
+
+    if contents != b'uv':
+        with pytest.raises(ValueError, match='旧运行库字节'):
+            finalize(candidate)
+        assert snapshot(app) == before
+        return
+
+    result = finalize(candidate)
+    saved = app / result['recovery_dir'] / 'files' / old_browser
+    assert result['retired'] == 3
+    assert saved.read_bytes() == contents
+    assert not (app / old_browser).exists()
+    verify_tree(app, records)
+    for path, data in preserved.items():
+        assert (app / path).read_bytes() == data
+    assert finalize(candidate)['status'] == 'verified'
+
+
 @pytest.mark.parametrize('extra,content', [('_internal/unknown.dll', b'unknown'),
                                          ('_internal/old-a.dll', b'changed legacy bytes')])
 def test_unknown_or_changed_extras_block_all_moves(candidate, extra, content):
@@ -311,11 +341,29 @@ def test_retry_enforces_combined_current_and_saved_size_limit(candidate, monkeyp
     app, _, legacy, _, records = candidate
     interrupt_after_first_move(candidate, monkeypatch)
     total = sum(record['size'] for record in records.values()) + sum(map(len, legacy.values()))
-    monkeypatch.setattr(module().fmt, 'MAX_TOTAL_SIZE', total - 1)
+    monkeypatch.setattr(module(), 'MAX_FULL_PAYLOAD_SIZE', total - 1)
     before = snapshot(app)
     with pytest.raises(ValueError, match='总长度'):
         finalize(candidate)
     assert snapshot(app) == before
+
+
+def test_full_install_accepts_webengine_sized_manifest_without_changing_delta_budget(candidate, monkeypatch):
+    app, payload, *_ = candidate
+    runtime = module()
+    original = runtime._bounded_record
+
+    def webengine_sized(path, *args):
+        record = original(path, *args)
+        if path.name in ('WorkBox.exe', 'WorkBoxUpdater.exe'):
+            record['size'] = 261 * 1024 * 1024
+        return record
+
+    monkeypatch.setattr(runtime, '_bounded_record', webengine_sized)
+    records = runtime.verify_program_manifest(app, sha(payload['PACKAGE_CONTENTS.sha256']))
+    assert sum(record['size'] for record in records.values()) > 512 * 1024 * 1024
+    with pytest.raises(ValueError, match='程序载荷总长度'):
+        runtime.fmt._mapping(records)
 
 
 def test_malformed_plan_hash_has_a_structured_error(candidate, monkeypatch):

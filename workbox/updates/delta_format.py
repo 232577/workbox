@@ -114,7 +114,9 @@ def _validate_path_set(paths):
                  '程序载荷存在文件与目录前缀冲突。')
 
 
-def _mapping(value):
+def _mapping(value, *, total_limit=None):
+    if total_limit is None:
+        total_limit = MAX_TOTAL_SIZE
     _require(type(value) is dict and 0 < len(value) <= MAX_FILES, '程序文件映射数量无效。')
     result, total = {}, 0
     for name, record in value.items():
@@ -124,7 +126,7 @@ def _mapping(value):
         _require(isinstance(digest, str) and SHA256.fullmatch(digest) is not None, '程序文件摘要无效。')
         _require(type(size) is int and 0 <= size <= MAX_FILE_SIZE, '程序文件长度超限或无效。')
         total += size
-        _require(total <= MAX_TOTAL_SIZE, '程序载荷总长度超限。')
+        _require(total <= total_limit, '程序载荷总长度超限。')
         result[name] = {'sha256': digest, 'size': size}
     _require(REQUIRED_FILES <= result.keys(), '程序载荷缺少必要运行时、更新助手或清单。')
     _validate_path_set(result)

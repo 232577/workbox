@@ -87,6 +87,7 @@ class DocumentTable(WorkbenchTableWidget):
 class ProjectDocumentsPane(QWidget):
     folder_requested = Signal(str)
     history_archive_requested = Signal(dict)
+    team_requested = Signal(str)
 
     def __init__(self, service, parent=None):
         super().__init__(parent)
@@ -130,6 +131,9 @@ class ProjectDocumentsPane(QWidget):
         self.copy_action.setEnabled(False)
         self.copy_action.setToolTip('复制文件（Ctrl+C），可粘贴到资源管理器。')
         self.folder_action = self.file_menu.addAction('所在目录', self.open_selected_folder)
+        self.team_action = self.file_menu.addAction('用此手册交件', self.request_team_delivery)
+        self.team_action.setObjectName('sendToTeam')
+        self.team_action.setEnabled(False)
         self.folder_action.setToolTip('打开所选文件或归档的上一级目录。')
         self.file_menu.addAction('刷新文档', self.request_refresh)
         self.file_menu.addSeparator()
@@ -531,6 +535,7 @@ class ProjectDocumentsPane(QWidget):
     def update_actions(self):
         record = self.current_document()
         self.copy_action.setEnabled(bool(self.table.selected_file_path()))
+        self.team_action.setEnabled(bool(self._team_document(record)))
         self.history_action.setEnabled(self.project_id is not None)
         self.archive_history_action.setEnabled(self._can_archive_history(record))
         self.open_button.setVisible(record is not None)
@@ -548,6 +553,17 @@ class ProjectDocumentsPane(QWidget):
         self.open_button.setText(text)
         self.open_button.setToolTip(tooltip if not record or record['exists'] else
                                     '文件已移动或删除。可查看所在目录或刷新文档。')
+
+    def _team_document(self, record):
+        if (self._show_history or not record or not record['exists'] or record.get('is_directory')
+                or record['kind'] != '工作文件' or Path(record['path']).suffix.lower() != '.docx'):
+            return None
+        return record['path']
+
+    def request_team_delivery(self):
+        path = self._team_document(self.current_document())
+        if path:
+            self.team_requested.emit(str(path))
 
     def _can_archive_history(self, record):
         return bool(not self._show_history and record and record['exists']
