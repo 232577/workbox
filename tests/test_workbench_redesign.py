@@ -213,6 +213,19 @@ def test_ctrl_selection_keeps_scrolled_project_rows_in_place(panel, width, heigh
     assert (projects.geometry(), viewport.geometry(), bar.value(), projects.visualItemRect(first)) == before
 
 
+def test_bulk_popup_closes_with_the_workbench(panel):
+    panel.select_all_button.click()
+    panel.bulk_tools_button.click()
+    assert panel.bulk_bar.isVisible()
+
+    panel.close()
+    assert not panel.bulk_bar.isVisible() and not panel.bulk_tools_button.isChecked()
+
+    panel.show()
+    panel.bulk_tools_button.click()
+    assert panel.bulk_bar.isVisible()
+
+
 def test_bulk_action_popup_fits_long_type_names_without_widening_toolbar(panel):
     name = '匿名自定义类型' * 4
     kind = panel.service.create_project_type(name)

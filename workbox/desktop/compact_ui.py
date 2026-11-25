@@ -2311,6 +2311,7 @@ class CompactPanel(DropSurface, QWidget):
 
     def hideEvent(self, event):
         self.project_filter_panel.hide()
+        self.bulk_bar.hide()
         super().hideEvent(event)
 
     def sync_theme_menu(self, *_):
