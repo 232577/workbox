@@ -23,7 +23,7 @@ test('待开发名单入口、导出范围和工作簿内容有明确说明', ()
 test('宽窗并排和窄窗单页详情属于同一项目工作台', () => {
   const workbench = html.match(/<section\b[^>]*id="daily-workbench"[^>]*>([\s\S]*?)<\/section>/)?.[1];
   assert.match(workbench, /宽窗并排显示清单和详情/);
-  assert.match(workbench, /窄窗点击项目打开详情.*返回项目清单.*原阅读位置/);
+  assert.match(workbench, /窄窗单击只选中项目.*查看文件.*Enter 打开详情.*返回项目清单.*原阅读位置/);
 });
 
 test('新版横向工作台说明与导航和两种导出按钮一致', () => {

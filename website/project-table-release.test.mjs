@@ -25,12 +25,18 @@ test('指南、版本页、两份说明与稳定更新准确解释导出范围�
   const readme = archivedReadmes.product;
   const siteReadme = archivedReadmes.website;
   for (const text of [documents['/guide.html'], documents['/releases.html'], readme, siteReadme, metadata.body]) {
-    for (const phrase of ['导出项目表', '当前筛选结果', '已勾选项目', '首次新增日期', '原建项批次', '原批次', '连续合并']) {
+    for (const phrase of ['导出项目表', '当前筛选结果', '首次新增日期', '原建项批次', '原批次', '连续合并']) {
       assert.ok(text.includes(phrase), phrase);
     }
-    assert.match(text, /(?:空选择|无勾选|未勾选).*不会.*(?:全部|全量)/);
     assert.match(text, /原单列待开发名单.*保留/);
     assert.match(text, /刷新.*(?:恢复|重新显示)/);
+  }
+  for (const text of [documents['/releases.html'], readme, siteReadme]) {
+    assert.match(text, /已勾选项目/);
+    assert.match(text, /(?:空选择|无勾选|未勾选).*不会.*(?:全部|全量)/);
+  }
+  for (const text of [documents['/guide.html'], metadata.body]) {
+    assert.match(text, /未选项目时「导出所选项目」不可用/);
   }
   assert.doesNotMatch(readme, /尚不包含在上面的 r4 安装包中/);
   const notes = await readFile(new URL('../RELEASE_NOTES.md', import.meta.url), 'utf8');
@@ -51,13 +57,16 @@ test('新说明用两段操作指引交代导出和合并，不向访客展开�
   const metadata = await (await handleRequest(new Request('https://example.com/updates/stable.json'), {})).json();
   for (const text of [exportDetails, documents['/releases.html'], metadata.body]) {
     assert.match(text, /状态、类型、首次新增日期和批次筛选.*导出项目表.*当前筛选结果/);
-    assert.match(text, /批量选择.*勾选.*已勾选项目/);
     assert.match(text, /显示项目数/);
-    assert.match(text, /无勾选.*不可用.*不会导出全部/);
     assert.match(text, /首次新增日期不随重复收件或状态变更改变/);
     assert.match(text, /名称、状态、类型、首次新增日期、收件批次编号、加急、截止日期、备注和范围说明/);
     assert.match(text, /全部待开发名单（仅名称）/);
   }
+  for (const text of [exportDetails, metadata.body]) {
+    assert.match(text, /选中项目后.*「导出所选项目」/);
+  }
+  assert.match(documents['/releases.html'], /批量选择.*勾选.*已勾选项目/);
+  assert.match(documents['/releases.html'], /无勾选.*不可用.*不会导出全部/);
   for (const text of [mergeDetails, documents['/releases.html'], metadata.body]) {
     assert.match(text, /原建项批次不会被新收件批次遮住/);
     assert.match(text, /刷新.*恢复原批次.*无须重做合并/);
