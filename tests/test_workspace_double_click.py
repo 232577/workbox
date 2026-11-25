@@ -34,7 +34,6 @@ def test_double_click_opens_actual_row_in_multi_selection(controller, monkeypatc
     if archived:
         controller.service.bulk_update_projects([1, 2], archived=True)
         panel.archive_filter.setCurrentIndex(panel.archive_filter.findData(True))
-    panel.bulk_mode.setChecked(True)
     panel.project_list.selectAll()
     item = next(panel.project_list.item(i) for i in range(panel.project_list.count())
                 if panel.project_list.item(i).data(Qt.UserRole) == 2)

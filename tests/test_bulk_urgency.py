@@ -27,7 +27,6 @@ def service(tmp_path):
 @pytest.fixture
 def panel(qapp, service):
     widget = CompactPanel(service)
-    widget.bulk_mode.setChecked(True)
     select(widget, (1, 2))
     yield widget
     widget.close()
@@ -65,7 +64,6 @@ def test_context_urgency_updates_exact_selection_and_preserves_other_facts(qapp,
         before = {pid: service.get_project(pid) for pid in (1, 2, 3)}
         panel = controller.panel
         panel.refresh()
-        panel.bulk_mode.setChecked(True)
         select(panel, (1, 2))
         menu = panel.project_context_menu(2)
         choice = action(menu, '标记加急' if urgent else '取消加急')
@@ -129,7 +127,7 @@ def test_unselected_right_click_and_single_selection_keep_single_urgency(panel):
     action(menu, '加急').trigger()
     select(panel, (1,))
     action(panel.project_context_menu(1), '加急').trigger()
-    panel.bulk_mode.setChecked(False)
+    panel.project_list.clearSelection()
     action(panel.project_context_menu(2), '加急').trigger()
     assert calls == [(3, True), (1, True), (2, True)]
     assert batches == []
@@ -179,7 +177,6 @@ def test_archival_after_menu_open_rejects_entire_batch(qapp, service):
     assert controller.start()
     try:
         panel = controller.panel
-        panel.bulk_mode.setChecked(True)
         select(panel, (1, 2))
         menu = panel.project_context_menu(2)
         service.bulk_update_projects([1], archived=True)
@@ -200,7 +197,6 @@ def test_cancel_urgency_under_filter_removes_only_selected_results(qapp, service
     try:
         panel = controller.panel
         panel.urgent_filter.setChecked(True)
-        panel.bulk_mode.setChecked(True)
         select(panel, (1, 2))
         action(panel.project_context_menu(2), '取消加急').trigger()
         wait(controller)

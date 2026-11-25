@@ -78,7 +78,6 @@ def test_development_statuses_are_direct_and_current_state_is_accessible(panel):
 
 
 def test_menu_keeps_other_actions_on_clicked_project_and_applies_urgency_to_selection(panel):
-    panel.bulk_mode.setChecked(True)
     panel.project_list.selectAll()
     changed, urgent, folders, batches = [], [], [], []
     panel.state_requested.connect(lambda *args: changed.append(args))

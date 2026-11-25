@@ -884,8 +884,9 @@ class FloatingController(QObject):
             message = '已移入历史文稿，以后交付仅包含当前文件。可在文件操作中查看历史文稿。'
         elif isinstance(worker.result, dict) and worker.result.get('operation') in ('rename', 'merge'):
             message = worker.result.get('message') or '项目变更已完成。'
-            changed_project_id = worker.result.get('project_id')
-            keep_project_detail = self.panel._project_detail_open
+            if len(self.panel.project_list.selectedItems()) <= 1:
+                changed_project_id = worker.result.get('project_id')
+                keep_project_detail = self.panel._project_detail_open
         elif isinstance(worker.result, dict) and 'project_lifecycle' in worker.result:
             result = worker.result['project_lifecycle']
             message = ('项目已移入已删除，原文件、归档和历史交付记录保留。' if result['deleted'] else
@@ -936,7 +937,7 @@ class FloatingController(QObject):
             self.panel.refresh_archive_status()
         else:
             self.refresh()
-        if changed_project_id and self.panel.tabs.currentIndex() == 0 and not self.panel.bulk_mode.isChecked():
+        if changed_project_id and self.panel.tabs.currentIndex() == 0:
             focused = self.panel.focus_visible_project(changed_project_id)
             if focused and keep_project_detail:
                 self.panel.show_project_detail()

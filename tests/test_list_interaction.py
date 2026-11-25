@@ -102,7 +102,6 @@ def test_refresh_during_drag_defers_structural_change_until_release(panel, qapp)
 
 def test_new_rows_preserve_visible_anchor_and_multi_selection(panel, qapp):
     widget = panel.project_list
-    panel.bulk_mode.setChecked(True)
     widget.item(0).setSelected(True)
     widget.item(2).setSelected(True)
     selected_ids = {item.data(Qt.UserRole) for item in widget.selectedItems()}
@@ -122,14 +121,13 @@ def test_focus_receipt_clears_hidden_filters_selects_first_and_scrolls(panel, qa
     panel.status_buttons['已交付'].setChecked(True)
     panel.due_filter.setCurrentIndex(1)
     panel.urgent_filter.setChecked(True)
-    panel.bulk_mode.setChecked(True)
     panel.tabs.setCurrentIndex(1)
     assert panel.focus_projects([90, 91])
     qapp.processEvents()
     assert panel.tabs.currentIndex() == 0
     assert panel.current_project['id'] == 90
     assert panel.batch_filter.currentData() is None
-    assert not panel.bulk_mode.isChecked()
+    assert not panel.bulk_bar.isVisible()
     item = panel.project_list.currentItem()
     assert panel.project_list.viewport().rect().intersects(panel.project_list.visualItemRect(item))
     assert '2' in panel.notice.text() and '已定位' in panel.notice.text()

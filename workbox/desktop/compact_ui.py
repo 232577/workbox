@@ -581,21 +581,18 @@ class CompactPanel(DropSurface, QWidget):
         self.pending_export_button.hide()
         self.project_export_button = button('导出项目表')
         self.project_export_button.setAccessibleName('导出项目表')
-        self.project_export_button.setToolTip('将当前筛选结果或已勾选项目导出为 Excel；仅导出表格，不改变项目。')
+        self.project_export_button.setToolTip('将当前筛选结果或所选项目导出为 Excel；仅导出表格，不改变项目。')
         self.project_export_menu = QMenu(self.project_export_button)
         self.project_export_button.setMenu(self.project_export_menu)
         self.project_export_filtered_action = self.project_export_menu.addAction('导出当前筛选结果（0项）')
         self.project_export_filtered_action.triggered.connect(lambda: self.request_project_table_export('filtered'))
-        self.project_export_checked_action = self.project_export_menu.addAction('导出已勾选项目（0项）')
+        self.project_export_checked_action = self.project_export_menu.addAction('导出所选项目（0项）')
         self.project_export_checked_action.triggered.connect(lambda: self.request_project_table_export('checked'))
         self.project_export_menu.addSeparator()
         self.pending_export_action = self.project_export_menu.addAction('全部待开发名单（仅名称）')
         self.pending_export_action.setToolTip(export_scope)
         self.pending_export_action.triggered.connect(self.pending_export_button.click)
         self.project_export_menu.aboutToShow.connect(self.sync_project_export_actions)
-        self.bulk_mode = QCheckBox('批量选择')
-        self.bulk_mode.setAccessibleName('批量选择')
-        self.bulk_mode.setToolTip('Ctrl 点选增减项目，Shift 点选连续范围，Ctrl+A 全选当前结果。')
         self.project_filter_panel = ProjectFilterPanel(self, self.project_filter_button)
         views = QGridLayout(self.project_filter_panel)
         views.setContentsMargins(12, 12, 12, 12)
@@ -647,7 +644,8 @@ class CompactPanel(DropSurface, QWidget):
         self.project_list.setObjectName('projectList')
         self.project_list.setMinimumHeight(72)
         self.project_list.setAccessibleName('项目列表')
-        self.project_list.setAccessibleDescription('双击项目打开对应的工作文件夹；右键或按菜单键管理该项目。')
+        self.project_list.setAccessibleDescription(
+            'Ctrl 点选增减项目，Shift 连选，Ctrl+A 全选当前结果。双击打开工作文件夹，右键或按菜单键管理。')
         standard_list_scrolling(self.project_list)
         self.empty = label('还没有项目。把消息拖到悬浮球，或点击「粘贴消息」。', 'subtle')
         self.project_splitter = QSplitter(Qt.Horizontal)
@@ -666,8 +664,16 @@ class CompactPanel(DropSurface, QWidget):
         project_heading.setContentsMargins(0, 0, 0, 0)
         project_heading.setSpacing(8)
         project_heading.addWidget(self.project_list_heading, 1)
+        self.project_detail_button = button('查看文件')
+        self.project_detail_button.setAccessibleName('查看所选项目的文件')
+        self.project_detail_button.setToolTip('查看所选项目的文件（Enter）')
+        self.project_detail_button.hide()
+        project_heading.addWidget(self.project_detail_button)
         project_heading.addWidget(self.project_export_button)
-        project_heading.addWidget(self.bulk_mode)
+        self.select_all_button = button('全选')
+        self.select_all_button.setAccessibleName('全选当前结果')
+        self.select_all_button.setToolTip('全选当前结果（Ctrl+A）')
+        project_heading.addWidget(self.select_all_button)
         project_layout.addWidget(self.project_queue_header)
         self.project_queue_tools = QWidget()
         self.project_queue_tools.setObjectName('projectQueueTools')
@@ -791,14 +797,10 @@ class CompactPanel(DropSurface, QWidget):
         selection = QHBoxLayout()
         selection.setSpacing(6)
         self.selection_count = label('已选 0 项', 'subtle')
-        self.select_all_button = button('全选')
-        self.select_all_button.setAccessibleName('全选当前结果')
-        self.select_all_button.setToolTip('全选当前结果')
         self.clear_selection_button = button('清空')
         self.clear_selection_button.setAccessibleName('清空选择')
         self.clear_selection_button.setToolTip('清空选择')
         selection.addWidget(self.selection_count)
-        selection.addWidget(self.select_all_button)
         selection.addWidget(self.clear_selection_button)
         selection.addWidget(self.change_type_button)
         selection.addStretch()
@@ -926,15 +928,15 @@ class CompactPanel(DropSurface, QWidget):
         self.added_date_filter.changed.connect(self._refresh_project_filters)
         self.unmatched.toggled.connect(self.refresh)
         self.project_list.itemSelectionChanged.connect(self.select_project)
-        self.project_list.itemClicked.connect(self.show_project_detail)
+        self.project_list.itemClicked.connect(self._remember_clicked_project_detail)
         self.project_list.itemActivated.connect(self.show_project_detail)
+        self.project_detail_button.clicked.connect(self.show_project_detail)
         self.project_list.itemDoubleClicked.connect(
             lambda item: self.workspace_requested.emit(item.data(Qt.UserRole)))
         self.project_list.project_context_requested.connect(self.show_project_context_menu)
         self.archive_filter.currentIndexChanged.connect(self._refresh_project_filters)
         self.due_filter.currentIndexChanged.connect(self._refresh_project_filters)
         self.urgent_filter.toggled.connect(self._refresh_project_filters)
-        self.bulk_mode.toggled.connect(self.toggle_bulk)
         self.select_all_button.clicked.connect(self.project_list.selectAll)
         self.clear_selection_button.clicked.connect(self.project_list.clearSelection)
         self.bulk_apply.clicked.connect(self.apply_bulk)
@@ -1147,8 +1149,6 @@ class CompactPanel(DropSurface, QWidget):
         self.search.setFocus()
 
     def project_export_ids(self, *, checked=False):
-        if checked and not self.bulk_mode.isChecked():
-            return ()
         return tuple(item.data(Qt.UserRole) for index in range(self.project_list.count())
                      if (item := self.project_list.item(index)) is not None
                      and (not checked or item.isSelected()))
@@ -1161,9 +1161,9 @@ class CompactPanel(DropSurface, QWidget):
         self.project_export_button.setEnabled(not self.business_page_busy())
         self.project_export_filtered_action.setText(f'导出当前筛选结果（{count}项）')
         self.project_export_filtered_action.setEnabled(available and count > 0)
-        self.project_export_checked_action.setText(f'导出已勾选项目（{checked}项）')
+        self.project_export_checked_action.setText(f'导出所选项目（{checked}项）')
         self.project_export_checked_action.setEnabled(available and checked > 0)
-        self.project_export_checked_action.setToolTip('先开启批量选择，再勾选要导出的项目。')
+        self.project_export_checked_action.setToolTip('导出当前选中项目。Ctrl 点选增减，Shift 连选。')
         self.pending_export_action.setVisible(self.status_buttons['待开发'].isChecked())
         self.pending_export_action.setEnabled(not self.business_page_busy())
 
@@ -1174,7 +1174,7 @@ class CompactPanel(DropSurface, QWidget):
         project_ids = self.project_export_ids(checked=mode == 'checked')
         if not project_ids:
             return
-        title = '已勾选项目' if mode == 'checked' else '当前筛选结果'
+        title = '所选项目' if mode == 'checked' else '当前筛选结果'
         state = next((state for state, control in self.status_buttons.items() if control.isChecked()), None)
         date_caption = self.added_date_filter.caption()
         details = [f'{title}（{len(project_ids)}项）', f'状态：{state or "全部"}',
@@ -1257,8 +1257,9 @@ class CompactPanel(DropSurface, QWidget):
                 self._project_read_error = ''
                 self._render_notice()
             self.refresh_batch_filter(snapshot['batch_options'], batch)
-            if deleted_view and self.bulk_mode.isChecked():
-                self.bulk_mode.setChecked(False)
+            selection_mode = QAbstractItemView.SingleSelection if deleted_view else QAbstractItemView.ExtendedSelection
+            if self.project_list.selectionMode() != selection_mode:
+                self.project_list.setSelectionMode(selection_mode)
             rows = snapshot['projects']
             self._project_rows = {row['id']: row for row in rows}
             warnings = tuple(snapshot['warnings'])
@@ -1479,7 +1480,7 @@ class CompactPanel(DropSurface, QWidget):
             self.show_notice('这次收录的项目已不存在，未跳转到其他项目。')
             return False
         controls = (self.search, self.batch_filter, self.added_date_filter, self.archive_filter, self.due_filter, self.type_filter,
-                    self.urgent_filter, self.bulk_mode, *self.status_buttons.values())
+                    self.urgent_filter, *self.status_buttons.values())
         blockers = [QSignalBlocker(control) for control in controls]
         self.search.clear()
         self.status_buttons[None].setChecked(True)
@@ -1489,10 +1490,9 @@ class CompactPanel(DropSurface, QWidget):
         self.archive_filter.setCurrentIndex(2 if any(all_projects[pid].get('archived_at') for pid in ids) else 0)
         self.batch_filter.setCurrentIndex(0)
         self.added_date_filter.clear()
-        self.bulk_mode.setChecked(False)
         del blockers
         self.status_segments.setCurrentItem('all')
-        self.toggle_bulk(False)
+        self.project_list.clearSelection()
         self.tabs.setCurrentIndex(0)
         self.refresh()
         if not self.focus_visible_project(ids[0], scroll_hint=QAbstractItemView.PositionAtCenter):
@@ -1586,11 +1586,14 @@ class CompactPanel(DropSurface, QWidget):
         for control in (self.review_button, self.dismiss_button):
             control.setVisible(has_receipt)
             control.setEnabled(has_receipt and not self.busy)
-        count = len(self.project_list.selectedItems())
+        items = self.project_list.selectedItems()
+        count = len(items)
         self.selection_count.setText(f'已选 {count} 项')
         self.selection_count.setToolTip(f'已选 {count} 项 / 当前 {self.project_list.count()} 项')
-        bulk_allowed = not self.busy and self.archive_filter.currentData() != 'deleted'
-        self.bulk_mode.setEnabled(bulk_allowed)
+        deleted_view = self.archive_filter.currentData() == 'deleted'
+        bulk_allowed = not self.busy and not deleted_view
+        self.bulk_bar.setVisible(count > 1 and not deleted_view)
+        self.select_all_button.setEnabled(bulk_allowed and self.project_list.count() > 0)
         self.bulk_apply.setEnabled(bool(count) and count <= 500 and bulk_allowed)
         self.bulk_action.setEnabled(bulk_allowed)
         type_editable = bulk_allowed and 1 <= count <= 500 and hasattr(self.service, 'set_project_types')
@@ -1598,10 +1601,9 @@ class CompactPanel(DropSurface, QWidget):
             # 按钮状态复用列表快照；执行修改时仍逐项核对当前项目并由服务层校验。
             if count == 1:
                 projects = [project] if (project is not None
-                    and project['id'] == self.project_list.selectedItems()[0].data(Qt.UserRole)) else [None]
+                    and project['id'] == items[0].data(Qt.UserRole)) else [None]
             else:
-                projects = (self._project_rows.get(item.data(Qt.UserRole))
-                            for item in self.project_list.selectedItems())
+                projects = (self._project_rows.get(item.data(Qt.UserRole)) for item in items)
             type_editable = all(p is not None and not p.get('archived_at') and not p.get('deleted_at')
                                 for p in projects)
         self.change_type_button.setEnabled(type_editable)
@@ -1655,9 +1657,8 @@ class CompactPanel(DropSurface, QWidget):
             item.triggered.connect(callback)
             return item
 
-        batch_ids = tuple(item.data(Qt.UserRole) for item in self.project_list.selectedItems()) \
-            if self.bulk_mode.isChecked() else ()
-        if len(batch_ids) < 2 or project_id not in batch_ids:
+        batch_ids = tuple(item.data(Qt.UserRole) for item in self.project_list.selectedItems())
+        if len(batch_ids) < 2 or project_id not in batch_ids or project.get('deleted_at'):
             batch_ids = ()
         if batch_ids:
             batch_title = f'所选 {len(batch_ids)} 个项目'
@@ -1855,15 +1856,6 @@ class CompactPanel(DropSurface, QWidget):
             parts.append('已归档')
         urgent_prefix = '加急  ' if project['urgent'] and status != '已交付' else ''
         return f"{urgent_prefix}{project['name']}\n{state}" + ('\n' + ' · '.join(parts) if parts else '')
-
-    def toggle_bulk(self, enabled):
-        self.project_list.clearSelection()
-        mode = QAbstractItemView.ExtendedSelection if enabled else QAbstractItemView.SingleSelection
-        self.project_list.setSelectionMode(mode)
-        if enabled:
-            self._project_detail_open = False
-        self.bulk_bar.setVisible(enabled)
-        self.select_project()
 
     def edit_details(self, project_id):
         project = self._action_project(project_id)
@@ -2292,7 +2284,6 @@ class CompactPanel(DropSurface, QWidget):
                                                        10 if compact else 18, 8 if compact else 10)
         self.search.setMinimumHeight(28 if compact else 32)
         self.urgent_filter.setText('加急' if narrow else '只看加急')
-        self.bulk_mode.setText('多选' if narrow else '批量选择')
         self.project_page_layout.setContentsMargins(8 if compact else 14, 8 if compact else 12,
                                                    8 if compact else 14, 6 if compact else 10)
         self.project_page_layout.setSpacing(4 if compact else 8)
@@ -2317,8 +2308,12 @@ class CompactPanel(DropSurface, QWidget):
         if not self._project_narrow:
             self._project_wide_sizes = self.project_splitter.sizes()
 
+    def _remember_clicked_project_detail(self, *_):
+        if not self._project_narrow:
+            self.show_project_detail()
+
     def show_project_detail(self, *_):
-        if self.current_project is None or self.bulk_mode.isChecked():
+        if self.current_project is None:
             return
         if not self._project_detail_open:
             item = self.project_list.itemAt(QPoint(2, 0))
@@ -2360,9 +2355,10 @@ class CompactPanel(DropSurface, QWidget):
             if all(sizes):
                 self._project_wide_sizes = sizes
         self._project_narrow = narrow
-        detail = self._project_detail_open and self.current_project is not None and not self.bulk_mode.isChecked()
+        detail = self._project_detail_open and self.current_project is not None
         self.project_side.setVisible(not narrow or not detail)
         self.document_side.setVisible(not narrow or detail)
+        self.project_detail_button.setVisible(narrow and not detail and self.current_project is not None)
         detail_command = self.tabs.currentIndex() == 0 and narrow and detail
         if detail_command:
             self.project_filter_panel.hide()
