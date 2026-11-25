@@ -30,7 +30,7 @@ test('当前归档分类说明区分恰好16、未知、旧配置与ZIP自动交
   assert.match(html, /id="task-groups"[^>]*data-release-state="historical"[\s\S]*?4 个及以上/);
 });
 
-test('首页、安装说明和自动更新指向同一当前安装包与构建', async () => {
+test('官网和自动更新保留安装核验，仓库首页链接到 GitHub 最新正式版', async () => {
   const { filename, tag, sha256, size } = release;
   const downloadPath = `/download/${filename}`;
   const githubRelease = `https://github.com/232577/workbox/releases/tag/${tag}`;
@@ -49,7 +49,7 @@ test('首页、安装说明和自动更新指向同一当前安装包与构建',
   assert.ok(html.includes(`href="${downloadPath}"`) && html.includes(`href="${githubAsset}"`));
   assert.ok(html.includes(`${displaySize} 字节`) && html.includes(sha256) && html.includes(source));
   const rootReadme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
-  assert.ok(rootReadme.includes('https://workbox.ltxiangzi.dpdns.org/#download'));
+  assert.ok(rootReadme.includes('[下载 Windows 安装版](https://github.com/232577/workbox/releases/latest)'));
   assert.ok(rootReadme.includes(githubRelease));
   for (const fact of [filename, displaySize, sha256]) assert.ok(rootReadme.includes(fact), fact);
   const siteReadme = await readFile(new URL('./README.md', import.meta.url), 'utf8');

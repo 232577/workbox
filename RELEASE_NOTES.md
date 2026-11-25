@@ -1,3 +1,5 @@
+[在 GitHub 查看最新正式版](https://github.com/232577/workbox/releases/latest)
+
 # WorkBox 工作箱 1.0.0 正式安装版 · 2026-11-25 r1
 
 构建 `v1.0.0.20261125.1` 来自提交 `5ececd9e3bef310bf08f9805aa2cd71b70d55e14`。产品版本为 1.0.0。
