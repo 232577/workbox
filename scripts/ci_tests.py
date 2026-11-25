@@ -24,7 +24,7 @@ def main() -> int:
         parser.error('invalid shard')
 
     root = Path(__file__).resolve().parents[1]
-    files = sorted((root / 'tests').glob('test_*.py'))
+    files = sorted((root / 'tests').rglob('test_*.py'))
     chosen = [str(path.relative_to(root)) for path in files[args.shard - 1::args.shards]]
     if not chosen:
         parser.error('empty shard')

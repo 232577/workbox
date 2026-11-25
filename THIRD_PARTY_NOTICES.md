@@ -6,8 +6,8 @@ PyInstaller is used to create the executable. WorkBox source and rebuild instruc
 The clean installer includes these notices and the license texts; it does not
 include personal data or development/verification directories.
 
-本程序未嵌入或分发系统字体；使用 Windows 上已安装的字体。
-没有使用 Qt WebEngine、第三方在线服务或远程数据库。
+桌面工作箱使用 Windows 上已安装的字体。统一安装的可选服务器使用随服务器载荷附带的转换字体及许可。
+团队交件面板打开由用户选择的站点地址，并使用站点自己的登录会话。
 
 ## Components
 
@@ -30,7 +30,7 @@ include personal data or development/verification directories.
 - et_xmlfile 2.0.0: MIT License with included Python notices;
   see `licenses/EtXmlfile-LICENSE.txt` and `licenses/EtXmlfile-LICENSE-PYTHON.txt`.
 
-- CPython 3.11.9: Python Software Foundation License and notices in `licenses/Python-LICENSE.txt`.
+- CPython 3.11: Python Software Foundation License and notices in `licenses/Python-LICENSE.txt`.
 - Qt / PySide6 / Shiboken6 6.8.3: Qt for Python Community Edition, LGPLv3/GPLv3 alternatives.
   See the unmodified LGPL/GPL texts under `licenses/` and the Qt documentation below.
   The commercial-license reference shipped in the wheel is not a commercial license grant to this application.
@@ -46,6 +46,18 @@ include personal data or development/verification directories.
 - packaging 26.3: Apache License 2.0 or BSD 2-Clause License; a runtime dependency
   of QtPy. See `licenses/Packaging-LICENSE.txt`,
   `licenses/Packaging-LICENSE-APACHE.txt` and `licenses/Packaging-LICENSE-BSD.txt`.
+- Playwright 1.62.0 includes the local browser driver. Its Apache 2.0 license,
+  notices and driver third-party texts remain in `_internal/playwright/driver/package/`.
+  The installed wheel license texts for Playwright, pyee 13.0.1, greenlet 3.5.6 and
+  typing_extensions 4.16.0 remain in their respective `_internal/*.dist-info/licenses/`.
+  The driver distribution includes the Node runtime it needs.
+- Chromium 160.0.8183.0 is the unbranded Windows x64 snapshot at Chromium
+  position 1754043. The offline fallback includes `Chromium/Chromium-LICENSE.txt`
+  and preserves the browser's bundled third-party credits at `chrome://credits`.
+  Corresponding source: https://chromium.googlesource.com/chromium/src/+/c7c5cb2b8811116e20cd636c7b0514f01ae276bb .
+- The optional office server retains its own `install-bundle.json`, `source.tar`
+  and bundled Kanboard, PHP, Caddy, control Python and Filee/rhwp license material.
+  Its own manifest carries exact sources, runtime archives and per-file hashes.
 
 Qt libraries are shipped as separate shared libraries in `_internal/`. Rebuilding
 WorkBox with a compatible Qt for Python distribution is documented; this project
@@ -57,7 +69,7 @@ does not prohibit replacement of those libraries or debugging modifications to t
 - Qt third-party attribution index: https://doc.qt.io/qt-6.8/licenses-used-in-qt.html
 - Qt 6.8.3 source release: https://download.qt.io/archive/qt/6.8/6.8.3/single/
 - PySide / Shiboken 6.8.3 source release: https://download.qt.io/official_releases/QtForPython/pyside6/PySide6-6.8.3-src/
-- Python 3.11.9: https://www.python.org/downloads/release/python-3119/
+- Python 3.11: https://www.python.org/downloads/
 - SQLite copyright information: https://sqlite.org/copyright.html
 - PyInstaller source: https://github.com/pyinstaller/pyinstaller/tree/v6.22.0
 - QDarkStyle sources and theme images: https://github.com/ColinDuquesnoy/QDarkStyleSheet

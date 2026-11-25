@@ -357,6 +357,9 @@ class CompactPanel(DropSurface, QWidget):
         self._storage_notice = ''
         self._notice_message = ''
         self.current_project = None
+        self.team_page = None
+        self.team_page_container = None
+        self.team_controller = None
         self._project_rows = {}
         self.project_scope = None
         self._refresh_after_drag = False
@@ -404,8 +407,12 @@ class CompactPanel(DropSurface, QWidget):
         self.today_button.setCheckable(True)
         self.today_button.setAccessibleName('今日工作量')
         self.today_button.clicked.connect(self.show_today_deliveries)
+        self.nav_team = button('团队交件', 'nav')
+        self.nav_team.setObjectName('openTeamDelivery')
+        self.nav_team.setIcon(FluentIcon.SEND)
+        self.nav_team.clicked.connect(lambda: self.open_team_delivery())
         self.nav_controls = [(self.nav_projects, '项目'),
-                             (self.today_button, '今日工作量'), (self.nav_zip, 'ZIP 归档'),
+                             (self.today_button, '今日工作量'), (self.nav_team, '团队交件'), (self.nav_zip, 'ZIP 归档'),
                              (self.nav_review, '待核对')]
         # 保留原页与按钮回调，ZIP 统一从高级设置进入。
         self.nav_zip.setParent(self.navigation)
@@ -776,6 +783,7 @@ class CompactPanel(DropSurface, QWidget):
         self.document_pane = ProjectDocumentsPane(service)
         self.document_pane.folder_requested.connect(self.folder_requested)
         self.document_pane.history_archive_requested.connect(self.archive_document)
+        self.document_pane.team_requested.connect(self.open_team_delivery)
         document_layout.addWidget(self.document_pane, 1)
         self.project_splitter.addWidget(project_side)
         self.project_splitter.addWidget(document_side)
@@ -1027,6 +1035,45 @@ class CompactPanel(DropSurface, QWidget):
         if not self.business_page_busy():
             self.scan_requested.emit()
 
+    def restore_team_start_page(self):
+        address = self.service.db.path.parent / '团队交件' / 'workbox-url.txt'
+        try:
+            configured = address.is_file()
+        except OSError:
+            return
+        if configured:
+            self.open_team_delivery()
+
+    def open_team_delivery(self, filename=None):
+        if self.team_page is None:
+            from workbox.team_delivery.application import IntakeController, LIVE_SITE_URL
+            from workbox.team_delivery.configuration import load_shared_root, staging_journal
+            from workbox.team_delivery.desktop import DesktopWindow
+            directory = self.service.db.path.parent / '团队交件'
+            try:
+                directory.mkdir(exist_ok=True)
+                settings = directory / 'settings.json'
+                material_root = load_shared_root(settings)
+                if material_root is None:
+                    material_root = directory / '手册留底'
+                    material_root.mkdir(exist_ok=True)
+                journal = staging_journal(directory, material_root)
+                page = DesktopWindow()
+                controller = IntakeController(page, LIVE_SITE_URL, material_root, journal, settings=settings)
+            except (ValueError, OSError) as error:
+                self.show_notice(f'团队交件未打开，请检查工作箱数据目录。{error}')
+                return
+            container = QScrollArea()
+            container.setFrameShape(QFrame.NoFrame)
+            container.setWidgetResizable(True)
+            container.setWidget(page)
+            self.team_page_container, self.team_page, self.team_controller = container, page, controller
+            self.tabs.addTab(container, '团队交件')
+            controller.start()
+        self.tabs.setCurrentWidget(self.team_page_container)
+        if filename:
+            self.team_page.offer_personal_document(filename)
+
     def show_archive_classification(self):
         if self.business_page_busy():
             return
@@ -1059,11 +1106,14 @@ class CompactPanel(DropSurface, QWidget):
         if index != 0:
             self.project_filter_panel.hide()
         is_classification = getattr(self, 'archive_classification_page', None) is self.tabs.currentWidget()
-        self.header_surface.setVisible(
+        is_team = self.team_page_container is not None and self.tabs.currentWidget() is self.team_page_container
+        self.setAcceptDrops(not is_team)
+        self.nav_team.setChecked(is_team)
+        self.header_surface.setVisible(not is_team and
             self.tabs.currentWidget() is not getattr(self, 'delivery_page_container', None))
         self.page_title.setText('归档分类' if is_classification else ('项目', 'ZIP 归档', '待核对', '交付记录管理')[min(3, max(0, index))])
         for position, control in enumerate((self.nav_projects, self.nav_zip, self.nav_review, self.today_button)):
-            control.setChecked(not is_classification and position == index)
+            control.setChecked(not is_team and not is_classification and position == index)
         receipts = getattr(self, 'receipt_list', None)
         self.nav_review.setVisible((receipts is not None and receipts.count() > 0) or index == 2)
         self.sync_zip_navigation()
@@ -2243,7 +2293,10 @@ class CompactPanel(DropSurface, QWidget):
 
     def resize_navigation(self):
         narrow = self.width() < 900
-        self.navigation.layout().setContentsMargins(10 if narrow else 14, 6, 10 if narrow else 14, 6)
+        compact_alerts = narrow and not self.nav_zip.isHidden() and not self.nav_review.isHidden()
+        margin = 4 if compact_alerts else (10 if narrow else 14)
+        self.navigation.layout().setContentsMargins(margin, 6, margin, 6)
+        self.navigation.layout().setSpacing(1 if compact_alerts else 4)
         self.brand_label.setVisible(not narrow)
         for control, caption in self.nav_controls:
             control.setProperty('compactNav', False)
@@ -2253,6 +2306,8 @@ class CompactPanel(DropSurface, QWidget):
             elif control is self.nav_zip:
                 text = getattr(self, '_zip_caption', caption)
             if narrow and control is self.settings_button:
+                text = ''
+            elif compact_alerts and control is self.nav_team:
                 text = ''
             elif narrow and control is self.today_button:
                 text = '今日工作量 ' + getattr(self, '_today_compact_caption', '0')

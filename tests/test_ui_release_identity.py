@@ -117,6 +117,10 @@ def test_build_probe_reports_release_without_creating_business_data(tmp_path):
     assert not data.exists()
 
 
+def test_team_delivery_build_is_newer_than_native_selection_release():
+    assert update_client.build_key(update_client.CURRENT_TAG) >= update_client.build_key('v1.0.0.20261125.2')
+
+
 @pytest.mark.parametrize('tag,previous,filename', [
     ('v1.0.0.20261109.6', 'v1.0.0.20261109.5', 'WorkBox-1.0.0-Setup-x64-20261109-r6.exe'),
     ('v1.0.0.20261109.7', 'v1.0.0.20261109.6', 'WorkBox-1.0.0-Setup-x64-20261109-r7.exe'),
@@ -149,6 +153,7 @@ def test_build_probe_reports_release_without_creating_business_data(tmp_path):
     ('v1.0.0.20261124.2', 'v1.0.0.20261124.1', 'WorkBox-1.0.0-Setup-x64-20261124-r2.exe'),
     ('v1.0.0.20261125.1', 'v1.0.0.20261124.1', 'WorkBox-1.0.0-Setup-x64-20261125-r1.exe'),
     ('v1.0.0.20261125.1', 'v1.0.0.20261124.2', 'WorkBox-1.0.0-Setup-x64-20261125-r1.exe'),
+    ('v1.0.0.20261125.2', 'v1.0.0.20261125.1', 'WorkBox-1.0.0-Setup-x64-20261125-r2.exe'),
 ])
 def test_release_upgrades_previous_without_reoffering_installed_or_older(tag, previous, filename):
     payload = {'tag_name': tag, 'draft': False, 'prerelease': False,
