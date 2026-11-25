@@ -305,7 +305,7 @@ def verify_personal_projects(service, controller, title, manual, output):
     assert managed != manual and managed.read_bytes() == manual.read_bytes()
 
     controller.show_panel()
-    panel.resize(960, 620)
+    panel.resize(960, 520)
     controller.refresh()
     batch_value = f"receipt:{receipt['receipt_id']}"
     batch_index = panel.batch_filter.findData(batch_value)
@@ -327,24 +327,55 @@ def verify_personal_projects(service, controller, title, manual, output):
 
     wait_for(lambda: visible_ids() == set(project_ids), '未定位到本次个人批次的八个项目。')
     QTest.qWait(100)
-    size = panel.size()
-    split = panel.project_splitter.sizes()
-    document_rect = panel.document_side.geometry()
-    assert panel.document_side.isVisible() and all(split)
+    scrollbar = view.verticalScrollBar()
+    assert scrollbar.maximum() > 0
+    scrollbar.setValue(scrollbar.maximum())
+    visible_rows = [row for row in range(view.count())
+                    if view.viewport().rect().contains(view.visualItemRect(view.item(row)))]
+    assert len(visible_rows) >= 3
+    first, middle, last = visible_rows[:3]
+    ids = [view.item(row).data(Qt.UserRole) for row in (first, middle, last)]
+
+    def viewport_state():
+        QApplication.processEvents()
+        return (panel.size(), panel.project_splitter.sizes(), panel.document_side.geometry(),
+                view.geometry(), view.viewport().geometry(), scrollbar.value(), view.visualItemRect(view.item(first)))
+
+    row_click(first)
+    QTest.qWait(100)
+    before_selection = viewport_state()
+    assert panel.document_side.isVisible() and all(panel.project_splitter.sizes()) and scrollbar.value() > 0
     assert not panel.bulk_bar.isVisible()
-    ids = [view.item(row).data(Qt.UserRole) for row in range(3)]
-    row_click(0)
-    row_click(2, Qt.ShiftModifier)
+    row_click(last, Qt.ShiftModifier)
     assert selected_ids() == set(ids)
-    row_click(1, Qt.ControlModifier)
+    assert viewport_state() == before_selection
+    row_click(middle, Qt.ControlModifier)
     assert selected_ids() == {ids[0], ids[2]}
-    QTest.keyClick(view, Qt.Key_A, Qt.ControlModifier)
-    assert selected_ids() == set(project_ids)
-    wait_for(panel.bulk_bar.isVisible, '多选操作栏没有显示。')
-    assert panel.project_side.isAncestorOf(panel.bulk_bar)
-    assert panel.size() == size and panel.project_splitter.sizes() == split
-    assert panel.document_side.geometry() == document_rect
+    assert panel.bulk_tools_button.isVisible() and not panel.bulk_bar.isVisible()
+    assert viewport_state() == before_selection
+
+    click(panel.bulk_tools_button)
+    wait_for(panel.bulk_bar.isVisible, '批量操作弹窗没有显示。')
+    assert panel.bulk_bar.parentWidget() is panel and panel.bulk_bar.windowType() == Qt.Popup
+    assert panel.selection_count.text() == '已选 2 项' and viewport_state() == before_selection
+    click(panel.bulk_select_all_button)
+    assert selected_ids() == set(project_ids) and viewport_state() == before_selection
     shot(panel, output, 'unified-project-bulk-selection.png')
+    shot(panel.bulk_bar, output, 'unified-project-bulk-popup.png')
+    QTest.keyClick(panel.bulk_bar, Qt.Key_Escape)
+    assert not panel.bulk_bar.isVisible() and not panel.bulk_tools_button.isChecked()
+    assert selected_ids() == set(project_ids) and viewport_state() == before_selection
+
+    row_click(first)
+    QTest.keyClick(view, Qt.Key_A, Qt.ControlModifier)
+    assert selected_ids() == set(project_ids) and viewport_state() == before_selection
+    click(panel.bulk_tools_button)
+    click(panel.clear_selection_button)
+    assert not selected_ids() and not panel.bulk_bar.isVisible() and panel.select_all_button.isVisible()
+    assert viewport_state() == before_selection
+    click(panel.select_all_button)
+    assert selected_ids() == set(project_ids) and viewport_state() == before_selection
+    click(panel.bulk_tools_button)
     click(panel.clear_selection_button)
     assert not selected_ids() and not panel.bulk_bar.isVisible()
 
@@ -381,7 +412,8 @@ def verify_personal_projects(service, controller, title, manual, output):
     panel.resize(1050, 750)
     return managed, project_ids[0], {'batch_members_after_rename':len(project_ids), 'renamed_project_id':rename_id,
                                       'batch_filter_retained':True, 'mouse_and_keyboard_bulk_selection':True,
-                                      'splitter_geometry_retained':True, 'renamed_workspace_file_retained':True}
+                                      'splitter_geometry_retained':True, 'bulk_popup_verified':True,
+                                      'scrolled_viewport_retained':True, 'renamed_workspace_file_retained':True}
 
 
 def unified_window(private, lifecycle, assets, passwords):
