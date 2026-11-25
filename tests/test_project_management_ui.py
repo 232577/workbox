@@ -155,6 +155,41 @@ def test_bulk_changes_only_selected_projects_and_archive_restore_keeps_details(a
     assert restored['status'] == '开发中' and restored['archived_at'] is None
 
 
+def test_project_bulk_mode_uses_native_mouse_and_keyboard_selection(app):
+    panel = app.panel
+    panel.resize(960, 620)
+    panel.bulk_mode.setChecked(True)
+    QApplication.processEvents()
+    view = panel.project_list
+    ids = [view.item(row).data(Qt.UserRole) for row in range(view.count())]
+
+    def click(row, modifiers=Qt.NoModifier):
+        point = view.visualItemRect(view.item(row)).center()
+        assert view.viewport().rect().contains(point)
+        QTest.mouseClick(view.viewport(), Qt.LeftButton, modifiers, point)
+
+    def selected_ids():
+        return {item.data(Qt.UserRole) for item in view.selectedItems()}
+
+    click(0)
+    click(2, Qt.ShiftModifier)
+    assert selected_ids() == set(ids)
+    click(1, Qt.ControlModifier)
+    assert selected_ids() == {ids[0], ids[2]}
+    click(1)
+    assert selected_ids() == {ids[1]}
+    QTest.keyClick(view, Qt.Key_Up, Qt.ShiftModifier)
+    assert selected_ids() == {ids[0], ids[1]}
+    QTest.keyClick(view, Qt.Key_A, Qt.ControlModifier)
+    assert selected_ids() == set(ids)
+
+    panel.bulk_mode.setChecked(False)
+    QApplication.processEvents()
+    click(0)
+    click(2, Qt.ControlModifier)
+    assert selected_ids() == {ids[2]}
+
+
 def test_deadline_filter_clears_hidden_bulk_selection(app):
     panel = app.panel
     assert hasattr(panel, 'due_filter'), '缺少截止日期筛选'

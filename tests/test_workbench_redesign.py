@@ -110,20 +110,25 @@ def test_bulk_selection_keeps_window_and_project_split_widths(panel, width, heig
     QTest.qWait(100)
     split = panel.project_splitter
     if manual_split:
-        split.moveSplitter(split.sizes()[0] + 20, 1)
+        split.moveSplitter(0, 1)
     before_size = panel.size()
     before_split = split.sizes()
     assert panel.document_side.isVisible() and all(before_split)
+    before_document_rect = panel.document_side.geometry()
 
     panel.bulk_mode.click()
     QTest.qWait(100)
     assert panel.size() == before_size
     assert panel.document_side.isVisible()
     assert split.sizes() == before_split
+    assert panel.document_side.geometry() == before_document_rect
+    assert panel.bulk_bar.parentWidget() is panel.project_side
     for control in (panel.bulk_action, panel.bulk_apply, panel.change_type_button,
                     panel.select_all_button, panel.clear_selection_button):
         assert control.isVisible()
-        assert panel.rect().contains(control.mapTo(panel, control.rect().bottomRight()))
+        assert control.width() >= control.minimumSizeHint().width()
+        assert panel.project_side.rect().contains(
+            control.mapTo(panel.project_side, control.rect().bottomRight()))
 
     panel.project_list.item(0).setSelected(True)
     panel.project_list.item(1).setSelected(True)
@@ -152,6 +157,7 @@ def test_bulk_selection_keeps_narrow_queue_and_detail_navigation(panel):
     assert panel.project_splitter.sizes() == before_split
     assert panel.project_side.isVisible() and not panel.document_side.isVisible()
     assert panel.bulk_apply.isVisible() and not panel.project_back_button.isVisible()
+    assert panel.bulk_action.width() < panel.project_side.width() / 2
     assert panel.rect().contains(panel.bulk_apply.mapTo(panel, panel.bulk_apply.rect().bottomRight()))
 
     panel.bulk_mode.click()
@@ -161,6 +167,24 @@ def test_bulk_selection_keeps_narrow_queue_and_detail_navigation(panel):
     panel.project_back_button.click()
     assert panel.project_side.isVisible() and not panel.document_side.isVisible()
     assert panel.size() == before_size
+
+
+def test_bulk_action_popup_fits_long_type_names_without_widening_toolbar(panel):
+    name = '匿名自定义类型' * 4
+    kind = panel.service.create_project_type(name)
+    panel.refresh_type_controls()
+    panel.bulk_mode.click()
+    combo = panel.bulk_action
+    width = combo.width()
+    combo.showPopup()
+    try:
+        view = combo.view()
+        assert view.viewport().width() >= view.sizeHintForColumn(0)
+    finally:
+        combo.hidePopup()
+    combo.setCurrentIndex(combo.findData(f"type:{kind['id']}"))
+    assert combo.width() == width
+    assert combo.toolTip() == f'项目类型：{name}'
 
 
 def test_bulk_type_action_stays_visible_and_targets_all_selected_projects(panel, monkeypatch):

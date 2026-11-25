@@ -595,6 +595,7 @@ class CompactPanel(DropSurface, QWidget):
         self.project_export_menu.aboutToShow.connect(self.sync_project_export_actions)
         self.bulk_mode = QCheckBox('批量选择')
         self.bulk_mode.setAccessibleName('批量选择')
+        self.bulk_mode.setToolTip('Ctrl 点选增减项目，Shift 点选连续范围，Ctrl+A 全选当前结果。')
         self.project_filter_panel = ProjectFilterPanel(self, self.project_filter_button)
         views = QGridLayout(self.project_filter_panel)
         views.setContentsMargins(12, 12, 12, 12)
@@ -745,13 +746,11 @@ class CompactPanel(DropSurface, QWidget):
         self.project_actions_button.clicked.connect(self._open_selected_project_menu)
         self.project_actions_row = QWidget()
         self.project_actions_row.setObjectName('projectDetailActions')
-        project_actions = self.project_actions_layout = QHBoxLayout(self.project_actions_row)
+        project_actions = QHBoxLayout(self.project_actions_row)
         project_actions.setContentsMargins(0, 0, 0, 0)
         project_actions.setSpacing(6)
         project_actions.addWidget(self.material_check_button)
         self.material_check_button.hide()
-        self.change_type_button.setParent(self.project_actions_row)
-        self.change_type_button.hide()
         self.open_workspace_button = button('打开工作目录')
         self.open_workspace_button.setIcon(FluentIcon.FOLDER)
         self.open_workspace_button.setAccessibleName('打开所选项目工作目录')
@@ -788,30 +787,44 @@ class CompactPanel(DropSurface, QWidget):
         self.bulk_bar = QFrame()
         bulk_layout = QVBoxLayout(self.bulk_bar)
         bulk_layout.setContentsMargins(0, 0, 0, 0)
-        selection = self.bulk_selection_layout = QHBoxLayout()
+        bulk_layout.setSpacing(4)
+        selection = QHBoxLayout()
+        selection.setSpacing(6)
         self.selection_count = label('已选 0 项', 'subtle')
-        self.select_all_button = button('全选当前结果')
-        self.clear_selection_button = button('清空选择')
+        self.select_all_button = button('全选')
+        self.select_all_button.setAccessibleName('全选当前结果')
+        self.select_all_button.setToolTip('全选当前结果')
+        self.clear_selection_button = button('清空')
+        self.clear_selection_button.setAccessibleName('清空选择')
+        self.clear_selection_button.setToolTip('清空选择')
         selection.addWidget(self.selection_count)
-        selection.addStretch()
         selection.addWidget(self.select_all_button)
         selection.addWidget(self.clear_selection_button)
+        selection.addWidget(self.change_type_button)
+        selection.addStretch()
         bulk_layout.addLayout(selection)
         bulk_actions = QHBoxLayout()
+        bulk_actions.setSpacing(6)
         self.bulk_action = QComboBox()
         self.bulk_action.setAccessibleName('对所选项目执行的操作')
+        self.bulk_action.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.bulk_action.setMinimumContentsLength(10)
+        self.bulk_action.currentTextChanged.connect(self.bulk_action.setToolTip)
         for caption, value in (
             ('设为待开发', 'status:待开发'), ('设为开发中', 'status:开发中'),
             ('设为待交付', 'status:待交付'), ('设为已交付…', 'deliver'), ('标记加急', 'urgent'),
             ('取消加急', 'normal'), ('归档所选项目', 'archive'), ('恢复所选项目', 'restore'),
         ):
             self.bulk_action.addItem(caption, value)
-        self.bulk_apply = button('应用到所选项目', True)
-        bulk_actions.addWidget(self.bulk_action, 1)
+        self.bulk_apply = button('应用', True)
+        self.bulk_apply.setAccessibleName('应用到所选项目')
+        self.bulk_apply.setToolTip('应用到所选项目')
+        bulk_actions.addWidget(self.bulk_action)
         bulk_actions.addWidget(self.bulk_apply)
+        bulk_actions.addStretch()
         bulk_layout.addLayout(bulk_actions)
         self.bulk_bar.hide()
-        pl.addWidget(self.bulk_bar)
+        project_layout.addWidget(self.bulk_bar)
         self.tabs.addTab(projects, '项目')
         zips = QWidget()
         zl = QVBoxLayout(zips)
@@ -1089,6 +1102,10 @@ class CompactPanel(DropSurface, QWidget):
                 if item['active']:
                     self.bulk_action.addItem('项目类型：' + item['name'], f"type:{item['id']}")
             self.bulk_action.setCurrentIndex(max(0, self.bulk_action.findData(action)))
+        self.bulk_action.setToolTip(self.bulk_action.currentText())
+        choices = self.bulk_action.view()
+        choices.setMinimumWidth(choices.sizeHintForColumn(0) + choices.verticalScrollBar().sizeHint().width()
+                                + 2 * choices.frameWidth())
 
     def reset_project_filters(self):
         with (QSignalBlocker(self.archive_filter), QSignalBlocker(self.due_filter),
@@ -1478,17 +1495,26 @@ class CompactPanel(DropSurface, QWidget):
         self.toggle_bulk(False)
         self.tabs.setCurrentIndex(0)
         self.refresh()
-        item = next((self.project_list.item(i) for i in range(self.project_list.count()) if self.project_list.item(i).data(Qt.UserRole) == ids[0]), None)
-        if item is None:
+        if not self.focus_visible_project(ids[0], scroll_hint=QAbstractItemView.PositionAtCenter):
             self.show_notice('项目列表正在更新，请再次点击查看。')
             return False
-        self.project_list.setCurrentItem(item)
-        self.project_list.scrollToItem(item, QAbstractItemView.PositionAtCenter)
-        self.project_list.setFocus(Qt.OtherFocusReason)
-        self.select_project()
         self.show_project_detail()
         self.show_notice(f'已定位本次收录的 {len(ids)} 个项目，当前选中：' + all_projects[ids[0]]['name'],
                          kind='page-success')
+        return True
+
+    def focus_visible_project(self, project_id, *, scroll_hint=QAbstractItemView.EnsureVisible):
+        """在当前筛选结果中定位项目，沿用所在页面与批次。"""
+        if self._refresh_after_drag or self._project_read_error:
+            return False
+        item = next((row for i in range(self.project_list.count())
+                     if (row := self.project_list.item(i)).data(Qt.UserRole) == project_id and not row.isHidden()), None)
+        if item is None:
+            return False
+        self.project_list.setCurrentItem(item)
+        self.project_list.scrollToItem(item, scroll_hint)
+        self.project_list.setFocus(Qt.OtherFocusReason)
+        self.select_project()
         return True
 
     def select_project(self, *_):
@@ -1561,7 +1587,8 @@ class CompactPanel(DropSurface, QWidget):
             control.setVisible(has_receipt)
             control.setEnabled(has_receipt and not self.busy)
         count = len(self.project_list.selectedItems())
-        self.selection_count.setText(f'已选 {count} 项 / 当前 {self.project_list.count()} 项')
+        self.selection_count.setText(f'已选 {count} 项')
+        self.selection_count.setToolTip(f'已选 {count} 项 / 当前 {self.project_list.count()} 项')
         bulk_allowed = not self.busy and self.archive_filter.currentData() != 'deleted'
         self.bulk_mode.setEnabled(bulk_allowed)
         self.bulk_apply.setEnabled(bool(count) and count <= 500 and bulk_allowed)
@@ -1831,10 +1858,8 @@ class CompactPanel(DropSurface, QWidget):
 
     def toggle_bulk(self, enabled):
         self.project_list.clearSelection()
-        self.project_list.setSelectionMode(QAbstractItemView.MultiSelection if enabled else QAbstractItemView.SingleSelection)
-        actions = self.bulk_selection_layout if enabled else self.project_actions_layout
-        actions.insertWidget(1, self.change_type_button)
-        self.change_type_button.setVisible(enabled)
+        mode = QAbstractItemView.ExtendedSelection if enabled else QAbstractItemView.SingleSelection
+        self.project_list.setSelectionMode(mode)
         if enabled:
             self._project_detail_open = False
         self.bulk_bar.setVisible(enabled)
