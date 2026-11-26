@@ -98,10 +98,11 @@ class PersonalSiteWorkspace(QObject):
                         self._message('待办需要核对', '选择任务后点「关联本机项目…」。' +
                                       '、'.join('#' + task.id for task in unlinked[:6]))
             if item is not None:
-                check_local = None if verify_only else lambda: self.projects.claim_is_current(item, snapshot.account)
+                check_local = (lambda: self.projects.claim_is_current(item, snapshot.account)) if item.claim_token else None
                 if active and self.site.submit_personal_delivery(
                         item.account_username, item.task_id, item.title, str(item.event_id),
-                        verify_only=verify_only, check_local=check_local,
+                        verify_only=verify_only, resume_working=verify_only and bool(item.claim_token),
+                        check_local=check_local,
                         round_id=item.round_id, source_revision=item.source_revision):
                     self._in_flight = item, verify_only
                 else:
@@ -202,7 +203,7 @@ class PersonalSiteWorkspace(QObject):
             if worker.error or worker.cancelled:
                 self._message('文件未收好', worker.error or '已取消收件。')
             else:
-                self._message(f'文件已收好 · {worker.result}', f'{task.title} · 原站 #{task.id}')
+                self._message(f'文件已收好 · {worker.result}', f'{task.title} · 原站 #{task.id}', intake_success=True)
 
         self.desktop.enqueue('收进原站任务文件', receive, on_complete=complete)
 
@@ -241,6 +242,6 @@ class PersonalSiteWorkspace(QObject):
         if not self.desktop.quitting:
             self._retry.start(0)
 
-    def _message(self, title, detail):
-        self.desktop.panel.team_page.show_personal_result(title, detail)
-        self.desktop.notify(f'{title}。{detail}')
+    def _message(self, title, detail, *, intake_success=False):
+        self.desktop.panel.team_page.show_personal_result(title, detail, temporary=intake_success)
+        self.desktop.notify(f'{title}。{detail}', kind='intake-success' if intake_success else 'persistent')

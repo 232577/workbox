@@ -318,6 +318,37 @@ def test_verified_working_after_lost_start_receipt_allows_one_complete_but_no_st
                                 ('/api/complete-material', {'ids': [201]})]
 
 
+def test_personal_recovery_from_lost_start_rechecks_claim_at_qt_egress(site, tmp_path):
+    from workbox.team_delivery.office_handoff import HandoffLog
+    from workbox.team_delivery.site_attempt import submit_personal_site
+
+    session, gateway, worker = open_site(site)
+    session.set_personal_writes_enabled(True)
+    snapshot = execute(worker, gateway.snapshot)
+    task = snapshot.tasks[0]
+    journal = HandoffLog(tmp_path / 'attempts.sqlite')
+
+    def deliver(**options):
+        return execute(worker, submit_personal_site, gateway, snapshot.account, task, '12', journal,
+                       lambda: None, **options)
+
+    failures = site[6]
+    failures.add('drop-reply')
+    assert deliver(check_local=lambda: True) is None
+    assert execute(worker, gateway.read_material_task, snapshot.account, task).stage is Stage.WORKING
+    failures.remove('drop-reply')
+    checks = iter((True, False, False))
+    with pytest.raises(GatewayError, match='本地交付已变化'):
+        deliver(verify_only=True, resume_working=True, check_local=lambda: next(checks))
+    assert writes(site[5]) == [('/api/start-material', {'ids': [201]})]
+
+    done = deliver(verify_only=True, resume_working=True, check_local=lambda: True)
+    assert done is not None and done.stage is Stage.COMPLETED
+    assert deliver(verify_only=True) == done
+    assert writes(site[5]) == [('/api/start-material', {'ids': [201]}),
+                               ('/api/complete-material', {'ids': [201]})]
+
+
 @pytest.mark.parametrize('response', ['proxy-html', 'rejected-status', 'rejected-json', 'drop-reply'])
 def test_completion_seen_after_invalid_post_acknowledgement_is_only_readback(site, response):
     _, gateway, worker = open_site(site)

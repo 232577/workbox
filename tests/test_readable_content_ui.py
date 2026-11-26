@@ -1,4 +1,5 @@
 """长项目名、文档名通过 Qt 换行完整显示，重排不替换业务对象。"""
+from time import monotonic, sleep
 import pytest
 from PySide6.QtCore import Qt, QPoint, QPointF
 from PySide6.QtGui import QTextLayout, QTextOption
@@ -8,6 +9,7 @@ from PySide6.QtTest import QTest
 from workbox.desktop.compact_ui import CompactPanel
 from workbox.desktop.desktop_service import DesktopService
 from workbox.desktop.theme import install_theme, set_theme
+from workbox.storage.project_documents import list_project_documents
 
 
 LONG_PROJECT = '智能设备运行状态采集与远程维护综合管理平台'
@@ -127,19 +129,25 @@ def test_selected_project_title_wraps_in_its_available_width(panel, qapp):
     ((660, 492), (1120, 492)),
 ])
 def test_document_names_wrap_and_reflow_without_replacing_items(
-        panel, qapp, document_name, narrow_size, wide_size, record_property):
+        panel, qapp, tmp_path, document_name, narrow_size, wide_size, record_property):
+    path = tmp_path / document_name
+    path.write_bytes(b'isolated layout fixture')
+    panel.service.receive_file(path, 1, manual=True)
     panel.resize(*narrow_size)
     pane = panel.document_pane
     single_pane = narrow_size[0] < 900
+    panel.refresh()
+    assert panel.focus_visible_project(1)
     if single_pane:
-        panel.current_project = panel.service.get_project(1)
         panel.show_project_detail()
-    pane.project_id = 1
-    record = dict(id='work:manual', name=document_name, relative_path=document_name,
-                  path=document_name, kind='工作文件',
-                  exists=True, size=4096, modified_at=None, zip_id=None, is_directory=False)
-    result = dict(project_id=1, workspace_path='', errors=[], documents=[record])
-    pane.apply_result(result)
+    pane.request_refresh()
+    deadline = monotonic() + 10
+    while (pane.worker is not None or pane.table.rowCount() == 0) and monotonic() < deadline:
+        qapp.processEvents()
+        sleep(.01)
+    result = list_project_documents(panel.service, 1)
+    record, = result['documents']
+    assert pane.worker is None and pane.table.item(0, 0).text() == document_name
     # 先完成窗口默认分栏，避免排队的初始布局覆盖随后模拟的调宽。
     settle(qapp)
     panel.project_splitter.setSizes([650, 350])

@@ -256,6 +256,18 @@ CREATE TABLE IF NOT EXISTS original_site_bindings (
     PRIMARY KEY (account_username,task_id)
 );
 CREATE INDEX IF NOT EXISTS idx_original_site_bindings_task ON original_site_bindings(task_id);
+CREATE VIEW IF NOT EXISTS original_site_active_projects AS
+    WITH candidates AS (
+        SELECT b.*, c.canonical_id AS active_project_id
+        FROM original_site_bindings b JOIN project_canonical c ON c.project_id=b.project_id
+    ), unique_projects AS (
+        SELECT active_project_id FROM candidates GROUP BY active_project_id HAVING COUNT(*)=1
+    )
+    SELECT b.* FROM candidates b JOIN unique_projects u USING(active_project_id)
+    WHERE NOT EXISTS (
+        SELECT 1 FROM site_task_project_links l JOIN project_canonical c ON c.project_id=l.project_id
+        WHERE c.canonical_id=b.active_project_id AND l.task_id!=b.task_id
+    );
 CREATE TABLE IF NOT EXISTS original_site_deliveries (
     event_id INTEGER PRIMARY KEY REFERENCES delivery_events(id),
     project_id INTEGER NOT NULL REFERENCES original_site_bindings(project_id),
@@ -353,6 +365,15 @@ class Database:
                 or target_id <= 0 or source_id == target_id):
             raise ValueError('请选择两个不同的有效项目。')
         self._assert_projects_editable(connection, source_id, target_id)
+        personal = connection.execute('''
+            SELECT b.task_id FROM original_site_bindings b JOIN project_canonical c ON c.project_id=b.project_id
+            WHERE c.canonical_id IN (?,?)
+        ''', (source_id, target_id)).fetchall()
+        if personal and (len(personal) > 1 or connection.execute('''
+            SELECT 1 FROM site_task_project_links l JOIN project_canonical c ON c.project_id=l.project_id
+            WHERE c.canonical_id IN (?,?) AND l.task_id!=? LIMIT 1
+        ''', (source_id, target_id, personal[0]['task_id'])).fetchone()):
+            raise ValueError('两个项目关联了不同的原站办理记录，请保持项目独立并核对原站编号和账号。')
         if connection.execute('''SELECT 1 FROM zip_project_links s JOIN zip_project_links t ON t.zip_id=s.zip_id
                 WHERE s.project_id=? AND t.project_id=? LIMIT 1''', (source_id, target_id)).fetchone():
             raise ValueError('两个项目共同关联同一 ZIP，请先核对组合包归属，不能直接合并。')
@@ -450,6 +471,10 @@ class Database:
                     VALUES (?,?,1,?)''', (target_id, earliest, f'合并继承原有历史交付规则（项目 #{source_id}、#{target_id}）。'))
         connection.execute('''INSERT INTO project_merges(source_id,target_id,operation_id,snapshot_json)
             VALUES (?,?,?,?)''', (source_id, target_id, operation_id, json.dumps(snapshot, ensure_ascii=False)))
+        connection.execute('''
+            UPDATE original_site_deliveries SET status='superseded',reason='项目已合并，请确认合并后的新交付。'
+            WHERE status='pending' AND event_id IN (SELECT id FROM delivery_events WHERE project_id IN (?,?))
+        ''', (source_id, target_id))
         normalized = project_name_key(source['name'])
         connection.execute('''INSERT INTO project_name_aliases(project_id,name,normalized_name,operation_id)
             VALUES (?,?,?,?)''', (source_id, source['name'], normalized, operation_id))
@@ -1504,7 +1529,7 @@ class Database:
             LEFT JOIN project_details d ON d.project_id=p.id
             LEFT JOIN project_deletions x ON x.project_id=p.id
             LEFT JOIN project_type_links tl ON tl.project_id=p.id
-            LEFT JOIN original_site_bindings o ON o.project_id=p.id
+            LEFT JOIN original_site_active_projects o ON o.active_project_id=p.id
             LEFT JOIN project_types pt ON pt.id=tl.type_id WHERE """
         sql += " AND ".join(clauses) + " ORDER BY p.urgent DESC, d.due_date IS NULL, d.due_date ASC, p.id DESC"
         supplied_connection = connection is not None
@@ -1543,7 +1568,7 @@ class Database:
                 LEFT JOIN project_types pt ON pt.id=tl.type_id
                 LEFT JOIN project_merges pm ON pm.source_id=p.id
                 LEFT JOIN project_change_blocks pb ON pb.project_id=p.id
-                LEFT JOIN original_site_bindings o ON o.project_id=p.id
+                LEFT JOIN original_site_active_projects o ON o.active_project_id=p.id
                 WHERE p.id=?
             """, (project_id,)).fetchone()
             if row is None:

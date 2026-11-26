@@ -426,3 +426,73 @@ def test_archived_deleted_or_merged_project_cannot_dispatch_old_delivery(persona
     assert not site.pending(ALICE) and site.claim(event, ALICE, current) is None
     fresh = deliver(service, target, '再次确认合并后的材料.txt')
     assert site.claim(fresh, ALICE, current) is not None
+
+
+@pytest.mark.parametrize('old_outcome', [None, 'completed', 'not_sent'])
+def test_bound_merge_source_follows_target_without_replaying_original_event(personal, old_outcome):
+    service, site = personal
+    current = task()
+    site.sync(ALICE, [current])
+    source = site.binding_for_task(ALICE, current)
+    old_event = deliver(service, source)
+    claim = site.claim(old_event, ALICE, current) if old_outcome else None
+    target, = service.capture_message('匿名保留项目', '保留批次')['project_ids']
+    plan = service.preview_project_rename(source, '匿名保留项目')
+    assert plan['kind'] == 'merge'
+    service.rename_project(source, '匿名保留项目', expected_token=plan['token'],
+                           merge_target_id=target, confirmed_merge=True)
+    assert site.binding_for_task(ALICE, current) == target
+    assert not site.unlinked_tasks(ALICE, [current])
+    assert service.get_project(target)['original_task_id'] == current.id
+    assert site.claim(old_event, ALICE, current) is None
+    assert site.delivery_for_event(old_event).project_id == source
+    assert service.db.delivery_history()['events'][0]['original_project_id'] == source
+
+    fresh = deliver(service, target, '合并后明确交付.txt')
+    if claim is not None:
+        assert not site.claim_is_current(claim, ALICE)
+        waiting, = site.pending(ALICE)
+        assert (waiting.event_id, waiting.status) == (old_event, 'needs_check')
+        assert site.claim(fresh, ALICE, current) is None
+    if old_outcome == 'not_sent':
+        assert site.mark_not_sent(claim)
+        assert site.delivery_for_event(old_event).status == 'superseded'
+    elif old_outcome == 'completed':
+        assert site.record_receipt(old_event, account_username=ALICE.username, task_id=current.id,
+                                   delivery_id='legacy-readback')
+        assert site.claim(fresh, ALICE, current) is None
+        returned = replace(current, stage=Stage.RETURNED, revision='explicit-return-after-merge')
+        site.sync(ALICE, [returned])
+        fresh = deliver(service, target, '原站重新退回的本机交付.txt')
+        current = returned
+    assert site.claim(fresh, ALICE, current).project_id == target
+    assert service.db.delivery_history()['project_count'] == 1
+
+
+@pytest.mark.parametrize('target_bound', [False, True])
+def test_bound_source_merge_refuses_a_target_linked_to_another_original_task(personal, target_bound):
+    service, site = personal
+    first = task()
+    second = replace(task(identifier='56'), title='另一原站编号的项目')
+    site.sync(ALICE, [first])
+    source = site.binding_for_task(ALICE, first)
+    if target_bound:
+        site.sync(ALICE, [first, second])
+        target = site.binding_for_task(ALICE, second)
+    else:
+        target, = service.sync_site_tasks([(second.id, second.title)])['created_project_ids']
+    plan = service.preview_project_rename(source, second.title, merge_target_id=target)
+    assert plan['kind'] == 'blocked'
+    assert '原站' in plan['warning']
+    assert service.db.counts()['projects'] == 2
+
+
+def test_project_merge_cannot_join_two_authenticated_owners_of_the_same_number(personal):
+    service, site = personal
+    site.sync(ALICE, [task()])
+    old = site.binding_for_task(ALICE, task())
+    site.sync(BOB, [task(BOB)])
+    new = site.binding_for_task(BOB, task(BOB))
+    plan = service.preview_project_rename(old, task().title, merge_target_id=new)
+    assert plan['kind'] == 'blocked'
+    assert '原站' in plan['warning']

@@ -51,3 +51,22 @@ def test_personal_workspace_connects_through_the_normal_team_entry(tmp_path, mon
     finally:
         controller.shutdown()
         app.processEvents()
+
+
+def test_personal_intake_success_expires_without_clearing_a_later_review_request():
+    app = QApplication.instance() or QApplication([])
+    page = DesktopWindow()
+    try:
+        page.configure_live(None)
+        page.set_personal_mode(True)
+        page.show_personal_result('文件已收好', '#55', temporary=True)
+        assert page._personal_notice_timer.isActive()
+        page._personal_notice_timer.timeout.emit()
+        assert '文件已收好' not in page._result.text()
+        page.show_personal_result('文件已收好', '#55', temporary=True)
+        page.show_personal_result('原站待核对', '#55')
+        assert not page._personal_notice_timer.isActive()
+        assert '原站待核对' in page._result.text()
+    finally:
+        page.close()
+        app.processEvents()

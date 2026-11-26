@@ -153,7 +153,8 @@ class _Worker(QObject):
         self._embedded_office = connection is not None
         self._pair(self._last_account)
 
-    def submit_personal_delivery(self, actor, account_username, task, delivery_id, verify_only, check_local, round_id):
+    def submit_personal_delivery(self, actor, account_username, task, delivery_id, verify_only, check_local, round_id,
+                                 resume_working):
         from workbox.team_delivery.office_handoff import HandoffLog
 
         def check_account():
@@ -172,7 +173,8 @@ class _Worker(QObject):
             self._personal_journal.parent.mkdir(parents=True, exist_ok=True)
             verified = submit_personal_site(self._gateway, actor, task, delivery_id,
                                             HandoffLog(self._personal_journal), check_account,
-                                            verify_only=verify_only, check_local=check_local, round_id=round_id)
+                                            verify_only=verify_only, check_local=check_local, round_id=round_id,
+                                            resume_working=resume_working)
             if verified is not None:
                 status = result(Outcome.SUBMITTED, '已确认这是家同一任务的材料完成状态。', receipt_id=verified.revision)
             else:
@@ -596,7 +598,8 @@ class IntakeController(QObject):
         self._poll(immediate=True)
 
     def submit_personal_delivery(self, account_username: str, task_id: str, task_title: str, delivery_id: str,
-                                 *, verify_only=False, check_local=None, round_id=1, source_revision=None) -> bool:
+                                 *, verify_only=False, check_local=None, round_id=1, source_revision=None,
+                                 resume_working=False) -> bool:
         snapshot = self.current_personal_snapshot()
         if (snapshot is None or not isinstance(account_username, str)
                 or site_account(account_username) != site_account(snapshot.account.username)
@@ -605,6 +608,7 @@ class IntakeController(QObject):
                 or not isinstance(task_title, str) or not task_title.strip()
                 or not isinstance(delivery_id, str) or not delivery_id.strip() or len(delivery_id) > 128
                 or type(round_id) is not int or round_id < 1
+                or (resume_working and (not verify_only or check_local is None))
                 or (check_local is not None and not callable(check_local))):
             return False
         actor = snapshot.account
@@ -620,7 +624,8 @@ class IntakeController(QObject):
             return False
         self._personal_request_actor = snapshot.account
         self._commands.put((self._worker.submit_personal_delivery,
-                            (actor, account_username, task, delivery_id, verify_only, check_local, round_id)))
+                            (actor, account_username, task, delivery_id, verify_only, check_local, round_id,
+                             resume_working)))
         return True
 
     @Slot()

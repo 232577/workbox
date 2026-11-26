@@ -105,14 +105,15 @@ def test_personal_event_only_reports_exact_completed_task_after_ambiguous_reques
     site.lose_without_change = True
     bound = site.row
 
-    def finish(*, verify_only=False, delivery_id='19'):
+    def finish(*, verify_only=False, delivery_id='19', resume_working=False):
         return submit_personal_site(site, actor, bound, delivery_id, HandoffLog(db), lambda: None,
-                                    verify_only=verify_only)
+                                    verify_only=verify_only, resume_working=resume_working, check_local=lambda: True)
 
     assert finish(verify_only=True) is None and site.posts == []
     assert finish() is None and site.posts == ['complete']
     assert finish() is None and site.posts == ['complete']
     assert finish(verify_only=True) is None and site.posts == ['complete']
+    assert finish(verify_only=True, resume_working=True) is None and site.posts == ['complete']
 
     site.row = replace(site.row, stage=Stage.COMPLETED, revision='confirmed')
     assert finish(verify_only=True) == site.row
@@ -141,6 +142,49 @@ def test_local_revocation_after_start_preserves_readback_and_disables_complete(f
 
     assert submit_personal_site(site, actor, bound, '29', journal, lambda: None,
                                 verify_only=True, check_local=fail_if_checked) is None
+    assert site.posts == ['start']
+
+
+def test_personal_recovery_after_lost_start_resumes_verified_working_once(fixture):
+    from workbox.team_delivery.site_attempt import submit_personal_site
+
+    _, actor, db = fixture
+    site = Site(Stage.READY, lose='start')
+    assert submit_personal_site(site, actor, site.row, '44', HandoffLog(db), lambda: None) is None
+    assert site.posts == ['start'] and site.row.stage is Stage.WORKING
+
+    actor = replace(actor, id='reopened', session='reopened', username='fixture')
+    reopened = Site(Stage.WORKING)
+    reopened.row, reopened.posts = replace(site.row, owner_id=actor.id), site.posts
+    complete = submit_personal_site(reopened, actor, reopened.row, '44', HandoffLog(db), lambda: None,
+                                    verify_only=True, check_local=lambda: True, resume_working=True)
+    assert complete is not None and complete.stage is Stage.COMPLETED
+    assert reopened.posts == ['start', 'complete']
+
+
+@pytest.mark.parametrize('change', ['revision', 'claim', 'delivery', 'account'])
+def test_personal_recovery_cannot_complete_with_changed_binding(fixture, change):
+    from workbox.team_delivery.site_attempt import submit_personal_site
+
+    _, actor, db = fixture
+    site = Site(Stage.READY, lose='start')
+    bound = site.row
+    journal = HandoffLog(db)
+    assert submit_personal_site(site, actor, bound, '44', journal, lambda: None) is None
+    if change == 'revision':
+        site.row = replace(site.row, revision='changed-remote-revision')
+    if change == 'account':
+        actor = replace(actor, username='different-account')
+
+    def recover():
+        return submit_personal_site(site, actor, bound, '45' if change == 'delivery' else '44', journal, lambda: None,
+                                    verify_only=True, resume_working=True, check_local=lambda: change != 'claim')
+
+    if change == 'revision':
+        assert recover() is None
+    else:
+        with pytest.raises(GatewayError):
+            recover()
     assert site.posts == ['start']
 
 

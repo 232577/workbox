@@ -190,16 +190,23 @@ def _submit_stages(gateway, actor, task, ledger, current, read, check_accounts, 
             prior = _Attempt('working', current.revision)
         elif current.stage is not Stage.WORKING:
             return False
+    return _complete(gateway, actor, ledger, prior, current, read, check_accounts,
+                     personal=personal, check_local=check_local, require_local=require_local)
+
+
+def _complete(gateway, actor, ledger, prior, current, read, check_accounts, *, personal, check_local, require_local):
     complete = partial(gateway.complete_verified, personal=True, check_local=check_local) if personal else gateway.complete_verified
     completed = _write(ledger, prior, current, 'complete', complete, actor, check_accounts, read, require_local)
     return completed.stage is Stage.COMPLETED
 
 
 def submit_personal_site(gateway, actor, task, delivery_id, journal, check_account, *, verify_only=False,
-                         check_local=None, round_id=1):
+                         check_local=None, round_id=1, resume_working=False):
     """Use a committed local delivery event as the durable request binding."""
     if type(round_id) is not int or round_id < 1:
         raise GatewayError('无法核对这次原站交付的办理轮次。')
+    if resume_working and (not verify_only or not callable(check_local)):
+        raise GatewayError('请先核对本次本地交付，才能继续已开始的原站任务。')
 
     def read():
         check_account()
@@ -230,12 +237,18 @@ def submit_personal_site(gateway, actor, task, delivery_id, journal, check_accou
         if prior is not None and _mark_finished(ledger, prior, current):
             return current
         return None
-    if verify_only:
+    if verify_only and (not resume_working or prior is None or prior.phase != 'working'
+                        or current.stage is not Stage.WORKING or current.revision != prior.revision):
         return None
 
     try:
-        verified = _submit_stages(gateway, actor, task, ledger, current, read, check_account, personal=True,
-                                  check_local=check_local, require_local=require_local)
+        if verify_only:
+            # Only a recorded, identical working revision may claim the unsent complete phase.
+            verified = _complete(gateway, actor, ledger, prior, current, read, check_account, personal=True,
+                                 check_local=check_local, require_local=require_local)
+        else:
+            verified = _submit_stages(gateway, actor, task, ledger, current, read, check_account, personal=True,
+                                      check_local=check_local, require_local=require_local)
     except ActionUncertain:
         raise
     except GatewayError as error:

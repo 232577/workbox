@@ -73,6 +73,8 @@ def test_personal_recovery_reads_exact_completed_task_outside_current_list(tmp_p
         controller._show_snapshot(Snapshot(actor, (other,)))
         assert not controller.submit_personal_delivery(actor.username, '56', other.title, '2', source_revision='stale')
         assert not controller.submit_personal_delivery('different-user', '55', verified.title, '1', verify_only=True)
+        assert not controller.submit_personal_delivery(actor.username, '55', verified.title, '1',
+                                                       verify_only=True, resume_working=True)
         assert reads == []
         assert controller.submit_personal_delivery(actor.username, '55', verified.title, '1', verify_only=True,
                                                    source_revision='stale')

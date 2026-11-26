@@ -19,14 +19,16 @@ _EDITABLE_PROJECT = '''
     AND NOT EXISTS (SELECT 1 FROM project_change_blocks x WHERE x.project_id=p.id)
 '''
 _AVAILABLE_BINDINGS = f'''
-    SELECT b.* FROM original_site_bindings b JOIN projects p ON p.id=b.project_id
+    SELECT b.* FROM original_site_active_projects b JOIN projects p ON p.id=b.active_project_id
     LEFT JOIN project_details d ON d.project_id=p.id
     WHERE b.account_username=? AND b.available=1 AND {_EDITABLE_PROJECT}
 '''
 _DELIVERY = '''
-    SELECT s.*, b.account_username,b.task_id,b.available,b.revision,
+    SELECT s.*, e.project_id AS event_project_id,a.active_project_id,b.account_username,b.task_id,b.available,b.revision,
            b.title AS observed_title,b.stage AS observed_stage,b.round AS current_round
     FROM original_site_deliveries s JOIN original_site_bindings b ON b.project_id=s.project_id
+    JOIN delivery_events e ON e.id=s.event_id
+    LEFT JOIN original_site_active_projects a ON a.project_id=b.project_id
 '''
 
 
@@ -82,10 +84,11 @@ def _editable(connection, project_id):
 
 
 def is_original_site_project(connection, project_id):
-    """Look up the exact local project in the caller's transaction."""
-    return connection.execute(
-        'SELECT 1 FROM original_site_bindings WHERE project_id=?', (project_id,)
-    ).fetchone() is not None
+    """Keep personal-site confirmation rules after any explicit project merge."""
+    return connection.execute('''
+        SELECT 1 FROM original_site_bindings b JOIN project_canonical c ON c.project_id=b.project_id
+        WHERE c.canonical_id=? LIMIT 1
+    ''', (project_id,)).fetchone() is not None
 
 
 def _latest_event(connection, project_id):
@@ -113,7 +116,7 @@ def _remote_blocked(connection, row):
 def enqueue_delivery(connection, project_id, event_id):
     """Attach a real manual delivery inside the transaction that recorded it."""
     binding = connection.execute(
-        'SELECT * FROM original_site_bindings WHERE project_id=?', (project_id,)
+        'SELECT * FROM original_site_active_projects WHERE active_project_id=?', (project_id,)
     ).fetchone()
     if binding is None:
         return
@@ -121,31 +124,32 @@ def enqueue_delivery(connection, project_id, event_id):
     if event is None or event['id'] != event_id or event['kind'] not in ('manual-files', 'manual-zip'):
         return
     round_id = binding['round']
+    binding_project_id = binding['project_id']
     blocked = connection.execute('''
         SELECT 1 FROM original_site_deliveries
         WHERE project_id=? AND event_id!=? AND (status='needs_check' OR (round=? AND status='completed'))
-    ''', (project_id, event_id, round_id)).fetchone()
+    ''', (binding_project_id, event_id, round_id)).fetchone()
     if blocked:
         connection.execute('''
             INSERT OR IGNORE INTO original_site_deliveries(event_id,project_id,title,round,return_revision,status,reason)
             VALUES (?,?,?,?,?,'superseded','原站同轮已确认或上次请求仍待核对。')
-        ''', (event_id, project_id, binding['title'], round_id, binding['return_revision']))
+        ''', (event_id, binding_project_id, binding['title'], round_id, binding['return_revision']))
         return
     connection.execute('''
         UPDATE original_site_deliveries SET status='superseded',reason=?
         WHERE project_id=? AND event_id!=? AND status='pending'
-    ''', (_SUPERSEDED, project_id, event_id))
+    ''', (_SUPERSEDED, binding_project_id, event_id))
     connection.execute('''
         INSERT INTO original_site_deliveries(event_id,project_id,title,round,return_revision,status)
         VALUES (?,?,?,?,?,'pending')
         ON CONFLICT(event_id) DO UPDATE SET status='pending',reason=''
         WHERE original_site_deliveries.status='superseded' AND original_site_deliveries.round=excluded.round
-    ''', (event_id, project_id, binding['title'], round_id, binding['return_revision']))
+    ''', (event_id, binding_project_id, binding['title'], round_id, binding['return_revision']))
 
 
 def _delivery(row, *, needs_review=False):
     return SiteDelivery(
-        row['event_id'], row['project_id'], row['account_username'], row['task_id'], row['title'],
+        row['event_id'], row['event_project_id'], row['account_username'], row['task_id'], row['title'],
         'needs_check' if needs_review else row['status'], row['receipt_id'],
         row['reason'] or (_REVIEW if needs_review else ''), row['claim_token'],
         row['round'], row['claim_revision'],
@@ -153,9 +157,10 @@ def _delivery(row, *, needs_review=False):
 
 
 def _current_local_event(connection, row):
-    if not _editable(connection, row['project_id']):
+    project_id = row['event_project_id']
+    if project_id != row['active_project_id'] or not _editable(connection, project_id):
         return False
-    event = _latest_event(connection, row['project_id'])
+    event = _latest_event(connection, project_id)
     return event is not None and event['id'] == row['event_id']
 
 
@@ -253,7 +258,9 @@ class OriginalSiteProjects:
         with self.db.connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
             existing = {row['task_id']: row for row in connection.execute(
-                'SELECT * FROM original_site_bindings WHERE account_username=?', (username,)
+                '''SELECT b.*, a.active_project_id FROM original_site_bindings b
+                   LEFT JOIN original_site_active_projects a ON a.project_id=b.project_id
+                   WHERE b.account_username=?''', (username,)
             )}
             for task_id, row in existing.items():
                 if task_id not in observed and row['available']:
@@ -270,11 +277,12 @@ class OriginalSiteProjects:
                                    (task_id, project_id))
                 observed_change = self._observe(connection, username, task, project_id)
                 changes += observed_change
+                workspace_id = row['active_project_id'] if row else project_id
                 if (self.workspaces is not None and task.stage in MATERIAL_PREPARATION_STAGES
-                        and _editable(connection, project_id) and not connection.execute(
-                            'SELECT 1 FROM project_workspaces WHERE project_id=?', (project_id,)
+                        and _editable(connection, workspace_id) and not connection.execute(
+                            'SELECT 1 FROM project_workspaces WHERE project_id=?', (workspace_id,)
                         ).fetchone()):
-                    missing_workspaces.append(project_id)
+                    missing_workspaces.append(workspace_id)
                     if not observed_change:
                         changes += 1
         self._ensure_workspaces(missing_workspaces)
@@ -294,7 +302,8 @@ class OriginalSiteProjects:
             if project_name_key(local['name']) != project_name_key(task.title):
                 raise ValueError('本地项目名称与原站项目全名不一致。')
             if connection.execute('''
-                SELECT 1 FROM original_site_bindings WHERE project_id=? OR task_id=?
+                SELECT 1 FROM original_site_bindings b JOIN project_canonical c ON c.project_id=b.project_id
+                WHERE c.canonical_id=? OR b.task_id=?
             ''', (project_id, task.id)).fetchone():
                 raise ValueError('本地项目或原站编号已有绑定。')
             links = source_project_links(connection)
@@ -318,10 +327,14 @@ class OriginalSiteProjects:
         with self.db.connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
             existing = connection.execute('''
-                SELECT project_id FROM original_site_bindings WHERE account_username=? AND task_id=?
+                SELECT b.project_id,a.active_project_id FROM original_site_bindings b
+                LEFT JOIN original_site_active_projects a ON a.project_id=b.project_id
+                WHERE b.account_username=? AND b.task_id=?
             ''', (username, task.id)).fetchone()
             if existing:
-                project_id = existing['project_id']
+                project_id = existing['active_project_id']
+                if project_id is None:
+                    raise ValueError('该编号的本机项目关联需要核对。')
                 self.db._assert_projects_editable(connection, project_id)
             else:
                 if connection.execute('''
@@ -333,7 +346,7 @@ class OriginalSiteProjects:
                 self.db._assign_default_project_type(connection, [project_id])
                 connection.execute('INSERT INTO site_task_project_links(task_id,project_id) VALUES (?,?)',
                                    (task.id, project_id))
-            self._observe(connection, username, task, project_id)
+            self._observe(connection, username, task, existing['project_id'] if existing else project_id)
         self._ensure_workspaces([project_id])
         return project_id
 
@@ -352,7 +365,9 @@ class OriginalSiteProjects:
 
     def binding_for(self, project_id, account=None):
         with self.db.connect() as connection:
-            row = connection.execute('SELECT * FROM original_site_bindings WHERE project_id=?', (project_id,)).fetchone()
+            row = connection.execute(
+                'SELECT * FROM original_site_active_projects WHERE active_project_id=?', (project_id,)
+            ).fetchone()
             if row is None or (account is not None and _account(account) != row['account_username']):
                 return None
             return SiteBinding(
@@ -372,7 +387,7 @@ class OriginalSiteProjects:
                 _AVAILABLE_BINDINGS + ' AND b.task_id=? AND b.title=? AND b.stage=? AND b.revision=?',
                 (username, task.id, task.title, task.stage.value, task.revision),
             ).fetchone()
-            return row['project_id'] if row else None
+            return row['active_project_id'] if row else None
 
     def pending(self, account):
         username = _account(account)
@@ -430,14 +445,22 @@ class OriginalSiteProjects:
             return False
         with self.db.connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
+            row = connection.execute(_DELIVERY + ' WHERE s.event_id=?', (claim.event_id,)).fetchone()
+            if row is None or row['status'] != 'needs_check' or row['claim_token'] != claim.claim_token:
+                return False
+            if _current_local_event(connection, row):
+                status, reason = 'pending', ''
+            else:
+                status, reason = 'superseded', _SUPERSEDED
             changed = connection.execute('''
-                UPDATE original_site_deliveries SET status='pending', claim_token='',claim_revision='',reason=''
+                UPDATE original_site_deliveries SET status=?, claim_token='',claim_revision='',reason=?
                 WHERE event_id=? AND status='needs_check' AND claim_token=?
-            ''', (claim.event_id, claim.claim_token)).rowcount
+            ''', (status, reason, claim.event_id, claim.claim_token)).rowcount
             if changed:
-                latest = _latest_event(connection, claim.project_id)
+                project_id = row['active_project_id']
+                latest = _latest_event(connection, project_id)
                 if latest and latest['id'] != claim.event_id:
-                    enqueue_delivery(connection, claim.project_id, latest['id'])
+                    enqueue_delivery(connection, project_id, latest['id'])
             return bool(changed)
 
     def mark_needs_check(self, claim, reason):
