@@ -2,7 +2,6 @@
 from threading import Event
 from time import monotonic
 from sqlite3 import Error as DatabaseError
-from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer
 from PySide6.QtWidgets import QInputDialog
@@ -10,6 +9,7 @@ from PySide6.QtWidgets import QInputDialog
 from workbox.projects.original_site import OriginalSiteProjects
 from workbox.projects.project_names import project_name_key
 from workbox.team_delivery.contracts import Outcome
+from workbox.team_delivery.personal_matching import matching_personal_word_tasks
 from workbox.team_delivery.site_attempt import site_account
 
 
@@ -141,10 +141,16 @@ class PersonalSiteWorkspace(QObject):
 
     def resolve_dropped_file(self, filename):
         """Ask for an upstream task number before ordinary intake could create an unbound namesake."""
-        path = Path(filename)
-        if path.suffix.casefold() != '.docx' or not any(task.title == path.stem for task in self._unlinked):
+        snapshot = self.site.current_personal_snapshot()
+        if snapshot is None:
             return False
-        if self.site.current_personal_snapshot() is None:
+        matches = matching_personal_word_tasks(filename, snapshot)
+        if not matches:
+            return False
+        if self._imported != snapshot:
+            self._message('正在同步待办', '请稍后再拖入此文件。')
+            return True
+        if not any(task in self._unlinked for task in matches):
             return False
         self.desktop.panel.open_team_delivery()
         if self.desktop.panel.team_page.busy:
@@ -152,6 +158,10 @@ class PersonalSiteWorkspace(QObject):
         else:
             self.site.submit_file(filename, None)
         return True
+
+    def intake_account(self) -> str | None:
+        snapshot = self.site.current_personal_snapshot()
+        return site_account(snapshot.account.username) if snapshot is not None else None
 
     def _resolve_binding(self, task, filename=None):
         snapshot = self.site.current_personal_snapshot()

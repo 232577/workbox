@@ -17,6 +17,7 @@ from workbox.team_delivery.contracts import (
 )
 from workbox.team_delivery.desktop import DesktopWindow
 from workbox.team_delivery.pair_guard import PairGuard
+from workbox.team_delivery.personal_matching import matching_personal_word_tasks
 from workbox.team_delivery.site_attempt import PersonalWriteNotSent, site_account, submit_personal_site
 from workbox.team_delivery.workflow import WorkflowService
 
@@ -865,26 +866,30 @@ class IntakeController(QObject):
     @Slot(str, object)
     def submit_file(self, filename: str, task_id) -> None:
         account = self._snapshot.account
+        personal = self.current_personal_snapshot()
         if account is None or not self._current_readable:
             self._show_result(DropResult(Outcome.BLOCKED, '请先刷新并确认当前材料账号。'))
-        elif self.current_personal_snapshot() is not None:
+        elif personal is not None:
             if not self._busy:
-                self._request_personal_file(filename, task_id, account)
+                self._request_personal_file(filename, task_id, personal)
         elif self._admit():
             self._last_drop = (filename, task_id, account)
             self._ask_for_project = False
             self._commands.put((self._worker.submit_file, (filename, task_id, account)))
 
-    def _request_personal_file(self, filename, task_id, account):
-        title = Path(filename).stem
-        matches = [task for task in self._snapshot.tasks if task.title == title and task.owner_id == account.id
-                   and task.stage in MATERIAL_PREPARATION_STAGES and (task_id is None or task.id == task_id)]
-        if len(matches) == 1:
-            self.personal_file_requested.emit(filename, account, matches[0])
-        elif task_id is None and matches:
-            self._resolve_project(filename, account.id)
-        else:
+    def _request_personal_file(self, filename: str, task_id, snapshot: Snapshot) -> None:
+        matches = tuple(task for task in matching_personal_word_tasks(filename, snapshot)
+                        if task_id is None or task.id == task_id)
+        if not matches:
             self._show_result(DropResult(Outcome.BLOCKED, '未找到此文件对应的本人原站任务，请核对全名和任务编号。'))
+            return
+        task = matches[0] if len(matches) == 1 else self._choose_project(filename, matches)
+        if task is None:
+            return
+        if self.current_personal_snapshot() != snapshot:
+            self._show_result(DropResult(Outcome.BLOCKED, '待办或账号已变化，请刷新后重新拖入。'))
+            return
+        self.personal_file_requested.emit(filename, snapshot.account, task)
 
     @Slot(object)
     def _show_snapshot(self, snapshot: Snapshot) -> None:
@@ -959,10 +964,16 @@ class IntakeController(QObject):
 
     def _resolve_project(self, filename: str, actor_id: str) -> None:
         title = Path(filename).stem
-        choices = {f'{task.title} · #{task.id}': task.id for task in self._snapshot.tasks
-                   if task.title == title and task.owner_id == actor_id and task.stage in MATERIAL_PREPARATION_STAGES}
+        tasks = tuple(task for task in self._snapshot.tasks if task.title == title
+                      and task.owner_id == actor_id and task.stage in MATERIAL_PREPARATION_STAGES)
+        task = self._choose_project(filename, tasks)
+        if task is not None:
+            self.submit_file(filename, task.id)
+
+    def _choose_project(self, filename: str, tasks: tuple[Task, ...]) -> Task | None:
+        choices = {f'{task.title} · #{task.id}': task for task in tasks}
         if not choices or not self._admit():
-            return
+            return None
         try:
             selection, confirmed = QInputDialog.getItem(
                 self._window, '核对交件项目', f'请选择「{Path(filename).name}」对应的项目',
@@ -970,5 +981,4 @@ class IntakeController(QObject):
         finally:
             self._busy = False
             self._window.set_busy(False)
-        if confirmed and selection in choices:
-            self.submit_file(filename, choices[selection])
+        return choices.get(selection) if confirmed else None

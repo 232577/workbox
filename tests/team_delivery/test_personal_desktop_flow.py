@@ -12,6 +12,7 @@ from test_qt_site import install_completion_view, page_script, site, writes
 from workbox.desktop.desktop_controller import FloatingController
 from workbox.desktop.desktop_service import DesktopService
 from workbox.team_delivery import application
+from workbox.team_delivery.contracts import Account, Snapshot, Stage, Task
 
 
 def until(predicate, seconds=15):
@@ -25,9 +26,10 @@ def until(predicate, seconds=15):
 
 
 @pytest.mark.parametrize('target', ['workspace', 'team'])
-def test_drop_then_confirm_submits_only_the_bound_original_task(site, target, tmp_path, monkeypatch):
+@pytest.mark.parametrize('version', ['', 'V1.0'], ids=['exact', 'versionless-word'])
+def test_drop_then_confirm_submits_only_the_bound_original_task(site, target, version, tmp_path, monkeypatch):
     browser, _, _, _, rows, history, _ = site
-    rows[0].update(id=55, name='匿名待交件系统')
+    rows[0].update(id=55, name='匿名待交件系统' + version)
     monkeypatch.setattr(application, 'LIVE_SITE_URL', browser.origin)
     service = DesktopService(tmp_path / 'data' / 'workbox.db')
     desktop = FloatingController(service, tray_enabled=False)
@@ -47,7 +49,7 @@ def test_drop_then_confirm_submits_only_the_bound_original_task(site, target, tm
         project = next(p for p in service.list_projects() if p['name'] == rows[0]['name'])
         project_id = project['id']
         assert project['status'] == '待开发' and not writes(history)
-        path = tmp_path / (project['name'] + '.docx')
+        path = tmp_path / '匿名待交件系统.docx'
         make_document(path)
         original = path.read_bytes()
         if target == 'workspace':
@@ -85,12 +87,14 @@ def test_drop_then_confirm_submits_only_the_bound_original_task(site, target, tm
         desktop.panel.intake.emit({'kind': 'files', 'paths': [str(path)]})
         until(lambda: not desktop.busy)
         assert service.get_project(project_id)['status'] == '已交付'
+        assert len(service.list_projects()) == 2
         assert len(writes(history)) == 2
     finally:
         desktop.shutdown()
 
 
-def test_home_drop_with_two_unlinked_namesakes_uses_the_chosen_site_number(site, tmp_path, monkeypatch):
+@pytest.mark.parametrize('versioned', [False, True], ids=['exact', 'versionless-word'])
+def test_home_drop_with_two_unlinked_namesakes_uses_the_chosen_site_number(site, tmp_path, monkeypatch, versioned):
     browser, _, _, _, rows, history, _ = site
     monkeypatch.setattr(application, 'LIVE_SITE_URL', browser.origin)
     service = DesktopService(tmp_path / 'data' / 'workbox.db')
@@ -105,6 +109,10 @@ def test_home_drop_with_two_unlinked_namesakes_uses_the_chosen_site_number(site,
 
     monkeypatch.setattr(QInputDialog, 'getItem', select)
     try:
+        title = rows[0]['name']
+        if versioned:
+            for row in rows[:2]:
+                row['name'] = title + 'V1.0'
         assert desktop.start()
         desktop.monitor_timer.stop()
         desktop.panel.nav_team.click()
@@ -112,7 +120,7 @@ def test_home_drop_with_two_unlinked_namesakes_uses_the_chosen_site_number(site,
         until(lambda: not page.busy)
         page._login.click()
         until(lambda: len(desktop.personal_site._unlinked) == 2, seconds=25)
-        path = tmp_path / (rows[0]['name'] + '.docx')
+        path = tmp_path / (title + '.docx')
         make_document(path)
         desktop.panel.nav_projects.click()
         desktop.panel.intake.emit({'kind': 'files', 'paths': [str(path)]})
@@ -120,6 +128,39 @@ def test_home_drop_with_two_unlinked_namesakes_uses_the_chosen_site_number(site,
         project, = service.list_projects()
         assert project['original_task_id'] == '202' and project['status'] == '待交付'
         assert choices == ['核对交件项目', '关联本机项目']
+        assert not writes(history)
+    finally:
+        desktop.shutdown()
+
+
+def test_home_drop_checks_versioned_binding_from_a_previous_account(site, tmp_path, monkeypatch):
+    browser, _, _, _, rows, history, _ = site
+    rows[0]['name'], rows[1]['name'] = '当前账号匿名任务', '当前账号其他任务'
+    monkeypatch.setattr(application, 'LIVE_SITE_URL', browser.origin)
+    service = DesktopService(tmp_path / 'data' / 'workbox.db')
+    desktop = FloatingController(service, tray_enabled=False)
+    previous = Account('previous', 'Previous', 'material', 'previous-session', 'previous')
+    task = Task('55', '匿名其他账号系统V1.0', previous.id, Stage.READY, 'r1')
+    service.sync_personal_site_snapshot(Snapshot(previous, (task,)))
+    project_id = next(row['id'] for row in service.list_projects() if row['original_task_id'] == '55')
+    path = tmp_path / '匿名其他账号系统.docx'
+    make_document(path)
+    choices = []
+    try:
+        assert desktop.start()
+        desktop.monitor_timer.stop()
+        monkeypatch.setattr(desktop.panel, 'choose_file_project', choices.append)
+        desktop.panel.nav_team.click()
+        page = desktop.panel.team_page
+        until(lambda: not page.busy)
+        page._login.click()
+        until(lambda: len(service.list_projects()) == 3 and not desktop.busy, seconds=25)
+        assert desktop.panel.team_controller.current_personal_snapshot().account.username == 'fixture'
+        desktop.panel.nav_projects.click()
+        desktop.panel.intake.emit({'kind': 'files', 'paths': [str(path)]})
+        until(lambda: not desktop.busy)
+        assert choices == [path.name]
+        assert service.get_project(project_id)['status'] == '待开发'
         assert not writes(history)
     finally:
         desktop.shutdown()

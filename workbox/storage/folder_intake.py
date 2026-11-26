@@ -76,7 +76,7 @@ class FolderIntake:
                     requires_choice=protected or len(candidates) > 1,
                     basis='目录名称完整匹配' if candidates else '未识别目录名称')
 
-    def _plan(self, root, files, project_id, manual, *, grouped=None):
+    def _plan(self, root, files, project_id, manual, *, grouped=None, personal_account=None):
         projects = self.service.list_projects(archived=None, deleted=None)
         by_id = {row['id']: row for row in projects}
         root_route = self._directory_route([root.name], projects)
@@ -94,11 +94,12 @@ class FolderIntake:
                 raise ValueError('请明确选择有效的未归档、未删除项目。')
             root_route = dict(candidates=[selected], basis='人工选择文件夹所属项目', requires_choice=False)
         plans = []
+        account_options = {'personal_account': personal_account} if personal_account else {}
         for source in files:
             relative = source.relative_to(root)
             # 只用路径中的完整项目名；深层的另一个项目名称同样属于冲突证据。
             directory_route = self._directory_route(relative.parts[:-1], projects)
-            named = self.service.file_routing(source)
+            named = self.service.file_routing(source, **account_options)
             is_bundle = self.service.is_bundle_candidate(source.name)
             routes = [root_route, directory_route, named]
             candidates = {row['id']: row for route in routes for row in route['candidates']}
@@ -131,7 +132,7 @@ class FolderIntake:
         return self.service.record_file_decision(item['source'], status, item['routing'],
             project_id=project_id, manual=manual, message=message)
 
-    def receive(self, path, project_id=None, *, cancel_event=None, progress=None, manual=None):
+    def receive(self, path, project_id=None, *, cancel_event=None, progress=None, manual=None, personal_account=None):
         """后台调用；progress 为已处理条目数/扫描条目总数。
 
         needs_choice 条目的 retry_path 可交给文件收录或再次显式选择文件夹项目。
@@ -177,7 +178,7 @@ class FolderIntake:
             files = self._scan(root, cancel_event)
             if not files:
                 raise ValueError('文件夹内没有可收录的普通文件。')
-            plans = self._plan(root, files, project_id, manual)
+            plans = self._plan(root, files, project_id, manual, personal_account=personal_account)
             for index, item in enumerate(plans):
                 try:
                     cancelled(cancel_event)
