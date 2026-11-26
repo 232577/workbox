@@ -30,6 +30,7 @@ test('升级说明区分可在线检查的个人版与须手动原地升级的�
   const update = (await response.json()).body.split('\n\n')[0];
   for (const text of [guides, highlights, update]) {
     assert.match(text, /11 月 25 日 r1[^。<]*旧个人版[^。<]*高级设置 → 检查更新/);
+    assert.match(text, /11 月 26 日 r1[^。<]*工作站可从[^。<]*高级设置 → 检查更新[^。<]*后续版本/);
     assert.match(text, /团队预览版[^。<]*11 月 25 日 r2[^。<]*内置检查受限/);
     assert.match(text, /退出工作箱[^。<]*手动运行[^。<]*工作站完整安装包[^。<]*原安装目录/);
     assert.match(text, /只更新桌面程序[^。<]*办公室服务器[^。<]*管理员单独维护/);
@@ -50,7 +51,7 @@ test('中性实机项目截图保留准确r4来源，当前更新清单单独绑
   const stable = await handleRequest(new Request('https://workbox.ltxiangzi.dpdns.org/updates/stable.json'), {});
   const source = (await stable.json()).body.match(/来源提交 ([a-f0-9]{40})。/)?.[1];
   assert.match(source, /^[a-f0-9]{40}$/);
-  assert.equal(source, 'd337659261024ad3634154f75da26bcb49ac5a2c');
+  assert.equal(source, '03d7b85bf22c309aacb0b6e4fd348377eea1163f');
   assert.ok(actualUi.includes('来源提交 2432b7e237db6424bd70e01f9a96f7567c5e644e'));
   assert.ok(!actualUi.includes(`来自 ${release.tag} 的同一隔离实例`));
   assert.doesNotMatch(html,/来自当前安装包的匿名隔离示例/);
