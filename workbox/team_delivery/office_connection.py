@@ -36,17 +36,31 @@ class OfficeConnection(QObject):
         self.panel = panel
         self._lock = Lock()
         self._account = panel.account
+        self._login_state = panel.login_state
         self._pending = set()
         self._closed = False
         self.requested.connect(self._run, Qt.ConnectionType.QueuedConnection)
         panel.account_changed.connect(self._changed)
+        panel.login_state_changed.connect(self._set_login_state)
 
     def current_account(self):
         with self._lock:
             return self._account
 
+    def login_state(self):
+        with self._lock:
+            return self._login_state
+
+    @Slot(str)
+    def _set_login_state(self, state):
+        with self._lock:
+            if not self._closed:
+                self._login_state = state
+
     def _changed(self, account):
         with self._lock:
+            if self._closed:
+                return
             previous = self._account
             self._account = account
             obsolete = [job for job in self._pending if job.member != account]
@@ -57,11 +71,17 @@ class OfficeConnection(QObject):
 
     def close(self):
         with self._lock:
+            if self._closed:
+                return
             self._closed = True
             self._account = None
+            self._login_state = 'unknown'
             pending = tuple(self._pending)
-        if self.panel.page is not None and self.panel.thread().isCurrentThread():
-            self.panel.page.runJavaScript('globalThis.officeTransfer?.clear()', 1)
+        if self.panel.thread().isCurrentThread():
+            self.panel.account_changed.disconnect(self._changed)
+            self.panel.login_state_changed.disconnect(self._set_login_state)
+            if self.panel.page is not None:
+                self.panel.page.runJavaScript('globalThis.officeTransfer?.clear()', 1)
         for job in pending:
             self._finish(job, error='已退出团队办理。')
 

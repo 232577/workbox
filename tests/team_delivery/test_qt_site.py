@@ -136,6 +136,57 @@ def writes(history):
     return [(path, body) for method, path, body in history if method == 'POST']
 
 
+def test_personal_write_uses_original_login_alone_and_verified_same_task(site):
+    session, gateway, worker = open_site(site)
+    history = site[5]
+    snapshot = execute(worker, gateway.snapshot)
+    actor, task = snapshot.account, snapshot.tasks[1]
+    with pytest.raises(GatewayError):
+        execute(worker, gateway.start_verified, actor, task, personal=True)
+    assert writes(history) == []
+
+    session.set_personal_writes_enabled(True)
+    started = execute(worker, gateway.start_verified, actor, task, personal=True)
+    assert started.stage is Stage.WORKING
+    completed = execute(worker, gateway.complete_verified, actor, started, personal=True)
+    assert completed.stage is Stage.COMPLETED
+    assert execute(worker, gateway.read_submission, actor, task)
+    assert writes(history) == [('/api/start-material', {'ids': [202]}),
+                               ('/api/complete-material', {'ids': [202]})]
+
+
+def test_personal_write_stops_when_original_identity_changes_after_reservation(site):
+    session, gateway, worker = open_site(site)
+    session.set_personal_writes_enabled(True)
+    snapshot = execute(worker, gateway.snapshot)
+
+    def swap_at_gate(phase, event):
+        if (phase, event) == ('start', 'before_dispatch'):
+            session._mark_original_auth_change()
+
+    with pytest.raises(GatewayError) as failure:
+        execute(worker, gateway.start_verified, snapshot.account, snapshot.tasks[0], personal=True,
+                phase_observer=swap_at_gate)
+    assert not isinstance(failure.value, ActionUncertain)
+    assert writes(site[5]) == []
+
+
+def test_personal_write_never_passes_qt_egress_after_local_claim_revoked(site):
+    session, gateway, worker = open_site(site)
+    session.set_personal_writes_enabled(True)
+    snapshot = execute(worker, gateway.snapshot)
+    checks = []
+
+    def revoked():
+        checks.append(True)
+        return False
+
+    with pytest.raises(GatewayError) as failure:
+        execute(worker, gateway.start_verified, snapshot.account, snapshot.tasks[0], personal=True, check_local=revoked)
+    assert not isinstance(failure.value, ActionUncertain)
+    assert checks == [True] and writes(site[5]) == []
+
+
 def test_qt_original_site_loads_without_legacy_browser_dependency():
     subprocess.run([sys.executable, '-B', '-c',
                     "import sys; import workbox.team_delivery.qt_site; "

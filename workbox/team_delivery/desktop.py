@@ -106,6 +106,7 @@ class DesktopWindow(_FileInbox):
     login_requested = Signal()
     workbox_login_requested = Signal()
     office_address_requested = Signal()
+    office_close_requested = Signal()
     workbox_pair_requested = Signal()
     select_root_requested = Signal()
     reveal_task_requested = Signal()
@@ -121,6 +122,7 @@ class DesktopWindow(_FileInbox):
         self.resize(780, 550)
         self._personal_path = None
         self._live = False
+        self._personal_mode = False
         self._read_error = ''
         self._deferred_read = ''
         self._waiting_for_snapshot = False
@@ -310,12 +312,19 @@ class DesktopWindow(_FileInbox):
             server = QPushButton('更换服务器')
             server.clicked.connect(self.office_address_requested)
             buttons.addWidget(server)
+            close = QPushButton('关闭团队网页', objectName='closeOfficeSession')
+            close.setToolTip('结束本机的办公室会话，回到「这是家」待办。')
+            close.clicked.connect(self.office_close_requested)
+            buttons.addWidget(close)
             layout.addLayout(buttons)
             self.office_panel = OfficePanel(area)
             layout.addWidget(self.office_panel, 1)
             self._pages.addWidget(area)
         self._pages.setCurrentIndex(1)
         return self.office_panel
+
+    def show_tasks(self):
+        self._pages.setCurrentIndex(0)
 
     def eventFilter(self, watched, event):
         if (watched is self._search and event.type() == QEvent.Type.KeyPress
@@ -390,9 +399,32 @@ class DesktopWindow(_FileInbox):
         self._directory.setText(path)
         self._directory.setCursorPosition(0)
         self._directory.setToolTip(path)
-        self._hint.setText('拖入成品 Word，工具箱会先向办公室交接手册，再到「这是家」提交材料状态。'
-                           if path else '请先选择交件目录，再拖入 Word。')
+        self._update_intake_hint()
         self._update_controls()
+
+    def set_personal_mode(self, enabled: bool):
+        if self._personal_mode == enabled:
+            return
+        self._personal_mode = enabled
+        self._reset_intake()
+        self._directory_row.setVisible(self._live and not enabled)
+        self._confirm_accounts.setVisible(self._live and not enabled)
+        self._update_intake_hint()
+        self._update_controls()
+
+    def _update_intake_hint(self):
+        if self._personal_mode:
+            self._hint.setText('拖入与项目同名的 Word，收好后变为「待交付」。在项目里确认交付后，'
+                               '工作箱会到「这是家」提交该任务。')
+        elif self._directory.text():
+            self._hint.setText('拖入成品 Word，工具箱会先向办公室交接手册，再到「这是家」提交材料状态。')
+        else:
+            self._hint.setText('请先选择交件目录，再拖入 Word。')
+
+    def show_personal_result(self, title: str, detail: str = ''):
+        if self._personal_mode:
+            self._result_title, self._result_info = title, detail
+            self._update_controls()
 
     def _eligible(self, task: Task | None) -> bool:
         account = self._snapshot.account
@@ -593,6 +625,8 @@ class DesktopWindow(_FileInbox):
             return '等待同步本人任务', ''
         if not self._has_material_account():
             return '手册匹配需登录材料账号', '分发、领件和打包请点「团队办理」。做手册请先登录「这是家」。'
+        if self._personal_mode:
+            return '', '本人待办会同步到「项目」。'
         if self._workbox_error:
             return '请重新核对账号', self._workbox_error
         if not self._workbox_username:
@@ -603,7 +637,8 @@ class DesktopWindow(_FileInbox):
 
     def _update_controls(self):
         web_block, notice = self._sync_status()
-        directory_block = '请先选择交件目录。' if self._live and not self._directory.text() else ''
+        directory_block = ('请先选择交件目录。'
+                           if self._live and not self._personal_mode and not self._directory.text() else '')
         self.intake_block = web_block or directory_block
         notice = '\n'.join(filter(None, (notice, self._deferred_read)))
         self._sync_notice.setText(notice)

@@ -19,7 +19,7 @@ OBSERVE = r'''(() => {
 })();'''
 
 
-OPERATE = r'''async ({origin, operation, expected, deadline, remaining, requestKey, writeToken}) => {
+OPERATE = r'''async ({origin, operation, expected, deadline, remaining, requestKey, writeToken, personal}) => {
     if (location.origin !== origin || self !== top || !globalThis.workboxSiteObservation)
         return {error: 'origin'};
     const observe = globalThis.workboxSiteObservation;
@@ -151,7 +151,8 @@ OPERATE = r'''async ({origin, operation, expected, deadline, remaining, requestK
         if (!allowedStart && !allowedComplete) return {error: 'target'};
         const desired = allowedStart ? '进行中' : '已完成';
         const headers = {'Content-Type': 'application/json'};
-        if (writeToken) headers['X-WorkBox-Auto'] = writeToken;
+        if (personal && !writeToken) return {error: 'account'};
+        if (writeToken) headers[personal ? 'X-WorkBox-Personal' : 'X-WorkBox-Auto'] = writeToken;
         sent = true;
         const reply = await fetch('/api/' + operation, {method: 'POST', mode: 'same-origin', credentials: 'same-origin',
             headers, body: JSON.stringify({ids: [id]}),

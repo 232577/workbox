@@ -17,6 +17,7 @@ from workbox.team_delivery.contracts import (
 )
 from workbox.team_delivery.desktop import DesktopWindow
 from workbox.team_delivery.pair_guard import PairGuard
+from workbox.team_delivery.site_attempt import PersonalWriteNotSent, site_account, submit_personal_site
 from workbox.team_delivery.workflow import WorkflowService
 
 
@@ -33,6 +34,21 @@ class PreparedManual:
     material: Material
 
 
+@dataclass(frozen=True, slots=True)
+class PersonalDeliveryResult:
+    account_username: str
+    task_id: str
+    delivery_id: str
+    outcome: Outcome
+    message: str
+    receipt_id: str | None = None
+    retryable: bool = False
+
+
+def _no_office_login(connection):
+    return connection is None or (connection.login_state() == 'signed-out' and connection.current_account() is None)
+
+
 class _Worker(QObject):
     snapshot_ready = Signal(object)
     result_ready = Signal(object)
@@ -44,11 +60,14 @@ class _Worker(QObject):
     poll_finished = Signal()
     pair_ready = Signal(object, object, bool, str)
     upload_offer = Signal(object, object, str)
+    personal_delivery_finished = Signal(object)
 
-    def __init__(self, url: str, material_root: Path | None, journal_path: Path, *, gateway=None, pair_guard=None):
+    def __init__(self, url: str, material_root: Path | None, journal_path: Path, *, gateway=None, pair_guard=None,
+                 personal_journal=None):
         super().__init__()
         self._material_root = material_root
         self._journal_path = journal_path
+        self._personal_journal = personal_journal
         self._gateway = gateway
         self._service = None
         self._last_account = None
@@ -130,8 +149,39 @@ class _Worker(QObject):
 
     def use_office(self, connection):
         self._workbox = connection
-        self._embedded_office = True
+        self._embedded_office = connection is not None
         self._pair(self._last_account)
+
+    def submit_personal_delivery(self, actor, account_username, task, delivery_id, verify_only, check_local, round_id):
+        from workbox.team_delivery.office_handoff import HandoffLog
+
+        def check_account():
+            if (not _no_office_login(self._workbox) or self._gateway.current_account() != actor):
+                raise PersonalWriteNotSent('请先核对这是家材料账号和当前办理方式。')
+
+        def result(outcome, message, **kwargs):
+            return PersonalDeliveryResult(account_username, task.id, delivery_id, outcome, message, **kwargs)
+
+        try:
+            self._connect()
+            if (self._personal_journal is None or actor.role != 'material' or
+                    site_account(actor.username) != site_account(account_username)):
+                raise PersonalWriteNotSent('请使用绑定的这是家材料账号核对本地交付。')
+            check_account()
+            self._personal_journal.parent.mkdir(parents=True, exist_ok=True)
+            verified = submit_personal_site(self._gateway, actor, task, delivery_id,
+                                            HandoffLog(self._personal_journal), check_account,
+                                            verify_only=verify_only, check_local=check_local, round_id=round_id)
+            if verified is not None:
+                status = result(Outcome.SUBMITTED, '已确认这是家同一任务的材料完成状态。', receipt_id=verified.revision)
+            else:
+                status = result(Outcome.PENDING, '本地交付已保留，原站状态尚未确认。请在这是家核对同一任务。')
+        except PersonalWriteNotSent as error:
+            status = result(Outcome.PENDING, str(error), retryable=not verify_only)
+        except Exception as error:
+            message = self._message(error, '本地交付已保留，暂时无法确认原站结果。')
+            status = result(Outcome.PENDING, message)
+        self.personal_delivery_finished.emit(status)
 
     def _check_delivery_accounts(self):
         self._guard_pair()
@@ -377,6 +427,9 @@ class _Worker(QObject):
 class IntakeController(QObject):
     snapshot_changed = Signal(object)
     result_ready = Signal(object)
+    personal_snapshot_changed = Signal(object)
+    personal_file_requested = Signal(str, object, object)
+    personal_delivery_finished = Signal(object)
 
     def __init__(self, window, url: str, material_root: Path | None, journal_path: Path, *, settings: Path,
                  gateway=None):
@@ -396,6 +449,9 @@ class IntakeController(QObject):
         self._office = None
         self._office_connection = None
         self._visible_pair = None
+        self._personal_workspace = False
+        self._personal_snapshot = None
+        self._personal_request_actor = None
         self._directory = material_root
         self._site_session = None
         self._pair_guard = None
@@ -403,12 +459,15 @@ class IntakeController(QObject):
             from workbox.team_delivery.qt_site import QtSiteSession, QtSiteGateway
             self._pair_guard = PairGuard()
             self._site_session = QtSiteSession(url, window, pair_guard=self._pair_guard)
+            self._site_session.identity_invalidated.connect(self._original_identity_invalidated)
             gateway = QtSiteGateway(self._site_session)
-        self._worker = _Worker(url, material_root, journal_path, gateway=gateway, pair_guard=self._pair_guard)
+        self._worker = _Worker(url, material_root, journal_path, gateway=gateway, pair_guard=self._pair_guard,
+                               personal_journal=settings.parent / '交件记录' / '个人交付.sqlite')
         self._commands = Queue()
         self._thread = Thread(target=self._run_worker, name='online-intake-browser')
         self._worker.snapshot_ready.connect(self._show_snapshot, Qt.ConnectionType.QueuedConnection)
         self._worker.result_ready.connect(self._show_result, Qt.ConnectionType.QueuedConnection)
+        self._worker.personal_delivery_finished.connect(self._show_personal_result, Qt.ConnectionType.QueuedConnection)
         self._worker.read_failed.connect(self._show_read_failure, Qt.ConnectionType.QueuedConnection)
         self._worker.read_deferred.connect(self._show_read_deferred, Qt.ConnectionType.QueuedConnection)
         self._worker.storage_changed.connect(self._show_storage, Qt.ConnectionType.QueuedConnection)
@@ -421,6 +480,7 @@ class IntakeController(QObject):
         window.file_dropped.connect(self.submit_file)
         window.workbox_login_requested.connect(self._open_workbox)
         window.office_address_requested.connect(lambda: self._open_workbox(change_address=True))
+        window.office_close_requested.connect(self.close_office_session)
         window.workbox_pair_requested.connect(self._confirm_accounts)
         self._worker.pair_ready.connect(self._show_pair, Qt.ConnectionType.QueuedConnection)
         window.select_root_requested.connect(self._choose_storage)
@@ -442,6 +502,8 @@ class IntakeController(QObject):
 
     def stop(self) -> None:
         self._timer.stop()
+        self._personal_workspace = False
+        self._publish_personal_snapshot()
         if self._office_connection:
             self._office_connection.close()
         if self._site_session is not None:
@@ -469,6 +531,65 @@ class IntakeController(QObject):
             return False
         self._busy = True
         self._window.set_busy(True)
+        return True
+
+    def enable_personal_workspace(self) -> None:
+        self._personal_workspace = True
+        self._publish_personal_snapshot()
+
+    def current_personal_snapshot(self) -> Snapshot | None:
+        actor = self._snapshot.account
+        office_signed_out = (self._office.login_state == 'signed-out'
+                             if self._office is not None and self._office_connection is not None
+                             else _no_office_login(self._office_connection))
+        if (self._personal_workspace and self._current_readable and actor is not None and actor.role == 'material'
+                and site_account(actor.username) and office_signed_out):
+            return self._snapshot
+        return None
+
+    def _publish_personal_snapshot(self, *, refreshed=False) -> None:
+        snapshot = self.current_personal_snapshot()
+        previous = self._personal_snapshot
+        self._personal_snapshot = snapshot
+        if self._site_session is not None:
+            self._site_session.set_personal_writes_enabled(snapshot is not None)
+        if (snapshot is None) != (previous is None):
+            self._window.set_personal_mode(snapshot is not None)
+        if snapshot != previous or refreshed and snapshot is not None:
+            self.personal_snapshot_changed.emit(snapshot)
+
+    @Slot()
+    def _original_identity_invalidated(self) -> None:
+        if self._snapshot.account is not None:
+            self._show_read_deferred(None, '原站登录已变化，正在重新核对本人待办。')
+        self._poll(immediate=True)
+
+    def submit_personal_delivery(self, account_username: str, task_id: str, task_title: str, delivery_id: str,
+                                 *, verify_only=False, check_local=None, round_id=1, source_revision=None) -> bool:
+        snapshot = self.current_personal_snapshot()
+        if (snapshot is None or not isinstance(account_username, str)
+                or site_account(account_username) != site_account(snapshot.account.username)
+                or not isinstance(task_id, str) or not task_id.isascii() or not task_id.isdecimal()
+                or task_id.startswith('0') or len(task_id) > 16 or int(task_id) > 2**53 - 1
+                or not isinstance(task_title, str) or not task_title.strip()
+                or not isinstance(delivery_id, str) or not delivery_id.strip() or len(delivery_id) > 128
+                or type(round_id) is not int or round_id < 1
+                or (check_local is not None and not callable(check_local))):
+            return False
+        actor = snapshot.account
+        if verify_only:
+            task = Task(task_id, task_title, actor.id, Stage.UNKNOWN, '')
+        else:
+            task = next((item for item in snapshot.tasks if (item.id, item.title, item.owner_id)
+                         == (task_id, task_title, actor.id)), None)
+            if (task is None or task.stage not in MATERIAL_PREPARATION_STAGES
+                    or source_revision is not None and source_revision != task.revision):
+                return False
+        if not self._admit():
+            return False
+        self._personal_request_actor = snapshot.account
+        self._commands.put((self._worker.submit_personal_delivery,
+                            (actor, account_username, task, delivery_id, verify_only, check_local, round_id)))
         return True
 
     @Slot()
@@ -553,6 +674,7 @@ class IntakeController(QObject):
             message = '这是家账号已变化，请刷新后核对。'
         self._window.set_workbox_account(member.username if member else '',
                                          matched and self._visible_pair is not None, message)
+        self._publish_personal_snapshot()
 
     @Slot()
     def _open_workbox(self, change_address=False):
@@ -571,11 +693,14 @@ class IntakeController(QObject):
             origin = normalize_workbox_url(url.strip())
             panel = self._window.show_office()
             if self._office is None:
-                from workbox.team_delivery.office_connection import OfficeConnection
                 self._office = panel
                 panel.pair_guard = self._pair_guard
-                self._office_connection = OfficeConnection(panel)
                 panel.account_changed.connect(self._office_identity_changed)
+                panel.login_state_changed.connect(self._office_login_state_changed)
+            if self._office_connection is None:
+                from workbox.team_delivery.office_connection import OfficeConnection
+                self._office_connection = OfficeConnection(panel)
+                self._publish_personal_snapshot()
             panel.connect_to(origin)
             if not previous or previous != origin:
                 address_file.write_text(origin, encoding='utf-8')
@@ -590,6 +715,29 @@ class IntakeController(QObject):
     def _office_identity_changed(self, member):
         if self._office_connection is not None:
             self._commands.put((self._worker.use_office, (self._office_connection,)))
+        self._publish_personal_snapshot()
+
+    @Slot(str)
+    def _office_login_state_changed(self, state):
+        self._publish_personal_snapshot()
+
+    @Slot()
+    def close_office_session(self):
+        connection = self._office_connection
+        if connection is None:
+            return
+        if self._pair_guard is not None:
+            self._pair_guard.invalidate()
+        connection.close()
+        connection.deleteLater()
+        self._office_connection = None
+        self._visible_pair = None
+        self._office.shutdown()
+        self._commands.put((self._worker.use_office, (None,)))
+        self._window.set_workbox_account('', False, '')
+        self._window.show_tasks()
+        self._publish_personal_snapshot()
+        self._poll(immediate=True)
 
     @Slot()
     def _confirm_accounts(self):
@@ -635,10 +783,24 @@ class IntakeController(QObject):
         account = self._snapshot.account
         if account is None or not self._current_readable:
             self._show_result(DropResult(Outcome.BLOCKED, '请先刷新并确认当前材料账号。'))
+        elif self.current_personal_snapshot() is not None:
+            if not self._busy:
+                self._request_personal_file(filename, task_id, account)
         elif self._admit():
             self._last_drop = (filename, task_id, account)
             self._ask_for_project = False
             self._commands.put((self._worker.submit_file, (filename, task_id, account)))
+
+    def _request_personal_file(self, filename, task_id, account):
+        title = Path(filename).stem
+        matches = [task for task in self._snapshot.tasks if task.title == title and task.owner_id == account.id
+                   and task.stage in MATERIAL_PREPARATION_STAGES and (task_id is None or task.id == task_id)]
+        if len(matches) == 1:
+            self.personal_file_requested.emit(filename, account, matches[0])
+        elif task_id is None and matches:
+            self._resolve_project(filename, account.id)
+        else:
+            self._show_result(DropResult(Outcome.BLOCKED, '未找到此文件对应的本人原站任务，请核对全名和任务编号。'))
 
     @Slot(object)
     def _show_snapshot(self, snapshot: Snapshot) -> None:
@@ -648,12 +810,14 @@ class IntakeController(QObject):
             self._finish_login_check()
         self._window.set_snapshot(snapshot)
         self.snapshot_changed.emit(snapshot)
+        self._publish_personal_snapshot(refreshed=True)
 
     @Slot(str)
     def _show_read_failure(self, message: str) -> None:
         self._current_readable = False
         self._finish_login_check()
         self._window.show_read_failure(message)
+        self._publish_personal_snapshot()
 
     @Slot(object, str)
     def _show_read_deferred(self, account: Account | None, message: str) -> None:
@@ -665,6 +829,23 @@ class IntakeController(QObject):
             if self._login_check_until and not self._waiting_workbox:
                 self._poll_on_idle = True
         self._window.show_read_deferred(message, self._current_readable)
+        self._publish_personal_snapshot()
+
+    @Slot(object)
+    def _show_personal_result(self, result: PersonalDeliveryResult):
+        actor = self._snapshot.account
+        expected, self._personal_request_actor = self._personal_request_actor, None
+        if (result.outcome is Outcome.SUBMITTED and actor is not None
+                and actor == expected and site_account(actor.username) == site_account(result.account_username)):
+            remaining = tuple(task for task in self._snapshot.tasks
+                              if (task.id, task.owner_id) != (result.task_id, actor.id))
+            if remaining != self._snapshot.tasks:
+                self._snapshot = Snapshot(actor, remaining)
+                self._window.set_snapshot(self._snapshot)
+                self.snapshot_changed.emit(self._snapshot)
+                self._publish_personal_snapshot()
+        self._idle()
+        self.personal_delivery_finished.emit(result)
 
     @Slot(object)
     def _show_result(self, result: DropResult) -> None:

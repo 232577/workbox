@@ -151,6 +151,23 @@ def _js(panel, code, world=QWebEngineScript.ScriptWorldId.MainWorld.value):
     return result[0]
 
 
+def test_office_login_state_distinguishes_signed_out_from_unknown(panel):
+    from workbox.team_delivery.office_connection import OfficeConnection
+
+    with _site() as (origin, _):
+        connection = OfficeConnection(panel)
+        try:
+            assert connection.login_state() == 'unknown'
+            panel.connect_to(origin)
+            _wait(lambda: connection.login_state() == 'signed-out')
+            assert connection.current_account() is None
+            panel._observed(panel.page, panel._generation, panel._probe_sequence, 'false')
+            assert connection.login_state() == 'unknown'
+            assert connection.current_account() is None
+        finally:
+            connection.close()
+
+
 def _click(panel, element_id):
     _wait(lambda: _js(panel, f'Boolean(document.getElementById({element_id!r}))'))
     x, y = json.loads(_js(panel, f'''JSON.stringify((() => {{

@@ -206,6 +206,8 @@ class FloatingController(QObject):
             saved_size = DEFAULT_FLOATING_SIZE
         self.orb.set_orb_size(saved_size)
         self.panel = CompactPanel(self.service)
+        self.personal_site = None
+        self.panel.team_workspace_opened.connect(self._connect_personal_site)
         self.panel.window_shortcut = self.shortcut
         self._panel_minimum = self.panel.minimumSize()
         self.panel.installEventFilter(self)
@@ -328,6 +330,10 @@ class FloatingController(QObject):
         operation = '已归档' if changes.get('archived') else ('已恢复' if changes.get('archived') is False else '已更新')
         self.enqueue(f'{operation} {len(ids)} 个项目', lambda **_: self.service.bulk_update_projects(ids, **changes))
 
+    def _connect_personal_site(self, site):
+        from workbox.desktop.personal_site_workspace import PersonalSiteWorkspace
+        self.personal_site = PersonalSiteWorkspace(self, site)
+
     def deliver_projects(self, project_ids):
         if self.foreground_busy:
             return
@@ -355,6 +361,8 @@ class FloatingController(QObject):
             self.notify('确认交付失败：' + worker.error, kind='delivery-error')
             return
         result = worker.result
+        if self.personal_site is not None:
+            self.personal_site.wake()
         if 'archive' not in result:
             self.notify('已确认交付。')
             return
@@ -385,6 +393,8 @@ class FloatingController(QObject):
         else:
             ids = worker.result['project_ids']
             self.notify(f'已归档并确认交付 {len(ids)} 个项目。', kind='page-success')
+            if self.personal_site is not None:
+                self.personal_site.wake()
 
     def set_project_deleted(self, project_id, deleted):
         if self.foreground_busy:
@@ -773,15 +783,16 @@ class FloatingController(QObject):
 
     def enqueue(self, caption, operation, *, silent=False, on_cancel=None, on_complete=None):
         if self.quitting or self.closed:
-            return
+            return False
         if self._sync_storage_blocked():
-            return
+            return False
         if not self.busy:
             self.errors.clear()
         self.queue.append((caption, operation, silent, on_cancel, on_complete))
         self._sync_panel_busy()
         if self.worker is None and not self.choosing_intake:
             self._next()
+        return True
 
     def _next(self):
         # 页面等待回调可能晚于另一轮enqueue；已有任务时绝不能替换其引用。
