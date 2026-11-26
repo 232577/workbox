@@ -686,8 +686,9 @@ class FloatingController(QObject):
                 message += f"\n#{conflict['task_id']} {conflict['title']} · {conflict['reason']}"
             if len(conflicts) > 5:
                 message += f'\n另有 {len(conflicts) - 5} 项待核对。'
-            self.refresh()
         self.panel.team_controller.set_personal_sync_result(message)
+        if not (worker.cancelled or worker.error):
+            self.refresh()
 
     def preview_project_change(self, dialog, request):
         reference = weakref.ref(dialog)

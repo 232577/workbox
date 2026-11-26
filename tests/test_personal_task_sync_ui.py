@@ -1,5 +1,6 @@
 from time import monotonic
 
+import pytest
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
@@ -16,7 +17,8 @@ def wait_for(predicate):
     assert predicate()
 
 
-def test_team_sync_runs_through_personal_storage_queue(tmp_path, monkeypatch):
+@pytest.mark.parametrize('refresh_fails', [False, True])
+def test_team_sync_runs_through_personal_storage_queue(tmp_path, monkeypatch, refresh_fails):
     app = QApplication.instance() or QApplication([])
     service = DesktopService(tmp_path / 'anonymous.db')
     controller = FloatingController(service, tray_enabled=False)
@@ -33,6 +35,9 @@ def test_team_sync_runs_through_personal_storage_queue(tmp_path, monkeypatch):
             'conflicts': [{'task_id': '38', 'title': '匿名技术材料', 'reason': '存在同名记录'}],
         }
 
+    def fail_refresh():
+        raise OSError('暂时读不到个人项目清单')
+
     monkeypatch.setattr(service, 'sync_site_tasks', sync_site_tasks, raising=False)
     monkeypatch.setattr(IntakeController, 'start', lambda self: None)
     monkeypatch.setattr(IntakeController, 'set_personal_sync_result',
@@ -41,6 +46,8 @@ def test_team_sync_runs_through_personal_storage_queue(tmp_path, monkeypatch):
         assert controller.start()
         controller.monitor_timer.stop()
         controller.panel.open_team_delivery()
+        if refresh_fails:
+            monkeypatch.setattr(controller, 'refresh', fail_refresh)
         controller.panel.team_controller.personal_sync_requested.emit(tasks)
         wait_for(lambda: bool(messages))
         assert submitted == [(tasks, False)]
