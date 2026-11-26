@@ -25,6 +25,8 @@ Windows 原型链接系统提供的 SQLite。使用 `-DWORKBOX_CPP_BUILD_GUI=OFF
 
 ## 首轮验证
 
+涉及原型的 Pull Request 会运行独立的 Windows C++ 构建和两组原生回归。
+
 Windows x64 Release 使用 MSVC 19.51 和 Qt 6.8.3 编译。两组 CTest 通过。数据层验证了无效成员导致整批回滚，Qt 界面验证了 Ctrl/Shift 多选、右侧摘要、筛选和批量改状态。两个测试都在退出时核对了匿名输入数据库的 SHA-256。
 
 在 700 个匿名项目的离屏 Qt 测试中，更新 120 项并刷新清单的六次运行中位数约 3.7 毫秒。Qt 应用初始化后创建窗口并完成首次渲染约 19 毫秒。[多选及更新后的 Qt 实际渲染](docs/project-window.png)

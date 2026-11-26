@@ -99,6 +99,18 @@ void testWindow(const std::filesystem::path& source)
     check(containsLabel(*window, QStringLiteral("匿名测试待交件\n待交付\n批次  Sample 测试批次\n截止  2026-12-10")),
           "The focused project summary was not visible.");
 
+    check(apply->isEnabled(), "Valid selected projects should be actionable.");
+    search.setText(QStringLiteral("　aLpHa　"));
+    check(!apply->isEnabled(), "A pending search must make the old selection ineligible for a batch.");
+    QTest::qWait(250);
+    check(table.model()->rowCount() == 1, "Search must trim surrounding full-width spaces.");
+    check(!apply->isEnabled(), "Rows hidden by the search must remain ineligible.");
+    search.clear();
+    filter.setCurrentIndex(2);
+    filter.setCurrentIndex(0);
+    clickProject(table, 0, Qt::NoModifier);
+    clickProject(table, 1, Qt::ShiftModifier);
+
     QTest::mouseClick(apply, Qt::LeftButton);
     check(containsLabel(*window, QStringLiteral("已在本窗口将 2 个项目设为「待开发」。")),
           "The batch action did not report success.");

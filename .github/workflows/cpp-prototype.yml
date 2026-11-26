@@ -1,0 +1,52 @@
+name: WorkBox C++ prototype
+
+on:
+  pull_request:
+    paths:
+      - desktop-cpp/**
+      - .github/workflows/cpp-prototype.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cpp-prototype-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: C++ build and Qt tests
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.11'
+      - name: Get the verified Qt SDK
+        shell: pwsh
+        run: |
+          $qtRoot = Join-Path $env:RUNNER_TEMP 'workbox-qt-6.8.3'
+          $archive = Join-Path $env:RUNNER_TEMP 'workbox-qtbase.7z'
+          $repository = 'https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_683/qt6_683'
+          $asset = '6.8.3-0-202503201308qtbase-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z'
+          curl.exe --fail --show-error --silent --location --retry 3 --output $archive "$repository/qt.qt6.683.win64_msvc2022_64/$asset"
+          if ($LASTEXITCODE -ne 0) { throw 'Qt SDK download failed.' }
+          $expected = '41688269fac0565db956c66d9eecae777d16197e0c02cd81b88640c1f5d73d3f'
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash -ine $expected) {
+            throw 'Qt SDK checksum does not match the verified archive.'
+          }
+          7z x $archive "-o$qtRoot" -y
+          if ($LASTEXITCODE -ne 0) { throw 'Qt SDK extraction failed.' }
+          "WORKBOX_QT_ROOT=$qtRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Join-Path $qtRoot 'bin' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Configure native Release build
+        run: cmake -S desktop-cpp -B .local/cpp-ci -A x64 -DCMAKE_TRY_COMPILE_CONFIGURATION=Release "-DCMAKE_PREFIX_PATH=$env:WORKBOX_QT_ROOT"
+      - name: Build native executable and tests
+        run: cmake --build .local/cpp-ci --config Release --parallel 1
+      - name: Run the data and Qt regression tests
+        run: ctest --test-dir .local/cpp-ci -C Release --output-on-failure

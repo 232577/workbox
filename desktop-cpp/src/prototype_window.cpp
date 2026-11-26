@@ -202,7 +202,10 @@ public:
         searchTimer_.setSingleShot(true);
         searchTimer_.setInterval(120);
         connect(&searchTimer_, &QTimer::timeout, this, [this] { reload(); });
-        connect(search_, &QLineEdit::textChanged, this, [this] { searchTimer_.start(); });
+        connect(search_, &QLineEdit::textChanged, this, [this] {
+            searchTimer_.start();
+            updateDetails();
+        });
         connect(filter_, &QComboBox::currentIndexChanged, this, [this] {
             searchTimer_.stop();
             reload();
@@ -223,7 +226,7 @@ private:
             status = statuses[selectedFilter - 1];
         }
         try {
-            render(store_.listProjects(search_->text().toUtf8().toStdString(), status));
+            render(store_.listProjects(search_->text().trimmed().toUtf8().toStdString(), status));
         } catch (const std::exception& error) {
             showError(this, QStringLiteral("无法刷新项目清单"), error);
         }
@@ -320,7 +323,7 @@ private:
             details.append(QStringLiteral("所选项目中有工作目录需要恢复的项目。"));
         } else if (rows.size() > 500) {
             details.append(QStringLiteral("一次最多更新 500 项。"));
-        } else {
+        } else if (!searchTimer_.isActive()) {
             target_->setEnabled(true);
             apply_->setEnabled(true);
         }
@@ -330,7 +333,7 @@ private:
     void applyStatus()
     {
         const auto rows = table_->selectionModel()->selectedRows();
-        if (rows.isEmpty() || rows.size() > 500) {
+        if (searchTimer_.isActive() || rows.isEmpty() || rows.size() > 500) {
             return;
         }
         const auto target = statuses[target_->currentIndex()];
