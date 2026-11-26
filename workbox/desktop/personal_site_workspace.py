@@ -14,6 +14,8 @@ from workbox.team_delivery.site_attempt import site_account
 
 
 class PersonalSiteWorkspace(QObject):
+    _BINDING_REVIEW_NOTICE = 'personal-binding-review'
+
     def __init__(self, desktop, site):
         super().__init__(desktop)
         self.desktop = desktop
@@ -33,14 +35,15 @@ class PersonalSiteWorkspace(QObject):
         site.enable_personal_workspace()
 
     def _observe(self, snapshot):
-        if snapshot != self._snapshot:
+        previous = self._snapshot
+        if snapshot != previous:
             self._superseded.set()
             self._superseded = Event()
             self._snapshot = snapshot
-        if snapshot is None:
+        if snapshot is None or (previous is not None and previous.account != snapshot.account):
             self._imported = None
-            self._unlinked = ()
-            self.desktop.panel.team_page.set_unlinked_tasks(())
+            self._set_unlinked(())
+        if snapshot is None:
             self._retry.stop()
         else:
             self.wake()
@@ -80,10 +83,11 @@ class PersonalSiteWorkspace(QObject):
 
         def complete(worker):
             self._loading = False
-            if worker.error:
-                self._message('待办同步失败', worker.error)
-                return
-            if worker.result is None:
+            if worker.error or worker.result is None:
+                if worker.error and not stale.is_set() and self._available(snapshot):
+                    self._message('待办同步失败', worker.error)
+                if stale.is_set() and self._snapshot is not None:
+                    self._retry.start(0)
                 return
             changed, unlinked, item, verify_only = worker.result
             if changed:
@@ -92,11 +96,7 @@ class PersonalSiteWorkspace(QObject):
             if active:
                 self._imported = snapshot
                 if unlinked is not None:
-                    self._unlinked = unlinked
-                    self.desktop.panel.team_page.set_unlinked_tasks(unlinked)
-                    if unlinked:
-                        self._message('待办需要核对', '选择任务后点「关联本机项目…」。' +
-                                      '、'.join('#' + task.id for task in unlinked[:6]))
+                    self._set_unlinked(unlinked)
             if item is not None:
                 check_local = (lambda: self.projects.claim_is_current(item, snapshot.account)) if item.claim_token else None
                 if active and self.site.submit_personal_delivery(
@@ -124,6 +124,20 @@ class PersonalSiteWorkspace(QObject):
 
     def _cancel_loading(self):
         self._loading = False
+
+    def _set_unlinked(self, tasks):
+        previous_ids = tuple(task.id for task in self._unlinked[:6])
+        ids = tuple(task.id for task in tasks[:6])
+        self._unlinked = tasks
+        page = self.desktop.panel.team_page
+        page.set_unlinked_tasks(tasks)
+        kind = self._BINDING_REVIEW_NOTICE
+        if ids and ids != previous_ids:
+            self._message('待办需要核对', '选择任务后点「关联本机项目…」。' +
+                          '、'.join('#' + task_id for task_id in ids), kind=kind)
+        elif not ids:
+            page.clear_personal_result(kind)
+            self.desktop.clear_notice(kind)
 
     def resolve_dropped_file(self, filename):
         """Ask for an upstream task number before ordinary intake could create an unbound namesake."""
@@ -167,8 +181,7 @@ class PersonalSiteWorkspace(QObject):
             if worker.error or worker.cancelled:
                 self._message('未关联本机项目', worker.error or '已取消。')
                 return
-            self._unlinked = tuple(item for item in self._unlinked if item != task)
-            self.desktop.panel.team_page.set_unlinked_tasks(self._unlinked)
+            self._set_unlinked(tuple(item for item in self._unlinked if item != task))
             self.desktop.refresh()
             if filename:
                 self._receive(filename, snapshot.account, task)
@@ -242,6 +255,6 @@ class PersonalSiteWorkspace(QObject):
         if not self.desktop.quitting:
             self._retry.start(0)
 
-    def _message(self, title, detail, *, intake_success=False):
-        self.desktop.panel.team_page.show_personal_result(title, detail, temporary=intake_success)
-        self.desktop.notify(f'{title}。{detail}', kind='intake-success' if intake_success else 'persistent')
+    def _message(self, title, detail, *, intake_success=False, kind='persistent'):
+        self.desktop.panel.team_page.show_personal_result(title, detail, temporary=intake_success, kind=kind)
+        self.desktop.notify(f'{title}。{detail}', kind='intake-success' if intake_success else kind)

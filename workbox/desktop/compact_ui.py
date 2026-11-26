@@ -2360,6 +2360,10 @@ class CompactPanel(DropSurface, QWidget):
             self._notice_pages = (page or self.tabs.currentWidget(),)
         self._render_notice()
 
+    def clear_notice(self, kind):
+        if self._notice_kind == kind:
+            self.show_notice('')
+
     def _render_notice(self):
         # 读取/恢复错误独立于任务进度，不能被后续成功提示或计时器冲掉。
         priority_error = self._storage_notice or self._project_read_error

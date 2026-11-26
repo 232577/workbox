@@ -56,6 +56,7 @@ class FeedbackBubble(QFrame):
         self.setWindowTitle('WorkBox 收件反馈')
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.navigation_target = None
+        self._notice_kind = None
         apply_to(self, 'feedback')
         self.setFixedWidth(318)
         layout = QVBoxLayout(self)
@@ -77,8 +78,9 @@ class FeedbackBubble(QFrame):
         self.timer.setSingleShot(True)
         self.timer.timeout.connect(self.hide)
 
-    def show_message(self, text, orb, busy=False, *, target=None):
+    def show_message(self, text, orb, busy=False, *, target=None, kind='persistent'):
         self.navigation_target = target
+        self._notice_kind = kind
         self.text.setText(text[:260])
         self.text.setToolTip(text)
         self.cancel.setVisible(busy)
@@ -91,6 +93,13 @@ class FeedbackBubble(QFrame):
             self.timer.stop()
         else:
             self.timer.start(6000)
+
+    def clear_notice(self, kind):
+        if self._notice_kind == kind:
+            self._notice_kind = None
+            self.navigation_target = None
+            self.timer.stop()
+            self.hide()
 
 
 class FloatingController(QObject):
@@ -621,7 +630,11 @@ class FloatingController(QObject):
         else:
             self.panel.show_notice(text, kind=kind)
         if not self.panel.isVisible() and not self.background_mode:
-            self.bubble.show_message(text, self.orb, busy, target=target)
+            self.bubble.show_message(text, self.orb, busy, target=target, kind=kind)
+
+    def clear_notice(self, kind):
+        self.panel.clear_notice(kind)
+        self.bubble.clear_notice(kind)
 
     def paste(self):
         # User requested this read; never connect clipboard.dataChanged or poll it.
