@@ -339,6 +339,7 @@ class CompactPanel(DropSurface, QWidget):
     bulk_requested = Signal(object, object)
     bulk_delivery_requested = Signal(object)
     delete_requested = Signal(int)
+    bulk_delete_requested = Signal(object)
     restore_deleted_requested = Signal(int)
     workspace_requested = Signal(int)
     scan_requested = Signal()
@@ -1778,10 +1779,16 @@ class CompactPanel(DropSurface, QWidget):
             # Windows styles can hide QMenu section text; keep batch scope visible.
             menu.addAction(batch_title).setEnabled(False)
             # Reuse list snapshots for menu state; the batch transaction revalidates every ID.
-            batch_editable = active and len(batch_ids) <= 500 and all(
+            batch_deletable = active and len(batch_ids) <= 500 and all(
                 (row := self._project_rows.get(pid)) is not None
-                and not any(row.get(key) for key in ('archived_at', 'deleted_at', 'merged_into_id', 'block_reason'))
+                and not any(row.get(key) for key in ('deleted_at', 'merged_into_id', 'block_reason'))
                 for pid in batch_ids)
+            batch_editable = batch_deletable and all(not self._project_rows[pid].get('archived_at')
+                                                    for pid in batch_ids)
+            for state in STATUSES[:3]:
+                add(menu, '批量设为' + state,
+                    lambda _checked=False, value=state: self.request_bulk(list(batch_ids), {'status': value}),
+                    batch_editable)
             batch_delivery = add(
                 menu, f'批量确认交付（{len(batch_ids)} 项）…',
                 lambda: self.request_bulk_delivery(list(batch_ids)),
@@ -1789,6 +1796,7 @@ class CompactPanel(DropSurface, QWidget):
             batch_delivery.setToolTip('归档所选项目的工作文件。所选项目须为待交付。')
             add(menu, '标记加急', lambda: self.request_bulk(list(batch_ids), {'urgent': True}), batch_editable)
             add(menu, '取消加急', lambda: self.request_bulk(list(batch_ids), {'urgent': False}), batch_editable)
+            add(menu, f'批量删除（{len(batch_ids)} 项）…', lambda: self.request_bulk_delete(batch_ids), batch_deletable)
         heading_text = ('当前项目：' if batch_ids else '') + project['name']
         heading_text_elided = menu.fontMetrics().elidedText(heading_text, Qt.ElideRight, 320).replace('&', '&&')
         if batch_ids:
@@ -1804,15 +1812,15 @@ class CompactPanel(DropSurface, QWidget):
         add(menu, '材料检查…', lambda: self.open_material_check(project_id),
             active and not project.get('deleted_at') and not project.get('block_reason'))
         menu.addSeparator()
-        group = QActionGroup(menu)
-        group.setExclusive(True)
-        for state in STATUSES[:3]:
-            item = add(menu, state, lambda _checked=False, value=state: self.change_state(project_id, value), editable)
-            item.setCheckable(True)
-            item.setChecked(state == project['status'])
-            group.addAction(item)
-        menu.addSeparator()
         if not batch_ids:
+            group = QActionGroup(menu)
+            group.setExclusive(True)
+            for state in STATUSES[:3]:
+                item = add(menu, state, lambda _checked=False, value=state: self.change_state(project_id, value), editable)
+                item.setCheckable(True)
+                item.setChecked(state == project['status'])
+                group.addAction(item)
+            menu.addSeparator()
             urgent = add(menu, '加急', lambda checked: self.change_urgent(project_id, checked), editable)
             urgent.setCheckable(True)
             urgent.setChecked(bool(project['urgent']))
@@ -1858,7 +1866,8 @@ class CompactPanel(DropSurface, QWidget):
         else:
             add(menu, '恢复项目' if project.get('archived_at') else '归档项目',
                 lambda: self.archive_project(project_id), active)
-            add(menu, '删除项目…', lambda: self.delete_project(project_id), active)
+            if not batch_ids:
+                add(menu, '删除项目…', lambda: self.delete_project(project_id), active)
         return menu
 
     def show_project_context_menu(self, project_id, position):
@@ -2005,6 +2014,16 @@ class CompactPanel(DropSurface, QWidget):
         if answer == QMessageBox.Yes:
             self.delete_requested.emit(project_id)
 
+    def request_bulk_delete(self, project_ids):
+        if self.busy or not 2 <= len(project_ids) <= 500:
+            return
+        answer = QMessageBox.question(self, '批量删除项目',
+            f'将所选 {len(project_ids)} 个项目移入已删除？\n\n'
+            '原文件、工作目录、归档和历史交付记录及统计均保留。\n'
+            '可以在项目筛选中的「已删除」恢复。', QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if answer == QMessageBox.Yes and not self.busy:
+            self.bulk_delete_requested.emit(project_ids)
+
     def restore_deleted_project(self, project_id):
         project = self._action_project(project_id)
         if project and project.get('deleted_at'):
@@ -2103,10 +2122,17 @@ class CompactPanel(DropSurface, QWidget):
             answer = QMessageBox.question(self, '归档项目', f'归档所选 {len(ids)} 个项目？\n\n项目会移出日常列表，备注、截止日期、交付记录和 ZIP 均保留，可随时恢复。', QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             if answer != QMessageBox.Yes:
                 return
-        elif 'status' in options and any(self.service.get_project(pid)['status'] == '已交付' for pid in ids):
-            answer = QMessageBox.question(self, '重新开始项目', '所选项目包含已交付项目。修改状态会清除这些项目当前的交付确认，ZIP 文件仍保留。\n\n继续修改？', QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-            if answer != QMessageBox.Yes:
+        elif 'status' in options:
+            rows = [self._project_rows.get(pid) for pid in ids]
+            if any(row is None for row in rows):
+                self.show_notice('项目已变化，请刷新后重新选择。')
                 return
+            delivered = tuple(row['id'] for row in rows if row['status'] == '已交付')
+            if delivered:
+                answer = QMessageBox.question(self, '重新开始项目', '所选项目包含已交付项目。修改状态会清除这些项目当前的交付确认，ZIP 文件仍保留。\n\n继续修改？', QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                if answer != QMessageBox.Yes:
+                    return
+                options = dict(options, confirmed_delivered_ids=delivered)
         if not self.busy:
             self.bulk_requested.emit(ids, options)
 

@@ -66,14 +66,19 @@ class WorkBox:
     def delete_project(self, project_id: int, *, confirmed: bool = False) -> dict:
         return self.db.delete_project(project_id, confirmed=confirmed)
 
+    def delete_projects(self, project_ids, *, confirmed: bool = False) -> dict:
+        return self.db.delete_projects(project_ids, confirmed=confirmed)
+
     def restore_deleted_project(self, project_id: int) -> dict:
         return self.db.restore_deleted_project(project_id)
 
     def update_project_details(self, project_id: int, notes: str, due_date: str | None) -> None:
         self.db.update_project_details(project_id, notes, due_date)
 
-    def bulk_update_projects(self, project_ids, *, status=None, urgent=None, archived=None) -> None:
-        self.db.bulk_update_projects(project_ids, status=status, urgent=urgent, archived=archived)
+    def bulk_update_projects(self, project_ids, *, status=None, urgent=None, archived=None,
+                             confirmed_delivered_ids=None) -> None:
+        self.db.bulk_update_projects(project_ids, status=status, urgent=urgent, archived=archived,
+                                     confirmed_delivered_ids=confirmed_delivered_ids)
 
     def list_batches(self) -> list[dict]:
         return self.db.list_batches()

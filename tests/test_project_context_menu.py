@@ -77,7 +77,7 @@ def test_development_statuses_are_direct_and_current_state_is_accessible(panel):
     assert '已交付' not in [item.text() for item in root_actions]
 
 
-def test_menu_keeps_other_actions_on_clicked_project_and_applies_urgency_to_selection(panel):
+def test_menu_applies_states_and_urgency_to_selection_and_keeps_the_clicked_workspace(panel):
     panel.project_list.selectAll()
     changed, urgent, folders, batches = [], [], [], []
     panel.state_requested.connect(lambda *args: changed.append(args))
@@ -85,13 +85,25 @@ def test_menu_keeps_other_actions_on_clicked_project_and_applies_urgency_to_sele
     panel.workspace_requested.connect(folders.append)
     panel.bulk_requested.connect(lambda ids, options: batches.append((set(ids), options)))
     menu = panel.project_context_menu(2)
-    action(menu, '开发中').trigger()
+    assert not any(item.text() == '开发中' for item in menu.actions())
+    action(menu, '批量设为开发中').trigger()
     action(menu, '标记加急').trigger()
     action(menu, '建工作目录').trigger()
-    assert changed == [(2, '开发中')]
+    assert changed == []
     assert urgent == []
-    assert batches == [({1, 2}, {'urgent': True})]
+    assert batches == [({1, 2}, {'status': '开发中'}), ({1, 2}, {'urgent': True})]
     assert folders == [2]
+
+
+def test_batch_menu_disables_actions_if_a_selected_project_needs_recovery(panel):
+    with panel.service.db.connect() as connection:
+        connection.execute('INSERT INTO project_change_blocks(project_id,operation_id,reason) VALUES (?,?,?)',
+                           (1, 'anonymous-recovery', '目录恢复待处理'))
+    panel.refresh()
+    panel.project_list.selectAll()
+    menu = panel.project_context_menu(2)
+    assert not action(menu, '批量设为开发中').isEnabled()
+    assert not action(menu, '批量删除（2 项）…').isEnabled()
 
 
 def test_multi_project_menu_confirms_the_whole_pending_selection(panel, monkeypatch):

@@ -247,6 +247,7 @@ class FloatingController(QObject):
         self.panel.bulk_requested.connect(self.update_projects)
         self.panel.bulk_delivery_requested.connect(self.deliver_projects)
         self.panel.delete_requested.connect(lambda pid: self.set_project_deleted(pid, True))
+        self.panel.bulk_delete_requested.connect(self.delete_projects)
         self.panel.restore_deleted_requested.connect(lambda pid: self.set_project_deleted(pid, False))
         self.panel.workspace_requested.connect(self.open_workspace)
         self.panel.scan_requested.connect(lambda: self.check_archives(silent=False))
@@ -315,21 +316,44 @@ class FloatingController(QObject):
             socket.disconnected.connect(socket.deleteLater)
             self.show_panel()
 
-    def refresh(self):
+    def refresh(self, *, project_only=False):
         if self.panel is None or self.closed:
             return
         self._sync_storage_blocked()
-        self.panel.refresh()
-        pending = sum(p['status'] != '已交付' for p in self.service.list_projects())
-        self.orb.set_summary(pending)
+        if project_only:
+            self.panel._refresh_project_filters()
+        else:
+            self.panel.refresh()
+        self.orb.set_summary(self.service.db.count_pending_projects())
         self._sync_panel_busy()
 
     def update_projects(self, project_ids, options):
         if self.foreground_busy:
             return
         ids, changes = list(project_ids), dict(options)
+        if 'status' in changes:
+            changes.setdefault('confirmed_delivered_ids', ())
+            self.enqueue(
+                f'正在更新 {len(ids)} 个项目',
+                lambda **_: self.service.bulk_update_projects(ids, **changes),
+                on_complete=lambda worker: self._complete_bulk_status(worker, len(ids), changes['status']),
+                on_cancel=lambda: self.notify('已取消批量状态更新。'),
+            )
+            return
         operation = '已归档' if changes.get('archived') else ('已恢复' if changes.get('archived') is False else '已更新')
         self.enqueue(f'{operation} {len(ids)} 个项目', lambda **_: self.service.bulk_update_projects(ids, **changes))
+
+    def _complete_bulk_status(self, worker, count, status):
+        if self.quitting:
+            return
+        if worker.cancelled:
+            self.notify('已取消批量状态更新。')
+            return
+        self.refresh(project_only=True)
+        if worker.error:
+            self.notify('批量状态未更新。' + worker.error)
+        else:
+            self.notify(f'已将 {count} 个项目设为「{status}」。', kind='page-success')
 
     def _connect_personal_site(self, site):
         from workbox.desktop.personal_site_workspace import PersonalSiteWorkspace
@@ -404,6 +428,12 @@ class FloatingController(QObject):
             result = self.service.delete_project(project_id, confirmed=True) if deleted else self.service.restore_deleted_project(project_id)
             return {'project_lifecycle': result}
         self.enqueue('正在删除项目' if deleted else '正在恢复项目', change)
+
+    def delete_projects(self, project_ids):
+        if not self.foreground_busy:
+            ids = tuple(project_ids)
+            self.enqueue(f'正在删除 {len(ids)} 个项目',
+                         lambda **_: self.service.delete_projects(ids, confirmed=True))
 
     def _restore_panel_geometry(self):
         saved = self.service.get_setting('manager_window_state')
@@ -969,6 +999,10 @@ class FloatingController(QObject):
             if len(self.panel.project_list.selectedItems()) <= 1:
                 changed_project_id = worker.result.get('project_id')
                 keep_project_detail = self.panel._project_detail_open
+        elif isinstance(worker.result, dict) and 'deleted_project_ids' in worker.result:
+            count = len(worker.result['deleted_project_ids'])
+            message = f'已将 {count} 个项目移入已删除。可在「已删除」中恢复。'
+            notice_kind = 'page-success'
         elif isinstance(worker.result, dict) and 'project_lifecycle' in worker.result:
             result = worker.result['project_lifecycle']
             message = ('项目已移入已删除，原文件、归档和历史交付记录保留。' if result['deleted'] else
