@@ -12,11 +12,12 @@ import struct
 import threading
 import uuid
 from collections import OrderedDict
+from contextlib import ExitStack
 from functools import wraps
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
-from workbox.storage.native_files import ZipLease, cancelled, identity, plain_path, path_is_within
+from workbox.storage.native_files import ZipLease, cancelled, identity, named_data_stream_path, plain_path, path_is_within
 from workbox.storage.intake_log import FileIntakeLog
 from workbox.storage.first_run import (
     initialize as initialize_first_run,
@@ -78,7 +79,7 @@ def _path(value, *, allow_network=False):
     return path
 
 
-def _hash_stream(stream, *, cancel_event=None, progress=None):
+def _hash_stream(stream, *, cancel_event=None, progress=None, copy_to=None):
     before = os.fstat(stream.fileno())
     if not stat.S_ISREG(before.st_mode):
         raise ValueError('请选择本机普通文件。')
@@ -89,6 +90,8 @@ def _hash_stream(stream, *, cancel_event=None, progress=None):
         block = stream.read(1024 * 1024)
         if not block:
             break
+        if copy_to is not None:
+            copy_to.write(block)
         digest.update(block)
         size += len(block)
         if progress:
@@ -97,6 +100,23 @@ def _hash_stream(stream, *, cancel_event=None, progress=None):
     if size != before.st_size or identity(before) != identity(os.fstat(stream.fileno())):
         raise RuntimeError('读取期间文件发生变化，未完成收录。')
     return digest.hexdigest(), size
+
+
+def _hash_named_streams(lease, leases, *, cancel_event=None, copy_to=None):
+    streams = leases.enter_context(lease.named_streams())
+    manifest = {}
+    for name, stream in streams.items():
+        if copy_to is None:
+            digest, size = _hash_stream(stream, cancel_event=cancel_event)
+        else:
+            with open(named_data_stream_path(copy_to, name), 'xb') as output:
+                digest, size = _hash_stream(stream, cancel_event=cancel_event, copy_to=output)
+                output.flush()
+                os.fsync(output.fileno())
+        manifest[name] = dict(size=size, sha256=digest)
+    if list(streams) != lease.named_stream_names():
+        raise RuntimeError('命名数据流在复制或校验期间变化，副本未核验。')
+    return manifest
 
 
 def _zip_structure(stream, cancel_event=None):
@@ -139,8 +159,10 @@ def _zip_structure(stream, cancel_event=None):
         stream.seek(0)
 
 
-def copy_verified(source, target, *, cancel_event=None, progress=None, require_zip=False):
+def copy_verified(source, target, *, cancel_event=None, progress=None, require_zip=False,
+                  expected_named_streams=None):
     """稳定读取原件，校验副本，再以无覆盖的原子改名发布。原件始终保留。"""
+    preserve_named_streams = expected_named_streams is not None
     source, target = _path(source, allow_network=True), _path(target)
     cancelled(cancel_event)
     if not source.is_file():
@@ -152,11 +174,11 @@ def copy_verified(source, target, *, cancel_event=None, progress=None, require_z
     temporary = target.parent / ('~$workbox-' + uuid.uuid4().hex + '.partial')
     created_identity = None
     try:
-        with ZipLease(source, movable=False) as lease:
+        with ZipLease(source, movable=False) as lease, ExitStack() as stream_leases:
             before = os.fstat(lease.stream.fileno())
             if require_zip:
                 _zip_structure(lease.stream, cancel_event)
-            zone = lease.zone_metadata()
+            zone = None if preserve_named_streams else lease.zone_metadata()
             digest, size = hashlib.sha256(), 0
             lease.stream.seek(0)
             with temporary.open('xb') as output:
@@ -184,6 +206,11 @@ def copy_verified(source, target, *, cancel_event=None, progress=None, require_z
                         stream.write(zone)
                         stream.flush()
                         os.fsync(stream.fileno())
+                if preserve_named_streams:
+                    named_streams = _hash_named_streams(
+                        lease, stream_leases, cancel_event=cancel_event, copy_to=temporary)
+                    if named_streams != expected_named_streams:
+                        raise RuntimeError('材料的命名数据流在复制期间变化，副本未发布。')
                 os.utime(temporary, ns=(before.st_atime_ns, before.st_mtime_ns))
             with ZipLease(temporary) as copied:
                 if (copied.initial.st_dev, copied.initial.st_ino) != created_identity:
@@ -191,7 +218,11 @@ def copy_verified(source, target, *, cancel_event=None, progress=None, require_z
                 copied_digest, copied_size = _hash_stream(copied.stream, cancel_event=cancel_event)
                 if (copied_digest, copied_size) != (digest.hexdigest(), size):
                     raise RuntimeError('副本校验不一致，未完成收录。')
-                if copied.zone_metadata() != zone:
+                if preserve_named_streams:
+                    copied_streams = _hash_named_streams(copied, stream_leases, cancel_event=cancel_event)
+                    if copied_streams != named_streams or list(named_streams) != lease.named_stream_names():
+                        raise RuntimeError('副本命名数据流核对不一致，副本未发布。')
+                elif copied.zone_metadata() != zone:
                     raise RuntimeError('文件来源标记未能保留，副本未发布。')
                 cancelled(cancel_event)
                 # 用校验默认数据流的同一句柄发布，且不覆盖已有目标。

@@ -12,6 +12,34 @@ import re
 import sqlite3
 
 
+def _directory_entry(item):
+    return item['path'].endswith('/') or item.get('is_dir') is True or item.get('type') == 'directory'
+
+
+def material_archive_signature(manifest):
+    """Bind any named stream digests without changing signatures of legacy manifests."""
+    material = []
+    for item in manifest:
+        if _directory_entry(item):
+            continue
+        file = [item['path'], item['sha256']]
+        if item.get('streams'):
+            file.append(item['streams'])
+        material.append(file)
+    serialized = json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+    return hashlib.sha256(serialized.encode('utf-8')).hexdigest()
+
+
+def valid_material_streams(streams):
+    return isinstance(streams, dict) and bool(streams) and all(
+        isinstance(name, str) and name and not any(character in name for character in ':\\/\x00')
+        and isinstance(record, dict) and set(record) == {'size', 'sha256'}
+        and type(record['size']) is int and record['size'] >= 0
+        and isinstance(record['sha256'], str) and re.fullmatch('[0-9a-f]{64}', record['sha256'])
+        for name, record in streams.items()
+    )
+
+
 def _fact(kind='unknown', source_id=None, path='', *, count=None, reason='归档登记事实不足。'):
     return dict(count=count, known=count is not None, source_kind=kind,
                 source_id=source_id, path=path if isinstance(path, str) else '', reason=reason)
@@ -72,7 +100,7 @@ def _manifest_count(serialized):
         if (not isinstance(path, str) or not path or '\\' in path or ':' in path
                 or '\x00' in path or path.startswith('/')):
             return None
-        directory = path.endswith('/') or item.get('is_dir') is True or item.get('type') == 'directory'
+        directory = _directory_entry(item)
         parts = path[:-1].split('/') if path.endswith('/') else path.split('/')
         if any(part in ('', '.', '..') for part in parts):
             return None
@@ -84,6 +112,8 @@ def _manifest_count(serialized):
             continue
         size, digest = item.get('size'), item.get('sha256')
         if type(size) is not int or size < 0 or not isinstance(digest, str) or not re.fullmatch('[0-9a-fA-F]{64}', digest):
+            return None
+        if 'streams' in item and not valid_material_streams(item['streams']):
             return None
         files.add(key)
     # 一个普通文件不能同时充当另一个条目的父目录。
@@ -110,14 +140,8 @@ def _material_fact(connection, event, family):
     count = _manifest_count(rows[0][1])
     if count is None:
         return dict(result, reason='材料归档清单无效或不含已登记的常规文件。')
-    # 与 delivery_archive._signature 相同：按清单原顺序签署文件路径与散列。
     # 历史归档清单只含文件；兼容的目录项不计数，也不参与文件清单签名。
-    manifest = json.loads(rows[0][1])
-    material = [[item['path'], item['sha256']] for item in manifest
-                if not (item['path'].endswith('/') or item.get('is_dir') is True
-                        or item.get('type') == 'directory')]
-    serialized = json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
-    if hashlib.sha256(serialized.encode('utf-8')).hexdigest() != signature.casefold():
+    if material_archive_signature(json.loads(rows[0][1])) != signature.casefold():
         return dict(result, reason='材料归档清单与登记签名不一致。')
     return dict(result, count=count, known=True, reason='')
 

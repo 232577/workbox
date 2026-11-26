@@ -246,6 +246,32 @@ def test_batch_detects_new_source_file_before_commit(projects, monkeypatch):
     assert [service.get_project(pid)['status'] for pid in (first, last)] == ['待交付', '待交付']
 
 
+@pytest.mark.skipif(os.name != 'nt', reason='Windows named data streams')
+@pytest.mark.parametrize('location', ['source', 'archive'])
+def test_batch_detects_a_new_named_stream_before_commit(projects, monkeypatch, location):
+    service, (first, last, _), sources = projects
+    original = service.db._complete_file_delivery
+    added_stream = None
+
+    def write_then_add_stream(connection, pid, verified):
+        nonlocal added_stream
+        event_id = original(connection, pid, verified)
+        if pid == first:
+            file = sources[first] if location == 'source' else Path(verified['path']) / sources[first].name
+            added_stream = Path(f'{file}:LateMetadata')
+        if pid == last:
+            added_stream.write_bytes(b'added during later registration')
+        return event_id
+
+    monkeypatch.setattr(service.db, '_complete_file_delivery', write_then_add_stream)
+    with pytest.raises(RuntimeError, match='匿名甲项目.*发生变化'):
+        service.confirm_project_deliveries([first, last], confirmed=True)
+
+    assert added_stream.read_bytes() == b'added during later registration'
+    assert service.db.delivery_history()['event_count'] == 0
+    assert [service.get_project(pid)['status'] for pid in (first, last)] == ['待交付', '待交付']
+
+
 @pytest.mark.parametrize('reused', [False, True], ids=['staged', 'reused'])
 def test_batch_detects_an_extra_archive_file_before_commit(projects, monkeypatch, reused):
     service, (first, last, _), _ = projects
