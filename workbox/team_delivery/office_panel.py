@@ -39,9 +39,10 @@ _START_PROBE = r'''(read, args) => {
     read(args).then(publish, () => publish(false));
 }'''
 _PROBE = r'''async args => {
-    if (location.origin !== args.origin || document.querySelector('.form-login')) return null;
+    if (location.origin !== args.origin) return false;
+    if (document.querySelector('.form-login')) return null;
     const account = await (''' + _READ_PROFILE + r''')(args);
-    if (!account) return account;
+    if (!account) return false;
     if (!args.roles) return {account};
 ''' + _PROFILE_LINK + r'''
     const target = args.origin + args.roles;
@@ -49,7 +50,7 @@ _PROBE = r'''async args => {
         mode: 'same-origin', credentials: 'same-origin', redirect: 'manual', cache: 'no-store',
         signal: AbortSignal.timeout(args.timeout)
     });
-    if (response.type === 'opaqueredirect' || response.status === 401) return null;
+    if (response.type === 'opaqueredirect' || response.status === 401) return false;
     if (!response.ok || response.url !== target) return {account, links: [], navigation: []};
     const documentCopy = document.createElement('template');
     documentCopy.innerHTML = await response.text();
@@ -190,12 +191,14 @@ class OfficePanel(QWidget):
     """Qt 主线程内使用的办公室工作台，账号信息通过信号传出。"""
 
     account_changed = Signal(object)
+    login_state_changed = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.pair_guard = None
         self.origin = ''
         self.account: WorkBoxAccount | None = None
+        self.login_state = 'unknown'
         self.page: QWebEnginePage | None = None
         self._profile = self._view = None
         self._cookie_key = None
@@ -380,9 +383,15 @@ class OfficePanel(QWidget):
             action.setVisible(user is not None and key in self._role_routes)
         self._roles.setEnabled(user is not None and bool(self._role_routes))
 
-    def _record_account(self, account):
+    def _set_login_state(self, state):
+        if state != self.login_state:
+            self.login_state = state
+            self.login_state_changed.emit(state)
+
+    def _record_account(self, account, *, signed_out=False):
         previous = self.account
         self.account = account
+        self._set_login_state('signed-in' if account is not None else 'signed-out' if signed_out else 'unknown')
         self._show_session()
         if previous != account:
             if self.pair_guard is not None:
@@ -402,6 +411,7 @@ class OfficePanel(QWidget):
 
     def _starting(self, page):
         if page is self.page:
+            self._set_login_state('unknown')
             self._cancel_probe()
             self._notice('正在读取办公室页面…', loading=True)
 
@@ -489,7 +499,7 @@ class OfficePanel(QWidget):
         if not state:
             self._role_routes = {}
             self._next_roles = 0
-            self._record_account(None)
+            self._record_account(None, signed_out=state is None)
             return
         fresh = state['account']
         account = self.account

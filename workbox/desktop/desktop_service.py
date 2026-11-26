@@ -44,10 +44,6 @@ CREATE TABLE IF NOT EXISTS intake_receipts (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS desktop_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS site_task_project_links (
-    task_id TEXT PRIMARY KEY NOT NULL,
-    project_id INTEGER NOT NULL REFERENCES projects(id)
-);
 '''
 
 
@@ -388,6 +384,19 @@ class DesktopService(WorkBox):
                 AND NOT EXISTS(SELECT 1 FROM project_merges m WHERE m.source_id=p.id) ORDER BY p.id''', (project['batch_id'],))]
         return self.workspaces.ensure_projects(ids)
 
+    @_serialized_storage
+    def sync_personal_site_snapshot(self, snapshot):
+        from workbox.projects.original_site import OriginalSiteProjects
+        return OriginalSiteProjects(self.db, self.workspaces).sync(snapshot.account, snapshot.tasks)
+
+    @_serialized_storage
+    def bind_personal_site_task(self, account, task, project_id):
+        from workbox.projects.original_site import OriginalSiteProjects
+        projects = OriginalSiteProjects(self.db, self.workspaces)
+        if project_id is None:
+            return projects.create_for_selected(account, task, confirmed=True)
+        return projects.bind_existing(account, task, project_id, confirmed=True)
+
     def get_project(self, project_id):
         result = super().get_project(project_id)
         if hasattr(self, 'workspaces'):
@@ -506,6 +515,14 @@ class DesktopService(WorkBox):
         if not named['candidates']:
             # 明确材料规则仍可纠正已删除的误建名称；开放附注则必须先比较所有长名。
             named = match_work_file_projects(source.name, list(all_projects.values()))
+        if source.suffix.casefold() == '.docx':
+            title = project_name_key(source.stem)
+            original = {row['id']: row for row in all_projects.values() if row.get('original_task_title')
+                        and project_name_key(row['original_task_title']) == title}
+            if original:
+                candidates = {row['id']: row for row in named['candidates']}
+                candidates.update(original)
+                named = dict(candidates=list(candidates.values()), basis='文件名匹配已关联的原站任务全名')
         if any(row.get('archived_at') or row.get('deleted_at') for row in named['candidates']):
             return dict(candidates=[row for row in named['candidates'] if not row.get('archived_at') and not row.get('deleted_at')],
                 basis=named['basis'] + '，涉及已归档或已删除项目，请恢复项目或人工选择', requires_choice=True)

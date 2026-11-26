@@ -10,6 +10,24 @@ from workbox.desktop.desktop_controller import FloatingController
 from workbox.desktop.desktop_service import DesktopService
 
 
+def test_mixed_bulk_confirmation_identifies_original_tasks_and_resume_account(prepared_controller, monkeypatch):
+    from workbox.projects.original_site import OriginalSiteProjects
+    from workbox.team_delivery.contracts import Account, Stage, Task
+
+    desktop, project_ids, _ = prepared_controller
+    owner = Account('session', '匿名材料员', 'material', 'session', 'material-a')
+    first = project_ids[0]
+    task = Task('55', desktop.service.get_project(first)['name'], owner.id, Stage.READY, 'r1')
+    OriginalSiteProjects(desktop.service.db).bind_existing(owner, task, first, confirmed=True)
+    prompts = []
+    monkeypatch.setattr(QMessageBox, 'question', lambda parent, title, text, *_:
+                        prompts.append(text) or QMessageBox.No)
+    desktop.panel.request_bulk_delivery(project_ids[:2])
+    assert len(prompts) == 1 and '1 项' in prompts[0]
+    assert '这是家 #55 · material-a' in prompts[0] and '重新登录' in prompts[0]
+    assert not desktop.service.db.delivery_events_for_project(first)
+
+
 @pytest.fixture
 def prepared_controller(tmp_path):
     app = QApplication.instance() or QApplication([])

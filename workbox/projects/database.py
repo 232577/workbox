@@ -238,6 +238,49 @@ CREATE TABLE IF NOT EXISTS project_type_defaults (
 CREATE TABLE IF NOT EXISTS delivery_event_migrations (
     name TEXT PRIMARY KEY
 );
+CREATE TABLE IF NOT EXISTS site_task_project_links (
+    task_id TEXT PRIMARY KEY NOT NULL,
+    project_id INTEGER NOT NULL REFERENCES projects(id)
+);
+CREATE INDEX IF NOT EXISTS idx_site_task_project_links_project ON site_task_project_links(project_id);
+CREATE TABLE IF NOT EXISTS original_site_bindings (
+    account_username TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    project_id INTEGER NOT NULL UNIQUE REFERENCES projects(id),
+    title TEXT NOT NULL,
+    revision TEXT NOT NULL,
+    stage TEXT NOT NULL,
+    round INTEGER NOT NULL DEFAULT 1 CHECK(round>=1),
+    return_revision TEXT NOT NULL DEFAULT '',
+    available INTEGER NOT NULL DEFAULT 1 CHECK(available IN (0,1)),
+    PRIMARY KEY (account_username,task_id)
+);
+CREATE INDEX IF NOT EXISTS idx_original_site_bindings_task ON original_site_bindings(task_id);
+CREATE VIEW IF NOT EXISTS original_site_active_projects AS
+    WITH candidates AS (
+        SELECT b.*, c.canonical_id AS active_project_id
+        FROM original_site_bindings b JOIN project_canonical c ON c.project_id=b.project_id
+    ), unique_projects AS (
+        SELECT active_project_id FROM candidates GROUP BY active_project_id HAVING COUNT(*)=1
+    )
+    SELECT b.* FROM candidates b JOIN unique_projects u USING(active_project_id)
+    WHERE NOT EXISTS (
+        SELECT 1 FROM site_task_project_links l JOIN project_canonical c ON c.project_id=l.project_id
+        WHERE c.canonical_id=b.active_project_id AND l.task_id!=b.task_id
+    );
+CREATE TABLE IF NOT EXISTS original_site_deliveries (
+    event_id INTEGER PRIMARY KEY REFERENCES delivery_events(id),
+    project_id INTEGER NOT NULL REFERENCES original_site_bindings(project_id),
+    title TEXT NOT NULL,
+    round INTEGER NOT NULL CHECK(round>=1),
+    status TEXT NOT NULL CHECK(status IN ('pending','needs_check','completed','superseded')),
+    claim_token TEXT NOT NULL DEFAULT '',
+    claim_revision TEXT NOT NULL DEFAULT '',
+    return_revision TEXT NOT NULL DEFAULT '',
+    receipt_id TEXT NOT NULL DEFAULT '',
+    reason TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_original_site_deliveries_project ON original_site_deliveries(project_id,round,event_id);
 PRAGMA user_version = 1;
 COMMIT;
 """
@@ -322,6 +365,15 @@ class Database:
                 or target_id <= 0 or source_id == target_id):
             raise ValueError('请选择两个不同的有效项目。')
         self._assert_projects_editable(connection, source_id, target_id)
+        personal = connection.execute('''
+            SELECT b.task_id FROM original_site_bindings b JOIN project_canonical c ON c.project_id=b.project_id
+            WHERE c.canonical_id IN (?,?)
+        ''', (source_id, target_id)).fetchall()
+        if personal and (len(personal) > 1 or connection.execute('''
+            SELECT 1 FROM site_task_project_links l JOIN project_canonical c ON c.project_id=l.project_id
+            WHERE c.canonical_id IN (?,?) AND l.task_id!=? LIMIT 1
+        ''', (source_id, target_id, personal[0]['task_id'])).fetchone()):
+            raise ValueError('两个项目关联了不同的原站办理记录，请保持项目独立并核对原站编号和账号。')
         if connection.execute('''SELECT 1 FROM zip_project_links s JOIN zip_project_links t ON t.zip_id=s.zip_id
                 WHERE s.project_id=? AND t.project_id=? LIMIT 1''', (source_id, target_id)).fetchone():
             raise ValueError('两个项目共同关联同一 ZIP，请先核对组合包归属，不能直接合并。')
@@ -419,6 +471,10 @@ class Database:
                     VALUES (?,?,1,?)''', (target_id, earliest, f'合并继承原有历史交付规则（项目 #{source_id}、#{target_id}）。'))
         connection.execute('''INSERT INTO project_merges(source_id,target_id,operation_id,snapshot_json)
             VALUES (?,?,?,?)''', (source_id, target_id, operation_id, json.dumps(snapshot, ensure_ascii=False)))
+        connection.execute('''
+            UPDATE original_site_deliveries SET status='superseded',reason='项目已合并，请确认合并后的新交付。'
+            WHERE status='pending' AND event_id IN (SELECT id FROM delivery_events WHERE project_id IN (?,?))
+        ''', (source_id, target_id))
         normalized = project_name_key(source['name'])
         connection.execute('''INSERT INTO project_name_aliases(project_id,name,normalized_name,operation_id)
             VALUES (?,?,?,?)''', (source_id, source['name'], normalized, operation_id))
@@ -570,32 +626,46 @@ class Database:
                 canonical = self._canonical_project_id(connection, project_id)
                 parameters[2 if day is not None else 0] = canonical
             # 撤销状态来自独立追加日志，不改写真实交付事件或文件关联。
-            rows = connection.execute('''WITH effective AS (
+            rows = connection.execute('''WITH legacy_site_links AS (
+                SELECT root.canonical_id,MIN(l.task_id) AS task_id
+                FROM site_task_project_links l JOIN project_canonical root ON root.project_id=l.project_id
+                GROUP BY root.canonical_id HAVING COUNT(*)=1
+            ), effective AS (
                 SELECT d.id,c.canonical_id AS project_id,d.project_id AS original_project_id,
                     CASE WHEN c.canonical_id=d.project_id AND NOT EXISTS (
                         SELECT 1 FROM project_merges pm WHERE pm.target_id=c.canonical_id)
                         THEN d.project_name ELSE cp.name END AS project_name,
                     d.project_name AS original_project_name,d.batch_name,d.batch_name AS original_batch_name,
                     d.kind,d.zip_id,d.archive_path,d.archive_signature,d.occurred_at,d.legacy_source_key,
+                    COALESCE(ob.task_id,sl.task_id) AS site_task_id,
                     COALESCE(a.voided,0) AS voided,a.id AS last_action_id,
                     CASE WHEN a.id IS NULL THEN NULL WHEN a.voided=1 THEN 'void' ELSE 'restore' END AS last_action,
                     COALESCE(a.reason,'') AS management_reason,a.created_at AS managed_at
                 FROM delivery_events d JOIN project_canonical c ON c.project_id=d.project_id
                 JOIN projects cp ON cp.id=c.canonical_id LEFT JOIN delivery_event_actions a ON a.id=(
                     SELECT MAX(id) FROM delivery_event_actions WHERE event_id=d.id)
+                LEFT JOIN original_site_deliveries od ON od.event_id=d.id
+                LEFT JOIN original_site_bindings ob ON ob.project_id=od.project_id
+                LEFT JOIN legacy_site_links sl ON sl.canonical_id=c.canonical_id
             ), ranked AS (
                 SELECT id,project_id,occurred_at,
                     ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY julianday(occurred_at),id) AS position
                 FROM effective WHERE voided=0
+            ), site_ranked AS (
+                SELECT id,site_task_id,occurred_at,
+                    ROW_NUMBER() OVER (PARTITION BY site_task_id ORDER BY julianday(occurred_at),id) AS position
+                FROM effective WHERE site_task_id IS NOT NULL AND voided=0
             ), firsts AS (SELECT id,project_id,occurred_at FROM ranked WHERE position=1), prior_rules AS (
                 SELECT m.project_id,m.reason FROM project_delivery_history_markers m
                 LEFT JOIN firsts f ON f.project_id=m.project_id
                 WHERE m.id=(SELECT MAX(id) FROM project_delivery_history_markers WHERE project_id=m.project_id)
                     AND m.active=1 AND (f.id IS NULL OR date(f.occurred_at,'+8 hours')>=m.effective_day)
             )
-            SELECT e.*,CASE WHEN p.project_id IS NOT NULL THEN NULL ELSE f.occurred_at END AS first_at,
+            SELECT e.*,CASE WHEN p.project_id IS NOT NULL THEN NULL
+                WHEN julianday(sf.occurred_at)<julianday(f.occurred_at) THEN sf.occurred_at
+                ELSE f.occurred_at END AS first_at,
                 CASE WHEN e.voided=1 THEN 'voided' WHEN p.project_id IS NOT NULL THEN 'repeat'
-                    WHEN e.id=f.id THEN 'first' ELSE 'repeat' END AS counting_role,
+                    WHEN e.id=f.id AND COALESCE(sf.id,e.id)=e.id THEN 'first' ELSE 'repeat' END AS counting_role,
                 p.project_id IS NOT NULL AS prior_delivery,COALESCE(p.reason,'') AS prior_delivery_reason,
                 COALESCE(c.included,1) AS included_in_workload,
                 CASE WHEN c.included=0 THEN c.reason ELSE '' END AS count_exclusion_reason,
@@ -605,6 +675,7 @@ class Database:
                 pd.archived_at IS NOT NULL AS project_archived,
                 px.project_id IS NOT NULL AS project_deleted
             FROM effective e LEFT JOIN firsts f ON f.project_id=e.project_id
+                LEFT JOIN site_ranked sf ON sf.site_task_id=e.site_task_id AND sf.position=1
                 LEFT JOIN prior_rules p ON p.project_id=e.project_id
                 LEFT JOIN project_type_links tl ON tl.project_id=e.project_id
                 LEFT JOIN project_types pt ON pt.id=tl.type_id
@@ -621,6 +692,7 @@ class Database:
         events = []
         for row in rows:
             event = dict(row)
+            event.pop('site_task_id')
             event['voided'] = bool(event['voided'])
             event['prior_delivery'] = bool(event['prior_delivery'])
             event['included_in_workload'] = bool(event['included_in_workload'])
@@ -795,6 +867,9 @@ class Database:
         from workbox.projects.task_groups import observe_delivery_event
         classify_new_delivery(connection, event_id)
         observe_delivery_event(connection, event_id)
+        if kind in ('manual-files', 'manual-zip'):
+            from workbox.projects.original_site import enqueue_delivery
+            enqueue_delivery(connection, project_id, event_id)
         return event_id
 
     def _complete_file_delivery(self, connection, project_id: int, verified_archive: dict) -> int:
@@ -1018,7 +1093,7 @@ class Database:
         self, connection: sqlite3.Connection, project_id: int, work_file_id: int,
         duplicate: bool = False,
     ) -> None:
-        """与工作文件及收录日志共用调用方事务，成功复用也退回待交付。"""
+        """与工作文件及收录日志共用调用方事务。"""
         if type(project_id) is not int or project_id <= 0 or type(work_file_id) is not int or work_file_id <= 0:
             raise ValueError('工作文件及项目编号无效。')
         if type(duplicate) is not bool:
@@ -1027,6 +1102,12 @@ class Database:
         if not connection.execute('SELECT 1 FROM work_files WHERE id=? AND project_id=?',
                                   (work_file_id, project_id)).fetchone():
             raise ValueError('工作文件尚未收录到指定项目。')
+        if duplicate:
+            from workbox.projects.original_site import is_original_site_project
+            if is_original_site_project(connection, project_id) and connection.execute(
+                "SELECT 1 FROM projects WHERE id=? AND status='已交付'", (project_id,)
+            ).fetchone():
+                return
         connection.execute('''
             UPDATE projects SET status='待交付',delivered_at=NULL,delivered_zip_id=NULL,
                 updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
@@ -1054,8 +1135,11 @@ class Database:
             raise ValueError('文件数量必须覆盖 ZIP 的全部关联项目。')
         self._assert_projects_editable(connection, *linked)
         # 验证全部项目后再写入；判断事实与项目状态由调用方一次提交。
+        from workbox.projects.original_site import is_original_site_project
         policy = read_policy(connection)
         for pid, count in sorted(counts.items()):
+            site_bound = is_original_site_project(connection, pid)
+            auto_deliver = policy['auto_deliver_zip'] and not site_bound
             # 判定事实不可改写；设置变化时，旧内容不能被当成使用新规则的新版本。
             previous = connection.execute('''SELECT f.decided_status,
                     COALESCE(p.auto_deliver_zip,1) AS auto_deliver_zip,
@@ -1064,13 +1148,13 @@ class Database:
                     ON p.zip_id=f.zip_id AND p.project_id=f.project_id
                 WHERE f.zip_id=? AND f.project_id=?''', (zip_id, pid)).fetchone()
             if previous:
-                if (bool(previous['auto_deliver_zip']) != policy['auto_deliver_zip']
-                        or previous['zip_delivery_min_files'] != policy['zip_delivery_min_files']):
+                if not site_bound and (bool(previous['auto_deliver_zip']) != auto_deliver
+                                       or previous['zip_delivery_min_files'] != policy['zip_delivery_min_files']):
                     continue
                 # 沿用明确重复收件的既有行为，但使用原判定而非重算历史事实。
-                delivered = previous['decided_status'] == '已交付'
+                delivered = not site_bound and previous['decided_status'] == '已交付'
             else:
-                delivered = policy['auto_deliver_zip'] and count >= policy['zip_delivery_min_files']
+                delivered = auto_deliver and count >= policy['zip_delivery_min_files']
                 status = '已交付' if delivered else '待交付'
                 connection.execute('''
                     INSERT INTO zip_project_file_counts(zip_id,project_id,file_count,decided_status,rule)
@@ -1078,7 +1162,7 @@ class Database:
                 ''', (zip_id, pid, count, status))
                 connection.execute('''INSERT INTO zip_file_count_policies
                     (zip_id,project_id,auto_deliver_zip,zip_delivery_min_files) VALUES (?,?,?,?)''',
-                    (zip_id, pid, policy['auto_deliver_zip'], policy['zip_delivery_min_files']))
+                    (zip_id, pid, int(auto_deliver), policy['zip_delivery_min_files']))
             if delivered:
                 changed = connection.execute('''
                     UPDATE projects SET status='已交付',delivered_zip_id=?,
@@ -1093,7 +1177,8 @@ class Database:
                     UPDATE projects SET status='待交付',delivered_at=NULL,delivered_zip_id=NULL,
                         updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
                     WHERE id=? AND (status!='待交付' OR delivered_at IS NOT NULL OR delivered_zip_id IS NOT NULL)
-                ''', (pid,))
+                      AND (NOT ? OR status!='已交付')
+                ''', (pid, site_bound and previous is not None))
 
     def get_zip_bundle(self, zip_id: int) -> dict | None:
         with self.connect() as connection:
@@ -1436,12 +1521,15 @@ class Database:
         sql = """SELECT p.*, b.name AS batch_name, COALESCE(d.notes,'') AS notes,
             d.due_date, d.archived_at, x.deleted_at,tl.type_id AS project_type_id,
             COALESCE(pt.name,'') AS project_type_name,
+            COALESCE(o.task_id,'') AS original_task_id, COALESCE(o.account_username,'') AS original_account_username,
+            COALESCE(o.title,'') AS original_task_title,
             (SELECT COUNT(*) FROM zip_project_links l WHERE l.project_id=p.id) AS zip_count,
             (SELECT filename FROM zips z JOIN zip_project_links l ON l.zip_id=z.id WHERE l.project_id=p.id ORDER BY z.id DESC LIMIT 1) AS zip_name
             FROM projects p JOIN batches b ON b.id=p.batch_id
             LEFT JOIN project_details d ON d.project_id=p.id
             LEFT JOIN project_deletions x ON x.project_id=p.id
             LEFT JOIN project_type_links tl ON tl.project_id=p.id
+            LEFT JOIN original_site_active_projects o ON o.active_project_id=p.id
             LEFT JOIN project_types pt ON pt.id=tl.type_id WHERE """
         sql += " AND ".join(clauses) + " ORDER BY p.urgent DESC, d.due_date IS NULL, d.due_date ASC, p.id DESC"
         supplied_connection = connection is not None
@@ -1471,6 +1559,7 @@ class Database:
                 SELECT p.*, b.name AS batch_name, m.raw_text,
                     COALESCE(d.notes,'') AS notes, d.due_date, d.archived_at, x.deleted_at,
                     tl.type_id AS project_type_id,COALESCE(pt.name,'') AS project_type_name,
+                    COALESCE(o.task_id,'') AS original_task_id, COALESCE(o.account_username,'') AS original_account_username,
                     pm.target_id AS merged_into_id,COALESCE(pb.reason,'') AS block_reason FROM projects p
                 JOIN batches b ON b.id=p.batch_id JOIN messages m ON m.id=p.message_id
                 LEFT JOIN project_details d ON d.project_id=p.id
@@ -1479,6 +1568,7 @@ class Database:
                 LEFT JOIN project_types pt ON pt.id=tl.type_id
                 LEFT JOIN project_merges pm ON pm.source_id=p.id
                 LEFT JOIN project_change_blocks pb ON pb.project_id=p.id
+                LEFT JOIN original_site_active_projects o ON o.active_project_id=p.id
                 WHERE p.id=?
             """, (project_id,)).fetchone()
             if row is None:

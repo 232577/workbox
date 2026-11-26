@@ -136,6 +136,57 @@ def writes(history):
     return [(path, body) for method, path, body in history if method == 'POST']
 
 
+def test_personal_write_uses_original_login_alone_and_verified_same_task(site):
+    session, gateway, worker = open_site(site)
+    history = site[5]
+    snapshot = execute(worker, gateway.snapshot)
+    actor, task = snapshot.account, snapshot.tasks[1]
+    with pytest.raises(GatewayError):
+        execute(worker, gateway.start_verified, actor, task, personal=True)
+    assert writes(history) == []
+
+    session.set_personal_writes_enabled(True)
+    started = execute(worker, gateway.start_verified, actor, task, personal=True)
+    assert started.stage is Stage.WORKING
+    completed = execute(worker, gateway.complete_verified, actor, started, personal=True)
+    assert completed.stage is Stage.COMPLETED
+    assert execute(worker, gateway.read_submission, actor, task)
+    assert writes(history) == [('/api/start-material', {'ids': [202]}),
+                               ('/api/complete-material', {'ids': [202]})]
+
+
+def test_personal_write_stops_when_original_identity_changes_after_reservation(site):
+    session, gateway, worker = open_site(site)
+    session.set_personal_writes_enabled(True)
+    snapshot = execute(worker, gateway.snapshot)
+
+    def swap_at_gate(phase, event):
+        if (phase, event) == ('start', 'before_dispatch'):
+            session._mark_original_auth_change()
+
+    with pytest.raises(GatewayError) as failure:
+        execute(worker, gateway.start_verified, snapshot.account, snapshot.tasks[0], personal=True,
+                phase_observer=swap_at_gate)
+    assert not isinstance(failure.value, ActionUncertain)
+    assert writes(site[5]) == []
+
+
+def test_personal_write_never_passes_qt_egress_after_local_claim_revoked(site):
+    session, gateway, worker = open_site(site)
+    session.set_personal_writes_enabled(True)
+    snapshot = execute(worker, gateway.snapshot)
+    checks = []
+
+    def revoked():
+        checks.append(True)
+        return False
+
+    with pytest.raises(GatewayError) as failure:
+        execute(worker, gateway.start_verified, snapshot.account, snapshot.tasks[0], personal=True, check_local=revoked)
+    assert not isinstance(failure.value, ActionUncertain)
+    assert checks == [True] and writes(site[5]) == []
+
+
 def test_qt_original_site_loads_without_legacy_browser_dependency():
     subprocess.run([sys.executable, '-B', '-c',
                     "import sys; import workbox.team_delivery.qt_site; "
@@ -265,6 +316,37 @@ def test_verified_working_after_lost_start_receipt_allows_one_complete_but_no_st
                       ('complete', 'before_dispatch'), ('complete', 'verified')]
     assert writes(history) == [('/api/start-material', {'ids': [201]}),
                                 ('/api/complete-material', {'ids': [201]})]
+
+
+def test_personal_recovery_from_lost_start_rechecks_claim_at_qt_egress(site, tmp_path):
+    from workbox.team_delivery.office_handoff import HandoffLog
+    from workbox.team_delivery.site_attempt import submit_personal_site
+
+    session, gateway, worker = open_site(site)
+    session.set_personal_writes_enabled(True)
+    snapshot = execute(worker, gateway.snapshot)
+    task = snapshot.tasks[0]
+    journal = HandoffLog(tmp_path / 'attempts.sqlite')
+
+    def deliver(**options):
+        return execute(worker, submit_personal_site, gateway, snapshot.account, task, '12', journal,
+                       lambda: None, **options)
+
+    failures = site[6]
+    failures.add('drop-reply')
+    assert deliver(check_local=lambda: True) is None
+    assert execute(worker, gateway.read_material_task, snapshot.account, task).stage is Stage.WORKING
+    failures.remove('drop-reply')
+    checks = iter((True, False, False))
+    with pytest.raises(GatewayError, match='本地交付已变化'):
+        deliver(verify_only=True, resume_working=True, check_local=lambda: next(checks))
+    assert writes(site[5]) == [('/api/start-material', {'ids': [201]})]
+
+    done = deliver(verify_only=True, resume_working=True, check_local=lambda: True)
+    assert done is not None and done.stage is Stage.COMPLETED
+    assert deliver(verify_only=True) == done
+    assert writes(site[5]) == [('/api/start-material', {'ids': [201]}),
+                               ('/api/complete-material', {'ids': [201]})]
 
 
 @pytest.mark.parametrize('response', ['proxy-html', 'rejected-status', 'rejected-json', 'drop-reply'])

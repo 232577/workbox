@@ -64,10 +64,10 @@ class Site:
         observe(phase, 'verified')
         return self.row
 
-    def start_verified(self, actor, task, *, check_accounts, phase_observer):
+    def start_verified(self, actor, task, *, check_accounts, phase_observer, personal=False, check_local=None):
         return self._write('start', actor, task, check_accounts, phase_observer)
 
-    def complete_verified(self, actor, task, *, check_accounts, phase_observer):
+    def complete_verified(self, actor, task, *, check_accounts, phase_observer, personal=False, check_local=None):
         return self._write('complete', actor, task, check_accounts, phase_observer)
 
     def submit_verified(self, actor, task, *, check_accounts):
@@ -95,6 +95,124 @@ def drop(fixture, site, member='7', *, actor=None, material=None):
     office = Office(member)
     prepared = SimpleNamespace(actor=actor, task=site.row, material=material or source)
     return deliver_prepared(office, office.member, prepared, HandoffLog(db), lambda: None, site)
+
+
+def test_personal_event_only_reports_exact_completed_task_after_ambiguous_request(fixture):
+    from workbox.team_delivery.site_attempt import submit_personal_site
+
+    _, actor, db = fixture
+    site = Site(Stage.WORKING, lose='complete')
+    site.lose_without_change = True
+    bound = site.row
+
+    def finish(*, verify_only=False, delivery_id='19', resume_working=False):
+        return submit_personal_site(site, actor, bound, delivery_id, HandoffLog(db), lambda: None,
+                                    verify_only=verify_only, resume_working=resume_working, check_local=lambda: True)
+
+    assert finish(verify_only=True) is None and site.posts == []
+    assert finish() is None and site.posts == ['complete']
+    assert finish() is None and site.posts == ['complete']
+    assert finish(verify_only=True) is None and site.posts == ['complete']
+    assert finish(verify_only=True, resume_working=True) is None and site.posts == ['complete']
+
+    site.row = replace(site.row, stage=Stage.COMPLETED, revision='confirmed')
+    assert finish(verify_only=True) == site.row
+    assert finish() == site.row and site.posts == ['complete']
+
+    site.row = replace(site.row, stage=Stage.RETURNED, revision='return-without-round-id')
+    with pytest.raises(GatewayError):
+        finish(delivery_id='20')
+    assert site.posts == ['complete']
+
+
+def test_local_revocation_after_start_preserves_readback_and_disables_complete(fixture):
+    from workbox.team_delivery.site_attempt import submit_personal_site
+
+    _, actor, db = fixture
+    site = Site(Stage.READY)
+    bound = site.row
+    journal = HandoffLog(db)
+    with pytest.raises(GatewayError, match='本地交付已变化'):
+        submit_personal_site(site, actor, bound, '29', journal, lambda: None,
+                             check_local=lambda: not site.posts)
+    assert site.posts == ['start'] and site.row.stage is Stage.WORKING
+
+    def fail_if_checked():
+        pytest.fail('read-only recovery must not require an active local write claim')
+
+    assert submit_personal_site(site, actor, bound, '29', journal, lambda: None,
+                                verify_only=True, check_local=fail_if_checked) is None
+    assert site.posts == ['start']
+
+
+def test_personal_recovery_after_lost_start_resumes_verified_working_once(fixture):
+    from workbox.team_delivery.site_attempt import submit_personal_site
+
+    _, actor, db = fixture
+    site = Site(Stage.READY, lose='start')
+    assert submit_personal_site(site, actor, site.row, '44', HandoffLog(db), lambda: None) is None
+    assert site.posts == ['start'] and site.row.stage is Stage.WORKING
+
+    actor = replace(actor, id='reopened', session='reopened', username='fixture')
+    reopened = Site(Stage.WORKING)
+    reopened.row, reopened.posts = replace(site.row, owner_id=actor.id), site.posts
+    complete = submit_personal_site(reopened, actor, reopened.row, '44', HandoffLog(db), lambda: None,
+                                    verify_only=True, check_local=lambda: True, resume_working=True)
+    assert complete is not None and complete.stage is Stage.COMPLETED
+    assert reopened.posts == ['start', 'complete']
+
+
+@pytest.mark.parametrize('change', ['revision', 'claim', 'delivery', 'account'])
+def test_personal_recovery_cannot_complete_with_changed_binding(fixture, change):
+    from workbox.team_delivery.site_attempt import submit_personal_site
+
+    _, actor, db = fixture
+    site = Site(Stage.READY, lose='start')
+    bound = site.row
+    journal = HandoffLog(db)
+    assert submit_personal_site(site, actor, bound, '44', journal, lambda: None) is None
+    if change == 'revision':
+        site.row = replace(site.row, revision='changed-remote-revision')
+    if change == 'account':
+        actor = replace(actor, username='different-account')
+
+    def recover():
+        return submit_personal_site(site, actor, bound, '45' if change == 'delivery' else '44', journal, lambda: None,
+                                    verify_only=True, resume_working=True, check_local=lambda: change != 'claim')
+
+    if change == 'revision':
+        assert recover() is None
+    else:
+        with pytest.raises(GatewayError):
+            recover()
+    assert site.posts == ['start']
+
+
+@pytest.mark.parametrize('previous_uncertain', [False, True])
+def test_personal_return_requires_a_completed_previous_round(fixture, previous_uncertain):
+    from workbox.team_delivery.site_attempt import submit_personal_site
+
+    _, actor, db = fixture
+    site = Site(Stage.WORKING, lose='complete' if previous_uncertain else None)
+    site.lose_without_change = previous_uncertain
+    journal = HandoffLog(db)
+    completed = submit_personal_site(site, actor, site.row, '31', journal, lambda: None)
+    assert (completed is None) == previous_uncertain
+    site.lose = None
+    site.row = replace(site.row, stage=Stage.RETURNED, revision='verified-remote-return')
+
+    def new_round():
+        return submit_personal_site(site, actor, site.row, '32', journal, lambda: None,
+                                    round_id=2, check_local=lambda: True)
+
+    if previous_uncertain:
+        with pytest.raises(GatewayError):
+            new_round()
+        assert site.posts == ['complete']
+    else:
+        assert new_round().stage is Stage.COMPLETED
+        assert new_round().stage is Stage.COMPLETED
+        assert site.posts == ['complete', 'start', 'complete']
 
 
 def test_returned_task_completes_once_without_reopening_a_recorded_round(fixture):

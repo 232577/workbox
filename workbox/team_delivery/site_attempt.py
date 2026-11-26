@@ -2,6 +2,8 @@
 
 from contextlib import closing
 from dataclasses import dataclass
+from functools import partial
+from hashlib import sha256
 from unicodedata import normalize
 from uuid import uuid4
 
@@ -31,14 +33,20 @@ class _Attempt:
     claim: str = ''
 
 
+class PersonalWriteNotSent(GatewayError):
+    """The current personal phase did not dispatch and may be retried."""
+
+
 class _Ledger:
-    def __init__(self, journal, origin, prepared, current):
-        actor = site_account(prepared.actor.username)
-        if not origin or not actor:
+    def __init__(self, journal, origin, actor, current, digest, original='', *, personal_round=None):
+        username = site_account(actor.username)
+        if not origin or not username:
             raise GatewayError('无法核对原站地址或登录账号。')
         self._journal = journal
-        self._key = origin.rstrip('/'), actor, current.id, _round(current)
-        self._binding = current.title, prepared.material.sha256, str(prepared.material.path)
+        version = _round(current) if personal_round is None else f'personal:{personal_round}'
+        self._key = origin.rstrip('/'), username, current.id, version
+        self._binding = current.title, digest, original
+        self._personal_round = personal_round
 
     def _find(self, db):
         origin, actor, task, round_id = self._key
@@ -53,12 +61,21 @@ class _Ledger:
         rows = db.execute('''SELECT actor, round_id, title, digest, phase, revision, claim
             FROM toolbox_site_operations WHERE origin=? AND task=?''', (origin, task)).fetchall()
         current = None
+        predecessor_completed = self._personal_round in (None, 1)
         for owner, version, title, digest, phase, revision, claim in rows:
-            if round_id and version and round_id != version:
-                continue
+            if round_id != version:
+                if self._personal_round is not None and version.startswith('personal:'):
+                    previous = int(version.removeprefix('personal:'))
+                    if 0 < previous < self._personal_round and phase == 'completed':
+                        predecessor_completed |= previous == self._personal_round - 1
+                        continue
+                elif self._personal_round is None and round_id and version and not version.startswith('personal:'):
+                    continue
             if (owner, version, title, digest) != (actor, round_id, *self._binding[:2]):
                 raise GatewayError(_CONFLICT)
             current = _Attempt(phase, revision, claim)
+        if not predecessor_completed:
+            raise GatewayError('未核实原站上一轮已完成，请先在原站核对返工任务。')
         return current
 
     def current(self):
@@ -99,7 +116,7 @@ def _mark_finished(ledger, prior, current):
     return True
 
 
-def _write(ledger, prior, current, phase, writer, actor, check_accounts, read):
+def _write(ledger, prior, current, phase, writer, actor, check_accounts, read, require_local=None):
     claim = _Attempt(phase + '_pending', current.revision, uuid4().hex)
     reserved = False
 
@@ -108,6 +125,8 @@ def _write(ledger, prior, current, phase, writer, actor, check_accounts, read):
         if actual_phase != phase:
             raise GatewayError(_NOT_READY)
         if event == 'before_dispatch':
+            if require_local is not None:
+                require_local()
             if reserved or not ledger.change(prior, claim):
                 raise GatewayError(_NOT_READY)
             reserved = True
@@ -145,7 +164,8 @@ def _write(ledger, prior, current, phase, writer, actor, check_accounts, read):
     return observed
 
 
-def _submit_stages(gateway, actor, task, ledger, current, read, check_accounts):
+def _submit_stages(gateway, actor, task, ledger, current, read, check_accounts, *, personal=False,
+                   check_local=None, require_local=None):
     prior = ledger.current()
     if prior and prior.phase in ('legacy', 'complete_pending', 'completed'):
         return _mark_finished(ledger, prior, current)
@@ -163,14 +183,86 @@ def _submit_stages(gateway, actor, task, ledger, current, read, check_accounts):
         if current != task:
             raise GatewayError(_CONFLICT)
         if current.stage in _START:
-            current = _write(ledger, None, current, 'start', gateway.start_verified, actor, check_accounts, read)
+            start = partial(gateway.start_verified, personal=True, check_local=check_local) if personal else gateway.start_verified
+            current = _write(ledger, None, current, 'start', start, actor, check_accounts, read, require_local)
             if current is None:
                 return False
             prior = _Attempt('working', current.revision)
         elif current.stage is not Stage.WORKING:
             return False
-    completed = _write(ledger, prior, current, 'complete', gateway.complete_verified, actor, check_accounts, read)
+    return _complete(gateway, actor, ledger, prior, current, read, check_accounts,
+                     personal=personal, check_local=check_local, require_local=require_local)
+
+
+def _complete(gateway, actor, ledger, prior, current, read, check_accounts, *, personal, check_local, require_local):
+    complete = partial(gateway.complete_verified, personal=True, check_local=check_local) if personal else gateway.complete_verified
+    completed = _write(ledger, prior, current, 'complete', complete, actor, check_accounts, read, require_local)
     return completed.stage is Stage.COMPLETED
+
+
+def submit_personal_site(gateway, actor, task, delivery_id, journal, check_account, *, verify_only=False,
+                         check_local=None, round_id=1, resume_working=False):
+    """Use a committed local delivery event as the durable request binding."""
+    if type(round_id) is not int or round_id < 1:
+        raise GatewayError('无法核对这次原站交付的办理轮次。')
+    if resume_working and (not verify_only or not callable(check_local)):
+        raise GatewayError('请先核对本次本地交付，才能继续已开始的原站任务。')
+
+    def read():
+        check_account()
+        current = gateway.read_material_task(actor, task)
+        _require_same_task(task, current, actor)
+        return current
+
+    def require_local():
+        if (check_local is None and round_id > 1 or check_local is not None and check_local() is not True):
+            raise GatewayError('本次本地交付已变化，原站不会继续提交。请核对已保留的交付。')
+
+    try:
+        current = read()
+    except GatewayError as error:
+        if verify_only:
+            raise
+        raise PersonalWriteNotSent(str(error)) from error
+    digest = sha256(('personal-delivery:' + delivery_id).encode('utf-8')).hexdigest()
+    ledger = _Ledger(journal, gateway.base_url, actor, current, digest, personal_round=round_id)
+    prior = ledger.current()
+    if current.stage is Stage.COMPLETED:
+        if prior is None:
+            if round_id > 1:
+                return None
+            if ledger.change(None, _Attempt('completed', current.revision)):
+                return current
+            prior = ledger.current()
+        if prior is not None and _mark_finished(ledger, prior, current):
+            return current
+        return None
+    if verify_only and (not resume_working or prior is None or prior.phase != 'working'
+                        or current.stage is not Stage.WORKING or current.revision != prior.revision):
+        return None
+
+    try:
+        if verify_only:
+            # Only a recorded, identical working revision may claim the unsent complete phase.
+            verified = _complete(gateway, actor, ledger, prior, current, read, check_account, personal=True,
+                                 check_local=check_local, require_local=require_local)
+        else:
+            verified = _submit_stages(gateway, actor, task, ledger, current, read, check_account, personal=True,
+                                      check_local=check_local, require_local=require_local)
+    except ActionUncertain:
+        raise
+    except GatewayError as error:
+        require_local()
+        saved = ledger.current()
+        if saved is None or saved.phase == 'working' and current.stage in (Stage.WORKING, *_START):
+            raise PersonalWriteNotSent(str(error)) from error
+        raise
+    if verified:
+        final = read()
+        saved = ledger.current()
+        if saved is not None and _mark_finished(ledger, saved, final):
+            return final
+    return None
 
 
 def submit_original_site(gateway, prepared, journal, check_accounts):
@@ -184,12 +276,12 @@ def submit_original_site(gateway, prepared, journal, check_accounts):
             return current
 
         current = read()
-        ledger = _Ledger(journal, origin, prepared, current)
+        ledger = _Ledger(journal, origin, actor, current, prepared.material.sha256, str(prepared.material.path))
         return _submit_stages(gateway, actor, task, ledger, current, read, check_accounts)
 
     # Older injected gateways expose a single opaque operation. Treat an
     # interrupted call as potentially having sent the completion.
-    ledger = _Ledger(journal, origin, prepared, task)
+    ledger = _Ledger(journal, origin, actor, task, prepared.material.sha256, str(prepared.material.path))
     if ledger.current() is not None:
         return gateway.read_submission(actor, task)
     check_accounts()

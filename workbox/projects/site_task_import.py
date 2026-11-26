@@ -22,7 +22,20 @@ def _read_tasks(tasks):
     return titles, invalid
 
 
-def import_site_tasks(connection, tasks):
+def source_project_links(connection):
+    return {row['task_id']: row['canonical_id'] for row in connection.execute(
+        '''SELECT s.task_id,c.canonical_id FROM site_task_project_links s
+           JOIN project_canonical c ON c.project_id=s.project_id''')}
+
+
+def create_site_task_project(connection, task_id, title):
+    # Keep each upstream task in an independent batch and working directory.
+    batch_id, _, message_id = create_intake_message(connection, f'这是家待办 #{task_id}', title)
+    return connection.execute('INSERT INTO projects(message_id,batch_id,name) VALUES (?,?,?)',
+                              (message_id, batch_id, title)).lastrowid
+
+
+def import_site_tasks(connection, tasks, *, strict_identity=False, other_titles=()):
     """Write new projects and source identities in the caller's write transaction."""
     tasks, invalid = _read_tasks(tasks)
     ids, created, linked, unchanged, conflicts = [], [], [], [], []
@@ -32,11 +45,17 @@ def import_site_tasks(connection, tasks):
         return result
 
     by_id, current_names, aliases = read_project_name_index(connection)
-    bindings = {row['task_id']: row['canonical_id'] for row in connection.execute(
-        '''SELECT s.task_id,c.canonical_id FROM site_task_project_links s
-           JOIN project_canonical c ON c.project_id=s.project_id''')}
-    linked_projects = set(bindings.values())
+    bindings = source_project_links(connection)
+    project_tasks = {}
+    for task_id, project_id in bindings.items():
+        project_tasks.setdefault(project_id, set()).add(task_id)
+    for row in connection.execute('''
+        SELECT s.task_id,c.canonical_id FROM original_site_bindings s
+        JOIN project_canonical c ON c.project_id=s.project_id
+    '''):
+        project_tasks.setdefault(row['canonical_id'], set()).add(row['task_id'])
     title_counts = Counter(project_name_key(title) for task_id, title in tasks.items() if task_id not in invalid)
+    title_counts.update(project_name_key(title) for title in other_titles)
     for task_id, title in tasks.items():
         if task_id in invalid:
             conflicts.append(dict(task_id=task_id, title=title[:200], reason=invalid[task_id]))
@@ -45,6 +64,8 @@ def import_site_tasks(connection, tasks):
         pid = bindings.get(task_id)
         if pid is not None:
             reason = project_name_block(by_id[pid])
+            if not reason and strict_identity and project_tasks[pid] != {task_id}:
+                reason = '包含其他原站待办的关联，需要先核对'
             if reason:
                 conflicts.append(dict(task_id=task_id, title=title, reason=f'关联项目 #{pid} {reason}。'))
             else:
@@ -64,22 +85,19 @@ def import_site_tasks(connection, tasks):
             pid, row = next(iter(matches.items()))
             blocked = project_name_block(row)
             reason = f'同名项目 #{pid} {blocked}。' if blocked else ''
-            if pid in linked_projects and not reason:
+            if pid in project_tasks and not reason:
                 reason = '同名项目已关联另一个原站待办。'
         if reason:
             conflicts.append(dict(task_id=task_id, title=title, reason=reason))
             continue
         if pid is None:
-            # An upstream task list is a personal queue, not one delivery batch.
-            batch_id, _, message_id = create_intake_message(connection, f'这是家待办 #{task_id}', title)
-            pid = connection.execute('INSERT INTO projects(message_id,batch_id,name) VALUES (?,?,?)',
-                                     (message_id, batch_id, title)).lastrowid
+            pid = create_site_task_project(connection, task_id, title)
             created.append(pid)
         else:
             linked.append(pid)
         connection.execute('INSERT INTO site_task_project_links(task_id,project_id) VALUES (?,?)',
                            (task_id, pid))
-        linked_projects.add(pid)
+        project_tasks.setdefault(pid, set()).add(task_id)
         ids.append(pid)
     if created:
         Database._assign_default_project_type(connection, created)

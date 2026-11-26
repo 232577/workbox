@@ -1,5 +1,6 @@
 """Original-site window and worker gateway for the shared Qt browser runtime."""
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from hashlib import sha256
 import json
@@ -67,6 +68,7 @@ class _Request:
     expected: dict | None
     expected_epoch: int | None
     write_token: str | None
+    personal: bool = False
     ready: Event = field(default_factory=Event)
     key: str = field(default_factory=lambda: 'workboxSite' + uuid4().hex)
     deadline: float = field(default_factory=lambda: monotonic() + _TIMEOUT)
@@ -77,13 +79,22 @@ class _Request:
     epoch: int = 0
 
 
+@dataclass(frozen=True, slots=True)
+class _PersonalPermit:
+    path: str
+    epoch: int
+    deadline: float
+    check_local: Callable[[], bool] | None
+
+
 class _OriginRequests(QWebEngineUrlRequestInterceptor):
     auth_changed = Signal()
 
-    def __init__(self, origin, parent, pair_guard):
+    def __init__(self, origin, parent, pair_guard, session):
         super().__init__(parent)
         self._key = _origin_key(QUrl(origin))
         self._pair_guard = pair_guard
+        self._session = session
 
     def interceptRequest(self, request):
         url = request.requestUrl()
@@ -94,8 +105,10 @@ class _OriginRequests(QWebEngineUrlRequestInterceptor):
             if request.requestMethod() == b'POST' and url.path() in _AUTH:
                 if self._pair_guard is not None:
                     self._pair_guard.invalidate()
+                self._session._mark_original_auth_change()
                 self.auth_changed.emit()
-            if self._pair_guard is not None and not self._pair_guard.accept_request(request):
+            if (not self._session._accept_personal_write(request) or
+                    self._pair_guard is not None and not self._pair_guard.accept_request(request)):
                 request.block(True)
         except Exception:
             request.block(True)
@@ -124,6 +137,7 @@ class QtSiteSession(QObject):
 
     requested = Signal(object)
     cancelled = Signal(object)
+    identity_invalidated = Signal()
 
     def __init__(self, origin=_ORIGINAL, parent=None, *, pair_guard=None):
         super().__init__(parent)
@@ -134,18 +148,63 @@ class QtSiteSession(QObject):
         self._pending = set()
         self._opened = self._closed = False
         self._epoch = 0
+        self._personal_enabled = False
+        self._personal_permits = {}
+        self._personal_sent = set()
         self.requested.connect(self._run, Qt.ConnectionType.QueuedConnection)
         self.cancelled.connect(self._cancel_script, Qt.ConnectionType.QueuedConnection)
 
-    def request(self, operation, expected=None, *, expected_epoch=None):
+    def set_personal_writes_enabled(self, enabled):
+        with self._lock:
+            self._personal_enabled = bool(enabled) and not self._closed
+            if not self._personal_enabled:
+                self._personal_permits.clear()
+
+    def _issue_personal_write(self, operation, epoch, check_local):
+        with self._lock:
+            if (not self._personal_enabled or self._closed or epoch != self._epoch
+                    or operation not in _WRITES):
+                raise GatewayError('原站登录或个人办理方式已变化，本次请求未发送。')
+            token = uuid4().hex
+            self._personal_permits[token] = _PersonalPermit('/api/' + operation, epoch, monotonic() + _TIMEOUT,
+                                                           check_local)
+            return token
+
+    def _accept_personal_write(self, request):
+        for name, value in request.httpHeaders().items():
+            if bytes(name).lower() != b'x-workbox-personal':
+                continue
+            token = bytes(value).decode('ascii', errors='replace')
+            with self._lock:
+                permit = self._personal_permits.get(token)
+            if (permit is None or request.requestMethod() != b'POST' or request.requestUrl().path() != permit.path
+                    or permit.check_local is not None and permit.check_local() is not True):
+                return False
+            with self._lock:
+                if (self._personal_permits.pop(token, None) is not permit or not self._personal_enabled or self._closed
+                        or permit.epoch != self._epoch or monotonic() >= permit.deadline):
+                    return False
+                self._personal_sent.add(token)
+                return True
+        return True
+
+    def _finish_personal_write(self, token):
+        with self._lock:
+            self._personal_permits.pop(token, None)
+            sent = token in self._personal_sent
+            self._personal_sent.discard(token)
+            return sent
+
+    def request(self, operation, expected=None, *, expected_epoch=None, personal=False, check_local=None):
         with self._lock:
             if self._closed:
                 raise GatewayError(_MESSAGES['closed'])
             if not self._opened and operation != 'open':
                 return self._epoch, {'account': None, 'rows': []}
         guard = self._pair_guard
-        token = guard.write_token() if guard is not None and operation in _WRITES else None
-        job = _Request(operation, expected, expected_epoch, token)
+        token = (self._issue_personal_write(operation, expected_epoch, check_local) if personal else
+                 guard.write_token() if guard is not None and operation in _WRITES else None)
+        job = _Request(operation, expected, expected_epoch, token, personal)
         dispatched = None
         try:
             with self._lock:
@@ -158,7 +217,7 @@ class QtSiteSession(QObject):
                 self.cancelled.emit(job)
         finally:
             if token is not None:
-                dispatched = guard.finish_write(token)
+                dispatched = self._finish_personal_write(token) if personal else guard.finish_write(token)
         if dispatched is False and (job.error == 'uncertain' or (job.result or {}).get('target')):
             raise GatewayError('原站请求未发送，请重新核对账号和页面。')
         if dispatched is True and job.error:
@@ -181,12 +240,25 @@ class QtSiteSession(QObject):
     @Slot()
     def _identity_changed(self):
         self._invalidate_pair()
+        self._mark_original_auth_change()
+        self._cancel_obsolete_identity_jobs()
+
+    def _mark_original_auth_change(self):
+        # The interceptor runs before login/logout is sent. Revoke old permits
+        # under its own lock even if the GUI notification has not arrived yet.
         with self._lock:
             self._epoch += 1
-            aged = [job for job in self._pending if job.started and job.operation != 'open']
+            self._personal_permits.clear()
+
+    @Slot()
+    def _cancel_obsolete_identity_jobs(self):
+        with self._lock:
+            aged = [job for job in self._pending
+                    if job.started and job.operation != 'open' and job.epoch != self._epoch]
         for job in aged:
             self._finish(job, error='account', interrupted=True)
             self._cancel_script(job)
+        self.identity_invalidated.emit()
 
     def _invalidate_pair(self):
         if self._pair_guard is not None:
@@ -216,8 +288,8 @@ class QtSiteSession(QObject):
         profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies)
         profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
         profile.setPersistentPermissionsPolicy(QWebEngineProfile.PersistentPermissionsPolicy.AskEveryTime)
-        interceptor = _OriginRequests(self.origin, profile, self._pair_guard)
-        interceptor.auth_changed.connect(self._identity_changed, Qt.ConnectionType.QueuedConnection)
+        interceptor = _OriginRequests(self.origin, profile, self._pair_guard, self)
+        interceptor.auth_changed.connect(self._cancel_obsolete_identity_jobs, Qt.ConnectionType.QueuedConnection)
         profile.setUrlRequestInterceptor(interceptor)
         profile.downloadRequested.connect(lambda download: download.cancel())
         page = _OriginalPage(profile, view, self.origin)
@@ -271,7 +343,7 @@ class QtSiteSession(QObject):
             return
         arguments = json.dumps(dict(origin=self.origin, operation=job.operation, expected=job.expected,
                                     deadline=job.utc_deadline, remaining=max(0, (job.deadline - monotonic()) * 1000),
-                                    requestKey=job.key, writeToken=job.write_token))
+                                    requestKey=job.key, writeToken=job.write_token, personal=job.personal))
         key = json.dumps(job.key)
         start = f'Promise.resolve(({OPERATE})({arguments})).then(r=>globalThis[{key}]=r); true'
         inspect = (f'(()=>{{const result=globalThis[{key}]; delete globalThis[{key}];'
@@ -319,6 +391,7 @@ class QtSiteSession(QObject):
             if self._closed:
                 return
             self._closed, self._opened = True, False
+            self._personal_permits.clear()
             pending = tuple(self._pending)
         self._invalidate_pair()
         for job in pending:
@@ -407,13 +480,14 @@ class QtSiteGateway:
     def task(self, task_id):
         return next((item for item in self.snapshot().tasks if item.id == task_id), None)
 
-    def _request_target(self, account, task, operation, known=None):
+    def _request_target(self, account, task, operation, known=None, *, personal=False, check_local=None):
         if (account is None or account.role != 'material' or account != self._account or task.owner_id != account.id or
                 not isinstance(task.id, str) or not task.id.isascii() or not task.id.isdecimal() or
                 task.id.startswith('0') or len(task.id) > 16 or int(task.id) > 2**53 - 1 or not task.title):
             raise GatewayError('请先核对原站材料账号以及本人项目编号。')
         expected = {**(known or {}), 'account': self._observation, 'id': task.id, 'title': task.title}
-        epoch, result = self._session.request(operation, expected, expected_epoch=self._epoch)
+        options = {'personal': True, 'check_local': check_local} if personal else {}
+        epoch, result = self._session.request(operation, expected, expected_epoch=self._epoch, **options)
         if self._observe(epoch, result.get('account')) != account or not result.get('target'):
             raise GatewayError(_MESSAGES['account'])
         return result['target']
@@ -436,13 +510,15 @@ class QtSiteGateway:
             raise GatewayError(_MESSAGES['target'])
         return False
 
-    def start_verified(self, account, task, *, check_accounts=None, phase_observer=None):
+    def start_verified(self, account, task, *, check_accounts=None, phase_observer=None, personal=False,
+                       check_local=None):
         return self._apply_phase(account, task, 'start', (Stage.READY, Stage.RETURNED), Stage.WORKING,
-                                 check_accounts, phase_observer)
+                                 check_accounts, phase_observer, personal, check_local)
 
-    def complete_verified(self, account, task, *, check_accounts=None, phase_observer=None):
+    def complete_verified(self, account, task, *, check_accounts=None, phase_observer=None, personal=False,
+                          check_local=None):
         completed = self._apply_phase(account, task, 'complete', (Stage.WORKING,), Stage.COMPLETED,
-                                      check_accounts, phase_observer)
+                                      check_accounts, phase_observer, personal, check_local)
         self._clear_task_uncertainty(account, task)
         return completed
 
@@ -450,7 +526,7 @@ class QtSiteGateway:
         key = (_normalized(account.username), task.id)
         self._unresolved.difference_update((*key, phase) for phase in ('start', 'complete'))
 
-    def _apply_phase(self, account, task, phase, allowed, desired, check_accounts, phase_observer):
+    def _apply_phase(self, account, task, phase, allowed, desired, check_accounts, phase_observer, personal, check_local):
         if check_accounts is not None:
             check_accounts()
         row = self._request_target(account, task, 'target')
@@ -465,7 +541,8 @@ class QtSiteGateway:
         if phase_observer is not None:
             phase_observer(phase, 'before_dispatch')
         try:
-            verified = self._request_target(account, task, phase + '-material', known=row)
+            verified = self._request_target(account, task, phase + '-material', known=row, personal=personal,
+                                            check_local=check_local)
         except ActionUncertain:
             self._unresolved.add(key)
             self._record_phase(phase_observer, phase, 'uncertain')

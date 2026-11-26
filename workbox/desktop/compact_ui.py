@@ -56,6 +56,11 @@ class StandardScrollMetrics(QProxyStyle):
         return max(32, value) if metric == QStyle.PM_ScrollBarSliderMin else value
 
 
+def original_task_caption(project):
+    number = project.get('original_task_id')
+    return f"这是家 #{number} · {project['original_account_username']}" if number else ''
+
+
 def zip_delivery_hint(settings):
     if not settings.get('auto_deliver_zip', True):
         return 'ZIP 自动交付已关闭，新版本归档后为待交付；请在项目右键人工确认交付。'
@@ -321,6 +326,7 @@ def populate(widget, rows, caption, *, clear_selection=False):
 
 
 class CompactPanel(DropSurface, QWidget):
+    team_workspace_opened = Signal(object)
     data_changed = Signal()
     intake = Signal(object)
     state_requested = Signal(int, str)
@@ -1087,6 +1093,7 @@ class CompactPanel(DropSurface, QWidget):
             container.setWidget(page)
             self.team_page_container, self.team_page, self.team_controller = container, page, controller
             self.tabs.addTab(container, '团队交件')
+            self.team_workspace_opened.emit(controller)
             controller.personal_sync_requested.connect(self.personal_project_sync_requested)
             controller.start()
         self.tabs.setCurrentWidget(self.team_page_container)
@@ -1953,6 +1960,8 @@ class CompactPanel(DropSurface, QWidget):
             metadata.append(f"ZIP {project['zip_count']}")
         state = ' · '.join(metadata)
         parts = []
+        if original := original_task_caption(project):
+            parts.append(original)
         if project.get('due_date'):
             due = date.fromisoformat(project['due_date'])
             days = (date.today() - due).days
@@ -2026,17 +2035,23 @@ class CompactPanel(DropSurface, QWidget):
         if self.busy or not 1 <= len(ids) <= 500:
             return
         try:
-            pending_ids = {project['id'] for project in self.service.list_projects(status='待交付')}
+            pending = {project['id']: project for project in self.service.list_projects(status='待交付')}
         except (OSError, RuntimeError, sqlite3.Error) as error:
             self.show_notice('暂时无法读取待交付项目。\n' + str(error))
             return
-        if not pending_ids.issuperset(ids):
+        if not pending.keys() >= set(ids):
             self.show_notice('批量交付要求所选项目均为日常列表中的待交付项目。')
             return
+        targets = [caption for pid in ids if (caption := original_task_caption(pending[pid]))]
+        site_note = ''
+        if targets:
+            numbers = '、'.join(targets[:5]) + (' 等' if len(targets) > 5 else '')
+            site_note = (f'\n\n其中 {len(targets)} 项会提交到原站（{numbers}）。'
+                         '未登录的任务会等对应材料账号重新登录后再提交。')
         answer = QMessageBox.question(
             self, '批量确认交付',
             f'归档并核对所选 {len(ids)} 个待交付项目的当前工作文件？\n\n'
-            '全部核验成功后将它们设为已交付并登记交付记录。',
+            '全部核验成功后将它们设为已交付并登记交付记录。' + site_note,
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
         )
         if answer == QMessageBox.Yes and not self.busy:
@@ -2186,7 +2201,8 @@ class CompactPanel(DropSurface, QWidget):
         layout.addWidget(search)
         layout.addWidget(choices, 1)
         def load():
-            populate(choices, self.service.list_projects(search.text()), lambda p: p['name'] + '\n' + p['batch_name'])
+            populate(choices, self.service.list_projects(search.text()),
+                     lambda p: p['name'] + '\n' + (original_task_caption(p) or p['batch_name']))
         search.textChanged.connect(load)
         load()
         confirm = button('选择此项目', True)
@@ -2540,6 +2556,8 @@ class ProjectDeliveryDialog(QDialog):
         from workbox.desktop.dialog_chrome import add_header, add_actions
         apply_to(self)
         add_header(layout, '确认本次交付', project['name'], icon=FluentIcon.DOCUMENT, eyebrow='WORKBOX / 交付确认')
+        if original := original_task_caption(project):
+            layout.addWidget(label(f'确认后将同步提交到{original}。若未登录，工作箱会等这个材料账号重新登录后再提交。', 'subtle', True))
         caption = label('交付内容')
         layout.addWidget(caption)
         self.version_box = QComboBox()

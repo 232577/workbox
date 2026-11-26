@@ -101,6 +101,7 @@ class FloatingController(QObject):
         self.service = service
         self.tray_enabled = tray_enabled
         self.orb = self.panel = self.bubble = self.tray = self.server = None
+        self.personal_site = None
         self.worker = None
         self.queue = deque()
         self.errors = []
@@ -206,6 +207,7 @@ class FloatingController(QObject):
             saved_size = DEFAULT_FLOATING_SIZE
         self.orb.set_orb_size(saved_size)
         self.panel = CompactPanel(self.service)
+        self.panel.team_workspace_opened.connect(self._connect_personal_site)
         self.panel.window_shortcut = self.shortcut
         self._panel_minimum = self.panel.minimumSize()
         self.panel.installEventFilter(self)
@@ -329,6 +331,10 @@ class FloatingController(QObject):
         operation = '已归档' if changes.get('archived') else ('已恢复' if changes.get('archived') is False else '已更新')
         self.enqueue(f'{operation} {len(ids)} 个项目', lambda **_: self.service.bulk_update_projects(ids, **changes))
 
+    def _connect_personal_site(self, site):
+        from workbox.desktop.personal_site_workspace import PersonalSiteWorkspace
+        self.personal_site = PersonalSiteWorkspace(self, site)
+
     def deliver_projects(self, project_ids):
         if self.foreground_busy:
             return
@@ -356,6 +362,8 @@ class FloatingController(QObject):
             self.notify('确认交付失败：' + worker.error, kind='delivery-error')
             return
         result = worker.result
+        if self.personal_site is not None:
+            self.personal_site.wake()
         if 'archive' not in result:
             self.notify('已确认交付。')
             return
@@ -386,6 +394,8 @@ class FloatingController(QObject):
         else:
             ids = worker.result['project_ids']
             self.notify(f'已归档并确认交付 {len(ids)} 个项目。', kind='page-success')
+            if self.personal_site is not None:
+                self.personal_site.wake()
 
     def set_project_deleted(self, project_id, deleted):
         if self.foreground_busy:
@@ -645,6 +655,8 @@ class FloatingController(QObject):
                 self.notify('一次最多接收 100 个文件或文件夹。')
                 return
             for path in dict.fromkeys(paths):
+                if self.personal_site is not None and self.personal_site.resolve_dropped_file(path):
+                    continue
                 self.enqueue('收进文件或文件夹：' + Path(path).name,
                     lambda p=path, **kw: self.service.receive_path(p, **kw),
                     on_cancel=lambda p=path: self.service.record_file_decision(p, 'cancelled', {},
