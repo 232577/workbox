@@ -69,7 +69,7 @@ test('11月13日r1历史身份保留，首页与稳定清单继续绑定当前�
   assert.ok(releaseNotes.includes('7760e997ded567dd5c1aec4435f023b82b64664ae757e249568999aac4f690fc'));
   const metadata = await (await handleRequest(new Request('https://example.com/updates/stable.json'), {})).json();
   assert.equal(metadata.tag_name, release.tag);
-  assert.ok(metadata.body.includes('来源提交 5ececd9e3bef310bf08f9805aa2cd71b70d55e14。'));
+  assert.ok(metadata.body.includes('来源提交 d337659261024ad3634154f75da26bcb49ac5a2c。'));
   assert.deepEqual(metadata.assets[0], { name: release.filename, size: release.size, state: 'uploaded',
     digest: `sha256:${release.sha256}`,
     browser_download_url: `https://github.com/232577/workbox/releases/download/${release.tag}/${release.filename}` });
