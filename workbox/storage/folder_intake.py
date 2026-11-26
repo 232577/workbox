@@ -94,11 +94,12 @@ class FolderIntake:
                 raise ValueError('请明确选择有效的未归档、未删除项目。')
             root_route = dict(candidates=[selected], basis='人工选择文件夹所属项目', requires_choice=False)
         plans = []
+        account_options = {'personal_account': personal_account} if personal_account else {}
         for source in files:
             relative = source.relative_to(root)
             # 只用路径中的完整项目名；深层的另一个项目名称同样属于冲突证据。
             directory_route = self._directory_route(relative.parts[:-1], projects)
-            named = self.service.file_routing(source, personal_account=personal_account)
+            named = self.service.file_routing(source, **account_options)
             is_bundle = self.service.is_bundle_candidate(source.name)
             routes = [root_route, directory_route, named]
             candidates = {row['id']: row for route in routes for row in route['candidates']}

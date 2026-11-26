@@ -701,8 +701,9 @@ class FloatingController(QObject):
                 if self.personal_site is not None and self.personal_site.resolve_dropped_file(path):
                     continue
                 account = self.personal_site.intake_account() if self.personal_site is not None else None
+                account_options = {'personal_account': account} if account else {}
                 self.enqueue('收进文件或文件夹：' + Path(path).name,
-                    lambda p=path, actor=account, **kw: self.service.receive_path(p, personal_account=actor, **kw),
+                    lambda p=path, options=account_options, **kw: self.service.receive_path(p, **options, **kw),
                     on_cancel=lambda p=path: self.service.record_file_decision(p, 'cancelled', {},
                         message='已取消尚未开始的收录，尚未判断归属；原件保留'))
         else:

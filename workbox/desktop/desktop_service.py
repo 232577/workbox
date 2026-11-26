@@ -654,6 +654,7 @@ class DesktopService(WorkBox):
                      folder_items=None, personal_account=None):
         """在后台判断文件/目录与归属；需要人工选择时返回事实，界面线程再提问。"""
         routing = {}
+        account_options = {'personal_account': personal_account} if personal_account else {}
         try:
             if folder_items is not None:
                 if manual is not True or project_id is None:
@@ -667,11 +668,11 @@ class DesktopService(WorkBox):
             if source.is_dir():
                 from workbox.storage.folder_intake import FolderIntake
                 result = FolderIntake(self).receive(source, project_id, cancel_event=cancel_event,
-                    progress=progress, manual=manual, personal_account=personal_account)
+                    progress=progress, manual=manual, **account_options)
                 result['manual_choice_attempted'] = manual is True
                 return result
             if project_id is None and not self.is_bundle_candidate(source.name):
-                routing = self.file_routing(source, personal_account=personal_account)
+                routing = self.file_routing(source, **account_options)
                 candidates = routing['candidates']
                 if routing.get('requires_choice') or len(candidates) > 1:
                     self.record_file_decision(source, 'needs-choice', routing)
@@ -687,12 +688,13 @@ class DesktopService(WorkBox):
                 routing, project_id=project_id, manual=manual, message=str(error))
             raise
         return self.receive_file(source, project_id, cancel_event=cancel_event, progress=progress, manual=manual,
-                                 personal_account=personal_account)
+                                 **account_options)
 
     @_serialized_storage
     def receive_file(self, path, project_id=None, *, cancel_event=None, progress=None, manual=None, personal_account=None):
         ordinary = Path(path).suffix.casefold() != '.zip'
         routing, failure_status, created = {}, 'failed', {}
+        account_options = {'personal_account': personal_account} if personal_account else {}
         try:
             source = _path(path, allow_network=True)
             cancelled(cancel_event)
@@ -705,7 +707,7 @@ class DesktopService(WorkBox):
             with ZipLease(source, movable=False) as lease:
                 if not ordinary:
                     _zip_structure(lease.stream, cancel_event)
-            routing = self.file_routing(source, personal_account=personal_account)
+            routing = self.file_routing(source, **account_options)
             if routing.get('requires_choice') and (project_id is None or manual is False):
                 failure_status = 'needs-choice'
                 raise ValueError('文件归属未确定，请恢复已归档项目或选择文件对应的项目。')
@@ -748,7 +750,7 @@ class DesktopService(WorkBox):
                     if not name or len(name) > 200:
                         raise ValueError('项目名称需要 1 至 200 个字符，请调整文件名。')
                     created = self._capture_file_projects(source, [name])
-                    routing = self.file_routing(source, personal_account=personal_account)
+                    routing = self.file_routing(source, **account_options)
                     choices = routing['candidates']
                     if len(choices) != 1 or routing.get('requires_choice') or not created['project_ids']:
                         failure_status = 'needs-choice'
