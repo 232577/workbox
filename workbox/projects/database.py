@@ -799,7 +799,9 @@ class Database:
 
     def _complete_file_delivery(self, connection, project_id: int, verified_archive: dict) -> int:
         """调用方复制归档后，复核清单及副本，再共用其事务保存人工交付事实。"""
+        from workbox.projects.archive_facts import material_archive_signature, valid_material_streams
         from workbox.storage.native_files import ZipLease, identity, plain_path
+        from workbox.storage.workspace_manager import _hash_named_streams
 
         if type(project_id) is not int or project_id <= 0 or not isinstance(verified_archive, dict):
             raise ValueError('请提供项目及已经验证的文件归档清单。')
@@ -824,12 +826,17 @@ class Database:
                     or type(size) is not int or size < 0
                     or not isinstance(digest, str) or not re.fullmatch('[0-9a-fA-F]{64}', digest)):
                 raise ValueError('归档文件路径、大小或散列无效。')
+            if 'streams' in item and not valid_material_streams(item['streams']):
+                raise ValueError('归档文件的命名数据流清单无效。')
             target = plain_path(root.joinpath(*PurePosixPath(relative).parts))
             key = relative.casefold()
             if not target.is_relative_to(root) or key in keys:
                 raise ValueError('归档文件超出目录或清单包含重复路径。')
             keys.add(key)
-            checked.append((target, size, digest.casefold()))
+            checked.append((target, size, digest.casefold(), item.get('streams', {})))
+        if any(streams for _, _, _, streams in checked):
+            if material_archive_signature(manifest) != signature.casefold():
+                raise ValueError('命名数据流清单与归档签名不一致。')
         actual = set()
         for path in root.rglob('*'):
             path = plain_path(path)
@@ -840,7 +847,7 @@ class Database:
         if actual != keys:
             raise ValueError('归档目录实际文件与已验证清单不一致。')
         with ExitStack() as leases:
-            for path, size, digest in checked:
+            for path, size, digest, streams in checked:
                 lease = leases.enter_context(ZipLease(path, movable=False))
                 if lease.initial.st_size != size:
                     raise ValueError('归档文件大小已变化，未标记交付。')
@@ -849,6 +856,8 @@ class Database:
                     hasher.update(block)
                 if hasher.hexdigest() != digest or identity(os.fstat(lease.stream.fileno())) != identity(lease.initial):
                     raise ValueError('归档文件散列已变化，未标记交付。')
+                if _hash_named_streams(lease, leases) != streams:
+                    raise ValueError('归档文件的命名数据流已变化，未标记交付。')
             project = connection.execute('SELECT * FROM projects WHERE id=?', (project_id,)).fetchone()
             previous = connection.execute('SELECT * FROM delivery_events WHERE project_id=? ORDER BY id DESC LIMIT 1', (project_id,)).fetchone()
             signature = signature.casefold()

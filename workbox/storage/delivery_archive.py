@@ -5,22 +5,22 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
 import stat
 import threading
 from concurrent.futures import CancelledError
-from contextlib import ExitStack, nullcontext
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from workbox.projects.archive_facts import material_archive_signature
 from workbox.storage.managed_archive import segment
 from workbox.storage.native_files import ZipLease, cancelled, identity, plain_path
-from workbox.storage.workspace_manager import _hash_stream, copy_verified
+from workbox.storage.workspace_manager import _hash_named_streams, _hash_stream, copy_verified
 
 
 SCHEMA = '''
@@ -52,11 +52,6 @@ CREATE TABLE IF NOT EXISTS project_delivery_archive_attempts (
 
 def _serialized(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
-
-
-def _signature(manifest):
-    material = [[row['path'], row['sha256']] for row in manifest]
-    return hashlib.sha256(_serialized(material).encode('utf-8')).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -142,14 +137,19 @@ class ProjectDeliveryArchive:
         manifest, identities = [], {}
         for path in cls._files(root, excluded, cancel_event=cancel_event, include_temporary=include_temporary):
             cancelled(cancel_event)
-            file_lease = ZipLease(path, movable=False)
-            with (file_lease if leases is None else nullcontext(leases.enter_context(file_lease))) as lease:
+            with ExitStack() as temporary_leases:
+                active_leases = temporary_leases if leases is None else leases
+                lease = active_leases.enter_context(ZipLease(path, movable=False))
                 initial = identity(os.fstat(lease.stream.fileno()))
                 sha256, size = _hash_stream(lease.stream, cancel_event=cancel_event)
+                named = _hash_named_streams(lease, active_leases, cancel_event=cancel_event)
                 if identity(os.fstat(lease.stream.fileno())) != initial or identity(path.stat()) != initial:
                     raise RuntimeError('材料在读取期间发生变化，未确认交付。')
             relative = path.relative_to(root).as_posix()
-            manifest.append(dict(path=relative, size=size, sha256=sha256))
+            row = dict(path=relative, size=size, sha256=sha256)
+            if named:
+                row['streams'] = named
+            manifest.append(row)
             identities[relative] = initial
         return manifest, identities
 
@@ -160,8 +160,8 @@ class ProjectDeliveryArchive:
         if self._snapshot(root, excluded, cancel_event=cancel_event, leases=leases) != original:
             raise RuntimeError('项目材料在归档期间新增、删除或发生变化，未确认交付。')
 
-    def _assert_batch_inventory(self, prepared, *, cancel_event=None):
-        # 文件租约保护已打开的内容。新增文件由提交前的目录复核发现。
+    def _assert_final_inventory(self, prepared, *, cancel_event=None):
+        # 租约保护已打开的内容。提交前再次检查新文件和新命名数据流。
         root, target = prepared.root, prepared.target
         manifest, expected_identities = prepared.original
         source_paths = self._files(root, prepared.excluded, cancel_event=cancel_event)
@@ -175,6 +175,12 @@ class ProjectDeliveryArchive:
         archive_paths = self._files(target, cancel_event=cancel_event, include_temporary=True)
         if [path.relative_to(target).as_posix() for path in archive_paths] != [row['path'] for row in manifest]:
             raise ValueError('材料归档副本文件集合发生变化，未确认交付。')
+        for row in manifest:
+            for directory in (root, target):
+                cancelled(cancel_event)
+                with ZipLease(directory / row['path'], movable=False) as lease:
+                    if lease.named_stream_names() != sorted(row.get('streams', {})):
+                        raise RuntimeError('材料或归档副本的命名数据流列表发生变化，未确认交付。')
 
     def _verify_archive(self, target, manifest, *, cancel_event=None):
         actual, _ = self._snapshot(target, cancel_event=cancel_event)
@@ -202,6 +208,7 @@ class ProjectDeliveryArchive:
             cancelled(cancel_event)
             actual = _hash_stream(lease.stream, cancel_event=cancel_event)
             if (actual != (row['sha256'], row['size'])
+                    or _hash_named_streams(lease, leases, cancel_event=cancel_event) != row.get('streams', {})
                     or identity(os.fstat(lease.stream.fileno())) != identity(lease.initial)
                     or identity(path.stat()) != identity(lease.initial)):
                 raise ValueError('材料归档副本内容发生变化，未确认交付。')
@@ -275,7 +282,8 @@ class ProjectDeliveryArchive:
                     if progress:
                         progress(offset + done, total)
 
-                copied = copy_verified(source, destination, cancel_event=cancel_event, progress=advance)
+                copied = copy_verified(source, destination, cancel_event=cancel_event, progress=advance,
+                                       expected_named_streams=row.get('streams', {}))
                 if (copied['size'], copied['sha256']) != (row['size'], row['sha256']):
                     raise RuntimeError('材料在复制期间变化，未确认交付。')
             completed += row['size']
@@ -290,7 +298,7 @@ class ProjectDeliveryArchive:
         manifest = original[0]
         if not manifest:
             raise ValueError('项目工作目录没有可交付文件，不能确认空项目已交付。')
-        signature = _signature(manifest)
+        signature = material_archive_signature(manifest)
         with self.db.connect() as connection:
             existing = connection.execute('''SELECT id,path FROM project_delivery_archives
                 WHERE project_id=? AND signature=? ORDER BY id DESC LIMIT 1''',
@@ -304,7 +312,7 @@ class ProjectDeliveryArchive:
         return _PreparedDelivery(project_id, root, excluded, original, signature,
                                  target, existing_id, operation_id)
 
-    def _register(self, connection, file_leases, prepared, *, cancel_event=None, hold_sources=False):
+    def _register(self, connection, file_leases, prepared, *, cancel_event=None):
         project_id, root, target = prepared.project_id, prepared.root, prepared.target
         manifest = prepared.original[0]
         self.db._assert_projects_editable(connection, project_id)
@@ -313,7 +321,7 @@ class ProjectDeliveryArchive:
         if workspace is None or plain_path(workspace['path']) != root:
             raise RuntimeError('项目工作目录已变化，未确认交付。')
         self._assert_unchanged(project_id, root, prepared.excluded, prepared.original,
-                               cancel_event=cancel_event, leases=file_leases if hold_sources else None)
+                               cancel_event=cancel_event, leases=file_leases)
         self._hold_verified_archive(file_leases, target, manifest, cancel_event=cancel_event)
         archive_id = prepared.existing_id
         if archive_id is None:
@@ -378,7 +386,7 @@ class ProjectDeliveryArchive:
 
             active_project = None
             cancelled(cancel_event)
-            # 单项保持副本租约，批量还保持原件租约，直到 SQLite 提交完成。
+            # 原件、归档副本及其已有数据流的只读租约持续到 SQLite 提交完成。
             with ExitStack() as file_leases, self.db.connect() as connection:
                 connection.execute('BEGIN IMMEDIATE')
                 if pending_only:
@@ -386,7 +394,7 @@ class ProjectDeliveryArchive:
                 for index, prepared in enumerate(prepared_deliveries):
                     active_project = project_names.get(prepared.project_id)
                     archive_id, event_id = self._register(connection, file_leases, prepared,
-                                                          cancel_event=cancel_event, hold_sources=pending_only)
+                                                          cancel_event=cancel_event)
                     record = dict(connection.execute('SELECT * FROM project_delivery_archives WHERE id=?',
                                                      (archive_id,)).fetchone())
                     record['manifest'] = json.loads(record['manifest'])
@@ -394,10 +402,9 @@ class ProjectDeliveryArchive:
                     results.append(dict(archive=record, event_id=event_id, duplicate=prepared.existing_id is not None))
                     if pending_only and progress:
                         progress(1000 * (total_projects + index + 1), batch_progress_total)
-                if pending_only:
-                    for prepared in prepared_deliveries:
-                        active_project = project_names[prepared.project_id]
-                        self._assert_batch_inventory(prepared, cancel_event=cancel_event)
+                for prepared in prepared_deliveries:
+                    active_project = project_names.get(prepared.project_id)
+                    self._assert_final_inventory(prepared, cancel_event=cancel_event)
                 active_project = None
                 cancelled(cancel_event)
         except BaseException as error:
@@ -419,7 +426,7 @@ class ProjectDeliveryArchive:
     def confirm(self, project_id, *, confirmed=False, cancel_event=None, progress=None):
         """返回 archive、event_id、duplicate 和当前项目；确认失败不会改变状态。
 
-        archive.manifest 每项为 path（相对 POSIX 路径）、size 和 sha256。
+        archive.manifest 记录文件路径、大小和 SHA-256，有命名数据流时另记每个流。
         同内容复用已验证副本；已交付重复确认不新增事件，退待交付后的确认新增事件。
         复制中断或数据库失败保留独立日志；重试同内容时复核并补齐，绝不覆盖已存文件。
         """
