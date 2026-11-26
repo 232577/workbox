@@ -7,7 +7,9 @@ from threading import Thread
 from time import monotonic, sleep
 
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
+from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication
 
 from workbox.team_delivery.contracts import ActionUncertain, GatewayError, Stage
@@ -43,6 +45,84 @@ def page_script(page, source):
     page.runJavaScript(source, result.append)
     until(lambda: result)
     return result[0]
+
+
+def install_completion_view(page):
+    """Install the anonymous site's in-place refresh and completed-project controls."""
+    page_script(page, r'''(() => {
+        const list = document.getElementById('matList');
+        const controls = document.createElement('section');
+        controls.innerHTML = `
+            <button id="refreshApp">刷新系统数据</button>
+            <span id="refreshStatus"></span>
+            <label><input type="checkbox" id="matMine" checked>只看我的</label>
+            <button id="matCompletedToggle" aria-expanded="false">已完成项目</button>`;
+        list.before(controls);
+        const mine = document.getElementById('matMine');
+        const toggle = document.getElementById('matCompletedToggle');
+        const status = document.getElementById('refreshStatus');
+        const view = window.fixtureCompletionView = {ready: false, refreshes: 0, delay: 0, failRefresh: false};
+        let projects = [];
+
+        const load = async () => {
+            const response = await fetch('/api/state', {cache: 'no-store'});
+            if (!response.ok) throw new Error('fixture refresh failed');
+            projects = (await response.json()).projects;
+        };
+        const render = () => {
+            const table = document.createElement('table');
+            for (const project of projects) {
+                if (mine.checked && project.matOwner !== 'fixture') continue;
+                const completed = project.matStatus === '已完成';
+                if (completed && toggle.getAttribute('aria-expanded') !== 'true') continue;
+                const row = table.insertRow();
+                row.classList.toggle('is-completed-project', completed);
+                for (let index = 0; index < 11; index++) row.insertCell();
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'mat-check';
+                checkbox.value = String(project.id);
+                checkbox.dataset.status = project.matStatus;
+                row.cells[0].append(checkbox);
+                const name = document.createElement('span');
+                name.className = 'project-name';
+                name.title = name.textContent = project.name;
+                row.cells[1].append(name);
+                row.cells[4].textContent = project.matStatus;
+                row.cells[6].textContent = project.matOwnerName || project.matOwner;
+            }
+            list.replaceChildren(table);
+        };
+        mine.addEventListener('change', render);
+        toggle.addEventListener('click', () => {
+            toggle.setAttribute('aria-expanded', toggle.getAttribute('aria-expanded') !== 'true');
+            render();
+        });
+        document.getElementById('refreshApp').addEventListener('click', async () => {
+            view.refreshes++;
+            status.dataset.state = 'loading';
+            status.textContent = '正在刷新系统数据…';
+            try {
+                if (view.delay) await new Promise(resolve => setTimeout(resolve, view.delay));
+                if (view.failRefresh) throw new Error('fixture refresh failed');
+                await load();
+                mine.checked = false;
+                toggle.setAttribute('aria-expanded', 'false');
+                render();
+                status.dataset.state = 'success';
+                status.textContent = '已刷新系统数据';
+            } catch (_) {
+                status.dataset.state = 'error';
+                status.textContent = '刷新失败';
+            }
+        });
+        load().then(() => {
+            render();
+            view.ready = true;
+        });
+        return true;
+    })()''')
+    until(lambda: page_script(page, 'window.fixtureCompletionView?.ready'))
 
 
 @pytest.fixture
@@ -153,6 +233,107 @@ def test_personal_write_uses_original_login_alone_and_verified_same_task(site):
     assert execute(worker, gateway.read_submission, actor, task)
     assert writes(history) == [('/api/start-material', {'ids': [202]}),
                                ('/api/complete-material', {'ids': [202]})]
+
+
+def test_personal_completion_refreshes_the_original_view_and_scrolls_to_the_exact_number(site):
+    session, gateway, worker = open_site(site)
+    rows, history = site[4:6]
+    rows[0]['matStatus'] = '已完成'
+    rows[1]['matStatus'] = '进行中'
+    install_completion_view(session.page)
+    page_script(session.page, r'''(() => {
+        const style = document.createElement('style');
+        style.textContent = '#matList tr {height: 320px} body::after {content: ""; display: block; height: 100vh}';
+        document.head.append(style);
+    })()''')
+    snapshot = execute(worker, gateway.snapshot)
+    actor, task = snapshot.account, snapshot.tasks[1]
+    session.set_personal_writes_enabled(True)
+    completed = execute(worker, gateway.complete_verified, actor, task, personal=True)
+    assert page_script(session.page, """document.querySelector('input[value="202"]').dataset.status""") == '进行中'
+
+    shown = execute(worker, gateway.show_personal_completion, actor, completed)
+    visible = page_script(session.page, r'''JSON.stringify([
+        window.fixtureCompletionView.refreshes,
+        document.getElementById('matMine').checked,
+        document.getElementById('matCompletedToggle').getAttribute('aria-expanded'),
+        [...document.querySelectorAll('.is-completed-project input')].map(node => [node.value, node.dataset.status])
+    ])''')
+    assert shown, visible
+    assert json.loads(visible) == [1, True, 'true', [['201', '已完成'], ['202', '已完成']]]
+    until(lambda: page_script(session.page, r'''(() => {
+        const row = document.querySelector('input[value="202"]').closest('tr').getBoundingClientRect();
+        return Math.abs((row.top + row.bottom - innerHeight) / 2) < 40;
+    })()'''))
+    assert writes(history) == [('/api/complete-material', {'ids': [202]})]
+
+
+@pytest.mark.parametrize('change', ['editing', 'filter', 'identity', 'revision'])
+def test_personal_completion_leaves_an_unavailable_original_view_untouched(site, change):
+    session, gateway, worker = open_site(site)
+    rows, history = site[4:6]
+    rows[0]['matStatus'] = '已完成'
+    install_completion_view(session.page)
+    snapshot = execute(worker, gateway.snapshot)
+    if change == 'editing':
+        page_script(session.page, "document.getElementById('editing').focus()")
+    elif change == 'filter':
+        page_script(session.page, r'''document.getElementById('matList').insertAdjacentHTML(
+            'beforebegin', '<input id="matSearch" value="正在核对的匿名项目">')''')
+    elif change == 'identity':
+        session._identity_changed()
+    else:
+        rows[0]['lastOperatedAt'] = '2026-11-26T06:00:00Z'
+
+    assert not execute(worker, gateway.show_personal_completion, snapshot.account, snapshot.tasks[0])
+    visible = page_script(session.page, r'''JSON.stringify([
+        window.fixtureCompletionView.refreshes,
+        document.getElementById('matCompletedToggle').getAttribute('aria-expanded')
+    ])''')
+    assert json.loads(visible) == [0, 'false']
+    assert not writes(history)
+
+
+def test_personal_write_allows_completion_view_expanded_only_by_workbox(site):
+    session, gateway, worker = open_site(site)
+    rows, history = site[4:6]
+    rows[0]['matStatus'] = '已完成'
+    install_completion_view(session.page)
+    snapshot = execute(worker, gateway.snapshot)
+    actor, completed, task = snapshot.account, *snapshot.tasks
+    session.set_personal_writes_enabled(True)
+    assert execute(worker, gateway.show_personal_completion, actor, completed)
+    started = execute(worker, gateway.start_verified, actor, task, personal=True)
+    assert started.stage is Stage.WORKING
+
+    view = session.window.findChild(QWebEngineView)
+    view.setFocus()
+    page_script(session.page, "document.getElementById('matCompletedToggle').focus()")
+    for expanded in ('false', 'true'):
+        QTest.keyClick(view.focusProxy(), Qt.Key.Key_Space)
+        until(lambda: page_script(session.page,
+                                  "document.getElementById('matCompletedToggle').getAttribute('aria-expanded')")
+              == expanded)
+    with pytest.raises(GatewayError, match='原站正在'):
+        execute(worker, gateway.complete_verified, actor, started, personal=True)
+    assert writes(history) == [('/api/start-material', {'ids': [202]})]
+
+
+def test_personal_completion_refresh_failure_keeps_verified_delivery_without_repeating_write(site):
+    session, gateway, worker = open_site(site)
+    rows, history = site[4:6]
+    rows[0]['matStatus'] = '进行中'
+    install_completion_view(session.page)
+    page_script(session.page, 'window.fixtureCompletionView.failRefresh = true')
+    snapshot = execute(worker, gateway.snapshot)
+    actor, task = snapshot.account, snapshot.tasks[0]
+    session.set_personal_writes_enabled(True)
+    completed = execute(worker, gateway.complete_verified, actor, task, personal=True)
+
+    assert not execute(worker, gateway.show_personal_completion, actor, completed)
+    assert page_script(session.page, "document.getElementById('refreshStatus').dataset.state") == 'error'
+    assert execute(worker, gateway.read_submission, actor, completed)
+    assert writes(history) == [('/api/complete-material', {'ids': [201]})]
 
 
 def test_personal_write_stops_when_original_identity_changes_after_reservation(site):

@@ -164,6 +164,7 @@ def test_original_site_delivery_build_upgrades_the_workstation_updater_fix():
     ('v1.0.0.20261125.2', 'v1.0.0.20261125.1', 'WorkBox-1.0.0-Setup-x64-20261125-r2.exe'),
     ('v1.0.0.20261126.1', 'v1.0.0.20261125.2', 'WorkBox-1.0.0-Setup-x64-20261126-r1.exe'),
     ('v1.0.0.20261126.2', 'v1.0.0.20261126.1', 'WorkBox-1.0.0-Setup-x64-20261126-r2.exe'),
+    ('v1.0.0.20261126.3', 'v1.0.0.20261126.2', 'WorkBox-1.0.0-Setup-x64-20261126-r3.exe'),
 ])
 def test_release_upgrades_previous_without_reoffering_installed_or_older(tag, previous, filename):
     payload = {'tag_name': tag, 'draft': False, 'prerelease': False,

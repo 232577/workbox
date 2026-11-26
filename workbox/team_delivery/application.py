@@ -185,6 +185,14 @@ class _Worker(QObject):
             message = self._message(error, '本地交付已保留，暂时无法确认原站结果。')
             status = result(Outcome.PENDING, message)
         self.personal_delivery_finished.emit(status)
+        if status.outcome is Outcome.SUBMITTED:
+            show_completion = getattr(self._gateway, 'show_personal_completion', None)
+            try:
+                if show_completion is not None and _no_office_login(self._workbox):
+                    show_completion(actor, verified)
+            except Exception:
+                # Updating the browser view is independent of the verified delivery receipt.
+                logging.debug('刷新原站完成记录失败', exc_info=True)
 
     def _check_delivery_accounts(self):
         self._guard_pair()
