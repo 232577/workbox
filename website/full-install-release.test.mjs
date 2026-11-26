@@ -10,9 +10,9 @@ const previousR1 = Object.freeze({ version: '1.0.0', tag: 'v1.0.0.20261125.1', e
   sha256: 'ad935dd19d3e2717605492d5d1b9d1212aa3895a26a924eb02d534ff5bb5d295' });
 const previousSource = '5ececd9e3bef310bf08f9805aa2cd71b70d55e14';
 
-test('11月26日r2稳定清单提供校验完整包和当前构建说明', async () => {
-  const tag = 'v1.0.0.20261126.2';
-  const name = 'WorkBox-1.0.0-Setup-x64-20261126-r2.exe';
+test('11月26日r3稳定清单提供校验完整包和当前构建说明', async () => {
+  const tag = 'v1.0.0.20261126.3';
+  const name = 'WorkBox-1.0.0-Setup-x64-20261126-r3.exe';
   const response = await handleRequest(new Request('https://example.com/updates/stable.json'), {});
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('cache-control'), 'no-store');
@@ -23,7 +23,7 @@ test('11月26日r2稳定清单提供校验完整包和当前构建说明', async
   assert.equal(metadata.prerelease, false);
   assert.equal(release.tag, tag);
   assert.equal(release.filename, name);
-  assert.match(metadata.body, /来源提交 327ba5ade2a8a71ac8b045bfea15569772842a49。/);
+  assert.match(metadata.body, /来源提交 711cb675da7423c6ccae77a26a191d744ef54e81。/);
   assert.match(metadata.body, /完整安装包/);
   assert.match(metadata.body, /旧运行库.*可恢复历史/);
   assert.match(metadata.body, /未知文件.*阻止/);
@@ -39,13 +39,13 @@ test('11月26日r2稳定清单提供校验完整包和当前构建说明', async
   });
 });
 
-test('11月25日r1保留原安装包和匹配增量，全部44项旧目录与下载路径保留', async () => {
+test('11月25日r1保留原安装包和匹配增量，全部45项旧目录与下载路径保留', async () => {
   const { deltas, ...full } = releases.find(item => item.tag === previousR1.tag);
   assert.deepEqual(full, previousR1);
   assert.equal(deltas.length, 2);
-  assert.equal(releases.length, 45);
+  assert.equal(releases.length, 46);
   assert.equal(createHash('sha256').update(JSON.stringify(releases.slice(1))).digest('hex'),
-    '43af53dc851c4bf96089679caaefc01c0a10422da336d5ed990dcbd666a71eb3');
+    '2a872a5f28be1da1659a4154afc8342a426a74caa6d980bb16ceecec6f23b887');
   for (const old of releases.slice(1)) {
     const response = await handleRequest(new Request(`https://example.com/download/${old.filename}`, { method: 'HEAD' }), {},
       async (url, options) => {
@@ -72,11 +72,14 @@ test('下载页记录新版来源并保留11月23日r1说明及历史媒体归�
   const lastRelease = releases.find(item => item.tag === 'v1.0.0.20261126.1');
   assert.ok(history.indexOf(`/download/${lastRelease.filename}`) >= 0);
   assert.ok(history.indexOf(`/download/${lastRelease.filename}`) < history.indexOf(`/download/${previousR1.filename}`));
-  assert.match(history, /查看 44 个历史安装包/);
+  const r2 = releases.find(item => item.tag === 'v1.0.0.20261126.2');
+  assert.ok(history.indexOf(`/download/${r2.filename}`) >= 0);
+  assert.ok(history.indexOf(`/download/${r2.filename}`) < history.indexOf(`/download/${lastRelease.filename}`));
+  assert.match(history, /查看 45 个历史安装包/);
   const notes = await readFile(new URL('../RELEASE_NOTES.md', import.meta.url), 'utf8');
   const normalizedNotes = notes.replaceAll('\r\n', '\n');
   const r1Heading = '# WorkBox 工作箱 1.0.0 正式安装版 · 2026-11-25 r1';
-  const startOfHistory = normalizedNotes.indexOf('# WorkBox 工作箱 1.0.0 正式安装版 · 2026-11-26 r1');
+  const startOfHistory = normalizedNotes.indexOf('# WorkBox 工作箱 1.0.0 正式安装版 · 2026-11-26 r2');
   assert.ok(startOfHistory > 0);
   const historicalNotes = normalizedNotes.slice(startOfHistory);
   const r1Notes = historicalNotes.slice(historicalNotes.indexOf(r1Heading)).split('\n---\n')[0];
@@ -92,6 +95,6 @@ test('下载页记录新版来源并保留11月23日r1说明及历史媒体归�
   assert.ok(notes.includes('# WorkBox 工作箱 1.0.0 正式安装版 · 2026-11-13 r2'));
   assert.ok(notes.includes('dfc965b73f2d26e081f16d813e839bf729a79020ee2b5e4ae8b1190210f7d314'));
   assert.equal(createHash('sha256').update(historicalNotes).digest('hex'),
-    '18a4b990571acbb8bf3b4353f5a0747d2b0f3ca96051d8999948f41bb00a61de');
+    '94c0857ad2e41a28537e4df8443fdbc199cc079e1e0c13d466094c25d5797553');
   assert.match(documents['/guide.html'], /来自 v1\.0\.0\.20261109\.4 的同一隔离实例/);
 });

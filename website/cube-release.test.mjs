@@ -12,7 +12,7 @@ test('立方品牌 r3 历史资产身份与当前品牌说明保持', async () =
   });
   const metadata = await (await handleRequest(new Request('https://example.com/updates/stable.json'), {})).json();
   assert.equal(metadata.tag_name, release.tag);
-  assert.ok(metadata.body.includes('来源提交 327ba5ade2a8a71ac8b045bfea15569772842a49。'));
+  assert.ok(metadata.body.includes('来源提交 711cb675da7423c6ccae77a26a191d744ef54e81。'));
   for (const text of [metadata.body,
     archivedReadmes.product,
     archivedReadmes.website,

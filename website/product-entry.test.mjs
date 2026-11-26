@@ -52,5 +52,5 @@ test('当前更新默认只有三项重点，完整旧说明和44个历史包原
   assert.ok(history);
   assert.deepEqual([...history.matchAll(/href="(\/download\/[^"#]+)"/g)].map(match => match[1]),
     releases.slice(1).map(release => `/download/${release.filename}`));
-  assert.match(history, /44 个历史安装包/);
+  assert.match(history, /45 个历史安装包/);
 });

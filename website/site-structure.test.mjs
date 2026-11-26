@@ -59,7 +59,7 @@ test('指南独立承载原演示、操作与来源，历史页面承载全部�
     assert.ok(parseTags(history).some(tag => tag.attrs.id === id), id);
   }
   const links = parseTags(history).filter(tag => tag.name === 'a').map(tag => tag.attrs.href);
-  assert.equal(releases.length, 45, '当前正式版及44个历史版');
+  assert.equal(releases.length, 46, '当前正式版及45个历史版');
   for (const item of releases) assert.ok(links.includes(`/download/${item.filename}`), item.filename);
   assert.ok(history.includes('ff4a336d66adb65c6cfedfb5b258067c703dee69'));
 });

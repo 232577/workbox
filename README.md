@@ -19,14 +19,14 @@ WorkBox 是 Windows 上的项目工作箱。个人项目、材料和交付记录
 升级前备份 data、工作目录、归档目录及全部已登记历史文稿目录。旧个人版可在“高级设置 → 检查更新”里升级。团队试用版和 2026-11-25 r2 需先退出工作箱，再运行新版工作站完整安装包，选原安装目录。从 11 月 26 日 r1 起，工作站可从“高级设置 → 检查更新”获取后续版本。办公室服务器由管理员单独升级。[安装指南](https://workbox.ltxiangzi.dpdns.org/guide.html#installation) · [更新恢复](docs/UPDATE-RECOVERY.md)
 
 <details>
-<summary>2026-11-26 r2 安装包与校验信息</summary>
+<summary>2026-11-26 r3 安装包与校验信息</summary>
 
-[GitHub 备用下载](https://github.com/232577/workbox/releases/tag/v1.0.0.20261126.2)
+[GitHub 备用下载](https://github.com/232577/workbox/releases/tag/v1.0.0.20261126.3)
 
-- 完整安装包 `WorkBox-1.0.0-Setup-x64-20261126-r2.exe`，135,297,929 字节。
-- 11 月 26 日 r1 的程序文件通过校验时，可用 16,189,421 字节的增量包。首次安装或增量不可用时，可使用完整安装包。
-- SHA-256 `d073fe2361c9c40148e4408e351646e5d0e28e4a6212a3e2e66a3523631254bd`
-- 来源提交 `327ba5ade2a8a71ac8b045bfea15569772842a49`
+- 完整安装包 `WorkBox-1.0.0-Setup-x64-20261126-r3.exe`，135,321,834 字节。
+- 11 月 26 日 r2 的程序文件通过校验时，可用 16,196,928 字节的增量包。首次安装或增量不可用时，可使用完整安装包。
+- SHA-256 `ad9de3836fa454497c8aa2f64fe63457dae7a9466492a1cde9077bbc6361eaf7`
+- 来源提交 `711cb675da7423c6ccae77a26a191d744ef54e81`
 - 来源及载荷校验信息见该 Release 的 `BUILD_PROVENANCE.json` 与 `PACKAGE_CONTENTS.sha256`。构建验证范围见发布说明。
 
 </details>
