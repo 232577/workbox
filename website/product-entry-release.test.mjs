@@ -4,11 +4,11 @@ import { readFile } from 'node:fs/promises';
 import { documents } from './public-documents.test-helper.mjs';
 import { handleRequest, release, releaseAssets, releases } from './worker.mjs';
 
-const source = '03d7b85bf22c309aacb0b6e4fd348377eea1163f';
-const tag = 'v1.0.0.20261126.1';
-const filename = 'WorkBox-1.0.0-Setup-x64-20261126-r1.exe';
-const size = 135246058;
-const sha256 = 'a678d21cdd1a51582a0b8273b55d5748dbffa2a43864b41d59fc5923314295bb';
+const source = '327ba5ade2a8a71ac8b045bfea15569772842a49';
+const tag = 'v1.0.0.20261126.2';
+const filename = 'WorkBox-1.0.0-Setup-x64-20261126-r2.exe';
+const size = 135297929;
+const sha256 = 'd073fe2361c9c40148e4408e351646e5d0e28e4a6212a3e2e66a3523631254bd';
 
 const expectedDeltas = [
   {
@@ -31,6 +31,27 @@ const expectedDeltas = [
   }
 ];
 
+test('这是家个人交付说明区分本机收件、提交状态和办公室交接', async () => {
+  const guide = documents['/guide.html'];
+  const personal = guide.match(/<h3 id="personal-site-delivery">([\s\S]*?)<h3/)?.[1];
+  assert.ok(personal);
+  assert.match(personal, /办公室账号未登录时[^<]*本人材料待办/);
+  assert.match(personal, /同名[^<]*编号/);
+  assert.match(personal, /拖入[^<]*Word[^<]*待交付/);
+  assert.match(personal, /确认交付[^<]*本机归档[^<]*材料完成/);
+  assert.match(personal, /Word 原件保留在本机/);
+  const releasePage = documents['/releases.html'];
+  assert.ok(releasePage.includes('/guide.html#personal-site-delivery'));
+  assert.match(releasePage, /预览所选项目/);
+  assert.match(releasePage, /NTFS[^<]*命名数据流/);
+  const metadata = await (await handleRequest(new Request('https://example.com/updates/stable.json'), {})).json();
+  const update = metadata.body.split('\n\n')[0];
+  assert.match(update, /本人材料待办[^。]*个人项目/);
+  assert.match(update, /确认交付[^。]*材料完成/);
+  assert.match(update, /NTFS[^。]*命名数据流/);
+  assert.match(update, /批量交付[^。]*预览所选项目/);
+});
+
 test('首页、指南及发布说明的下载入口和校验值绑定同一个 r2 安装包', async () => {
   assert.equal(release.tag, tag);
   assert.equal(release.filename, filename);
@@ -51,7 +72,7 @@ test('首页、指南及发布说明的下载入口和校验值绑定同一个 r
   const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
   const notes = await readFile(new URL('../RELEASE_NOTES.md', import.meta.url), 'utf8');
   const currentNotes = notes.replaceAll('\r\n', '\n').split('\n---\n')[0];
-  assert.ok(currentNotes.includes('8e44b151ede58a5d47f87afecd74b8b98caee645da099d7faf5a4617ede18805'));
+  assert.ok(currentNotes.includes('c5aed4f0cb672d3ac276ac70aa207d98d5c2acae95db86605e00a5cccccab392'));
   for (const text of [readme, currentNotes]) {
     for (const value of [source, tag, filename, release.sha256, release.size.toLocaleString('en-US')]) assert.ok(text.includes(value), value);
   }
@@ -63,7 +84,35 @@ test('11月25日 r1 的两份来源增量只保留在历史身份下', () => {
   assert.deepEqual(releaseAssets(previous).slice(1), expectedDeltas.map(({ name, size, sha256, url }) => ({
     name, size, state: 'uploaded', digest: `sha256:${sha256}`, browser_download_url: url,
   })));
-  assert.equal(releaseAssets(release).length, 1);
+});
+
+test('11月26日 r2 仅向正式 r1 提供经校验的增量包，完整安装包仍可用', async () => {
+  const delta = {
+    "from_tag": "v1.0.0.20261126.1",
+    "to_tag": "v1.0.0.20261126.2",
+    "name": "WorkBox-1.0.0-Delta-x64-20261126-r1-to-20261126-r2.wbdelta",
+    "size": 16189421,
+    "sha256": "a03fdec9dc4e86a914d0cd60628265f9fee6dc6b7a07259d5672ef53a411e725",
+    "url": "https://github.com/232577/workbox/releases/download/v1.0.0.20261126.2/WorkBox-1.0.0-Delta-x64-20261126-r1-to-20261126-r2.wbdelta",
+    "state": "uploaded"
+  };
+  const response = await handleRequest(new Request('https://example.com/updates/stable.json'), {});
+  const metadata = await response.json();
+  assert.deepEqual(release.deltas, [delta]);
+  assert.deepEqual(metadata.assets.slice(1), [{
+    name: delta.name, size: delta.size, state: 'uploaded',
+    digest: `sha256:${delta.sha256}`, browser_download_url: delta.url,
+  }]);
+  assert.equal(metadata.assets[0].name, filename);
+  const last = releases.find(item => item.tag === delta.from_tag);
+  assert.deepEqual(releaseAssets(last).map(asset => asset.name), ['WorkBox-1.0.0-Setup-x64-20261126-r1.exe']);
+  for (const text of [metadata.body.split('\n\n')[0], documents['/guide.html'], documents['/releases.html']]) {
+    assert.match(text, /从 11 月 26 日 r1 更新时[^。<]*程序文件校验通过可使用增量包/);
+    assert.match(text, /首次安装[^。<]*来源版本不匹配[^。<]*增量不可用[^。<]*完整安装包/);
+  }
+  const notes = await readFile(new URL('../RELEASE_NOTES.md', import.meta.url), 'utf8');
+  const currentNotes = notes.replaceAll('\r\n', '\n').split('\n---\n')[0];
+  for (const value of [delta.name, delta.sha256, '16,189,421']) assert.ok(currentNotes.includes(value), value);
 });
 
 test('当前摘要、指南和更新源说明键盘确认、批量交付及工作量刷新', async () => {
@@ -92,7 +141,7 @@ test('当前摘要、指南和更新源说明键盘确认、批量交付及工�
   assert.match(page, /改名后仍归原批次/);
   assert.match(page, /合并.*沿用保留项目的工作目录/);
   assert.match(page, /完整安装包.*原安装目录/);
-  assert.match(page, /查看 43 个历史安装包/);
+  assert.match(page, /查看 44 个历史安装包/);
   assert.ok(page.includes('/download/WorkBox-1.0.0-Setup-x64-20261123-r1.exe'));
   assert.ok(page.includes('/download/WorkBox-1.0.0-Setup-x64-20261120-r2.exe'));
   assert.ok(page.includes('/download/WorkBox-1.0.0-Setup-x64-20261120-r1.exe'));
@@ -116,6 +165,8 @@ test('当前摘要、指南和更新源说明键盘确认、批量交付及工�
   assert.match(bulkDelivery, /选中至少两个项目.*批量操作.*弹(?:窗|层|出的操作面板)/);
   assert.match(bulkDelivery, /滚动位置.*分栏宽度/);
   assert.match(bulkDelivery, /「设为已交付…」.*「应用」.*确认批量交付/);
+  assert.match(bulkDelivery, /预览所选项目/);
+  assert.match(bulkDelivery, /「批量确认交付」.*「仅确认当前项目交付」/);
   assert.doesNotMatch(bulkDelivery, /(?:开启|勾选)「批量选择」|「多选」/);
   const filtering = guide.match(/<details><summary>项目筛选和操作在哪里？<\/summary>([\s\S]*?)<\/details>/)?.[1];
   assert.match(filtering, /窄窗单击只选中项目.*「查看文件」.*Enter.*打开详情/);
