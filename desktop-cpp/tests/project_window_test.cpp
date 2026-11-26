@@ -91,13 +91,16 @@ void testWindow(const std::filesystem::path& source)
     check(table.model()->rowCount() == 700, "Clearing filters did not restore all rows.");
 
     clickProject(table, 0, Qt::NoModifier);
+    check(containsLabel(*window, QStringLiteral("匿名测试百分比%\n开发中\n批次  Sample 测试批次")),
+          "A project without an active binding must not show an original-site task.");
     clickProject(table, 1, Qt::ControlModifier);
     check(containsLabel(*window, QStringLiteral("已选 2 项")), "Ctrl multi-selection failed.");
     clickProject(table, 0, Qt::NoModifier);
     clickProject(table, 1, Qt::ShiftModifier);
     check(containsLabel(*window, QStringLiteral("已选 2 项")), "Shift range selection failed.");
-    check(containsLabel(*window, QStringLiteral("匿名测试待交件\n待交付\n批次  Sample 测试批次\n截止  2026-12-10")),
-          "The focused project summary was not visible.");
+    check(containsLabel(*window, QStringLiteral("匿名测试待交件\n待交付\n批次  Sample 测试批次\n"
+                                                "截止  2026-12-10\n这是家任务编号  202\n绑定账号  fixture-material")),
+          "The focused project summary did not show its saved original-site binding.");
 
     check(apply->isEnabled(), "Valid selected projects should be actionable.");
     search.setText(QStringLiteral("　aLpHa　"));

@@ -46,6 +46,12 @@ def create_fixture(path: Path, extra_projects: int = 0) -> None:
         connection.execute("INSERT INTO project_deletions(project_id) VALUES (6)")
         connection.execute("""INSERT INTO project_merges(source_id,target_id,operation_id,snapshot_json)
             VALUES (7,1,'prototype-merge','{}')""")
+        connection.executemany("""INSERT INTO original_site_bindings
+            (account_username,task_id,project_id,title,revision,stage) VALUES (?,?,?,?,?,?)""",
+            [("fixture-merged", "207", 7, "匿名已合并", "fixture-r1", "进行中"),
+             ("fixture-material", "202", 3, "匿名测试待交件", "fixture-r2", "进行中"),
+             ("fixture-conflict", "204", 4, "匿名测试已交件", "fixture-r3", "已完成")])
+        connection.execute("INSERT INTO site_task_project_links VALUES ('404',4)")
         connection.execute("""INSERT INTO project_change_blocks
             VALUES (8,'prototype-recovery','待恢复匿名目录')""")
         connection.executemany(
@@ -66,8 +72,12 @@ def run_test(executable: Path, extra_projects: int) -> None:
         incompatible = Path(folder) / "incompatible.db"
         with closing(sqlite3.connect(incompatible)) as db:
             db.execute("PRAGMA user_version=1")
+        legacy = Path(folder) / "legacy.db"
+        with closing(sqlite3.connect(source)) as current, closing(sqlite3.connect(legacy)) as db:
+            current.backup(db)
+            db.execute("DROP VIEW original_site_active_projects")
         before = sha256(source.read_bytes()).digest()
-        subprocess.run([str(executable), str(source), str(incompatible)], check=True)
+        subprocess.run([str(executable), str(source), str(incompatible), str(legacy)], check=True)
         if sha256(source.read_bytes()).digest() != before:
             raise AssertionError("The prototype modified its input database.")
 

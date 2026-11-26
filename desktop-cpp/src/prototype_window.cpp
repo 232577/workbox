@@ -314,6 +314,11 @@ private:
         if (!project.dueDate.empty()) {
             details.append(QStringLiteral("截止  %1").arg(decode(project.dueDate)));
         }
+        if (project.originalSiteBinding) {
+            const auto& binding = *project.originalSiteBinding;
+            details.append(QStringLiteral("这是家任务编号  %1").arg(decode(binding.taskId)));
+            details.append(QStringLiteral("绑定账号  %1").arg(decode(binding.accountUsername)));
+        }
 
         bool blocked = false;
         for (const auto& index : rows) {

@@ -44,10 +44,25 @@ void expectUnreadable(const std::filesystem::path& source) {
     throw std::runtime_error("The store opened a missing or incompatible source.");
 }
 
-int run(const std::filesystem::path& source, const std::filesystem::path& incompatible) {
+int run(const std::filesystem::path& source, const std::filesystem::path& incompatible,
+        const std::filesystem::path& legacy) {
     ProjectStore store(source);
-    check(projectIds(store.listProjects()) == std::vector<Id>{2, 3, 1, 8, 4},
+    const auto projects = store.listProjects();
+    check(projectIds(projects) == std::vector<Id>{2, 3, 1, 8, 4},
           "The list must filter archive/delete/merge and keep priority ordering.");
+    const auto& directBinding = projects.projects[1].originalSiteBinding;
+    check(directBinding && directBinding->taskId == "202" && directBinding->accountUsername == "fixture-material",
+          "The directly linked project must display the saved task and account.");
+    const auto& mergedBinding = projects.projects[2].originalSiteBinding;
+    check(mergedBinding && mergedBinding->taskId == "207" && mergedBinding->accountUsername == "fixture-merged",
+          "The canonical project must inherit its one unambiguous source binding.");
+    check(!projects.projects[0].originalSiteBinding && !projects.projects[4].originalSiteBinding,
+          "An unbound project or a project with a conflicting legacy link must show no binding.");
+    const auto legacyProjects = ProjectStore(legacy).listProjects();
+    check(projectIds(legacyProjects) == projectIds(projects) &&
+              std::none_of(legacyProjects.projects.begin(), legacyProjects.projects.end(),
+                           [](const auto& row) { return row.originalSiteBinding.has_value(); }),
+          "An older database without the binding view must retain rows without implying any binding.");
     check(projectIds(store.listProjects("  aLpHa  ")) == std::vector<Id>{1},
           "Project-name search must trim and ignore ASCII case.");
     check(projectIds(store.listProjects("%")) == std::vector<Id>{2},
@@ -101,10 +116,10 @@ int wmain(int argc, wchar_t* argv[]) {
 int main(int argc, char* argv[]) {
 #endif
     try {
-        if (argc != 3) {
-            throw std::runtime_error("Pass the anonymous and incompatible databases.");
+        if (argc != 4) {
+            throw std::runtime_error("Pass the anonymous, incompatible, and legacy databases.");
         }
-        return run(argv[1], argv[2]);
+        return run(argv[1], argv[2], argv[3]);
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

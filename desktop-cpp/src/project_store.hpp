@@ -8,6 +8,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 struct sqlite3;
@@ -15,6 +16,11 @@ struct sqlite3;
 namespace workbox::prototype {
 
 enum class Status { pending, active, ready, delivered };
+
+struct OriginalSiteBinding {
+    std::string taskId;
+    std::string accountUsername;
+};
 
 struct Project {
     std::int64_t id;
@@ -24,6 +30,7 @@ struct Project {
     std::string dueDate;
     std::string batchName;
     bool blocked;
+    std::optional<OriginalSiteBinding> originalSiteBinding;
 };
 
 struct ProjectListing {
@@ -46,6 +53,7 @@ private:
         void operator()(sqlite3* connection) const noexcept;
     };
     std::unique_ptr<sqlite3, CloseDatabase> connection_;
+    std::unordered_map<std::int64_t, OriginalSiteBinding> originalSiteBindings_;
 };
 
 }  // namespace workbox::prototype

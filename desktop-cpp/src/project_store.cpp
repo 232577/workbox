@@ -209,6 +209,20 @@ ProjectStore::ProjectStore(const std::filesystem::path& source) {
     const Statement schema(snapshot, listingSql);
     const Statement statusFields(snapshot,
                                  "SELECT delivered_at, delivered_zip_id, updated_at FROM projects LIMIT 0");
+    Statement bindingView(snapshot, R"sql(
+        SELECT 1 FROM sqlite_master WHERE type='view' AND name='original_site_active_projects'
+    )sql");
+    if (bindingView.next()) {
+        // Bindings do not change during this prototype's private snapshot session.
+        Statement bindings(snapshot, R"sql(
+            SELECT active_project_id, task_id, account_username FROM original_site_active_projects
+            WHERE task_id<>'' AND account_username<>''
+        )sql");
+        while (bindings.next()) {
+            originalSiteBindings_.emplace(bindings.integer(0),
+                                          OriginalSiteBinding{bindings.text(1), bindings.text(2)});
+        }
+    }
 }
 
 ProjectListing ProjectStore::listProjects(std::string_view search, std::optional<Status> status) const {
@@ -223,9 +237,13 @@ ProjectListing ProjectStore::listProjects(std::string_view search, std::optional
         const auto state = parseStatus(statement.text(2));
         ++result.statusCounts[static_cast<std::size_t>(state)];
         if (!status || state == *status) {
-            result.projects.push_back({statement.integer(0), statement.text(1), state,
+            const auto id = statement.integer(0);
+            const auto binding = originalSiteBindings_.find(id);
+            result.projects.push_back({id, statement.text(1), state,
                                        statement.integer(3) != 0, statement.text(4),
-                                       statement.text(5), statement.integer(6) != 0});
+                                       statement.text(5), statement.integer(6) != 0,
+                                       binding == originalSiteBindings_.end()
+                                           ? std::nullopt : std::optional{binding->second}});
         }
     }
     return result;
