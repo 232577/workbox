@@ -1,6 +1,6 @@
 # WorkBox 工作箱
 
-WorkBox 是 Windows 上的项目工作箱。个人项目、材料和交付记录保存在本机，个人工作台无需账号。使用团队交件时，在工作箱内登录办公室服务和原站。
+WorkBox 是 Windows 上的项目工作箱。个人项目、材料和交付记录保存在本机，个人工作台无需账号。需要办理「这是家」待办时，可在工作箱内登录材料账号。
 
 [下载 Windows 安装版](https://github.com/232577/workbox/releases/latest) · [使用指南](https://workbox.ltxiangzi.dpdns.org/guide.html) · [更新记录](https://workbox.ltxiangzi.dpdns.org/releases.html)
 
@@ -10,7 +10,7 @@ WorkBox 是 Windows 上的项目工作箱。个人项目、材料和交付记录
 
 - **收好材料**：拖入消息、文件或文件夹，复制校验后归入项目，保留原件。
 - **找到当前文件**：按状态、类型、日期和批次筛选；旧稿单独保留。
-- **核对交付**。查看个人项目的进度，导出交付记录。使用团队交件时，拖入按项目全名命名的手册，工具箱核实代码人员可取回同一份 Word 后，再提交原站材料状态。[团队交件使用说明](docs/TEAM-DELIVERY.md)
+- **核对交付**。查看个人项目的进度，导出交付记录。只登录「这是家」时，本人待办进入个人项目。在本机确认交付后，工作箱向对应任务提交材料状态，Word 原件保留在本机。需要把原件交给办公室同事时，登录办公室服务使用团队交件。[个人项目与团队交件说明](docs/TEAM-DELIVERY.md)
 
 ## 安装与更新
 
@@ -19,13 +19,14 @@ WorkBox 是 Windows 上的项目工作箱。个人项目、材料和交付记录
 升级前备份 data、工作目录、归档目录及全部已登记历史文稿目录。旧个人版可在“高级设置 → 检查更新”里升级。团队试用版和 2026-11-25 r2 需先退出工作箱，再运行新版工作站完整安装包，选原安装目录。从 11 月 26 日 r1 起，工作站可从“高级设置 → 检查更新”获取后续版本。办公室服务器由管理员单独升级。[安装指南](https://workbox.ltxiangzi.dpdns.org/guide.html#installation) · [更新恢复](docs/UPDATE-RECOVERY.md)
 
 <details>
-<summary>2026-11-26 r1 安装包与校验信息</summary>
+<summary>2026-11-26 r2 安装包与校验信息</summary>
 
-[GitHub 备用下载](https://github.com/232577/workbox/releases/tag/v1.0.0.20261126.1)
+[GitHub 备用下载](https://github.com/232577/workbox/releases/tag/v1.0.0.20261126.2)
 
-- 完整安装包 `WorkBox-1.0.0-Setup-x64-20261126-r1.exe`，135,246,058 字节。本次更新使用完整安装包。
-- SHA-256 `a678d21cdd1a51582a0b8273b55d5748dbffa2a43864b41d59fc5923314295bb`
-- 来源提交 `03d7b85bf22c309aacb0b6e4fd348377eea1163f`
+- 完整安装包 `WorkBox-1.0.0-Setup-x64-20261126-r2.exe`，135,297,929 字节。
+- 11 月 26 日 r1 的程序文件通过校验时，可用 16,189,421 字节的增量包。首次安装或增量不可用时，可使用完整安装包。
+- SHA-256 `d073fe2361c9c40148e4408e351646e5d0e28e4a6212a3e2e66a3523631254bd`
+- 来源提交 `327ba5ade2a8a71ac8b045bfea15569772842a49`
 - 来源及载荷校验信息见该 Release 的 `BUILD_PROVENANCE.json` 与 `PACKAGE_CONTENTS.sha256`。构建验证范围见发布说明。
 
 </details>
