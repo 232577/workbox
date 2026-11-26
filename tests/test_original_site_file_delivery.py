@@ -24,6 +24,65 @@ def test_regular_drop_after_upstream_rename_keeps_the_bound_local_project(servic
     assert len(service.list_projects()) == 1
 
 
+def test_versionless_word_requires_selection_between_bound_versions(service, site_projects, tmp_path):
+    older = Task('55', '匿名系统V1.0', ACCOUNT.id, Stage.READY, 'r1')
+    newer = Task('56', '匿名系统 V2.0', ACCOUNT.id, Stage.READY, 'r2')
+    site_projects.sync(ACCOUNT, [older, newer])
+    project_id = site_projects.binding_for_task(ACCOUNT, older)
+    source = Path(service.workspaces.get_workspace(project_id)['path']) / '匿名系统.docx'
+    source.write_bytes(b'anonymous work file')
+
+    result = service.receive_path(source)
+
+    assert result['intake_choice'] == str(source)
+    assert {row['original_task_id'] for row in result['routing']['candidates']} == {'55', '56'}
+    assert all(row['status'] == '待开发' for row in service.list_projects())
+
+
+@pytest.mark.parametrize('exact_exists', [False, True])
+def test_wrong_explicit_word_version_cannot_automatically_join_renamed_bound_project(
+    service, site_projects, bind_site_project, tmp_path, exact_exists,
+):
+    project_id = bind_site_project('匿名系统V1.0')
+    plan = service.preview_project_rename(project_id, '匿名系统')
+    service.rename_project(project_id, '匿名系统', expected_token=plan['token'])
+    source_folder = tmp_path
+    if exact_exists:
+        exact = Task('56', '匿名系统 V2.0', ACCOUNT.id, Stage.READY, 'r2')
+        site_projects.sync(ACCOUNT, [exact])
+        exact_id = site_projects.binding_for_task(ACCOUNT, exact)
+        preview = service.preview_project_rename(exact_id, '匿名其他名称')
+        service.rename_project(exact_id, '匿名其他名称', expected_token=preview['token'])
+        source_folder = Path(service.workspaces.get_workspace(project_id)['path'])
+    source = source_folder / '匿名系统 V2.0.docx'
+    source.write_bytes(b'anonymous work file')
+
+    result = service.receive_path(source)
+
+    assert result['intake_choice'] == str(source)
+    assert service.get_project(project_id)['status'] == '待开发'
+
+
+@pytest.mark.parametrize('drop_folder', [False, True])
+def test_versionless_word_in_personal_mode_requires_selection_for_binding_from_other_account(
+    service, bind_site_project, tmp_path, drop_folder,
+):
+    project_id = bind_site_project('匿名系统V1.0')
+    folder = tmp_path / '收到的文件'
+    folder.mkdir()
+    source = folder / '匿名系统.docx'
+    source.write_bytes(b'anonymous work file')
+
+    result = service.receive_path(folder if drop_folder else source, personal_account='current')
+
+    if drop_folder:
+        assert result['needs_choice'] == 1
+        assert result['items'][0]['retry_path'] == str(source)
+    else:
+        assert result['intake_choice'] == str(source)
+    assert service.get_project(project_id)['status'] == '待开发'
+
+
 @pytest.fixture
 def service(tmp_path):
     return DesktopService(tmp_path / 'data' / 'anonymous.db')

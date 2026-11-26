@@ -31,7 +31,7 @@ from workbox.storage.bundle_analyzer import analyze_bundle, bundle_hint
 from workbox.projects.workflow_policy import read_policy, creation_disabled_message
 from workbox.projects.site_task_import import import_site_tasks
 from workbox.projects.text_intake import TextProjectConflict, create_intake_message, resolve_text_projects
-from workbox.projects.project_names import project_name_key
+from workbox.projects.project_names import project_name_key, versionless_project_key
 from functools import wraps
 
 EXTENSIONS = '''
@@ -473,7 +473,7 @@ class DesktopService(WorkBox):
     def file_candidates(self, path):
         return self.file_routing(path)['candidates']
 
-    def file_routing(self, path):
+    def file_routing(self, path, *, personal_account=None):
         source = plain_path(path, allow_network=True)
         all_projects = {row['id']: row for row in self.list_projects(archived=None, deleted=None)}
         registered = [row for row in self.workspaces.list_workspaces(include_archived=True)
@@ -517,16 +517,36 @@ class DesktopService(WorkBox):
             named = match_work_file_projects(source.name, list(all_projects.values()))
         if source.suffix.casefold() == '.docx':
             title = project_name_key(source.stem)
+            file_base = versionless_project_key(source.stem)
             original = {row['id']: row for row in all_projects.values() if row.get('original_task_title')
                         and project_name_key(row['original_task_title']) == title}
+            basis = '文件名匹配已关联的原站任务全名'
+            version_fallback = not original and file_base is None
+            if version_fallback:
+                original = {row['id']: row for row in all_projects.values() if row.get('original_task_title')
+                            and versionless_project_key(row['original_task_title']) == title}
+                basis = '文件名省略已关联原站任务的版本号'
             if original:
                 candidates = {row['id']: row for row in named['candidates']}
                 candidates.update(original)
-                named = dict(candidates=list(candidates.values()), basis='文件名匹配已关联的原站任务全名')
+                named = dict(candidates=list(candidates.values()), basis=basis)
+                if version_fallback and len(original) > 1:
+                    named['requires_choice'] = True
+                if version_fallback and personal_account and any(
+                        row['original_account_username'] != personal_account for row in original.values()):
+                    named.update(requires_choice=True,
+                                 basis=basis + '，涉及其他原站账号的项目，请明确选择')
+            if file_base is not None:
+                candidates = {row['id']: row for row in named['candidates'] + inside}
+                if any(project_name_key(row['original_task_title']) != title
+                       and versionless_project_key(row['original_task_title']) == file_base
+                       for row in candidates.values()):
+                    named = dict(candidates=list(candidates.values()), requires_choice=True,
+                                 basis='文件名与已关联的原站任务版本不同，请明确选择')
         if any(row.get('archived_at') or row.get('deleted_at') for row in named['candidates']):
             return dict(candidates=[row for row in named['candidates'] if not row.get('archived_at') and not row.get('deleted_at')],
                 basis=named['basis'] + '，涉及已归档或已删除项目，请恢复项目或人工选择', requires_choice=True)
-        if not inside:
+        if not inside or named.get('requires_choice'):
             return named
         if not named['candidates']:
             return dict(candidates=inside, basis='已登记的项目工作目录')
@@ -630,7 +650,8 @@ class DesktopService(WorkBox):
             return metadata
 
     @_serialized_storage
-    def receive_path(self, path, project_id=None, *, cancel_event=None, progress=None, manual=None, folder_items=None):
+    def receive_path(self, path, project_id=None, *, cancel_event=None, progress=None, manual=None,
+                     folder_items=None, personal_account=None):
         """在后台判断文件/目录与归属；需要人工选择时返回事实，界面线程再提问。"""
         routing = {}
         try:
@@ -646,11 +667,11 @@ class DesktopService(WorkBox):
             if source.is_dir():
                 from workbox.storage.folder_intake import FolderIntake
                 result = FolderIntake(self).receive(source, project_id, cancel_event=cancel_event,
-                    progress=progress, manual=manual)
+                    progress=progress, manual=manual, personal_account=personal_account)
                 result['manual_choice_attempted'] = manual is True
                 return result
             if project_id is None and not self.is_bundle_candidate(source.name):
-                routing = self.file_routing(source)
+                routing = self.file_routing(source, personal_account=personal_account)
                 candidates = routing['candidates']
                 if routing.get('requires_choice') or len(candidates) > 1:
                     self.record_file_decision(source, 'needs-choice', routing)
@@ -665,10 +686,11 @@ class DesktopService(WorkBox):
             self.record_file_decision(path, 'cancelled' if isinstance(error, CancelledError) else 'failed',
                 routing, project_id=project_id, manual=manual, message=str(error))
             raise
-        return self.receive_file(source, project_id, cancel_event=cancel_event, progress=progress, manual=manual)
+        return self.receive_file(source, project_id, cancel_event=cancel_event, progress=progress, manual=manual,
+                                 personal_account=personal_account)
 
     @_serialized_storage
-    def receive_file(self, path, project_id=None, *, cancel_event=None, progress=None, manual=None):
+    def receive_file(self, path, project_id=None, *, cancel_event=None, progress=None, manual=None, personal_account=None):
         ordinary = Path(path).suffix.casefold() != '.zip'
         routing, failure_status, created = {}, 'failed', {}
         try:
@@ -683,7 +705,7 @@ class DesktopService(WorkBox):
             with ZipLease(source, movable=False) as lease:
                 if not ordinary:
                     _zip_structure(lease.stream, cancel_event)
-            routing = self.file_routing(source)
+            routing = self.file_routing(source, personal_account=personal_account)
             if routing.get('requires_choice') and (project_id is None or manual is False):
                 failure_status = 'needs-choice'
                 raise ValueError('文件归属未确定，请恢复已归档项目或选择文件对应的项目。')
@@ -726,7 +748,7 @@ class DesktopService(WorkBox):
                     if not name or len(name) > 200:
                         raise ValueError('项目名称需要 1 至 200 个字符，请调整文件名。')
                     created = self._capture_file_projects(source, [name])
-                    routing = self.file_routing(source)
+                    routing = self.file_routing(source, personal_account=personal_account)
                     choices = routing['candidates']
                     if len(choices) != 1 or routing.get('requires_choice') or not created['project_ids']:
                         failure_status = 'needs-choice'
