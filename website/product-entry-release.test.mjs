@@ -4,11 +4,11 @@ import { readFile } from 'node:fs/promises';
 import { documents } from './public-documents.test-helper.mjs';
 import { handleRequest, release, releaseAssets, releases } from './worker.mjs';
 
-const source = 'd337659261024ad3634154f75da26bcb49ac5a2c';
-const tag = 'v1.0.0.20261125.2';
-const filename = 'WorkBox-1.0.0-Setup-x64-20261125-r2.exe';
-const size = 135264533;
-const sha256 = '04d5a420c363a8ad19f028ab21e86596c2e7088fe0183a8e952164ee9c21463b';
+const source = '03d7b85bf22c309aacb0b6e4fd348377eea1163f';
+const tag = 'v1.0.0.20261126.1';
+const filename = 'WorkBox-1.0.0-Setup-x64-20261126-r1.exe';
+const size = 135246058;
+const sha256 = 'a678d21cdd1a51582a0b8273b55d5748dbffa2a43864b41d59fc5923314295bb';
 
 const expectedDeltas = [
   {
@@ -38,7 +38,7 @@ test('首页、指南及发布说明的下载入口和校验值绑定同一个 r
   assert.equal(release.sha256, sha256);
   assert.equal(release.version, '1.0.0');
   assert.equal(release.edition, '正式安装版');
-  assert.equal(release.date, '2026-11-25');
+  assert.equal(release.date, '2026-11-26');
   assert.notEqual(release.sha256, releases[1].sha256, '新安装包不能复用旧摘要');
   const home = documents['/index.html'];
   assert.equal([...home.matchAll(/class="[^\"]*download-link[^\"]*" href="([^"#]+)"/g)]
@@ -51,7 +51,7 @@ test('首页、指南及发布说明的下载入口和校验值绑定同一个 r
   const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
   const notes = await readFile(new URL('../RELEASE_NOTES.md', import.meta.url), 'utf8');
   const currentNotes = notes.replaceAll('\r\n', '\n').split('\n---\n')[0];
-  assert.ok(currentNotes.includes('b4639fa8e41cb63fe3a62ed5bc96005e14e6ada7fdad7c5597f1f8d4d1056a35'));
+  assert.ok(currentNotes.includes('8e44b151ede58a5d47f87afecd74b8b98caee645da099d7faf5a4617ede18805'));
   for (const text of [readme, currentNotes]) {
     for (const value of [source, tag, filename, release.sha256, release.size.toLocaleString('en-US')]) assert.ok(text.includes(value), value);
   }
@@ -92,7 +92,7 @@ test('当前摘要、指南和更新源说明键盘确认、批量交付及工�
   assert.match(page, /改名后仍归原批次/);
   assert.match(page, /合并.*沿用保留项目的工作目录/);
   assert.match(page, /完整安装包.*原安装目录/);
-  assert.match(page, /查看 42 个历史安装包/);
+  assert.match(page, /查看 43 个历史安装包/);
   assert.ok(page.includes('/download/WorkBox-1.0.0-Setup-x64-20261123-r1.exe'));
   assert.ok(page.includes('/download/WorkBox-1.0.0-Setup-x64-20261120-r2.exe'));
   assert.ok(page.includes('/download/WorkBox-1.0.0-Setup-x64-20261120-r1.exe'));
