@@ -32,6 +32,9 @@ from workbox.projects.workflow_policy import (
 from workbox.storage.document_versions import DocumentVersions
 
 
+MAX_PROJECTS_PER_WORKSPACE_CALL = 500
+
+
 def _workspace_operation(method):
     @wraps(method)
     def guarded(self, *args, **kwargs):
@@ -380,7 +383,8 @@ class WorkspaceManager:
 
     @_workspace_operation
     def ensure_projects(self, project_ids):
-        if not project_ids or len(project_ids) > 500 or any(type(pid) is not int or pid < 1 for pid in project_ids):
+        if (not project_ids or len(project_ids) > MAX_PROJECTS_PER_WORKSPACE_CALL
+                or any(type(pid) is not int or pid < 1 for pid in project_ids)):
             raise ValueError('请选择 1 至 500 个有效项目。')
         ids = list(dict.fromkeys(project_ids))
         groups, result, created = OrderedDict(), {}, []

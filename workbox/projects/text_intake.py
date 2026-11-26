@@ -9,6 +9,47 @@ class TextProjectConflict(ValueError):
     """The entire receipt must remain pending, without partial project creation."""
 
 
+def read_project_name_index(connection):
+    """Read canonical rows and their complete current and historical names."""
+    entries = [dict(r) for r in connection.execute('''SELECT p.id,p.name,p.status,
+        d.archived_at,x.deleted_at,cb.reason AS block_reason FROM projects p
+        LEFT JOIN project_details d ON d.project_id=p.id
+        LEFT JOIN project_deletions x ON x.project_id=p.id
+        LEFT JOIN project_change_blocks cb ON cb.project_id=p.id
+        WHERE NOT EXISTS(SELECT 1 FROM project_merges m WHERE m.source_id=p.id)
+        ORDER BY p.id''')]
+    by_id = {r['id']: r for r in entries}
+    current, aliases = {}, {}
+    for row in entries:
+        current.setdefault(normalized_name(row['name']), {})[row['id']] = row
+    for alias in connection.execute('''SELECT a.name,c.canonical_id FROM project_name_aliases a
+            JOIN project_canonical c ON c.project_id=a.project_id'''):
+        if alias['canonical_id'] in by_id:
+            aliases.setdefault(normalized_name(alias['name']), {})[alias['canonical_id']] = by_id[alias['canonical_id']]
+    return by_id, current, aliases
+
+
+def project_name_block(row):
+    if row['deleted_at']:
+        return '已删除'
+    if row['archived_at']:
+        return '已归档'
+    if row['block_reason']:
+        return '工作目录待恢复'
+    return ''
+
+
+def create_intake_message(connection, batch_name, raw_text):
+    original_name, suffix = batch_name, 1
+    while connection.execute('SELECT 1 FROM batches WHERE name=?', (batch_name,)).fetchone():
+        suffix += 1
+        batch_name = f'{original_name} ({suffix})'
+    batch_id = connection.execute('INSERT INTO batches(name) VALUES (?)', (batch_name,)).lastrowid
+    message_id = connection.execute('INSERT INTO messages(batch_id,raw_text) VALUES (?,?)',
+                                    (batch_id, raw_text)).lastrowid
+    return batch_id, batch_name, message_id
+
+
 def resolve_text_projects(connection, projects):
     """Read-only plan within the caller's BEGIN IMMEDIATE transaction.
 
@@ -26,21 +67,7 @@ def resolve_text_projects(connection, projects):
         prior = names.get(key)
         names[key] = ParsedProject(prior.name if prior else project.name.strip(),
                                    project.urgent or bool(prior and prior.urgent))
-    entries = [dict(r) for r in connection.execute('''SELECT p.id,p.name,p.status,
-        d.archived_at,x.deleted_at,cb.reason AS block_reason FROM projects p
-        LEFT JOIN project_details d ON d.project_id=p.id
-        LEFT JOIN project_deletions x ON x.project_id=p.id
-        LEFT JOIN project_change_blocks cb ON cb.project_id=p.id
-        WHERE NOT EXISTS(SELECT 1 FROM project_merges m WHERE m.source_id=p.id)
-        ORDER BY p.id''')]
-    by_id = {r['id']: r for r in entries}
-    current, aliases = {}, {}
-    for row in entries:
-        current.setdefault(normalized_name(row['name']), {})[row['id']] = row
-    for alias in connection.execute('''SELECT a.name,c.canonical_id FROM project_name_aliases a
-            JOIN project_canonical c ON c.project_id=a.project_id'''):
-        if alias['canonical_id'] in by_id:
-            aliases.setdefault(normalized_name(alias['name']), {})[alias['canonical_id']] = by_id[alias['canonical_id']]
+    _, current, aliases = read_project_name_index(connection)
     planned = []
     for key, project in names.items():
         matches = list((current.get(key) or aliases.get(key) or {}).values())
@@ -48,8 +75,8 @@ def resolve_text_projects(connection, projects):
             choices = '、'.join(f"#{r['id']}（{r['status']}）" for r in matches[:8])
             raise TextProjectConflict(f'“{project.name}”已有多个同名项目：{choices}。请先核对并合并重名项目，或修正本次名称；未新建任何项目。')
         row = matches[0] if matches else None
-        if row and (row['archived_at'] or row['deleted_at'] or row['block_reason']):
-            state = '已删除' if row['deleted_at'] else ('已归档' if row['archived_at'] else '工作目录待恢复')
+        state = project_name_block(row) if row else ''
+        if state:
             raise TextProjectConflict(f'“{project.name}”的同名项目 #{row["id"]} {state}。请先恢复或核对，未新建任何项目。')
         planned.append((project, row['id'] if row else None))
     return planned

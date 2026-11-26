@@ -349,6 +349,7 @@ class CompactPanel(DropSurface, QWidget):
     task_text_requested = Signal(str, object, bool)
     classification_requested = Signal()
     pending_export_requested = Signal()
+    personal_project_sync_requested = Signal(object)
     project_table_export_requested = Signal(object, str)
 
     def __init__(self, service):
@@ -1075,7 +1076,8 @@ class CompactPanel(DropSurface, QWidget):
                     material_root.mkdir(exist_ok=True)
                 journal = staging_journal(directory, material_root)
                 page = DesktopWindow()
-                controller = IntakeController(page, LIVE_SITE_URL, material_root, journal, settings=settings)
+                controller = IntakeController(page, LIVE_SITE_URL, material_root, journal, settings=settings,
+                                              personal_sync_enabled=True)
             except (ValueError, OSError) as error:
                 self.show_notice(f'团队交件未打开，请检查工作箱数据目录。{error}')
                 return
@@ -1085,6 +1087,7 @@ class CompactPanel(DropSurface, QWidget):
             container.setWidget(page)
             self.team_page_container, self.team_page, self.team_controller = container, page, controller
             self.tabs.addTab(container, '团队交件')
+            controller.personal_sync_requested.connect(self.personal_project_sync_requested)
             controller.start()
         self.tabs.setCurrentWidget(self.team_page_container)
         if filename:
