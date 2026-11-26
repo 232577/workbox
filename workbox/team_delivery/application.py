@@ -35,6 +35,7 @@ class PreparedManual:
 
 class _Worker(QObject):
     snapshot_ready = Signal(object)
+    personal_sync_ready = Signal(object, str)
     result_ready = Signal(object)
     read_failed = Signal(str)
     read_deferred = Signal(object, str)
@@ -160,14 +161,14 @@ class _Worker(QObject):
         finally:
             self.idle.emit()
 
-    def _refresh_tasks(self, *, passive: bool = False) -> bool:
+    def _refresh_tasks(self, *, passive: bool = False) -> Snapshot | None:
         try:
             if passive:
                 snapshot = self._gateway.poll_snapshot()
             else:
                 snapshot = self._gateway.refresh_snapshot()
             self._publish_snapshot(snapshot)
-            return True
+            return snapshot
         except RefreshDeferred as error:
             try:
                 self._observe_accounts(str(error))
@@ -175,7 +176,7 @@ class _Worker(QObject):
                 self._report_read_failure(account_error)
         except Exception as error:
             self._report_read_failure(error)
-        return False
+        return None
 
     def _publish_snapshot(self, snapshot: Snapshot) -> None:
         self._last_account = snapshot.account
@@ -223,6 +224,27 @@ class _Worker(QObject):
             self.read_failed.emit(self._message(error, '暂时无法读取项目，请重新打开登录页后刷新。'))
         finally:
             (self.poll_finished if automatic else self.idle).emit()
+
+    def prepare_personal_sync(self, expected: Account) -> None:
+        try:
+            self._connect()
+            snapshot = self._refresh_tasks()
+            if snapshot is None:
+                raise GatewayError('暂时无法核对最新待办，请刷新后重试。')
+            if snapshot.account != expected or expected.role != 'material':
+                raise GatewayError('这是家账号已变化，请核对当前待办后重试。')
+            tasks = tuple((task.id, task.title) for task in snapshot.tasks
+                          if task.owner_id == expected.id and task.stage in MATERIAL_PREPARATION_STAGES)
+            if not tasks:
+                raise GatewayError('当前没有可同步的材料待办。')
+            if len({task_id for task_id, _ in tasks}) != len(tasks):
+                raise GatewayError('原站任务编号重复，请刷新后重试。')
+        except Exception as error:
+            self.personal_sync_ready.emit((), self._message(error, '暂时无法核对这是家待办。'))
+        else:
+            self.personal_sync_ready.emit(tasks, '')
+        finally:
+            self.idle.emit()
 
     def check_login(self) -> None:
         try:
@@ -377,9 +399,10 @@ class _Worker(QObject):
 class IntakeController(QObject):
     snapshot_changed = Signal(object)
     result_ready = Signal(object)
+    personal_sync_requested = Signal(object)
 
     def __init__(self, window, url: str, material_root: Path | None, journal_path: Path, *, settings: Path,
-                 gateway=None):
+                 gateway=None, personal_sync_enabled: bool = False):
         super().__init__(window)
         self._window = window
         self._snapshot = Snapshot(None)
@@ -390,6 +413,7 @@ class IntakeController(QObject):
         self._last_refresh_started = float('-inf')
         self._login_check_until = 0.0
         self._waiting_workbox = False
+        self._personal_sync_account: Account | None = None
         self._last_drop = None
         self._ask_for_project = False
         self._settings = settings
@@ -415,6 +439,10 @@ class IntakeController(QObject):
         self._worker.idle.connect(self._idle, Qt.ConnectionType.QueuedConnection)
         self._worker.poll_finished.connect(self._poll_finished, Qt.ConnectionType.QueuedConnection)
         window.refresh_requested.connect(self.refresh)
+        if personal_sync_enabled:
+            self._worker.personal_sync_ready.connect(self._forward_personal_sync, Qt.ConnectionType.QueuedConnection)
+            window.personal_sync_requested.connect(self._request_personal_sync)
+            window.enable_personal_sync()
         window.shown.connect(self._page_shown)
         QGuiApplication.instance().applicationStateChanged.connect(self._application_state_changed)
         window.login_requested.connect(self.open_login)
@@ -442,6 +470,7 @@ class IntakeController(QObject):
 
     def stop(self) -> None:
         self._timer.stop()
+        self._personal_sync_account = None
         if self._office_connection:
             self._office_connection.close()
         if self._site_session is not None:
@@ -476,6 +505,37 @@ class IntakeController(QObject):
         if self._admit():
             self._last_refresh_started = monotonic()
             self._commands.put((self._worker.refresh, ()))
+
+    @Slot()
+    def _request_personal_sync(self) -> None:
+        account = self._snapshot.account
+        if self._personal_sync_account is not None:
+            return
+        if not self._current_readable or account is None or account.role != 'material':
+            self.set_personal_sync_result('请先刷新并确认当前材料账号。')
+        elif self._admit():
+            self._personal_sync_account = account
+            self._last_refresh_started = monotonic()
+            self._window.set_personal_sync_status('正在核对这是家待办…', pending=True)
+            self._commands.put((self._worker.prepare_personal_sync, (account,)))
+
+    @Slot(object, str)
+    def _forward_personal_sync(self, tasks, message: str) -> None:
+        if self._personal_sync_account is None:
+            return
+        if not message and self._snapshot.account != self._personal_sync_account:
+            message = '这是家账号已变化，请核对当前待办后重试。'
+        if message:
+            self.set_personal_sync_result(message)
+        else:
+            self._window.set_personal_sync_status('正在同步到个人项目…', pending=True)
+            self.personal_sync_requested.emit(tasks)
+
+    def set_personal_sync_result(self, message: str) -> None:
+        if self._personal_sync_account is not None and self._snapshot.account != self._personal_sync_account:
+            message = '这是家账号已变化，请核对当前待办后重试。'
+        self._personal_sync_account = None
+        self._window.set_personal_sync_status(message, pending=False)
 
     @Slot()
     def _page_shown(self) -> None:
