@@ -179,6 +179,84 @@ def test_projects_are_left_and_selected_documents_are_right(panel,qapp):
         assert pane.open_button.mapTo(pane,pane.open_button.rect().bottomLeft()).y() < pane.table.geometry().top(), '文件操作应靠近表头且不遮挡数据'
 
 
+def test_ctrl_selection_previews_the_focused_project_and_blocks_single_project_actions(panel, qapp):
+    panel.resize(1100, 700)
+    panel.show_project_queue()
+    workspace = Path(panel.service.workspaces.get_workspace(2)['path'])
+    panel.service.receive_file(workspace / '乙说明.docx', project_id=2)
+    for pid in (1, 2):
+        panel.service.set_status(pid, '待交付')
+    panel.refresh()
+    view, pane = panel.project_list, panel.document_pane
+    items = {view.item(i).data(Qt.UserRole): view.item(i) for i in range(view.count())}
+    choose(panel, 1)
+    wait(lambda: pane.worker is None and pane.table.rowCount() == 1)
+    qapp.processEvents()
+
+    QTest.mouseClick(view.viewport(), Qt.LeftButton, Qt.ControlModifier,
+                     view.visualItemRect(items[2]).center())
+    assert {item.data(Qt.UserRole) for item in view.selectedItems()} == {1, 2}
+    assert panel.current_project is None
+    assert pane.project_id == 2
+    assert panel.project_title.text() == '文档乙系统' and '已选 2 项' in panel.project_metadata.text()
+    wait(lambda: pane.worker is None and pane.table.rowCount() == 1)
+    assert pane.table.item(0, 0).text() == '乙说明.docx'
+    assert not panel.confirm_delivery_button.isEnabled() and not panel.project_actions_button.isVisible()
+    pane.table.selectRow(0)
+    assert pane.open_button.isEnabled() and pane.folder_action.isEnabled() and pane.history_action.isEnabled()
+    assert not pane.team_action.isEnabled() and not pane.archive_history_action.isEnabled()
+    transfers, archived = QSignalSpy(pane.team_requested), QSignalSpy(pane.history_archive_requested)
+    pane.request_team_delivery()
+    pane.request_archive_history()
+    assert transfers.count() == archived.count() == 0
+
+    QTest.mouseClick(view.viewport(), Qt.LeftButton, Qt.ControlModifier,
+                     view.visualItemRect(items[1]).center())
+    assert view.currentItem() is items[1] and not items[1].isSelected()
+    assert panel.current_project['id'] == pane.project_id == 2
+    assert panel.project_title.text() == '文档乙系统' and '已选' not in panel.project_metadata.text()
+    assert panel.confirm_delivery_button.isEnabled() and panel.project_actions_button.isVisible()
+    wait(lambda: pane.worker is None and pane.table.rowCount() == 1)
+    pane.table.selectRow(0)
+    assert pane.team_action.isEnabled() and pane.archive_history_action.isEnabled(), (
+        pane.current_document(), pane._preview_only, pane.table.currentRow())
+
+
+def test_keyboard_focus_changes_preview_without_changing_batch_selection(panel):
+    panel.resize(1100, 700)
+    panel.show_project_queue()
+    view, pane = panel.project_list, panel.document_pane
+    view.setCurrentRow(0)
+    view.selectAll()
+    view.setFocus()
+    QTest.keyClick(view, Qt.Key_Down, Qt.ControlModifier)
+    assert len(view.selectedItems()) == 2
+    assert view.currentRow() == 1
+    assert pane.project_id == view.currentItem().data(Qt.UserRole)
+    title = panel.project_title.text()
+    panel.refresh()
+    assert panel.project_title.text() == title
+    assert pane.project_id == view.currentItem().data(Qt.UserRole)
+
+
+def test_batch_preview_uses_only_selected_files_on_a_narrow_window(panel):
+    panel.resize(660, 492)
+    panel.show_project_queue()
+    view, pane = panel.project_list, panel.document_pane
+    QTest.qWait(60)
+    choose(panel, 1)
+    view.selectAll()
+    assert panel.project_side.isVisible() and not panel.document_side.isVisible()
+    assert panel.project_detail_button.isVisible()
+    panel.project_detail_button.click()
+    assert panel.document_side.isVisible() and panel.project_back_button.isVisible()
+    wait(lambda: pane.worker is None and pane.table.rowCount() == 1)
+    assert pane.project_id == 1 and pane.table.item(0, 0).text() == '甲说明.txt'
+    assert not panel.project_actions_button.isVisible()
+    panel.project_back_button.click()
+    assert panel.project_side.isVisible() and len(view.selectedItems()) == 2
+
+
 def test_document_columns_drag_and_keep_user_width_when_window_changes(panel, qapp):
     choose(panel, 1)
     pane = panel.document_pane
@@ -340,7 +418,8 @@ def test_open_document_requires_explicit_action_and_never_runs_program_files(pan
     assert len(opened)==1 and located==[str(executable.parent)]
 
 
-def test_late_document_load_cannot_replace_the_new_project(panel,monkeypatch):
+@pytest.mark.parametrize('batch_preview', [False, True])
+def test_late_document_load_cannot_replace_the_new_project(panel, monkeypatch, batch_preview):
     from threading import Event
     from workbox.desktop import project_documents_ui
     original=project_documents_ui.list_project_documents
@@ -354,7 +433,14 @@ def test_late_document_load_cannot_replace_the_new_project(panel,monkeypatch):
     monkeypatch.setattr(project_documents_ui,'list_project_documents',delayed)
     choose(panel,1)
     wait(entered.is_set)
-    choose(panel,2)
+    if batch_preview:
+        view = panel.project_list
+        second = next(view.item(row) for row in range(view.count())
+                      if view.item(row).data(Qt.UserRole) == 2)
+        QTest.mouseClick(view.viewport(), Qt.LeftButton, Qt.ControlModifier, view.visualItemRect(second).center())
+        assert len(view.selectedItems()) == 2
+    else:
+        choose(panel, 2)
     release.set()
     pane=panel.document_pane
     wait(lambda:pane.worker is None and pane.table.rowCount()==1)
