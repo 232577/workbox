@@ -3,7 +3,9 @@
 import importlib
 import importlib.util
 import errno
+import hashlib
 import json
+import os
 import threading
 from concurrent.futures import CancelledError
 from pathlib import Path
@@ -11,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from workbox.app import WorkBox
+from workbox.projects.archive_facts import delivery_archive_facts
 from workbox.storage.workspace_manager import WorkspaceManager
 
 
@@ -50,6 +53,94 @@ def test_word_only_project_is_copied_then_delivered_with_manifest(context):
         record = connection.execute('SELECT * FROM project_delivery_archives').fetchone()
         assert json.loads(record['manifest']) == stored['manifest']
         assert record['signature'] == stored['signature']
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows named data streams')
+def test_delivery_preserves_named_streams_without_changing_an_earlier_archive(context):
+    service, workspaces, ids, root = context
+    source = root / '材料.docx'
+    content = b'isolated Word fixture'
+    source.write_bytes(content)
+    manager = archive_class()(service, workspaces)
+    prior = manager.confirm(ids[0], confirmed=True)['archive']
+    prior_copy = Path(prior['path']) / source.name
+    assert 'streams' not in prior['manifest'][0]
+    streams = {
+        'Zone.Identifier': b'[ZoneTransfer]\r\nZoneId=3\r\n',
+        'ImportedMetadata': b'fixture\x00metadata',
+        'EmptyMetadata': b'',
+    }
+    for name, value in streams.items():
+        Path(f'{source}:{name}').write_bytes(value)
+    service.set_status(ids[0], '待交付')
+
+    result = manager.confirm(ids[0], confirmed=True)
+
+    archive = result['archive']
+    copied = Path(archive['path']) / source.name
+    assert archive['id'] != prior['id']
+    assert source.read_bytes() == copied.read_bytes() == prior_copy.read_bytes() == content
+    assert archive['manifest'][0]['streams'] == {
+        name: {'size': len(value), 'sha256': hashlib.sha256(value).hexdigest()}
+        for name, value in streams.items()
+    }
+    for name, value in streams.items():
+        assert Path(f'{source}:{name}').read_bytes() == Path(f'{copied}:{name}').read_bytes() == value
+        assert not Path(f'{prior_copy}:{name}').exists()
+    assert service.db.get_project(ids[0])['status'] == '已交付'
+    events = service.db.delivery_events_for_project(ids[0])
+    with service.db.connect() as connection:
+        assert [fact['count'] for fact in delivery_archive_facts(connection, events).values()] == [1, 1]
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows named data streams')
+def test_delivery_does_not_reuse_archive_when_a_named_stream_was_changed(context):
+    service, workspaces, ids, root = context
+    source = root / '材料.docx'
+    source.write_bytes(b'isolated document')
+    Path(f'{source}:ImportedMetadata').write_bytes(b'original metadata')
+    manager = archive_class()(service, workspaces)
+    archive = manager.confirm(ids[0], confirmed=True)['archive']
+    copied = Path(archive['path']) / source.name
+    altered_stream = Path(f'{copied}:ImportedMetadata')
+    altered_stream.write_bytes(b'altered metadata')
+    service.set_status(ids[0], '待交付')
+
+    with pytest.raises(ValueError, match='材料归档副本缺失、内容变化或存在额外文件'):
+        manager.confirm(ids[0], confirmed=True)
+
+    assert altered_stream.read_bytes() == b'altered metadata'
+    assert Path(f'{source}:ImportedMetadata').read_bytes() == b'original metadata'
+    assert service.db.get_project(ids[0])['status'] == '待交付'
+    assert len(service.db.delivery_events_for_project(ids[0])) == 1
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows named data streams')
+def test_delivery_can_retry_after_a_source_stream_changed_before_copy(context, monkeypatch):
+    service, workspaces, ids, root = context
+    source = root / '材料.docx'
+    source.write_bytes(b'isolated document')
+    metadata = Path(f'{source}:ImportedMetadata')
+    metadata.write_bytes(b'expected metadata')
+    manager = archive_class()(service, workspaces)
+    copy = manager._copy
+
+    def copy_during_source_change(*args, **kwargs):
+        metadata.write_bytes(b'interrupted metadata update')
+        try:
+            return copy(*args, **kwargs)
+        finally:
+            metadata.write_bytes(b'expected metadata')
+
+    with monkeypatch.context() as patch:
+        patch.setattr(manager, '_copy', copy_during_source_change)
+        with pytest.raises((ValueError, RuntimeError)):
+            manager.confirm(ids[0], confirmed=True)
+    assert service.db.get_project(ids[0])['status'] == '待交付'
+
+    archive = manager.confirm(ids[0], confirmed=True)['archive']
+
+    assert Path(f'{Path(archive["path"]) / source.name}:ImportedMetadata').read_bytes() == b'expected metadata'
 
 
 def test_manual_confirmation_is_required_before_copying(context):

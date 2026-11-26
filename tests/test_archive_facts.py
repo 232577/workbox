@@ -43,12 +43,11 @@ def file_item(path='docs/a.txt'):
 
 
 def material(connection, manifest, *, archive_id=31, project_id=1, path='Z:/anonymous/files', signature=None):
-    from workbox.storage.delivery_archive import _signature
+    from workbox.projects.archive_facts import material_archive_signature
 
     if signature is None:
         try:
-            files = [item for item in manifest if not item['path'].endswith('/')]
-            signature = _signature(files)
+            signature = material_archive_signature(manifest)
         except (TypeError, KeyError, AttributeError):
             signature = 'b' * 64
     connection.execute('INSERT INTO project_delivery_archives VALUES (?,?,?,?,?)',

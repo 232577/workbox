@@ -11,6 +11,7 @@ import hashlib
 import os
 import stat
 from concurrent.futures import CancelledError
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
 
@@ -48,6 +49,13 @@ def _windows_path(path: str | Path) -> str:
     if value.startswith('\\\\'):
         return '\\\\?\\UNC\\' + value[2:]
     return '\\\\?\\' + value
+
+
+def named_data_stream_path(path: Path, name: str) -> str:
+    """Build a path for a stream enumerated on an already validated file."""
+    if not name or any(character in name for character in ':\\/\x00'):
+        raise ValueError('命名数据流名称无效，无法安全复制。')
+    return _windows_path(path) + f':{name}:$DATA'
 
 
 def path_is_within(path: str | Path, root: str | Path) -> bool:
@@ -199,9 +207,7 @@ class ZipLease:
         if not self.api.SetFileInformationByHandle(self.handle, 4, ctypes.byref(disposition), 1):
             raise ctypes.WinError(ctypes.get_last_error())
 
-    def zone_metadata(self):
-        """Preserve Mark-of-the-Web on a cross-volume move; refuse unknown streams."""
-        import msvcrt
+    def _stream_names(self):
         from ctypes import wintypes as w
         class StreamData(ctypes.Structure):
             _fields_ = [('StreamSize', ctypes.c_longlong), ('StreamName', w.WCHAR * 296)]
@@ -216,9 +222,9 @@ class ZipLease:
         if finder == ctypes.c_void_p(-1).value:
             error = ctypes.get_last_error()
             if error in (1, 38):  # no stream support / no stream found
-                return None
+                return []
             if error in (50, 87) and _volume_supports_named_streams(self.path, self.api) is False:
-                return None
+                return []
             raise ctypes.WinError(error)
         names = []
         try:
@@ -231,11 +237,22 @@ class ZipLease:
                     break
         finally:
             self.api.FindClose(finder)
-        if any(name not in ('::$DATA', ':Zone.Identifier:$DATA') for name in names):
-            raise ValueError('文件包含额外命名数据流；为避免丢失元数据，未执行跨盘移动或去重。')
-        if ':Zone.Identifier:$DATA' not in names:
-            return None
-        handle = self.api.CreateFileW(_windows_path(self.path) + ':Zone.Identifier', 0x80000000, 5, None, 3, 0x08000000, None)
+        return names
+
+    def named_stream_names(self):
+        result = []
+        for suffix in self._stream_names():
+            if suffix == '::$DATA':
+                continue
+            if not suffix.startswith(':') or not suffix.endswith(':$DATA'):
+                raise ValueError('存在无法安全复制的命名数据流类型。')
+            result.append(suffix[1:-len(':$DATA')])
+        return sorted(result)
+
+    def _open_named_stream(self, name, share_mode):
+        import msvcrt
+        handle = self.api.CreateFileW(named_data_stream_path(self.path, name),
+                                      0x80000000, share_mode, None, 3, 0x08000000, None)
         if handle == ctypes.c_void_p(-1).value:
             raise ctypes.WinError(ctypes.get_last_error())
         try:
@@ -243,7 +260,25 @@ class ZipLease:
         except BaseException:
             self.api.CloseHandle(handle)
             raise
-        with os.fdopen(fd, 'rb') as stream:
+        return os.fdopen(fd, 'rb')
+
+    @contextmanager
+    def named_streams(self):
+        # NTFS share access is per data stream. Protect named streams explicitly.
+        # A verified temporary copy has a movable base handle and must permit rename.
+        share_mode = 5 if self.movable else 1
+        with ExitStack() as leases:
+            yield {name: leases.enter_context(self._open_named_stream(name, share_mode))
+                   for name in self.named_stream_names()}
+
+    def zone_metadata(self):
+        """Preserve Mark-of-the-Web on a cross-volume move; refuse unknown streams."""
+        names = self._stream_names()
+        if any(name not in ('::$DATA', ':Zone.Identifier:$DATA') for name in names):
+            raise ValueError('文件包含额外命名数据流；为避免丢失元数据，未执行跨盘移动或去重。')
+        if ':Zone.Identifier:$DATA' not in names:
+            return None
+        with self._open_named_stream('Zone.Identifier', 5) as stream:
             value = stream.read(65537)
         if len(value) > 65536:
             raise ValueError('安全来源标记异常过大；保留原文件。')
