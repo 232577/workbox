@@ -355,6 +355,7 @@ class CompactPanel(DropSurface, QWidget):
     task_text_requested = Signal(str, object, bool)
     classification_requested = Signal()
     pending_export_requested = Signal()
+    personal_project_sync_requested = Signal(object)
     project_table_export_requested = Signal(object, str)
 
     def __init__(self, service):
@@ -1081,7 +1082,8 @@ class CompactPanel(DropSurface, QWidget):
                     material_root.mkdir(exist_ok=True)
                 journal = staging_journal(directory, material_root)
                 page = DesktopWindow()
-                controller = IntakeController(page, LIVE_SITE_URL, material_root, journal, settings=settings)
+                controller = IntakeController(page, LIVE_SITE_URL, material_root, journal, settings=settings,
+                                              personal_sync_enabled=True)
             except (ValueError, OSError) as error:
                 self.show_notice(f'团队交件未打开，请检查工作箱数据目录。{error}')
                 return
@@ -1092,6 +1094,7 @@ class CompactPanel(DropSurface, QWidget):
             self.team_page_container, self.team_page, self.team_controller = container, page, controller
             self.tabs.addTab(container, '团队交件')
             self.team_workspace_opened.emit(controller)
+            controller.personal_sync_requested.connect(self.personal_project_sync_requested)
             controller.start()
         self.tabs.setCurrentWidget(self.team_page_container)
         if filename:
@@ -2548,7 +2551,7 @@ class ProjectDeliveryDialog(QDialog):
         apply_to(self)
         add_header(layout, '确认本次交付', project['name'], icon=FluentIcon.DOCUMENT, eyebrow='WORKBOX / 交付确认')
         if original := original_task_caption(project):
-            layout.addWidget(label(f'确认后将同步提交到{original}。', 'subtle', True))
+            layout.addWidget(label(f'确认后将同步提交到{original}。若未登录，工作箱会等这个材料账号重新登录后再提交。', 'subtle', True))
         caption = label('交付内容')
         layout.addWidget(caption)
         self.version_box = QComboBox()

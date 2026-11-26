@@ -4,8 +4,10 @@ from time import monotonic
 from sqlite3 import Error as DatabaseError
 
 from PySide6.QtCore import QObject, QTimer
+from PySide6.QtWidgets import QInputDialog
 
 from workbox.projects.original_site import OriginalSiteProjects
+from workbox.projects.project_names import project_name_key
 from workbox.team_delivery.contracts import Outcome
 from workbox.team_delivery.site_attempt import site_account
 
@@ -20,11 +22,13 @@ class PersonalSiteWorkspace(QObject):
         self._superseded = Event()
         self._loading = False
         self._retry_after = {}
+        self._unlinked = ()
         self._retry = QTimer(self, singleShot=True)
         self._retry.timeout.connect(self.wake)
         site.personal_snapshot_changed.connect(self._observe)
         site.personal_file_requested.connect(self._receive)
         site.personal_delivery_finished.connect(self._submitted)
+        desktop.panel.team_page.personal_binding_requested.connect(self._resolve_binding)
         site.enable_personal_workspace()
 
     def _observe(self, snapshot):
@@ -34,6 +38,8 @@ class PersonalSiteWorkspace(QObject):
             self._snapshot = snapshot
         if snapshot is None:
             self._imported = None
+            self._unlinked = ()
+            self.desktop.panel.team_page.set_unlinked_tasks(())
             self._retry.stop()
         else:
             self.wake()
@@ -52,23 +58,24 @@ class PersonalSiteWorkspace(QObject):
 
         def prepare(*, cancel_event, **_):
             if stale.is_set() or cancel_event.is_set():
-                return 0, None, False
-            changed = self.projects.sync(snapshot.account, snapshot.tasks) if needs_import else 0
+                return 0, None, None, False
+            changed = self.desktop.service.sync_personal_site_snapshot(snapshot) if needs_import else 0
+            unlinked = self.projects.unlinked_tasks(snapshot.account, snapshot.tasks) if needs_import else None
             for item in self.projects.pending(snapshot.account):
                 if stale.is_set() or cancel_event.is_set():
                     break
                 if item.event_id in deferred:
                     continue
                 if item.status != 'pending':
-                    return changed, item, True
+                    return changed, unlinked, item, True
                 current = next((task for task in snapshot.tasks if task.id == item.task_id), None)
                 if current is None:
-                    return changed, item, True
+                    return changed, unlinked, item, True
                 claim = self.projects.claim(item.event_id, snapshot.account, current)
                 if claim is not None:
-                    return changed, claim, False
+                    return changed, unlinked, claim, False
                 # The title, owner or local delivery may have changed since enumeration.
-            return changed, None, False
+            return changed, unlinked, None, False
 
         def complete(worker):
             self._loading = False
@@ -77,12 +84,18 @@ class PersonalSiteWorkspace(QObject):
                 return
             if worker.result is None:
                 return
-            changed, item, verify_only = worker.result
+            changed, unlinked, item, verify_only = worker.result
             if changed:
                 self.desktop.refresh()
             active = not stale.is_set() and self._available(snapshot)
             if active:
                 self._imported = snapshot
+                if unlinked is not None:
+                    self._unlinked = unlinked
+                    self.desktop.panel.team_page.set_unlinked_tasks(unlinked)
+                    if unlinked:
+                        self._message('待办需要核对', '选择任务后点「关联本机项目…」。' +
+                                      '、'.join('#' + task.id for task in unlinked[:6]))
             if item is not None:
                 check_local = None if verify_only else lambda: self.projects.claim_is_current(item, snapshot.account)
                 if active and self.site.submit_personal_delivery(
@@ -110,10 +123,51 @@ class PersonalSiteWorkspace(QObject):
     def _cancel_loading(self):
         self._loading = False
 
+    def _resolve_binding(self, task, filename=None):
+        snapshot = self.site.current_personal_snapshot()
+        if snapshot is None or task not in snapshot.tasks or task not in self._unlinked:
+            return
+        key = project_name_key(task.title)
+        choices = {f"#{p['id']} · {p['name']} · {p['batch_name']}": p['id']
+                   for p in self.desktop.service.list_projects()
+                   if not p.get('original_task_id') and project_name_key(p['name']) == key}
+        create = '新建独立本机项目'
+        selected, accepted = QInputDialog.getItem(
+            self.desktop.panel, '关联本机项目', f'这是家 #{task.id} · {task.title}\n请选择此任务对应的本机项目。',
+            ['请选择', *choices, create], 0, False)
+        if not accepted or selected == '请选择' or not self._available(snapshot):
+            return
+        generation = self._superseded
+
+        def bind(**_):
+            if generation.is_set():
+                raise ValueError('原站待办已变化，请重新核对。')
+            return self.desktop.service.bind_personal_site_task(
+                snapshot.account, task, None if selected == create else choices[selected])
+
+        def complete(worker):
+            if not self._available(snapshot):
+                return
+            if worker.error or worker.cancelled:
+                self._message('未关联本机项目', worker.error or '已取消。')
+                return
+            self._unlinked = tuple(item for item in self._unlinked if item != task)
+            self.desktop.panel.team_page.set_unlinked_tasks(self._unlinked)
+            self.desktop.refresh()
+            if filename:
+                self._receive(filename, snapshot.account, task)
+            else:
+                self._message('已关联本机项目', f'{task.title} · #{task.id}')
+
+        self.desktop.enqueue('关联原站任务', bind, on_complete=complete)
+
     def _receive(self, filename, account, task):
         snapshot = self.site.current_personal_snapshot()
         if snapshot is None or snapshot.account != account or task not in snapshot.tasks:
             self._message('待办已变化', '请刷新后重新拖入文件。')
+            return
+        if task in self._unlinked:
+            self._resolve_binding(task, filename)
             return
         stale = self._superseded
 

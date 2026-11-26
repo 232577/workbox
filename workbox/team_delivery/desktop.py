@@ -103,6 +103,8 @@ class DesktopWindow(_FileInbox):
     """工作箱内的团队交件页面。"""
 
     refresh_requested = Signal()
+    personal_sync_requested = Signal()
+    personal_binding_requested = Signal(object)
     login_requested = Signal()
     workbox_login_requested = Signal()
     office_address_requested = Signal()
@@ -123,9 +125,12 @@ class DesktopWindow(_FileInbox):
         self._personal_path = None
         self._live = False
         self._personal_mode = False
+        self._unlinked_tasks = frozenset()
         self._read_error = ''
         self._deferred_read = ''
         self._waiting_for_snapshot = False
+        self._personal_sync_pending = False
+        self._personal_sync_message = ''
         self._workbox_username = ''
         self._workbox_error = ''
         self._accounts_confirmed = False
@@ -149,7 +154,15 @@ class DesktopWindow(_FileInbox):
         identity.addWidget(self._heading, 0, 0, 1, 2)
         self._refresh = QPushButton('刷新任务')
         self._refresh.clicked.connect(self.refresh_requested)
-        identity.addWidget(self._refresh, 0, 2)
+        self._personal_sync = QPushButton('同步到个人项目', objectName='syncPersonalProjects')
+        self._personal_sync.setToolTip('同步当前账号的全部材料待办。在 WorkBox 的个人项目中管理进度。')
+        self._personal_sync.clicked.connect(self.personal_sync_requested)
+        self._personal_sync.hide()
+        task_controls = QHBoxLayout()
+        task_controls.setSpacing(6)
+        task_controls.addWidget(self._refresh)
+        task_controls.addWidget(self._personal_sync)
+        identity.addLayout(task_controls, 0, 2)
         self._account = _label(name='account', secondary=True)
         self._account.setWordWrap(True)
         identity.addWidget(self._account, 1, 0)
@@ -218,6 +231,10 @@ class DesktopWindow(_FileInbox):
         self._search.textChanged.connect(lambda: self._render_tasks(self._selected_task()))
         self._search.installEventFilter(self)
         task_actions.addWidget(self._search, 1)
+        self._bind_task = QPushButton('关联本机项目…', objectName='linkPersonalProject')
+        self._bind_task.clicked.connect(lambda: self.personal_binding_requested.emit(self._selected_task()))
+        self._bind_task.hide()
+        task_actions.addWidget(self._bind_task)
 
         self._tasks = QTableWidget(0, 3, objectName='tasks')
         self._tasks.setAccessibleName('我的材料任务')
@@ -426,6 +443,19 @@ class DesktopWindow(_FileInbox):
             self._result_title, self._result_info = title, detail
             self._update_controls()
 
+    def set_unlinked_tasks(self, tasks):
+        self._unlinked_tasks = frozenset(task.id for task in tasks)
+        self._update_controls()
+
+    def enable_personal_sync(self) -> None:
+        self._personal_sync.show()
+        self._update_controls()
+
+    def set_personal_sync_status(self, message: str, *, pending: bool) -> None:
+        self._personal_sync_message = message
+        self._personal_sync_pending = pending
+        self._update_controls()
+
     def _eligible(self, task: Task | None) -> bool:
         account = self._snapshot.account
         return bool(task and account and account.role == 'material' and task.owner_id == account.id
@@ -454,6 +484,8 @@ class DesktopWindow(_FileInbox):
         if not same_account:
             self._accounts_confirmed = False
             self._reset_intake()
+            if not self._personal_sync_pending:
+                self._personal_sync_message = ''
             with QSignalBlocker(self._search):
                 self._search.clear()
         prepared = self._prepared_task
@@ -630,17 +662,20 @@ class DesktopWindow(_FileInbox):
         if self._workbox_error:
             return '请重新核对账号', self._workbox_error
         if not self._workbox_username:
-            return '请登录 WorkBox Online', '已读取本人任务。请点「团队办理」登录办公室账号。'
+            return '请登录 WorkBox Online', '已读取本人任务。办理团队交件请点「团队办理」登录办公室账号。'
         if not self._accounts_confirmed:
             return '请确认两个账号', '已读取本人任务。请核对两个账号，再点击“确认两个账号”。'
         return '', '两个账号已确认。已读取本人任务。'
 
     def _update_controls(self):
+        selected = self._selected_task()
+        self._bind_task.setVisible(bool(self._personal_mode and selected and selected.id in self._unlinked_tasks))
+        self._bind_task.setEnabled(not self.busy)
         web_block, notice = self._sync_status()
         directory_block = ('请先选择交件目录。'
                            if self._live and not self._personal_mode and not self._directory.text() else '')
         self.intake_block = web_block or directory_block
-        notice = '\n'.join(filter(None, (notice, self._deferred_read)))
+        notice = '\n'.join(filter(None, (notice, self._deferred_read, self._personal_sync_message)))
         self._sync_notice.setText(notice)
         self._sync_notice.setVisible(bool(notice))
         self._choose.setEnabled(not self.busy and not self.intake_block)
@@ -651,6 +686,9 @@ class DesktopWindow(_FileInbox):
                                                and self._workbox_username and not self._workbox_error
                                                and not self._accounts_confirmed))
         self._refresh.setEnabled(not self.busy)
+        self._personal_sync.setEnabled(bool(self._live and self._has_material_account()
+                                            and not (self.busy or self._read_error
+                                                     or self._waiting_for_snapshot or self._personal_sync_pending)))
         self._select_root.setEnabled(not self.busy)
         title, info = self._result_title, self._result_info
         if self._site_completed:

@@ -238,6 +238,11 @@ CREATE TABLE IF NOT EXISTS project_type_defaults (
 CREATE TABLE IF NOT EXISTS delivery_event_migrations (
     name TEXT PRIMARY KEY
 );
+CREATE TABLE IF NOT EXISTS site_task_project_links (
+    task_id TEXT PRIMARY KEY NOT NULL,
+    project_id INTEGER NOT NULL REFERENCES projects(id)
+);
+CREATE INDEX IF NOT EXISTS idx_site_task_project_links_project ON site_task_project_links(project_id);
 CREATE TABLE IF NOT EXISTS original_site_bindings (
     account_username TEXT NOT NULL,
     task_id TEXT NOT NULL,
@@ -596,14 +601,18 @@ class Database:
                 canonical = self._canonical_project_id(connection, project_id)
                 parameters[2 if day is not None else 0] = canonical
             # 撤销状态来自独立追加日志，不改写真实交付事件或文件关联。
-            rows = connection.execute('''WITH effective AS (
+            rows = connection.execute('''WITH legacy_site_links AS (
+                SELECT root.canonical_id,MIN(l.task_id) AS task_id
+                FROM site_task_project_links l JOIN project_canonical root ON root.project_id=l.project_id
+                GROUP BY root.canonical_id HAVING COUNT(*)=1
+            ), effective AS (
                 SELECT d.id,c.canonical_id AS project_id,d.project_id AS original_project_id,
                     CASE WHEN c.canonical_id=d.project_id AND NOT EXISTS (
                         SELECT 1 FROM project_merges pm WHERE pm.target_id=c.canonical_id)
                         THEN d.project_name ELSE cp.name END AS project_name,
                     d.project_name AS original_project_name,d.batch_name,d.batch_name AS original_batch_name,
                     d.kind,d.zip_id,d.archive_path,d.archive_signature,d.occurred_at,d.legacy_source_key,
-                    ob.task_id AS site_task_id,
+                    COALESCE(ob.task_id,sl.task_id) AS site_task_id,
                     COALESCE(a.voided,0) AS voided,a.id AS last_action_id,
                     CASE WHEN a.id IS NULL THEN NULL WHEN a.voided=1 THEN 'void' ELSE 'restore' END AS last_action,
                     COALESCE(a.reason,'') AS management_reason,a.created_at AS managed_at
@@ -612,6 +621,7 @@ class Database:
                     SELECT MAX(id) FROM delivery_event_actions WHERE event_id=d.id)
                 LEFT JOIN original_site_deliveries od ON od.event_id=d.id
                 LEFT JOIN original_site_bindings ob ON ob.project_id=od.project_id
+                LEFT JOIN legacy_site_links sl ON sl.canonical_id=c.canonical_id
             ), ranked AS (
                 SELECT id,project_id,occurred_at,
                     ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY julianday(occurred_at),id) AS position
@@ -930,27 +940,23 @@ class Database:
             cleaned[key] = (name, urgent or cleaned.get(key, (name, False))[1])
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            return self._create_capture(connection, raw_text, batch_name.strip(), cleaned.values())
-
-    def _create_capture(self, connection, raw_text, batch_name, projects):
-        connection.execute("INSERT OR IGNORE INTO batches(name) VALUES (?)", (batch_name,))
-        batch_id = connection.execute("SELECT id FROM batches WHERE name=?", (batch_name,)).fetchone()[0]
-        if connection.execute(
-            "SELECT 1 FROM messages WHERE batch_id=? AND raw_text=?", (batch_id, raw_text)
-        ).fetchone():
-            raise ValueError("该消息在此批次中已收录，请勿重复提交。")
-        message_id = connection.execute(
-            "INSERT INTO messages(batch_id,raw_text) VALUES (?,?)", (batch_id, raw_text)
-        ).lastrowid
-        project_ids = [
-            connection.execute(
-                "INSERT INTO projects(message_id,batch_id,name,urgent) VALUES (?,?,?,?)",
-                (message_id, batch_id, name, int(urgent)),
+            connection.execute("INSERT OR IGNORE INTO batches(name) VALUES (?)", (batch_name.strip(),))
+            batch_id = connection.execute("SELECT id FROM batches WHERE name=?", (batch_name.strip(),)).fetchone()[0]
+            if connection.execute(
+                "SELECT 1 FROM messages WHERE batch_id=? AND raw_text=?", (batch_id, raw_text)
+            ).fetchone():
+                raise ValueError("该消息在此批次中已收录，请勿重复提交。")
+            message_id = connection.execute(
+                "INSERT INTO messages(batch_id,raw_text) VALUES (?,?)", (batch_id, raw_text)
             ).lastrowid
-            for name, urgent in projects
-        ]
-        self._assign_default_project_type(connection, project_ids)
-        return {"message_id": message_id, "batch_id": batch_id, "project_ids": project_ids}
+            project_ids = []
+            for name, urgent in cleaned.values():
+                project_ids.append(connection.execute(
+                    "INSERT INTO projects(message_id,batch_id,name,urgent) VALUES (?,?,?,?)",
+                    (message_id, batch_id, name, int(urgent)),
+                ).lastrowid)
+            self._assign_default_project_type(connection, project_ids)
+            return {"message_id": message_id, "batch_id": batch_id, "project_ids": project_ids}
 
     def register_zip(self, metadata: dict, project_id: int | None) -> tuple[dict, bool]:
         with self.connect() as connection:

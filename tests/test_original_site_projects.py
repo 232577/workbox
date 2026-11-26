@@ -30,14 +30,22 @@ def deliver(service, project_id, name='材料.txt'):
     return service.confirm_delivery(project_id, confirmed=True)['event_id']
 
 
-def test_import_keeps_same_name_projects_separate_and_survives_relogin(personal):
+def test_same_name_needs_unambiguous_local_binding_and_survives_relogin(personal):
     service, site = personal
     title = task().title
-    local = service.db.create_capture(title, '匿名本地批次', [(title, False)])['project_ids'][0]
-    assert site.sync(ALICE, [task(), task(identifier='56')]) == 2
+    local = service.db.create_capture('旧项目', '匿名本地批次', [('无关项目', False)])['project_ids'][0]
+    first_candidate = service.db.create_capture(title, '第一个本地批次', [(title, False)])['project_ids'][0]
+    first_task, second_task = task(), task(identifier='56')
+    assert site.sync(ALICE, [first_task, second_task]) == 0
+    assert site.binding_for_task(ALICE, first_task) is site.binding_for_task(ALICE, second_task) is None
+    assert site.sync(ALICE, [first_task]) == 1
     first = site.binding_for_task(ALICE, task())
-    second = site.binding_for_task(ALICE, task(identifier='56'))
-    assert len({local, first, second}) == 3
+    assert first == first_candidate
+    assert site.sync(ALICE, [first_task, second_task]) == 0
+    assert site.binding_for_task(ALICE, second_task) is None
+    second = service.db.create_capture(title, '第二个本地批次', [(title, False)])['project_ids'][0]
+    assert site.bind_existing(ALICE, second_task, second, confirmed=True) == second
+    assert len({local, first, second}) == service.db.counts()['projects'] == 3
     assert site.binding_for(local) is None
     assert service.get_project(first)['name'] == service.get_project(second)['name'] == title
     assert service.get_project(first)['original_task_id'] == '55'
@@ -147,6 +155,177 @@ def test_explicit_existing_binding_requires_confirmation_and_matching_name(perso
     assert site.sync(ALICE, [task()]) == 0
     assert site.binding_for_task(ALICE, task()) == chosen
     assert service.db.counts()['projects'] == 2
+
+
+def test_automatic_sync_reuses_manual_history_and_pins_only_new_deliveries(personal):
+    service, site = personal
+    current = task()
+    manual = service.sync_site_tasks([(current.id, current.title)])
+    pid, = manual['created_project_ids']
+    workspace = service.workspaces.get_workspace(pid)
+    historical = deliver(service, pid)
+    assert site.sync(ALICE, [current]) == 1
+    assert site.binding_for_task(ALICE, current) == pid
+    assert service.workspaces.get_workspace(pid) == workspace
+    assert service.db.counts()['projects'] == 1
+    assert service.get_project(pid)['status'] == '已交付'
+    assert site.delivery_for_event(historical) is None
+    assert not site.pending(ALICE)
+    latest = deliver(service, pid, '新办理.txt')
+    assert site.pending(ALICE)[0].event_id == latest
+    assert service.db.delivery_history()['project_count'] == 1
+
+
+def test_manual_sync_recognizes_automatic_task_by_id_even_after_title_changes(personal):
+    service, site = personal
+    current = task()
+    site.sync(ALICE, [current])
+    pid = site.binding_for_task(ALICE, current)
+    result = service.sync_site_tasks([(current.id, '已更名的匿名项目')])
+    assert result['unchanged_project_ids'] == [pid]
+    assert result['created_project_ids'] == result['linked_project_ids'] == result['conflicts'] == []
+    assert service.db.counts()['projects'] == 1
+
+
+def test_manual_links_do_not_resurrect_deleted_or_conflicting_projects(personal):
+    service, site = personal
+    current = task()
+    pid, = service.sync_site_tasks([(current.id, current.title)])['created_project_ids']
+    service.db.delete_project(pid, confirmed=True)
+    assert site.sync(ALICE, [current]) == 0
+    assert site.binding_for_task(ALICE, current) is None
+    assert service.db.counts()['projects'] == 0
+
+    service.db.restore_deleted_project(pid)
+    other = replace(current, id='56')
+    assert site.sync(ALICE, [other]) == 0
+    assert site.binding_for_task(ALICE, other) is None
+    assert service.db.counts()['projects'] == 1
+
+
+def test_manual_and_automatic_import_concurrently_share_one_local_identity(personal):
+    service, site = personal
+    current = task()
+    with ThreadPoolExecutor(2) as pool:
+        manual = pool.submit(service.sync_site_tasks, [(current.id, current.title)])
+        automatic = pool.submit(site.sync, ALICE, [current])
+        manual_ids = manual.result()['project_ids']
+        assert automatic.result() == 1
+    assert manual_ids == [site.binding_for_task(ALICE, current)]
+    assert service.db.counts()['projects'] == 1
+
+
+def test_selected_new_project_resolves_one_ambiguous_number_without_using_other_projects(personal):
+    service, site = personal
+    first, second = task(), task(identifier='56')
+    first_local = service.db.create_capture(first.title, '本地甲批次', [(first.title, False)])['project_ids'][0]
+    second_local = service.db.create_capture(first.title, '本地乙批次', [(first.title, False)])['project_ids'][0]
+    assert site.sync(ALICE, [first, second]) == 0
+    assert site.unlinked_tasks(ALICE, [first, second]) == (first, second)
+    assert not site.unlinked_tasks(None, [first, second])
+    with pytest.raises(ValueError):
+        site.create_for_selected(ALICE, first, confirmed=False)
+    with pytest.raises(ValueError):
+        site.create_for_selected(BOB, first, confirmed=True)
+    chosen = site.create_for_selected(ALICE, first, confirmed=True)
+    assert chosen not in {first_local, second_local}
+    assert site.create_for_selected(ALICE, first, confirmed=True) == chosen
+    assert site.unlinked_tasks(ALICE, [first, second]) == (second,)
+    assert service.sync_site_tasks([(first.id, first.title)])['unchanged_project_ids'] == [chosen]
+    assert site.bind_existing(ALICE, second, second_local, confirmed=True) == second_local
+    assert not site.unlinked_tasks(ALICE, [first, second])
+
+
+@pytest.mark.parametrize('state', ['active', 'archived', 'deleted'])
+def test_explicit_new_never_replaces_an_exact_manual_history_link(personal, state):
+    service, site = personal
+    current = task()
+    pid, = service.sync_site_tasks([(current.id, current.title)])['created_project_ids']
+    if state == 'archived':
+        service.bulk_update_projects([pid], archived=True)
+    elif state == 'deleted':
+        service.db.delete_project(pid, confirmed=True)
+    with pytest.raises(ValueError, match='关联'):
+        site.create_for_selected(ALICE, current, confirmed=True)
+    assert site.unlinked_tasks(ALICE, [current]) == (current,)
+    with service.db.connect() as connection:
+        assert connection.execute('SELECT project_id FROM site_task_project_links').fetchone()[0] == pid
+        assert connection.execute('SELECT COUNT(*) FROM projects').fetchone()[0] == 1
+
+
+def test_legacy_manual_history_counts_once_across_reassignment_without_queueing_it(personal):
+    service, site = personal
+    current = task()
+    old_pid, = service.sync_site_tasks([(current.id, current.title)])['created_project_ids']
+    old_event = deliver(service, old_pid)
+    site.sync(ALICE, [current])
+    assert site.binding_for_task(ALICE, current) == old_pid
+    assert not site.pending(ALICE)
+    site.sync(BOB, [task(BOB)])
+    new_pid = site.binding_for_task(BOB, task(BOB))
+    new_event = deliver(service, new_pid)
+    history = service.db.delivery_history()
+    assert new_pid != old_pid
+    assert site.claim(new_event, BOB, task(BOB))
+    assert history['project_count'] == 1 and history['event_count'] == 2
+    assert {row['id']: row['counted'] for row in history['events']} == {old_event: True, new_event: False}
+
+    service.db.set_project_delivery_counting([old_pid], False, confirmed=True, reason='匿名排除')
+    history = service.db.delivery_history()
+    assert history['project_count'] == 0 and history['valid_event_count'] == 2
+    assert next(row for row in history['events'] if row['id'] == old_event)['count_exclusion_reason'] == '匿名排除'
+
+
+def test_legacy_history_under_explicit_merge_target_retains_one_workload_identity(personal):
+    service, site = personal
+    current = task()
+    former, = service.sync_site_tasks([(current.id, current.title)])['created_project_ids']
+    target, = service.capture_message('现用本机项目', '匿名保留批次')['project_ids']
+    plan = service.preview_project_rename(former, '现用本机项目')
+    service.rename_project(former, '现用本机项目', expected_token=plan['token'],
+                           merge_target_id=target, confirmed_merge=True)
+    historical = deliver(service, target)
+    assert site.sync(ALICE, [current]) == 1
+    assert site.binding_for_task(ALICE, current) == target
+    assert not site.pending(ALICE)
+
+    site.sync(BOB, [task(BOB)])
+    successor = site.binding_for_task(BOB, task(BOB))
+    latest = deliver(service, successor)
+    history = service.db.delivery_history()
+    assert history['project_count'] == 1
+    assert {row['id']: row['counted'] for row in history['events']} == {historical: True, latest: False}
+
+
+def test_automatic_sync_does_not_adopt_two_legacy_numbers_merged_into_one_target(personal):
+    service, site = personal
+    first = task()
+    second = replace(task(identifier='56'), title='另一原站同事的项目')
+    former, target = service.sync_site_tasks([(first.id, first.title), (second.id, second.title)])['project_ids']
+    plan = service.preview_project_rename(former, second.title)
+    service.rename_project(former, second.title, expected_token=plan['token'],
+                           merge_target_id=target, confirmed_merge=True)
+    assert site.sync(ALICE, [first, second]) == 0
+    assert site.unlinked_tasks(ALICE, [first, second]) == (first, second)
+    with pytest.raises(ValueError, match='已有绑定'):
+        site.bind_existing(ALICE, second, target, confirmed=True)
+    assert service.db.counts()['projects'] == 1
+
+
+def test_user_cannot_rebind_another_accounts_old_project_via_a_merge_target(personal):
+    service, site = personal
+    current = task()
+    site.sync(ALICE, [current])
+    former = site.binding_for_task(ALICE, current)
+    target = service.db.create_capture('独立本地项目', '另一个批次', [(current.title, False)])['project_ids'][0]
+    service.workspaces.ensure_projects([target])
+    plan = service.preview_project_rename(former, current.title, merge_target_id=target)
+    service.rename_project(former, current.title, expected_token=plan['token'],
+                           merge_target_id=target, confirmed_merge=True)
+    with pytest.raises(ValueError, match='已有绑定'):
+        site.bind_existing(BOB, task(BOB), target, confirmed=True)
+    assert site.sync(BOB, [task(BOB)]) == 1
+    assert site.binding_for_task(BOB, task(BOB)) != target
 
 
 def test_revision_and_voided_events_cannot_reuse_old_material(personal):

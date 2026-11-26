@@ -101,6 +101,7 @@ class FloatingController(QObject):
         self.service = service
         self.tray_enabled = tray_enabled
         self.orb = self.panel = self.bubble = self.tray = self.server = None
+        self.personal_site = None
         self.worker = None
         self.queue = deque()
         self.errors = []
@@ -206,7 +207,6 @@ class FloatingController(QObject):
             saved_size = DEFAULT_FLOATING_SIZE
         self.orb.set_orb_size(saved_size)
         self.panel = CompactPanel(self.service)
-        self.personal_site = None
         self.panel.team_workspace_opened.connect(self._connect_personal_site)
         self.panel.window_shortcut = self.shortcut
         self._panel_minimum = self.panel.minimumSize()
@@ -219,6 +219,7 @@ class FloatingController(QObject):
         self.panel.classification_requested.connect(self.panel.show_archive_classification)
         self.panel.pending_export_requested.connect(self.export_pending_projects)
         self.panel.project_table_export_requested.connect(self.export_project_table)
+        self.panel.personal_project_sync_requested.connect(self.sync_personal_projects)
         self.orb.open_requested.connect(self.show_panel)
         self.bubble.open_requested.connect(self.show_feedback)
         for signal in (self.orb.paste_requested, self.panel.paste_requested):
@@ -660,6 +661,44 @@ class FloatingController(QObject):
                         message='已取消尚未开始的收录，尚未判断归属；原件保留'))
         else:
             self.notify(payload.get('message', '没有收到项目文字或本地文件。'))
+
+    def sync_personal_projects(self, tasks):
+        if self.closed or self.quitting:
+            return
+
+        team = self.panel.team_controller
+        queued = self.enqueue(
+            '同步到个人项目',
+            lambda cancel_event, **_: self.service.sync_site_tasks(tasks, cancel_event=cancel_event),
+            on_cancel=lambda: team.set_personal_sync_result('同步已取消。'),
+            on_complete=self._complete_personal_project_sync,
+        )
+        if not queued:
+            team.set_personal_sync_result('项目目录待恢复，暂时无法同步。')
+
+    def _complete_personal_project_sync(self, worker):
+        if worker.cancelled:
+            message = '同步已取消。'
+        elif worker.error:
+            message = f'同步未完成。{worker.error}'
+        else:
+            result = worker.result
+            conflicts = result['conflicts']
+            created = len(result['created_project_ids'])
+            linked = len(result['linked_project_ids'])
+            unchanged = len(result['unchanged_project_ids'])
+            message = f'本次同步新建 {created} 项，关联 {linked} 项，已有 {unchanged} 项，待核对 {len(conflicts)} 项。'
+            if created:
+                message += '新项目可在「项目 → 待开发」查看。'
+            if result.get('workspace_error'):
+                message += f"\n部分工作目录待创建。{result['workspace_error']}"
+            for conflict in conflicts[:5]:
+                message += f"\n#{conflict['task_id']} {conflict['title']} · {conflict['reason']}"
+            if len(conflicts) > 5:
+                message += f'\n另有 {len(conflicts) - 5} 项待核对。'
+        self.panel.team_controller.set_personal_sync_result(message)
+        if not (worker.cancelled or worker.error):
+            self.refresh()
 
     def preview_project_change(self, dialog, request):
         reference = weakref.ref(dialog)
@@ -1124,6 +1163,7 @@ class FloatingController(QObject):
                                      and not (self.quitting or shutting_down) and len(pending) == 1
                                      and pending[0][4] in (self._pending_export_finished,
                                                           self._project_table_export_finished,
+                                                          self._complete_personal_project_sync,
                                                           self._complete_bulk_delivery))
         if self.worker and not cancel_queued_action_only:
             self.worker.cancel_event.set()

@@ -17,6 +17,13 @@ def test_original_site_only_enables_local_intake_without_an_office_or_shared_dir
         assert page._choose.isEnabled() and not page.intake_block
         assert '待交付' in page._hint.text() and '确认交付' in page._hint.text()
         assert page._directory_row.isHidden() and page._confirm_accounts.isHidden()
+        page.set_unlinked_tasks(snapshot.tasks)
+        page._tasks.selectRow(0)
+        picked = []
+        page.personal_binding_requested.connect(picked.append)
+        assert not page._bind_task.isHidden()
+        page._bind_task.click()
+        assert picked == [snapshot.tasks[0]]
         page.show_read_failure('原站暂时无法读取')
         assert not page._choose.isEnabled()
         page.set_personal_mode(False)

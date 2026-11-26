@@ -87,3 +87,32 @@ def test_personal_recovery_reads_exact_completed_task_outside_current_list(tmp_p
         controller.stop()
         page.close()
         app.processEvents()
+
+
+def test_manual_refresh_uses_only_the_binding_snapshot_in_personal_mode(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    page = DesktopWindow()
+    actor = Account('session-a', '匿名材料', 'material', 'a', 'material-user')
+    fresh = Snapshot(actor, (Task('55', '匿名项目', actor.id, Stage.READY, 'fresh'),))
+    gateway = SimpleNamespace(refresh_snapshot=lambda: fresh, close=lambda: None)
+    controller = IntakeController(page, 'http://127.0.0.1:1', None, tmp_path / 'office.sqlite',
+                                  settings=tmp_path / 'settings.json', gateway=gateway, personal_sync_enabled=True)
+    bound, legacy = [], []
+    try:
+        controller.start()
+        controller.enable_personal_workspace()
+        controller._show_snapshot(Snapshot(actor))
+        controller.personal_snapshot_changed.connect(bound.append)
+        controller.personal_sync_requested.connect(legacy.append)
+        page.personal_sync_requested.emit()
+        for _ in range(150):
+            if not controller._busy:
+                break
+            QTest.qWait(20)
+        assert bound == [fresh]
+        assert legacy == []
+        assert '按任务编号同步' in page._sync_notice.text()
+    finally:
+        controller.stop()
+        page.close()
+        app.processEvents()

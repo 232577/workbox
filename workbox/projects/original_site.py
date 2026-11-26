@@ -4,13 +4,25 @@ from dataclasses import dataclass
 from re import fullmatch
 from uuid import uuid4
 
+from workbox.projects.project_names import project_name_key
+from workbox.projects.site_task_import import create_site_task_project, import_site_tasks, source_project_links
 from workbox.team_delivery.contracts import Account, MATERIAL_PREPARATION_STAGES, Stage, Task
 from workbox.team_delivery.site_attempt import site_account
 
 
-_BATCH = '原站本人待办'
 _REVIEW = '任务已变化，请在原站按编号核对。'
 _SUPERSEDED = '此交付已由更新的本地确认替代。'
+_EDITABLE_PROJECT = '''
+    d.archived_at IS NULL
+    AND NOT EXISTS (SELECT 1 FROM project_deletions x WHERE x.project_id=p.id)
+    AND NOT EXISTS (SELECT 1 FROM project_merges m WHERE m.source_id=p.id)
+    AND NOT EXISTS (SELECT 1 FROM project_change_blocks x WHERE x.project_id=p.id)
+'''
+_AVAILABLE_BINDINGS = f'''
+    SELECT b.* FROM original_site_bindings b JOIN projects p ON p.id=b.project_id
+    LEFT JOIN project_details d ON d.project_id=p.id
+    WHERE b.account_username=? AND b.available=1 AND {_EDITABLE_PROJECT}
+'''
 _DELIVERY = '''
     SELECT s.*, b.account_username,b.task_id,b.available,b.revision,
            b.title AS observed_title,b.stage AS observed_stage,b.round AS current_round
@@ -56,18 +68,16 @@ def _task(account, task):
             or not isinstance(task.id, str) or not fullmatch(r'[1-9][0-9]{0,15}', task.id)
             or int(task.id) > 2**53 - 1 or not isinstance(task.stage, Stage)
             or not isinstance(task.title, str) or not 0 < len(task.title.strip()) <= 200
+            or any(character in task.title.strip() for character in '\0\r\n')
             or not isinstance(task.revision, str) or not task.revision):
         raise ValueError('原站任务编号、标题、负责人或工序不完整。')
     return task
 
 
 def _editable(connection, project_id):
-    return connection.execute('''
+    return connection.execute(f'''
         SELECT 1 FROM projects p LEFT JOIN project_details d ON d.project_id=p.id
-        WHERE p.id=? AND d.archived_at IS NULL
-          AND NOT EXISTS (SELECT 1 FROM project_deletions x WHERE x.project_id=p.id)
-          AND NOT EXISTS (SELECT 1 FROM project_merges m WHERE m.source_id=p.id)
-          AND NOT EXISTS (SELECT 1 FROM project_change_blocks x WHERE x.project_id=p.id)
+        WHERE p.id=? AND {_EDITABLE_PROJECT}
     ''', (project_id,)).fetchone() is not None
 
 
@@ -205,6 +215,30 @@ class OriginalSiteProjects:
             for start in range(0, len(project_ids), 500):
                 self.workspaces.ensure_projects(project_ids[start:start + 500])
 
+    def _bind_new_tasks(self, connection, existing, observed):
+        waiting = {task.id: task for task in observed.values()
+                   if task.id not in existing and task.stage in MATERIAL_PREPARATION_STAGES}
+        if not waiting:
+            return {}
+        reassigned = {row['task_id'] for row in connection.execute(
+            'SELECT DISTINCT task_id FROM original_site_bindings'
+        ) if row['task_id'] in waiting}
+        candidates = [(task_id, task.title) for task_id, task in waiting.items() if task_id not in reassigned]
+        importing = {task_id for task_id, _ in candidates}
+        result = import_site_tasks(connection, candidates, strict_identity=True, other_titles=(
+            task.title for task in observed.values()
+            if task.id not in importing and task.stage in MATERIAL_PREPARATION_STAGES
+        ))
+        conflicts = {row['task_id'] for row in result['conflicts']}
+        projects = {task_id: project_id for task_id, project_id in source_project_links(connection).items()
+                    if task_id in importing and task_id not in conflicts}
+        if reassigned:
+            created = {task_id: create_site_task_project(connection, task_id, waiting[task_id].title.strip())
+                       for task_id in waiting if task_id in reassigned}
+            self.db._assign_default_project_type(connection, list(created.values()))
+            projects.update(created)
+        return projects
+
     def sync(self, account, tasks):
         username = _account(account)
         if not username:
@@ -226,17 +260,14 @@ class OriginalSiteProjects:
                     changes += connection.execute(
                         'UPDATE original_site_bindings SET available=0 WHERE project_id=?', (row['project_id'],)
                     ).rowcount
+            new_projects = self._bind_new_tasks(connection, existing, observed)
             for task_id, task in observed.items():
                 row = existing.get(task_id)
-                if row:
-                    project_id = row['project_id']
-                elif task.stage in MATERIAL_PREPARATION_STAGES:
-                    capture = self.db._create_capture(
-                        connection, f'原站任务 #{task_id}（{username}）\n{task.title}', _BATCH, [(task.title.strip(), False)]
-                    )
-                    project_id = capture['project_ids'][0]
-                else:
+                project_id = row['project_id'] if row else new_projects.get(task_id)
+                if project_id is None:
                     continue
+                connection.execute('INSERT OR IGNORE INTO site_task_project_links(task_id,project_id) VALUES (?,?)',
+                                   (task_id, project_id))
                 observed_change = self._observe(connection, username, task, project_id)
                 changes += observed_change
                 if (self.workspaces is not None and task.stage in MATERIAL_PREPARATION_STAGES
@@ -260,15 +291,64 @@ class OriginalSiteProjects:
             connection.execute('BEGIN IMMEDIATE')
             self.db._assert_projects_editable(connection, project_id)
             local = connection.execute('SELECT name FROM projects WHERE id=?', (project_id,)).fetchone()
-            if local['name'] != task.title.strip():
+            if project_name_key(local['name']) != project_name_key(task.title):
                 raise ValueError('本地项目名称与原站项目全名不一致。')
             if connection.execute('''
-                SELECT 1 FROM original_site_bindings WHERE project_id=? OR (account_username=? AND task_id=?)
-            ''', (project_id, username, task.id)).fetchone():
+                SELECT 1 FROM original_site_bindings WHERE project_id=? OR task_id=?
+            ''', (project_id, task.id)).fetchone():
                 raise ValueError('本地项目或原站编号已有绑定。')
+            links = source_project_links(connection)
+            if ((task.id in links and links[task.id] != project_id)
+                    or any(identifier != task.id and pid == project_id for identifier, pid in links.items())):
+                raise ValueError('本地项目或原站编号已有绑定。')
+            connection.execute('INSERT OR IGNORE INTO site_task_project_links(task_id,project_id) VALUES (?,?)',
+                               (task.id, project_id))
             self._observe(connection, username, task, project_id)
         self._ensure_workspaces([project_id])
         return project_id
+
+    def create_for_selected(self, account, task, *, confirmed=False):
+        """Create an independent project after the user confirms the exact upstream task."""
+        username = _account(account)
+        if confirmed is not True or not username:
+            raise ValueError('请确认选中的原站本人任务。')
+        _task(account, task)
+        if task.stage not in MATERIAL_PREPARATION_STAGES:
+            raise ValueError('该原站任务当前不能新建个人项目。')
+        with self.db.connect() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            existing = connection.execute('''
+                SELECT project_id FROM original_site_bindings WHERE account_username=? AND task_id=?
+            ''', (username, task.id)).fetchone()
+            if existing:
+                project_id = existing['project_id']
+                self.db._assert_projects_editable(connection, project_id)
+            else:
+                if connection.execute('''
+                    SELECT 1 FROM site_task_project_links WHERE task_id=?
+                    UNION ALL SELECT 1 FROM original_site_bindings WHERE task_id=? LIMIT 1
+                ''', (task.id, task.id)).fetchone():
+                    raise ValueError('该编号已有本机项目关联。请先核对并恢复原关联项目，再继续办理。')
+                project_id = create_site_task_project(connection, task.id, task.title.strip())
+                self.db._assign_default_project_type(connection, [project_id])
+                connection.execute('INSERT INTO site_task_project_links(task_id,project_id) VALUES (?,?)',
+                                   (task.id, project_id))
+            self._observe(connection, username, task, project_id)
+        self._ensure_workspaces([project_id])
+        return project_id
+
+    def unlinked_tasks(self, account, tasks):
+        username = _account(account)
+        if not username:
+            return ()
+        eligible = tuple(task for task in (_task(account, item) for item in tasks)
+                         if task.stage in MATERIAL_PREPARATION_STAGES)
+        if not eligible:
+            return ()
+        with self.db.connect() as connection:
+            current = {(row['task_id'], row['title'], row['stage'], row['revision'])
+                       for row in connection.execute(_AVAILABLE_BINDINGS, (username,))}
+        return tuple(task for task in eligible if (task.id, task.title, task.stage.value, task.revision) not in current)
 
     def binding_for(self, project_id, account=None):
         with self.db.connect() as connection:
@@ -288,13 +368,11 @@ class OriginalSiteProjects:
         if task.stage not in MATERIAL_PREPARATION_STAGES:
             return None
         with self.db.connect() as connection:
-            row = connection.execute('''
-                SELECT project_id FROM original_site_bindings
-                WHERE account_username=? AND task_id=? AND title=? AND stage=? AND revision=? AND available=1
-            ''', (username, task.id, task.title, task.stage.value, task.revision)).fetchone()
-            if row and _editable(connection, row['project_id']):
-                return row['project_id']
-            return None
+            row = connection.execute(
+                _AVAILABLE_BINDINGS + ' AND b.task_id=? AND b.title=? AND b.stage=? AND b.revision=?',
+                (username, task.id, task.title, task.stage.value, task.revision),
+            ).fetchone()
+            return row['project_id'] if row else None
 
     def pending(self, account):
         username = _account(account)

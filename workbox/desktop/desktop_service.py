@@ -22,14 +22,15 @@ from workbox.projects.parser import (
     ParsedProject,
     parse_message,
 )
-from workbox.storage.workspace_manager import WorkspaceManager, _path, _zip_structure
+from workbox.storage.workspace_manager import MAX_PROJECTS_PER_WORKSPACE_CALL, WorkspaceManager, _path, _zip_structure
 from workbox.storage.snapshot_manager import SnapshotManager
 from workbox.storage.native_files import ZipLease, cancelled, plain_path, path_is_within
 from workbox.storage.zip_manager import match_projects
 from workbox.storage.file_matcher import match_work_file_projects, new_file_project_name
 from workbox.storage.bundle_analyzer import analyze_bundle, bundle_hint
 from workbox.projects.workflow_policy import read_policy, creation_disabled_message
-from workbox.projects.text_intake import TextProjectConflict, resolve_text_projects
+from workbox.projects.site_task_import import import_site_tasks
+from workbox.projects.text_intake import TextProjectConflict, create_intake_message, resolve_text_projects
 from workbox.projects.project_names import project_name_key
 from functools import wraps
 
@@ -280,14 +281,8 @@ class DesktopService(WorkBox):
         # Resolve every name before creating any batch/project. The caller owns
         # the write transaction, including review confirmation and queued intake.
         planned = resolve_text_projects(connection, projects)
-        batch_name = receipt['batch_name']
-        suffix = 1
-        while connection.execute('SELECT 1 FROM batches WHERE name=?', (batch_name,)).fetchone():
-            suffix += 1
-            batch_name = receipt['batch_name'] + f' ({suffix})'
-        batch_id = connection.execute('INSERT INTO batches(name) VALUES (?)', (batch_name,)).lastrowid
+        batch_id, batch_name, message_id = create_intake_message(connection, receipt['batch_name'], receipt['raw_text'])
         connection.execute('UPDATE intake_receipts SET batch_name=? WHERE id=?', (batch_name, receipt['id']))
-        message_id = connection.execute('INSERT INTO messages(batch_id,raw_text) VALUES (?,?)', (batch_id, receipt['raw_text'])).lastrowid
         ids, created, reused = [], [], []
         for project, existing_id in planned:
             if existing_id is None:
@@ -341,6 +336,16 @@ class DesktopService(WorkBox):
         return self._attach_workspaces(result)
 
     @_serialized_storage
+    def sync_site_tasks(self, tasks, *, cancel_event=None):
+        """Import the verified original-site tasks selected by the desktop workflow."""
+        cancelled(cancel_event)
+        with self.db.connect() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            result = import_site_tasks(connection, tasks)
+            cancelled(cancel_event)
+        return self._attach_workspaces(result)
+
+    @_serialized_storage
     def receive_task_text(self, text, *, group_id=None, new_round=False, request_id=None):
         return self.task_groups.receive(text, group_id=group_id, new_round=new_round,
                                         request_id=request_id)
@@ -353,7 +358,12 @@ class DesktopService(WorkBox):
                 result['project_ids'] = list(dict.fromkeys(self.db.canonical_project_id(pid) for pid in original))
                 if result['project_ids'] != original:
                     result['original_project_ids'] = original
-                result['workspaces'] = self.workspaces.ensure_projects(result['project_ids'])
+                workspaces = []
+                project_ids = result['project_ids']
+                for start in range(0, len(project_ids), MAX_PROJECTS_PER_WORKSPACE_CALL):
+                    workspaces.extend(self.workspaces.ensure_projects(
+                        project_ids[start:start + MAX_PROJECTS_PER_WORKSPACE_CALL]))
+                result['workspaces'] = workspaces
             except (OSError, ValueError, RuntimeError) as error:
                 result['workspace_error'] = str(error)
         return result
@@ -373,6 +383,19 @@ class DesktopService(WorkBox):
                 WHERE p.batch_id=? AND d.archived_at IS NULL AND x.deleted_at IS NULL
                 AND NOT EXISTS(SELECT 1 FROM project_merges m WHERE m.source_id=p.id) ORDER BY p.id''', (project['batch_id'],))]
         return self.workspaces.ensure_projects(ids)
+
+    @_serialized_storage
+    def sync_personal_site_snapshot(self, snapshot):
+        from workbox.projects.original_site import OriginalSiteProjects
+        return OriginalSiteProjects(self.db, self.workspaces).sync(snapshot.account, snapshot.tasks)
+
+    @_serialized_storage
+    def bind_personal_site_task(self, account, task, project_id):
+        from workbox.projects.original_site import OriginalSiteProjects
+        projects = OriginalSiteProjects(self.db, self.workspaces)
+        if project_id is None:
+            return projects.create_for_selected(account, task, confirmed=True)
+        return projects.bind_existing(account, task, project_id, confirmed=True)
 
     def get_project(self, project_id):
         result = super().get_project(project_id)
