@@ -1059,7 +1059,7 @@ class FloatingController(QObject):
                 self.panel.show_project_detail()
         if not self.queue and self.errors:
             if len(self.errors) == 1:
-                message = self.errors[0]
+                message = f'处理失败：{worker.error or self.errors[0]}'
             else:
                 message = f'本次有 {len(self.errors)} 项失败，其余文件独立处理。\n' + '\n'.join(self.errors)
             target = None
