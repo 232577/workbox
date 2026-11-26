@@ -128,6 +128,7 @@ class DesktopWindow(_FileInbox):
         self._unlinked_tasks = frozenset()
         self._personal_notice_timer = QTimer(self, singleShot=True, interval=6500)
         self._personal_notice_timer.timeout.connect(self._clear_personal_notice)
+        self._personal_notice_kind = None
         self._read_error = ''
         self._deferred_read = ''
         self._waiting_for_snapshot = False
@@ -367,6 +368,7 @@ class DesktopWindow(_FileInbox):
 
     def _reset_intake(self):
         self._personal_notice_timer.stop()
+        self._personal_notice_kind = None
         # Previously requested results remain stale even if the same accounts reconnect.
         self._intake_revision += 1
         self._clear_preparation()
@@ -441,17 +443,24 @@ class DesktopWindow(_FileInbox):
         else:
             self._hint.setText('请先选择交件目录，再拖入 Word。')
 
-    def show_personal_result(self, title: str, detail: str = '', *, temporary=False):
+    def show_personal_result(self, title: str, detail: str = '', *, temporary=False, kind=None):
         if self._personal_mode:
             self._personal_notice_timer.stop()
+            self._personal_notice_kind = kind
             self._result_title, self._result_info = title, detail
             self._update_controls()
             if temporary:
                 self._personal_notice_timer.start()
 
     def _clear_personal_notice(self):
+        self._personal_notice_kind = None
         self._result_title, self._result_info = _WAITING, ''
         self._update_controls()
+
+    def clear_personal_result(self, kind):
+        if self._personal_notice_kind == kind:
+            self._personal_notice_timer.stop()
+            self._clear_personal_notice()
 
     def set_unlinked_tasks(self, tasks):
         self._unlinked_tasks = frozenset(task.id for task in tasks)
@@ -571,6 +580,7 @@ class DesktopWindow(_FileInbox):
         revision, self._request_revision = self._request_revision, None
         if revision is not None and revision != self._intake_revision:
             return
+        self._personal_notice_kind = None
         self._clear_preparation()
         if self._live and result.receipt_id and result.material is not None:
             self._prepared_path = str(result.material.path)
@@ -623,6 +633,7 @@ class DesktopWindow(_FileInbox):
             return
         if self._prepared_path:
             self._clear_preparation()
+            self._personal_notice_kind = None
             self._result_title, self._result_info = _WAITING, ''
             self._update_controls()
         self._request_revision = self._intake_revision
@@ -644,6 +655,7 @@ class DesktopWindow(_FileInbox):
 
     def _show_rejection(self, message: str):
         self._personal_notice_timer.stop()
+        self._personal_notice_kind = None
         self._result_title, self._result_info = '未接收文件', message
         self._clear_preparation()
         self._update_controls()
