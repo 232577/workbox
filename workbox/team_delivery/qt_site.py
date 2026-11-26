@@ -498,6 +498,19 @@ class QtSiteGateway:
             raise GatewayError(_MESSAGES['target'])
         self._request_target(account, task, 'reveal', known=row)
 
+    def show_personal_completion(self, account, task) -> bool:
+        """Refresh the existing page and locate a previously verified completed row."""
+        if task.stage is not Stage.COMPLETED:
+            return False
+        try:
+            row = self._request_target(account, task, 'target')
+            if self._task(account, row) != task:
+                return False
+            shown = self._request_target(account, task, 'show-personal-completion', known=row)
+        except GatewayError:
+            return False
+        return shown.get('visible') is True
+
     def read_material_task(self, account, task):
         return self._task(account, self._request_target(account, task, 'target'))
 

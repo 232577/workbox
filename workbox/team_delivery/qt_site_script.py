@@ -11,10 +11,15 @@ OBSERVE = r'''(() => {
         if (next !== previous) {
             previous = next;
             accountVersion++;
+            globalThis.workboxCompletedView = null;
         }
     }).observe(document, {subtree: true, childList: true, characterData: true});
-    for (const event of ['pointerdown', 'keydown', 'input', 'change', 'submit'])
+    for (const event of ['pointerdown', 'keydown', 'input', 'change', 'submit', 'wheel'])
         document.addEventListener(event, e => { if (e.isTrusted) interaction++; }, true);
+    document.addEventListener('click', e => {
+        if (e.isTrusted && e.target.closest?.('#matCompletedToggle,[data-action="collapse-completed"][data-stage="mat"]'))
+            globalThis.workboxCompletedView = null;
+    }, true);
     globalThis.workboxSiteObservation = () => ({label: label(), accountVersion, interaction});
 })();'''
 
@@ -83,19 +88,24 @@ OPERATE = r'''async ({origin, operation, expected, deadline, remaining, requestK
             [...document.querySelectorAll('[role="dialog"],[role="alertdialog"],#matFilter[open],#matType[open]')]
                 .some(visible);
     };
-    const filtered = () => ['matSearch','matRemark','matCodeOwner','matMaterialOwner',
+    const materialList = () => document.getElementById('matList');
+    const completedToggle = () => document.getElementById('matCompletedToggle');
+    const workboxExpanded = () => globalThis.workboxCompletedView === completedToggle();
+    const filtered = (includeWorkboxView = false) => ['matSearch','matRemark','matCodeOwner','matMaterialOwner',
         'matCreatedDate','matOperationDate'].some(id => document.getElementById(id)?.value?.trim()) ||
         Boolean(document.querySelector('#matFilter input:checked,#matType input:checked,' +
             '#matMine:not(:checked),#matBatchFocus:not(.hidden):not([hidden]),' +
-            '#matCompletedToggle[aria-expanded="true"],#matReminders [data-stage-reminder="overdue"][aria-pressed="true"]'));
-    const reveal = before => {
-        const materialList = () => document.getElementById('matList');
-        if (!visible(materialList())) {
-            if (filtered()) return false;
-            const tabs = [...document.querySelectorAll('button[data-page="material"]')].filter(visible);
-            if (tabs.length !== 1) return false;
-            tabs[0].click();
-        }
+            '#matReminders [data-stage-reminder="overdue"][aria-pressed="true"]')) ||
+        (completedToggle()?.getAttribute('aria-expanded') === 'true' && !(includeWorkboxView && workboxExpanded()));
+    const openMaterials = () => {
+        if (visible(materialList())) return true;
+        const tabs = [...document.querySelectorAll('button[data-page="material"]')].filter(visible);
+        if (tabs.length !== 1) return false;
+        tabs[0].click();
+        return visible(materialList());
+    };
+    const reveal = (before, includeWorkboxView = false) => {
+        if (!visible(materialList()) && (filtered(includeWorkboxView) || !openMaterials())) return false;
         const visited = new Set();
         for (let attempt = 0; attempt < 40 && !pageBusy() && visible(materialList()); attempt++) {
             const boxes = [...materialList().querySelectorAll('input.mat-check[type="checkbox"]')]
@@ -108,7 +118,7 @@ OPERATE = r'''async ({origin, operation, expected, deadline, remaining, requestK
                 row.scrollIntoView({block: 'center'});
                 return true;
             }
-            if (filtered()) return false;
+            if (filtered(includeWorkboxView)) return false;
             const pager = document.getElementById('matPager');
             const states = [...(pager?.innerText || '').matchAll(/第\s*(\d+)\s*\/\s*(\d+)\s*页/g)];
             if (states.length !== 1) return false;
@@ -127,6 +137,41 @@ OPERATE = r'''async ({origin, operation, expected, deadline, remaining, requestK
         }
         return false;
     };
+    const restoreMine = () => {
+        const mine = document.getElementById('matMine');
+        if (mine && !mine.checked) {
+            mine.checked = true;
+            mine.dispatchEvent(new Event('change', {bubbles: true}));
+        }
+    };
+    const showCompletion = async before => {
+        if (before.status !== '已完成' || filtered(true) || !openMaterials()) return false;
+        const refresh = document.getElementById('refreshApp');
+        const progress = document.getElementById('refreshStatus');
+        const mine = document.getElementById('matMine');
+        if (!visible(refresh) || refresh.matches(':disabled,[aria-disabled="true"]') ||
+            !progress || !mine?.checked || pageBusy()) return false;
+        refresh.click();
+        // The site's native refresh resets its filters synchronously. Restore "only mine"
+        // before waiting for the result, even if the read fails or the operator moves on.
+        if (sameDocumentAccount()) restoreMine();
+        if (progress.dataset.state !== 'loading') return false;
+        const waitUntil = performance.now() + 4500;
+        while (progress.dataset.state === 'loading' && sameDocumentAccount() &&
+               observe().interaction === initial.interaction && performance.now() < waitUntil)
+            await new Promise(resolve => setTimeout(resolve, 50));
+        if (progress.dataset.state !== 'success' || pageBusy()) return false;
+        restoreMine();
+        if (filtered(true)) return false;
+        const toggle = completedToggle();
+        if (!visible(toggle) || toggle.matches(':disabled,[aria-disabled="true"]')) return false;
+        if (toggle.getAttribute('aria-expanded') !== 'true') {
+            toggle.click();
+            if (toggle.getAttribute('aria-expanded') !== 'true') return false;
+            globalThis.workboxCompletedView = toggle;
+        }
+        return reveal(before, true);
+    };
     let sent = false;
     try {
         if (!initial.label || initial.label === '未登录') return {account: null, rows: []};
@@ -140,10 +185,12 @@ OPERATE = r'''async ({origin, operation, expected, deadline, remaining, requestK
         if (before.status !== expected.status || before.owner !== expected.owner || before.updated !== expected.updated)
             return {error: 'target'};
         if (pageBusy()) return {error: 'busy'};
+        if (operation === 'show-personal-completion')
+            return {account, target: {...before, visible: await showCompletion(before)}};
         if (operation === 'reveal') {
             return reveal(before) ? {account, target: before} : {error: 'not-visible'};
         }
-        if (filtered()) return {error: 'busy'};
+        if (filtered(personal)) return {error: 'busy'};
         const id = Number(expected.id);
         if (!Number.isSafeInteger(id) || id < 1 || String(id) !== expected.id) return {error: 'target'};
         const allowedStart = operation === 'start-material' && ['待制作', '预审退回'].includes(before.status);
