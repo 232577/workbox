@@ -1,4 +1,5 @@
 import hashlib
+import os
 import threading
 from concurrent.futures import CancelledError
 from pathlib import Path
@@ -99,6 +100,238 @@ def test_import_copy_dedup_versions_source_inside_and_archived(context, tmp_path
     assert len(manager.list_workspaces(include_archived=True)) == 1
     with pytest.raises(ValueError): manager.import_file(source, pid)
     with pytest.raises((ValueError, KeyError)): manager.import_file(source, None)
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='需要 Windows NTFS 命名数据流')
+def test_local_docx_intake_copies_named_streams_and_verifies_duplicate(context, tmp_path):
+    service, manager = context
+    pid = projects(service, ['匿名材料'])[0]
+    source = tmp_path / '匿名材料.docx'
+    source.write_bytes(b'ordinary fixture')
+    metadata = {
+        'Zone.Identifier': b'[ZoneTransfer]\r\nZoneId=3\r\n',
+        'DocumentMetadata': b'private stream contents',
+    }
+    for name, data in metadata.items():
+        Path(f'{source}:{name}').write_bytes(data)
+
+    result = manager.import_file(source, pid)
+    target = Path(result['file']['path'])
+    assert result['source_preserved'] and not result['duplicate']
+    assert target.name == source.name
+    assert target.read_bytes() == source.read_bytes() == b'ordinary fixture'
+    for name, data in metadata.items():
+        assert Path(f'{target}:{name}').read_bytes() == Path(f'{source}:{name}').read_bytes() == data
+    assert service.db.get_project(pid)['status'] == '待交付'
+    assert manager.import_file(source, pid)['duplicate']
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='需要 Windows NTFS 命名数据流')
+def test_local_docx_same_body_with_different_streams_is_not_a_duplicate(context, tmp_path):
+    service, manager = context
+    pid = projects(service, ['匿名材料'])[0]
+    source = tmp_path / '匿名材料.docx'
+    source.write_bytes(b'ordinary fixture')
+    initial = manager.import_file(source, pid)
+    target = Path(initial['file']['path'])
+    Path(f'{source}:DocumentMetadata').write_bytes(b'not in the working copy')
+
+    with pytest.raises(ValueError, match='命名数据流'):
+        manager.import_file(source, pid)
+
+    assert target.read_bytes() == source.read_bytes() == b'ordinary fixture'
+    assert Path(f'{source}:DocumentMetadata').read_bytes() == b'not in the working copy'
+    assert not Path(f'{target}:DocumentMetadata').exists()
+    assert [row['status'] for row in manager.intake_log.list_recent()] == ['copied']
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='需要 Windows NTFS 命名数据流')
+def test_local_docx_version_rotation_preserves_both_copies_named_streams(context, tmp_path):
+    service, manager = context
+    pid = projects(service, ['匿名材料'])[0]
+    source = tmp_path / '匿名材料.docx'
+    source.write_bytes(b'previous document')
+    initial = manager.import_file(source, pid)
+    target = Path(initial['file']['path'])
+    Path(f'{target}:DocumentMetadata').write_bytes(b'old metadata')
+    source.write_bytes(b'new document')
+    Path(f'{source}:DocumentMetadata').write_bytes(b'new metadata')
+
+    result = manager.import_file(source, pid)
+
+    assert result['file']['path'] == str(target)
+    assert target.read_bytes() == source.read_bytes() == b'new document'
+    assert Path(f'{target}:DocumentMetadata').read_bytes() == Path(f'{source}:DocumentMetadata').read_bytes() == b'new metadata'
+    with service.db.connect() as connection:
+        history = Path(connection.execute('SELECT path FROM work_files WHERE id=?',
+                                          (initial['file']['id'],)).fetchone()['path'])
+    assert history != target and history.read_bytes() == b'previous document'
+    assert Path(f'{history}:DocumentMetadata').read_bytes() == b'old metadata'
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='需要 Windows NTFS 命名数据流')
+@pytest.mark.parametrize('duplicate', [False, True], ids=['fresh-copy', 'duplicate'])
+def test_local_docx_rolls_back_when_a_source_stream_appears_during_registration(
+        context, tmp_path, monkeypatch, duplicate):
+    service, manager = context
+    pid = projects(service, ['匿名材料'])[0]
+    source = tmp_path / '匿名材料.docx'
+    source.write_bytes(b'ordinary fixture')
+    initial = manager.import_file(source, pid) if duplicate else None
+    workspace = Path(manager.ensure_projects([pid])[0]['path'])
+    extra = Path(f'{source}:LateMetadata')
+    mark_pending = service.db._mark_work_file_pending
+
+    def mark_then_add_stream(*args, **kwargs):
+        mark_pending(*args, **kwargs)
+        extra.write_bytes(b'new source metadata')
+
+    monkeypatch.setattr(service.db, '_mark_work_file_pending', mark_then_add_stream)
+    with pytest.raises(RuntimeError, match='命名数据流.*发生变化'):
+        manager.import_file(source, pid)
+
+    assert extra.read_bytes() == b'new source metadata'
+    assert source.read_bytes() == b'ordinary fixture'
+    assert (workspace / source.name).exists() is duplicate
+    assert [row['status'] for row in manager.intake_log.list_recent()] == (['copied'] if initial else [])
+
+
+def _write_stream_while_file_can_move(path, name, content):
+    import ctypes
+    import msvcrt
+
+    from workbox.storage.native_files import _api, named_data_stream_path
+
+    api = _api()
+    handle = api.CreateFileW(named_data_stream_path(path, name), 0x40000000, 7, None, 2, 0, None)
+    if handle == ctypes.c_void_p(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        fd = msvcrt.open_osfhandle(handle, os.O_WRONLY | os.O_BINARY)
+    except BaseException:
+        api.CloseHandle(handle)
+        raise
+    with os.fdopen(fd, 'wb') as stream:
+        stream.write(content)
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='需要 Windows NTFS 命名数据流')
+@pytest.mark.parametrize('rotation', [False, True], ids=['fresh-copy', 'rotation'])
+def test_local_docx_preserves_unexpected_destination_stream_without_committing(
+        context, tmp_path, monkeypatch, rotation):
+    service, manager = context
+    pid = projects(service, ['匿名材料'])[0]
+    source = tmp_path / '匿名材料.docx'
+    if rotation:
+        source.write_bytes(b'original document')
+        initial = manager.import_file(source, pid)
+    source.write_bytes(b'incoming document')
+    workspace = Path(manager.ensure_projects([pid])[0]['path'])
+    target = workspace / source.name
+    unexpected = Path(f'{target}:LateMetadata')
+    mark_pending = service.db._mark_work_file_pending
+
+    def mark_then_add_stream(*args, **kwargs):
+        mark_pending(*args, **kwargs)
+        _write_stream_while_file_can_move(target, 'LateMetadata', b'external destination metadata')
+
+    monkeypatch.setattr(service.db, '_mark_work_file_pending', mark_then_add_stream)
+    with pytest.raises(RuntimeError) as failure:
+        manager.import_file(source, pid)
+
+    # 轮换回滚可能首先发现添加命名流也改变了文件的修改时间。
+    assert '命名数据流' in str(failure.value) or '命名数据流' in str(failure.value.__context__)
+    assert source.read_bytes() == target.read_bytes() == b'incoming document'
+    assert unexpected.read_bytes() == b'external destination metadata'
+    assert [row['status'] for row in manager.intake_log.list_recent()] == (['copied'] if rotation else [])
+    with service.db.connect() as connection:
+        rows = connection.execute('SELECT id FROM work_files WHERE project_id=?', (pid,)).fetchall()
+    assert [row['id'] for row in rows] == ([initial['file']['id']] if rotation else [])
+    if rotation:
+        prepared = list(manager.document_versions.journal_root.glob('*.json'))
+        assert len(prepared) == 1 and pid in manager.document_versions.blocked
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='需要 Windows NTFS 命名数据流')
+@pytest.mark.parametrize('rotation', [False, True], ids=['fresh-copy', 'rotation'])
+def test_local_docx_keeps_copied_stream_write_locked_during_registration(
+        context, tmp_path, monkeypatch, rotation):
+    service, manager = context
+    pid = projects(service, ['匿名材料'])[0]
+    source = tmp_path / '匿名材料.docx'
+    if rotation:
+        source.write_bytes(b'original document')
+        manager.import_file(source, pid)
+    source.write_bytes(b'incoming document')
+    Path(f'{source}:DocumentMetadata').write_bytes(b'verified destination metadata')
+    workspace = Path(manager.ensure_projects([pid])[0]['path'])
+    target = workspace / source.name
+    target_stream = Path(f'{target}:DocumentMetadata')
+    mark_pending = service.db._mark_work_file_pending
+
+    def mark_then_try_modifying_stream(*args, **kwargs):
+        mark_pending(*args, **kwargs)
+        with pytest.raises(OSError):
+            _write_stream_while_file_can_move(target, 'DocumentMetadata', b'external destination metadata')
+
+    monkeypatch.setattr(service.db, '_mark_work_file_pending', mark_then_try_modifying_stream)
+    assert not manager.import_file(source, pid)['duplicate']
+    assert target_stream.read_bytes() == b'verified destination metadata'
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='需要 Windows NTFS 命名数据流')
+@pytest.mark.parametrize('after_restore', [False, True], ids=['primary-match', 'after-restore'])
+def test_local_docx_preserves_ads_added_while_rolling_back_rotation(context, tmp_path, monkeypatch, after_restore):
+    from workbox.storage.native_files import ZipLease
+
+    service, manager = context
+    pid = projects(service, ['匿名材料'])[0]
+    source = tmp_path / '匿名材料.docx'
+    source.write_bytes(b'original document')
+    target = Path(manager.import_file(source, pid)['file']['path'])
+    source.write_bytes(b'incoming document')
+    new_digest = hashlib.sha256(b'incoming document').hexdigest()
+    versions = manager.document_versions
+    match = versions._matches
+    rename = ZipLease.rename_to
+    rolling_back = False
+    stage = None
+    injected_path = None
+
+    def fail_registration(*args, **kwargs):
+        nonlocal rolling_back
+        rolling_back = True
+        raise RuntimeError('simulated registration failure')
+
+    def add_metadata(path):
+        nonlocal injected_path
+        _write_stream_while_file_can_move(path, 'LateMetadata', b'external rollback metadata')
+        injected_path = Path(f'{path}:LateMetadata')
+
+    def match_then_add_stream(lease, expected_identity, digest):
+        match(lease, expected_identity, digest)
+        if rolling_back and not after_restore and digest == new_digest:
+            add_metadata(lease.path)
+
+    def rename_then_add_stream(lease, destination):
+        nonlocal stage
+        rename(lease, destination)
+        if rolling_back and after_restore:
+            if lease.path == target:
+                add_metadata(stage)
+            else:
+                stage = lease.path
+
+    monkeypatch.setattr(service.db, '_mark_work_file_pending', fail_registration)
+    monkeypatch.setattr(versions, '_matches', match_then_add_stream)
+    monkeypatch.setattr(ZipLease, 'rename_to', rename_then_add_stream)
+    with pytest.raises(RuntimeError, match='命名数据流'):
+        manager.import_file(source, pid)
+
+    assert injected_path.read_bytes() == b'external rollback metadata'
+    assert target.read_bytes() == (b'original document' if after_restore else b'incoming document')
+    assert [row['status'] for row in manager.intake_log.list_recent()] == ['copied']
+    assert list(versions.journal_root.glob('*.json')) and pid in versions.blocked
 
 
 def test_copy_cancel_invalid_and_no_overwrite(tmp_path):

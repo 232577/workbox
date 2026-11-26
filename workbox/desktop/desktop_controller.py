@@ -1058,7 +1058,10 @@ class FloatingController(QObject):
             if focused and keep_project_detail:
                 self.panel.show_project_detail()
         if not self.queue and self.errors:
-            message = f'本次有 {len(self.errors)} 项失败，其余文件独立处理。\n' + '\n'.join(self.errors)
+            if len(self.errors) == 1:
+                message = self.errors[0]
+            else:
+                message = f'本次有 {len(self.errors)} 项失败，其余文件独立处理。\n' + '\n'.join(self.errors)
             target = None
             notice_kind = 'persistent'
         if message:

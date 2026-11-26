@@ -13,11 +13,14 @@ import threading
 import uuid
 from collections import OrderedDict
 from contextlib import ExitStack
-from functools import wraps
+from functools import partial, wraps
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
-from workbox.storage.native_files import ZipLease, cancelled, identity, named_data_stream_path, plain_path, path_is_within
+from workbox.storage.native_files import (
+    ZipLease, cancelled, hash_named_streams as _hash_named_streams, hash_stream as _hash_stream,
+    identity, plain_path, path_is_within,
+)
 from workbox.storage.intake_log import FileIntakeLog
 from workbox.storage.first_run import (
     initialize as initialize_first_run,
@@ -66,6 +69,17 @@ CREATE INDEX IF NOT EXISTS idx_work_files_project_hash ON work_files(project_id,
 '''
 
 
+def _is_remote_path(path):
+    if str(path).startswith('\\\\'):
+        return True
+    if os.name != 'nt':
+        return False
+    api = ctypes.WinDLL('kernel32', use_last_error=True)
+    api.GetDriveTypeW.argtypes = [ctypes.c_wchar_p]
+    api.GetDriveTypeW.restype = ctypes.c_uint
+    return api.GetDriveTypeW(path.anchor) == 4
+
+
 def _path(value, *, allow_network=False):
     if not isinstance(value, (str, Path)) or not str(value).strip():
         raise ValueError('请选择本机有效路径。')
@@ -73,53 +87,14 @@ def _path(value, *, allow_network=False):
     if not allow_network and str(value).startswith(('\\\\', '//')):
         raise ValueError('不接受网络路径或设备路径。')
     path = plain_path(value, allow_network=allow_network)
-    if os.name == 'nt' and not allow_network:
-        api = ctypes.WinDLL('kernel32', use_last_error=True)
-        api.GetDriveTypeW.argtypes = [ctypes.c_wchar_p]
-        api.GetDriveTypeW.restype = ctypes.c_uint
-        if api.GetDriveTypeW(path.anchor) == 4:
-            raise ValueError('不接受映射的网络磁盘，请选择本机目录。')
+    if not allow_network and _is_remote_path(path):
+        raise ValueError('不接受映射的网络磁盘，请选择本机目录。')
     return path
 
 
-def _hash_stream(stream, *, cancel_event=None, progress=None, copy_to=None):
-    before = os.fstat(stream.fileno())
-    if not stat.S_ISREG(before.st_mode):
-        raise ValueError('请选择本机普通文件。')
-    stream.seek(0)
-    digest, size = hashlib.sha256(), 0
-    while True:
-        cancelled(cancel_event)
-        block = stream.read(1024 * 1024)
-        if not block:
-            break
-        if copy_to is not None:
-            copy_to.write(block)
-        digest.update(block)
-        size += len(block)
-        if progress:
-            progress(size, before.st_size)
-    cancelled(cancel_event)
-    if size != before.st_size or identity(before) != identity(os.fstat(stream.fileno())):
-        raise RuntimeError('读取期间文件发生变化，未完成收录。')
-    return digest.hexdigest(), size
-
-
-def _hash_named_streams(lease, leases, *, cancel_event=None, copy_to=None):
-    streams = leases.enter_context(lease.named_streams())
-    manifest = {}
-    for name, stream in streams.items():
-        if copy_to is None:
-            digest, size = _hash_stream(stream, cancel_event=cancel_event)
-        else:
-            with open(named_data_stream_path(copy_to, name), 'xb') as output:
-                digest, size = _hash_stream(stream, cancel_event=cancel_event, copy_to=output)
-                output.flush()
-                os.fsync(output.fileno())
-        manifest[name] = dict(size=size, sha256=digest)
-    if list(streams) != lease.named_stream_names():
-        raise RuntimeError('命名数据流在复制或校验期间变化，副本未核验。')
-    return manifest
+def _assert_intake_stream_set(lease, expected):
+    if expected is not None and list(expected) != lease.named_stream_names():
+        raise RuntimeError('材料的命名数据流在登记期间发生变化，未完成收录。')
 
 
 def _zip_structure(stream, cancel_event=None):
@@ -163,7 +138,7 @@ def _zip_structure(stream, cancel_event=None):
 
 
 def copy_verified(source, target, *, cancel_event=None, progress=None, require_zip=False,
-                  expected_named_streams=None):
+                  expected_named_streams=None, destination_leases=None):
     """稳定读取原件，校验副本，再以无覆盖的原子改名发布。原件始终保留。"""
     preserve_named_streams = expected_named_streams is not None
     source, target = _path(source, allow_network=True), _path(target)
@@ -215,14 +190,15 @@ def copy_verified(source, target, *, cancel_event=None, progress=None, require_z
                     if named_streams != expected_named_streams:
                         raise RuntimeError('材料的命名数据流在复制期间变化，副本未发布。')
                 os.utime(temporary, ns=(before.st_atime_ns, before.st_mtime_ns))
-            with ZipLease(temporary) as copied:
+            with ExitStack() as verified_leases:
+                copied = verified_leases.enter_context(ZipLease(temporary))
                 if (copied.initial.st_dev, copied.initial.st_ino) != created_identity:
                     raise RuntimeError('临时副本在校验前被替换，未发布。')
                 copied_digest, copied_size = _hash_stream(copied.stream, cancel_event=cancel_event)
                 if (copied_digest, copied_size) != (digest.hexdigest(), size):
                     raise RuntimeError('副本校验不一致，未完成收录。')
                 if preserve_named_streams:
-                    copied_streams = _hash_named_streams(copied, stream_leases, cancel_event=cancel_event)
+                    copied_streams = _hash_named_streams(copied, verified_leases, cancel_event=cancel_event)
                     if copied_streams != named_streams or list(named_streams) != lease.named_stream_names():
                         raise RuntimeError('副本命名数据流核对不一致，副本未发布。')
                 elif copied.zone_metadata() != zone:
@@ -232,9 +208,15 @@ def copy_verified(source, target, *, cancel_event=None, progress=None, require_z
                 copied.rename_to(_path(target))
                 created_identity = None
                 published = os.fstat(copied.stream.fileno())
-                return dict(path=str(target), source_path=str(source), filename=source.name,
-                            size=size, sha256=copied_digest, mtime_ns=published.st_mtime_ns,
-                            identity=identity(published))
+                metadata = dict(path=str(target), source_path=str(source), filename=source.name,
+                                size=size, sha256=copied_digest, mtime_ns=published.st_mtime_ns,
+                                identity=identity(published))
+                if destination_leases is not None:
+                    # 调用方将刚核验的文件和数据流租约保留至登记事务结束。
+                    destination_leases.enter_context(verified_leases.pop_all())
+                    metadata['_verified_copy_lease'] = copied
+                    metadata['_verified_named_streams'] = expected_named_streams
+                return metadata
     finally:
         if created_identity is not None:
             try:
@@ -483,12 +465,18 @@ class WorkspaceManager:
             _path(parent)
         else:
             parent = directory
+        ordinary = source.suffix.casefold() != '.zip'
+        in_workspace = source.is_relative_to(directory)
         own_copy = None
         try:
-            with ZipLease(source, movable=False) as lease:
+            with ZipLease(source, movable=False) as lease, ExitStack() as stream_leases:
                 digest, size = _hash_stream(lease.stream, cancel_event=cancel_event)
-                if (not source.is_relative_to(directory) and source.suffix.casefold() != '.zip'
-                        and (parent / source.name).exists()):
+                named_streams = (_hash_named_streams(lease, stream_leases, cancel_event=cancel_event)
+                                 if ordinary and not _is_remote_path(source) else None)
+                copy_material = (copy_verified if named_streams is None
+                                 else partial(copy_verified, expected_named_streams=named_streams,
+                                              destination_leases=stream_leases))
+                if not in_workspace and ordinary and (parent / source.name).exists():
                     versions.prepare_history(parent / source.name, digest, size)
                 with self.db.connect() as connection:
                     connection.execute('BEGIN IMMEDIATE')
@@ -506,8 +494,7 @@ class WorkspaceManager:
                             SELECT 1 FROM work_file_supersessions h WHERE h.old_file_id=w.id) ORDER BY id''',
                         (project_id, digest, size)):
                         saved = _path(row['path'])
-                        if (source.suffix.casefold() != '.zip' and not source.is_relative_to(directory)
-                                and saved != parent / source.name):
+                        if ordinary and not in_workspace and saved != parent / source.name:
                             # 历史副本内容相同也不是当前稿；本次收件应恢复标准名。
                             continue
                         if Path(row['source_path']).name.casefold() != source.name.casefold():
@@ -516,18 +503,30 @@ class WorkspaceManager:
                             continue
                         if not saved.is_file():
                             continue
-                        with ZipLease(saved, movable=False) as saved_lease:
-                            if _hash_stream(saved_lease.stream, cancel_event=cancel_event) == (digest, size):
-                                record(row, 'duplicate')
-                                self.db._mark_work_file_pending(connection, project_id, row['id'], duplicate=True)
-                                return dict(file=dict(row), duplicate=True, source_preserved=True)
-                    if source.is_relative_to(directory):
+                        with ExitStack() as candidate_leases:
+                            saved_lease = candidate_leases.enter_context(ZipLease(saved, movable=False))
+                            if _hash_stream(saved_lease.stream, cancel_event=cancel_event) != (digest, size):
+                                continue
+                            if named_streams is not None and saved != source:
+                                saved_streams = _hash_named_streams(saved_lease, candidate_leases,
+                                                                  cancel_event=cancel_event)
+                                if saved_streams != named_streams:
+                                    if in_workspace:
+                                        continue
+                                    raise ValueError('同名文档正文相同但命名数据流不同，原件和现有文档均已保留。')
+                            record(row, 'duplicate')
+                            self.db._mark_work_file_pending(connection, project_id, row['id'], duplicate=True)
+                            _assert_intake_stream_set(lease, named_streams)
+                            _assert_intake_stream_set(saved_lease, named_streams)
+                            stream_leases.enter_context(candidate_leases.pop_all())
+                            return dict(file=dict(row), duplicate=True, source_preserved=True)
+                    if in_workspace:
                         metadata = dict(path=str(source), source_path=str(source), filename=source.name, size=size,
                                         sha256=digest, mtime_ns=source.stat().st_mtime_ns)
                     else:
                         target = parent / source.name
-                        if target.exists() and source.suffix.casefold() != '.zip':
-                            metadata = versions.publish(connection, source, target, digest, size, copy_verified,
+                        if target.exists() and ordinary:
+                            metadata = versions.publish(connection, source, target, digest, size, copy_material,
                                                         cancel_event=cancel_event, progress=progress)
                         else:
                             if target.exists():
@@ -536,7 +535,7 @@ class WorkspaceManager:
                             while target.exists():
                                 target = parent / f'{source.stem} ({digest[:8]}) ({index}){source.suffix}'
                                 index += 1
-                            metadata = copy_verified(source, target, cancel_event=cancel_event, progress=progress)
+                            metadata = copy_material(source, target, cancel_event=cancel_event, progress=progress)
                             own_copy = metadata
                     cancelled(cancel_event)
                     file_id = connection.execute('INSERT INTO work_files(project_id,source_path,path,filename,size,sha256,mtime_ns) VALUES (?,?,?,?,?,?,?)',
@@ -545,14 +544,19 @@ class WorkspaceManager:
                     file_row = dict(connection.execute('SELECT * FROM work_files WHERE id=?', (file_id,)).fetchone())
                     record(file_row, 'copied')
                     self.db._mark_work_file_pending(connection, project_id, file_id)
+                    _assert_intake_stream_set(lease, named_streams)
+                    if not in_workspace and named_streams is not None:
+                        _assert_intake_stream_set(metadata['_verified_copy_lease'], named_streams)
                 return dict(file=file_row, duplicate=False, source_preserved=True)
         except BaseException:
             if own_copy is not None:
                 try:
-                    with ZipLease(own_copy['path'], movable=True) as copied:
-                        if identity(copied.initial) == own_copy['identity']:
+                    with ExitStack() as cleanup:
+                        copied = cleanup.enter_context(ZipLease(own_copy['path'], movable=True))
+                        if (identity(copied.initial) == own_copy['identity']
+                                and (named_streams is None or _hash_named_streams(copied, cleanup) == named_streams)):
                             copied.remove_after_verified_commit()
-                except (OSError, ValueError):
+                except (OSError, RuntimeError, ValueError):
                     # 文件已经被外部替换或占用时保留现场，不删除不属于本次操作的文件。
                     pass
             raise
