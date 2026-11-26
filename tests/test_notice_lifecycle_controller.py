@@ -78,6 +78,7 @@ def test_failure_after_success_is_not_treated_as_transient(controller):
     controller.enqueue('收件失败', fail)
     finish(controller)
     assert controller.observed_notice_kinds[-1] == 'persistent'
+    assert 'anonymous read failure' in controller.panel.notice.text()
     assert 'anonymous read failure' in controller.panel.notice.toolTip()
 
 
