@@ -89,6 +89,46 @@ def identity(info):
     return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns]
 
 
+def hash_stream(stream, *, cancel_event=None, progress=None, copy_to=None):
+    before = os.fstat(stream.fileno())
+    if not stat.S_ISREG(before.st_mode):
+        raise ValueError('请选择本机普通文件。')
+    stream.seek(0)
+    digest, size = hashlib.sha256(), 0
+    while True:
+        cancelled(cancel_event)
+        block = stream.read(1024 * 1024)
+        if not block:
+            break
+        if copy_to is not None:
+            copy_to.write(block)
+        digest.update(block)
+        size += len(block)
+        if progress:
+            progress(size, before.st_size)
+    cancelled(cancel_event)
+    if size != before.st_size or identity(before) != identity(os.fstat(stream.fileno())):
+        raise RuntimeError('读取期间文件发生变化，未完成收录。')
+    return digest.hexdigest(), size
+
+
+def hash_named_streams(lease, leases, *, cancel_event=None, copy_to=None):
+    streams = leases.enter_context(lease.named_streams())
+    manifest = {}
+    for name, stream in streams.items():
+        if copy_to is None:
+            digest, size = hash_stream(stream, cancel_event=cancel_event)
+        else:
+            with open(named_data_stream_path(copy_to, name), 'xb') as output:
+                digest, size = hash_stream(stream, cancel_event=cancel_event, copy_to=output)
+                output.flush()
+                os.fsync(output.fileno())
+        manifest[name] = dict(size=size, sha256=digest)
+    if list(streams) != lease.named_stream_names():
+        raise RuntimeError('命名数据流在复制或校验期间变化，副本未核验。')
+    return manifest
+
+
 def _api():
     if os.name != 'nt':
         raise OSError('安全移动当前只支持 Windows。')

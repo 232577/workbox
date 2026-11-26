@@ -17,6 +17,7 @@ from workbox.storage.native_files import (
     _api,
     _windows_path,
     cancelled,
+    hash_named_streams,
     identity,
     plain_path,
 )
@@ -218,7 +219,7 @@ class DocumentVersions:
         old, target, version, stage = [plain_path(record[key]) for key in ('old_path', 'target_path', 'version_path', 'stage_path')]
         journal_version = record.get('version', 1)
         kind = record.get('kind', 'rotate')
-        if (type(journal_version) is not int or journal_version not in (1, 2)
+        if (type(journal_version) is not int or journal_version not in (1, 2, 3)
                 or kind not in ('rotate', 'history-only') or (kind != 'rotate' and journal_version != 2)
                 or not old.is_relative_to(root) or old == root or target != old
                 or old.parent != stage.parent
@@ -232,7 +233,16 @@ class DocumentVersions:
                     or any(type(value) is not int for value in record[name + '_identity'])
                     or not re.fullmatch('[0-9a-f]{64}', record[name + '_sha256'])):
                 raise ValueError('文档恢复文件身份无效。')
-        if journal_version == 2:
+        if journal_version == 3:
+            streams = record['new_named_streams']
+            if not isinstance(streams, dict) or any(
+                    not isinstance(name, str) or not name or any(character in name for character in ':\\/\x00')
+                    or not isinstance(stream, dict) or set(stream) != {'size', 'sha256'}
+                    or type(stream['size']) is not int or stream['size'] < 0
+                    or not isinstance(stream['sha256'], str) or not re.fullmatch('[0-9a-f]{64}', stream['sha256'])
+                    for name, stream in streams.items()):
+                raise ValueError('文档恢复命名数据流记录无效。')
+        if journal_version >= 2:
             relative = Path(record['relative_path'])
             old_ids = record['old_file_ids']
             if (relative.is_absolute() or '..' in relative.parts or not relative.parts
@@ -286,6 +296,11 @@ class DocumentVersions:
         if value != digest or identity(os.fstat(lease.stream.fileno())) != expected_identity:
             raise RuntimeError('文档内容发生变化，保留恢复现场，请先检查材料。')
 
+    def _matches_new(self, lease, record, leases):
+        self._matches(lease, record['new_identity'], record['new_sha256'])
+        if record.get('version') == 3 and hash_named_streams(lease, leases) != record['new_named_streams']:
+            raise RuntimeError('文档命名数据流发生变化，保留恢复现场，请先检查材料。')
+
     def _finish(self, record):
         """提交后只核验，不再将旧版恢复成当前版。"""
         old, target, version, stage = self._validate(record, self._journal_path(record))
@@ -297,7 +312,7 @@ class DocumentVersions:
                     raise RuntimeError('文档移入历史后原位置又有文件，保留现场。')
             else:
                 current = stack.enter_context(ZipLease(target, movable=True))
-                self._matches(current, record['new_identity'], record['new_sha256'])
+                self._matches_new(current, record, stack)
             if stage.exists():
                 raise RuntimeError('文档提交后仍有暂存文件，保留现场。')
             self._journal_path(record).unlink()
@@ -323,13 +338,16 @@ class DocumentVersions:
                     raise RuntimeError('当前与暂存文件同时存在，保留现场。')
                 new_lease = leases[old]
             if new_lease is not None:
-                self._matches(new_lease, record['new_identity'], record['new_sha256'])
+                self._matches_new(new_lease, record, stack)
             if old_lease.path == version:
                 if new_lease is not None and new_lease.path == target:
                     # 先退回唯一暂存名再恢复；Windows 删除延迟到关句柄，不能直接删除后覆盖。
                     new_lease.rename_to(stage)
                 old_lease.rename_to(old)
             if new_lease is not None:
+                if (record.get('version') == 3
+                        and new_lease.named_stream_names() != sorted(record['new_named_streams'])):
+                    raise RuntimeError('文档命名数据流发生变化，保留恢复现场，请先检查材料。')
                 new_lease.remove_after_verified_commit()
         self._journal_path(record).unlink(missing_ok=True)
 
@@ -503,19 +521,25 @@ class _Rotation:
         # 写 prepared 前若进程退出，无日志副本保留但不混入工作材料。
         stage = target.parent / ('~$workbox-' + operation_id + '.stage')
         metadata = copy_file(source, stage, cancel_event=cancel_event, progress=progress)
+        new_lease = metadata.get('_verified_copy_lease')
+        named_streams = metadata.get('_verified_named_streams')
         # 从这一刻起记录拥有已校验副本；即便后续写日志失败也可按身份清理。
-        record = dict(version=2, kind='rotate', operation_id=operation_id, project_id=self.project_id,
+        record = dict(version=3 if named_streams is not None else 2,
+                      kind='rotate', operation_id=operation_id, project_id=self.project_id,
                       history_root_id=history['id'], history_root_identity=[history['volume_device'], int(history['directory_inode'])],
                       relative_path=relative.as_posix(), old_file_ids=[row['id'] for row in old_rows],
                       old_path=str(old), target_path=str(target),
                       version_path=str(version), stage_path=str(stage), old_identity=identity(old_lease.initial),
                       old_sha256=current, new_identity=metadata['identity'], new_sha256=metadata['sha256'])
+        if named_streams is not None:
+            record['new_named_streams'] = named_streams
         self._write_record(record)
         if (metadata['sha256'], metadata['size']) != (digest, size):
             raise RuntimeError('收录来源在校验与复制之间发生变化。')
         cancelled(cancel_event)
-        new_lease = self.leases.enter_context(ZipLease(stage, movable=True))
-        owner._matches(new_lease, record['new_identity'], record['new_sha256'])
+        if new_lease is None:
+            new_lease = self.leases.enter_context(ZipLease(stage, movable=True))
+            owner._matches(new_lease, record['new_identity'], record['new_sha256'])
         old_lease.rename_to(version)
         new_lease.rename_to(target)
         connection.execute('UPDATE work_files SET path=?,filename=? WHERE path=? COLLATE NOCASE',
