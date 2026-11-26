@@ -95,6 +95,17 @@ def test_menu_applies_states_and_urgency_to_selection_and_keeps_the_clicked_work
     assert folders == [2]
 
 
+def test_batch_menu_disables_actions_if_a_selected_project_needs_recovery(panel):
+    with panel.service.db.connect() as connection:
+        connection.execute('INSERT INTO project_change_blocks(project_id,operation_id,reason) VALUES (?,?,?)',
+                           (1, 'anonymous-recovery', '目录恢复待处理'))
+    panel.refresh()
+    panel.project_list.selectAll()
+    menu = panel.project_context_menu(2)
+    assert not action(menu, '批量设为开发中').isEnabled()
+    assert not action(menu, '批量删除（2 项）…').isEnabled()
+
+
 def test_multi_project_menu_confirms_the_whole_pending_selection(panel, monkeypatch):
     entries = panel.service.db.create_capture('丙系统', '其他批次', [('丙系统', False)])
     project_ids = {1, 2, entries['project_ids'][0]}

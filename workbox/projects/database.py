@@ -1535,6 +1535,7 @@ class Database:
             clauses.append("p.urgent=1")
         sql = """SELECT p.*, b.name AS batch_name, COALESCE(d.notes,'') AS notes,
             d.due_date, d.archived_at, x.deleted_at,tl.type_id AS project_type_id,
+            COALESCE(pb.reason,'') AS block_reason,
             COALESCE(pt.name,'') AS project_type_name,
             COALESCE(o.task_id,'') AS original_task_id, COALESCE(o.account_username,'') AS original_account_username,
             COALESCE(o.title,'') AS original_task_title,
@@ -1543,6 +1544,7 @@ class Database:
             FROM projects p JOIN batches b ON b.id=p.batch_id
             LEFT JOIN project_details d ON d.project_id=p.id
             LEFT JOIN project_deletions x ON x.project_id=p.id
+            LEFT JOIN project_change_blocks pb ON pb.project_id=p.id
             LEFT JOIN project_type_links tl ON tl.project_id=p.id
             LEFT JOIN original_site_active_projects o ON o.active_project_id=p.id
             LEFT JOIN project_types pt ON pt.id=tl.type_id WHERE """
