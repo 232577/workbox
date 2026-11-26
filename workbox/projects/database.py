@@ -323,6 +323,14 @@ class Database:
                 AND NOT EXISTS (SELECT 1 FROM project_merges m WHERE m.source_id=p.id)''').fetchone()[0]
             return result
 
+    def count_pending_projects(self) -> int:
+        with self.connect() as connection:
+            return connection.execute('''SELECT COUNT(*) FROM projects p
+                LEFT JOIN project_details d ON d.project_id=p.id
+                WHERE p.status!='已交付' AND d.archived_at IS NULL
+                AND NOT EXISTS (SELECT 1 FROM project_deletions x WHERE x.project_id=p.id)
+                AND NOT EXISTS (SELECT 1 FROM project_merges m WHERE m.source_id=p.id)''').fetchone()[0]
+
     @staticmethod
     def _canonical_project_id(connection, project_id):
         if type(project_id) is not int or project_id <= 0:
@@ -351,13 +359,20 @@ class Database:
     @staticmethod
     def _assert_project_change_allowed(connection, *project_ids):
         """旧任务不能写入已合并项目或目录恢复尚未完成的项目。"""
-        for project_id in set(project_ids) - {None}:
-            merged = connection.execute('SELECT target_id FROM project_merges WHERE source_id=?', (project_id,)).fetchone()
-            if merged:
+        unique_ids = tuple(sorted(set(project_ids) - {None}))
+        for start in range(0, len(unique_ids), 500):
+            batch = unique_ids[start:start + 500]
+            marks = ','.join('?' for _ in batch)
+            row = connection.execute(f'''SELECT m.source_id, b.reason FROM projects p
+                LEFT JOIN project_merges m ON m.source_id=p.id
+                LEFT JOIN project_change_blocks b ON b.project_id=p.id
+                WHERE p.id IN ({marks}) AND (m.source_id IS NOT NULL OR b.project_id IS NOT NULL)
+                ORDER BY p.id LIMIT 1''', batch).fetchone()
+            if row is None:
+                continue
+            if row['source_id'] is not None:
                 raise ValueError('项目已合并，请刷新列表并重新选择目标项目。')
-            blocked = connection.execute('SELECT reason FROM project_change_blocks WHERE project_id=?', (project_id,)).fetchone()
-            if blocked:
-                raise ValueError('项目工作目录需要恢复，暂不能修改：' + blocked['reason'])
+            raise ValueError('项目工作目录需要恢复，暂不能修改：' + row['reason'])
 
     def _assert_project_merge_ready(self, connection, source_id, target_id):
         """预览与事务提交共用只读检查，不迁移或修写未完成的归档操作。"""
@@ -1582,24 +1597,35 @@ class Database:
     def delete_project(self, project_id: int, *, confirmed: bool = False) -> dict:
         if type(project_id) is not int or project_id <= 0:
             raise ValueError('项目编号必须是正整数。')
+        result = self.delete_projects([project_id], confirmed=confirmed)
+        return dict(project_id=project_id, deleted=True, changed=bool(result['deleted_project_ids']), archived=True)
+
+    def delete_projects(self, project_ids, *, confirmed: bool = False) -> dict:
+        selected = self._validated_project_ids(project_ids)
         if confirmed is not True:
             raise ValueError('删除项目必须由你明确确认。')
         # 与文件归档共用操作锁；只记录删除边界，不接触磁盘和原始项目事实。
         with getattr(self, '_operation_lock', nullcontext()), self.connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
-            self._assert_project_change_allowed(connection, project_id)
-            row = connection.execute('''SELECT p.id,d.archived_at,x.deleted_at FROM projects p
+            self._assert_project_change_allowed(connection, *selected)
+            marks = ','.join('?' for _ in selected)
+            rows = connection.execute(f'''SELECT p.id,d.archived_at,x.deleted_at FROM projects p
                 LEFT JOIN project_details d ON d.project_id=p.id
-                LEFT JOIN project_deletions x ON x.project_id=p.id WHERE p.id=?''', (project_id,)).fetchone()
-            if row is None:
-                raise KeyError('项目不存在，请刷新列表。')
-            changed = row['deleted_at'] is None
+                LEFT JOIN project_deletions x ON x.project_id=p.id WHERE p.id IN ({marks})''', selected).fetchall()
+            if len(rows) != len(selected):
+                raise KeyError('部分项目不存在，请刷新列表。')
+            by_id = {row['id']: row for row in rows}
+            changed = [pid for pid in selected if by_id[pid]['deleted_at'] is None]
             if changed:
-                connection.execute('INSERT INTO project_deletions(project_id,previous_archived_at) VALUES (?,?)',
-                                   (project_id, row['archived_at']))
-                connection.execute('INSERT OR IGNORE INTO project_details(project_id) VALUES (?)', (project_id,))
-                connection.execute("UPDATE project_details SET archived_at=COALESCE(archived_at,strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE project_id=?", (project_id,))
-            return dict(project_id=project_id, deleted=True, changed=changed, archived=True)
+                connection.executemany('INSERT INTO project_deletions(project_id,previous_archived_at) VALUES (?,?)',
+                                       [(pid, by_id[pid]['archived_at']) for pid in changed])
+                connection.executemany('INSERT OR IGNORE INTO project_details(project_id) VALUES (?)',
+                                       [(pid,) for pid in changed])
+                changed_marks = ','.join('?' for _ in changed)
+                connection.execute(f"""UPDATE project_details
+                    SET archived_at=COALESCE(archived_at,strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+                    WHERE project_id IN ({changed_marks})""", changed)
+            return dict(deleted_project_ids=changed)
 
     def restore_deleted_project(self, project_id: int) -> dict:
         if type(project_id) is not int or project_id <= 0:
@@ -1643,7 +1669,8 @@ class Database:
             connection.execute('INSERT INTO project_details(project_id,notes,due_date) VALUES (?,?,?) ON CONFLICT(project_id) DO UPDATE SET notes=excluded.notes,due_date=excluded.due_date', (project_id, notes, due_date))
             connection.execute("UPDATE projects SET updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?", (project_id,))
 
-    def bulk_update_projects(self, project_ids, *, status=None, urgent=None, archived=None) -> None:
+    def bulk_update_projects(self, project_ids, *, status=None, urgent=None, archived=None,
+                             confirmed_delivered_ids=None) -> None:
         if not isinstance(project_ids, (list, tuple)) or not 1 <= len(project_ids) <= 500 or any(type(pid) is not int or pid <= 0 for pid in project_ids) or len(set(project_ids)) != len(project_ids):
             raise ValueError('请选择 1 至 500 个不同的有效项目。')
         if status is not None and status not in STATUSES[:3]:
@@ -1660,7 +1687,7 @@ class Database:
         with getattr(self, '_operation_lock', nullcontext()), self.connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
             marks = ','.join('?' for _ in project_ids)
-            rows = connection.execute(f'''SELECT p.id,d.archived_at,x.deleted_at FROM projects p
+            rows = connection.execute(f'''SELECT p.id,p.status,d.archived_at,x.deleted_at FROM projects p
                 LEFT JOIN project_details d ON d.project_id=p.id
                 LEFT JOIN project_deletions x ON x.project_id=p.id WHERE p.id IN ({marks})''', project_ids).fetchall()
             if len(rows) != len(project_ids):
@@ -1670,6 +1697,10 @@ class Database:
                 raise ValueError('请先从已删除中恢复项目，再编辑或归档。')
             if archived is None and any(row['archived_at'] is not None for row in rows):
                 raise ValueError('请先恢复归档项目，再编辑。')
+            if status is not None and confirmed_delivered_ids is not None:
+                permitted = set(confirmed_delivered_ids)
+                if any(row['status'] == '已交付' and row['id'] not in permitted for row in rows):
+                    raise ValueError('有项目已交付，请核对更新后的清单，再确认是否重设状态。')
             if archived is not None:
                 for pid in project_ids:
                     connection.execute('INSERT OR IGNORE INTO project_details(project_id) VALUES (?)', (pid,))
