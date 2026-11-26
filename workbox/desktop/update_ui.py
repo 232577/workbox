@@ -3,12 +3,13 @@ from pathlib import Path
 import os
 import sys
 
-from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtCore import QUrl, Qt, Signal, Slot
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QVBoxLayout, QPlainTextEdit, QProgressBar
 
 from workbox.desktop.theme import apply_to
 from workbox.desktop.ui import FileJob, button, label, human_size
-from workbox.updates.update_client import CURRENT_TAG, check_for_update, download_release
+from workbox.updates.update_client import CURRENT_TAG, RELEASE_ROOT, check_for_update, download_release
 from workbox.desktop.ui_components import DialogHeader, StatusBanner
 from qfluentwidgets import FluentIcon
 
@@ -24,14 +25,15 @@ class _UpdateJob(FileJob):
 
 
 class UpdateDialog(QDialog):
-    def __init__(self, parent=None, *, cache_root=None):
+    def __init__(self, parent=None, *, cache_root=None, manual_instructions=None):
         super().__init__(parent)
         self.worker = None
         self.release = self.installer = None
         self._job_kind = ''
         self._download_status = ''
         self._close_pending = self._closed = False
-        self._can_install = sys.platform == 'win32' and getattr(sys, 'frozen', False)
+        self._manual_update = manual_instructions is not None
+        self._can_install = not self._manual_update and sys.platform == 'win32' and getattr(sys, 'frozen', False)
         self.cache_root = Path(cache_root) if cache_root is not None else Path(
             os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'WorkBox' / 'updates'
         self.setWindowTitle('检查更新 · WorkBox')
@@ -59,14 +61,15 @@ class UpdateDialog(QDialog):
         self.progress.setTextVisible(False)
         self.progress.hide()
         layout.addWidget(self.progress)
-        self.mode_note = label(
-            '请先保存手头的工作。WorkBox 会备份数据库、退出并在更新完成后重新打开。'
-            if self._can_install else '源码运行仅提供版本检查和安装包下载。', 'muted', True)
+        note = ('请先保存手头的工作。WorkBox 会备份数据库、退出并在更新完成后重新打开。'
+                if self._can_install else '源码运行仅提供版本检查和安装包下载。')
+        self.mode_note = label(manual_instructions if self._manual_update else note, 'muted', True)
         layout.addWidget(self.mode_note)
         row = QHBoxLayout()
         row.addStretch()
         self.check_button = button('检查更新', 'primary')
-        self.update_button = button('更新并重启' if self._can_install else '下载更新', 'primary')
+        update_text = '更新并重启' if self._can_install else '下载更新'
+        self.update_button = button('打开发布页' if self._manual_update else update_text, 'primary')
         self.close_button = button('关闭')
         for widget in (self.check_button, self.update_button, self.close_button):
             widget.setAutoDefault(False)
@@ -75,7 +78,7 @@ class UpdateDialog(QDialog):
         self.close_button.setDefault(True)
         layout.addLayout(row)
         self.check_button.clicked.connect(self.check)
-        self.update_button.clicked.connect(self.download)
+        self.update_button.clicked.connect(self._open_release_page if self._manual_update else self.download)
         self.close_button.clicked.connect(self.reject)
         self._sync()
         self.resize(560, self.sizeHint().height())
@@ -118,7 +121,8 @@ class UpdateDialog(QDialog):
         self._start('check', check_for_update)
 
     def download(self):
-        if self.release is None or self.installer is not None or self.worker is not None or self._closed:
+        if (self._manual_update or self.release is None or self.installer is not None
+                or self.worker is not None or self._closed):
             return
         release = self.release
         self._download_status = ('正在下载并校验增量更新包…' if self._offered_delta() is not None
@@ -131,6 +135,14 @@ class UpdateDialog(QDialog):
                 release, self.cache_root, app_dir=app_dir, **kw), report_status=True)
         else:
             self._start('download', lambda **kw: download_release(release, self.cache_root, **kw))
+
+    def _open_release_page(self):
+        if self.release is None or self.worker is not None or self._closed:
+            return
+        address = RELEASE_ROOT + 'tag/' + self.release.tag
+        if not QDesktopServices.openUrl(QUrl(address)):
+            self.status_label.setTone('error')
+            self.status_label.setText('无法打开浏览器。请复制发布页地址。\n' + address)
 
     def _offered_delta(self):
         delta = getattr(self.release, 'delta', None)

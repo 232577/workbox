@@ -43,10 +43,13 @@ def test_powershell_freeze_configuration_keeps_engines_and_outputs_separate(work
         for name in ('playwright', 'pyee', 'greenlet'):
             assert any(args[i:i + 2] == ['--exclude-module', name] for i in range(len(args)))
         assert '--copy-metadata' not in args and '--collect-data' not in args
+        hook = ROOT / args[args.index('--runtime-hook') + 1]
+        assert hook.is_file()
     else:
         assert config['DistRoot'] == 'dist'
         assert config['BuildRoot'] == 'build'
         assert '--exclude-module' not in args
+        assert '--runtime-hook' not in args
         assert any(args[i:i + 2] == ['--collect-data', 'playwright'] for i in range(len(args)))
         for name in ('playwright', 'pyee', 'greenlet', 'typing_extensions'):
             assert any(args[i:i + 2] == ['--copy-metadata', name] for i in range(len(args)))

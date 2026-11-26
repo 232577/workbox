@@ -1133,12 +1133,10 @@ class FloatingController(QObject):
         from workbox.team_delivery import TEAM_UPGRADE_MESSAGE, uses_team_installer
         if self.closed or self.quitting or self.update_dialog is not None:
             return
-        if uses_team_installer():
-            QMessageBox.information(self.panel, '更新 WorkBox 团队版', TEAM_UPGRADE_MESSAGE)
-            return
+        manual_instructions = TEAM_UPGRADE_MESSAGE if uses_team_installer() else None
         selected = None
         try:
-            with transient_dialog(UpdateDialog(self.panel)) as dialog:
+            with transient_dialog(UpdateDialog(self.panel, manual_instructions=manual_instructions)) as dialog:
                 self.update_dialog = dialog
                 try:
                     dialog.check()
