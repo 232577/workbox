@@ -16,7 +16,7 @@ test('精简说明保留当前安装身份和明确存档入口，原发布事�
     assert.doesNotMatch(text, /历史正式安装版 ·/);
     if (path === '../README.md') {
       for (const value of [releases[0].filename, releases[0].sha256, releases[0].tag,
-        releases[0].size.toLocaleString('en-US'), '03d7b85bf22c309aacb0b6e4fd348377eea1163f']) assert.ok(text.includes(value), `${path}: ${value}`);
+        releases[0].size.toLocaleString('en-US'), releases[0].source_commit]) assert.ok(text.includes(value), `${path}: ${value}`);
     } else {
       assert.match(text, /\]\(worker\.mjs\)/);
       assert.match(text, /\]\(https:\/\/workbox\.ltxiangzi\.dpdns\.org\/releases\.html\)/);
@@ -38,7 +38,7 @@ test('首页以一句用途、下载和同一首屏的真实工作台组织产�
   assert.doesNotMatch(hero, /<video|data-demo-root/);
 });
 
-test('当前更新默认只有三项重点，完整旧说明和43个历史包原生折叠保留', () => {
+test('当前更新默认只有三项重点，完整旧说明和44个历史包原生折叠保留', () => {
   const page = documents['/releases.html'];
   const highlights = page.match(/<ul class="release-highlights">([\s\S]*?)<\/ul>/)?.[1];
   assert.equal([...highlights?.matchAll(/<li>/g) ?? []].length, 3);
@@ -52,5 +52,5 @@ test('当前更新默认只有三项重点，完整旧说明和43个历史包原
   assert.ok(history);
   assert.deepEqual([...history.matchAll(/href="(\/download\/[^"#]+)"/g)].map(match => match[1]),
     releases.slice(1).map(release => `/download/${release.filename}`));
-  assert.match(history, /43 个历史安装包/);
+  assert.match(history, /44 个历史安装包/);
 });
