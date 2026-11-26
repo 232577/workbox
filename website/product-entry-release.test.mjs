@@ -1,15 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { documents } from './public-documents.test-helper.mjs';
-import { handleRequest, release, releases } from './worker.mjs';
+import { handleRequest, release, releaseAssets, releases } from './worker.mjs';
 
-const source = '5ececd9e3bef310bf08f9805aa2cd71b70d55e14';
-const tag = 'v1.0.0.20261125.1';
-const filename = 'WorkBox-1.0.0-Setup-x64-20261125-r1.exe';
-const size = 47961533;
-const sha256 = 'ad935dd19d3e2717605492d5d1b9d1212aa3895a26a924eb02d534ff5bb5d295';
+const source = 'd337659261024ad3634154f75da26bcb49ac5a2c';
+const tag = 'v1.0.0.20261125.2';
+const filename = 'WorkBox-1.0.0-Setup-x64-20261125-r2.exe';
+const size = 135264533;
+const sha256 = '04d5a420c363a8ad19f028ab21e86596c2e7088fe0183a8e952164ee9c21463b';
 
 const expectedDeltas = [
   {
@@ -32,27 +31,15 @@ const expectedDeltas = [
   }
 ];
 
-test('11月25日r1下载与来源增量绑定新构建，全部41项旧目录逐字保留', async () => {
+test('首页、指南及发布说明的下载入口和校验值绑定同一个 r2 安装包', async () => {
   assert.equal(release.tag, tag);
-  assert.deepEqual(release.deltas, expectedDeltas);
   assert.equal(release.filename, filename);
   assert.equal(release.size, size);
   assert.equal(release.sha256, sha256);
   assert.equal(release.version, '1.0.0');
   assert.equal(release.edition, '正式安装版');
   assert.equal(release.date, '2026-11-25');
-  assert.equal(releases.length, 42);
-  assert.equal(createHash('sha256').update(JSON.stringify(releases.slice(1))).digest('hex'),
-    '40a8d02caa2ce25fc39b2326dec751f3a2f86a13c8373ad4e7800104f4012dbd');
   assert.notEqual(release.sha256, releases[1].sha256, '新安装包不能复用旧摘要');
-  const metadata = await (await handleRequest(new Request('https://example.com/updates/stable.json'), {})).json();
-  assert.equal(metadata.tag_name, tag);
-  assert.ok(metadata.body.includes(`来源提交 ${source}。`));
-  assert.deepEqual(metadata.assets, [{ name: filename, size: release.size, state: 'uploaded',
-    digest: `sha256:${release.sha256}`,
-    browser_download_url: `https://github.com/232577/workbox/releases/download/${tag}/${filename}` },
-    ...expectedDeltas.map(({ name, size, sha256, url }) => ({ name, size, state: 'uploaded',
-      digest: `sha256:${sha256}`, browser_download_url: url }))]);
   const home = documents['/index.html'];
   assert.equal([...home.matchAll(/class="[^\"]*download-link[^\"]*" href="([^"#]+)"/g)]
     .filter(match => match[1] === `/download/${filename}`).length, 1);
@@ -64,22 +51,32 @@ test('11月25日r1下载与来源增量绑定新构建，全部41项旧目录逐
   const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
   const notes = await readFile(new URL('../RELEASE_NOTES.md', import.meta.url), 'utf8');
   const currentNotes = notes.replaceAll('\r\n', '\n').split('\n---\n')[0];
-  assert.ok(currentNotes.includes('8d658584dcdc62cf5bfb7c94d1d0a3a40013db4aad5fbdbb8ed8fcd65f62198e'));
+  assert.ok(currentNotes.includes('b4639fa8e41cb63fe3a62ed5bc96005e14e6ada7fdad7c5597f1f8d4d1056a35'));
   for (const text of [readme, currentNotes]) {
     for (const value of [source, tag, filename, release.sha256, release.size.toLocaleString('en-US')]) assert.ok(text.includes(value), value);
   }
+});
+
+test('11月25日 r1 的两份来源增量只保留在历史身份下', () => {
+  const previous = releases.find(item => item.tag === 'v1.0.0.20261125.1');
+  assert.deepEqual(previous.deltas, expectedDeltas);
+  assert.deepEqual(releaseAssets(previous).slice(1), expectedDeltas.map(({ name, size, sha256, url }) => ({
+    name, size, state: 'uploaded', digest: `sha256:${sha256}`, browser_download_url: url,
+  })));
+  assert.equal(releaseAssets(release).length, 1);
 });
 
 test('当前摘要、指南和更新源说明键盘确认、批量交付及工作量刷新', async () => {
   const page = documents['/releases.html'];
   const highlights = page.match(/<ul class="release-highlights">([\s\S]*?)<\/ul>/)?.[1];
   assert.ok(highlights);
-  assert.ok(highlights.includes('从 11 月 24 日 r1 或 11 月 24 日 r2 更新时，可使用对应的增量包。'));
-  assert.match(highlights, /Ctrl 点选.*Shift 连选.*Ctrl\+A 全选当前结果/);
+  assert.match(highlights, /团队交件/);
+  assert.match(highlights, /完整安装包/);
+  assert.doesNotMatch(highlights, /可使用对应的增量包/);
+  assert.match(page, /构建 v1\.0\.0\.20261125\.1[^<]*从 11 月 24 日 r1 或 11 月 24 日 r2[^<]*对应的增量包/);
   assert.ok(highlights.includes('/guide.html#bulk-delivery'));
-  assert.ok(highlights.includes('/guide.html#rename-project'));
   assert.ok(highlights.includes('/guide.html#online-update'));
-  assert.match(highlights, /改名后留在原批次/);
+  assert.match(page, /改名后保留当前批次筛选和搜索条件/);
   assert.ok(page.includes('项目右键菜单可直接选择「待开发」「开发中」「待交付」。待交付项目使用独立的「确认交付…」。'));
   assert.equal([...highlights.matchAll(/<li>/g)].length, 3);
   assert.match(page, /默认焦点.*确认交付/);
@@ -95,7 +92,7 @@ test('当前摘要、指南和更新源说明键盘确认、批量交付及工�
   assert.match(page, /改名后仍归原批次/);
   assert.match(page, /合并.*沿用保留项目的工作目录/);
   assert.match(page, /完整安装包.*原安装目录/);
-  assert.match(page, /查看 41 个历史安装包/);
+  assert.match(page, /查看 42 个历史安装包/);
   assert.ok(page.includes('/download/WorkBox-1.0.0-Setup-x64-20261123-r1.exe'));
   assert.ok(page.includes('/download/WorkBox-1.0.0-Setup-x64-20261120-r2.exe'));
   assert.ok(page.includes('/download/WorkBox-1.0.0-Setup-x64-20261120-r1.exe'));
@@ -116,7 +113,8 @@ test('当前摘要、指南和更新源说明键盘确认、批量交付及工�
   assert.ok(bulkDelivery);
   assert.match(bulkDelivery, /Ctrl 点选.*Shift 点选.*Ctrl\+A 全选当前结果/);
   assert.match(bulkDelivery, /清单顶部.*「全选」/);
-  assert.match(bulkDelivery, /选中至少两个项目.*批量操作.*清单底部.*分栏宽度/);
+  assert.match(bulkDelivery, /选中至少两个项目.*批量操作.*弹(?:窗|层|出的操作面板)/);
+  assert.match(bulkDelivery, /滚动位置.*分栏宽度/);
   assert.match(bulkDelivery, /「设为已交付…」.*「应用」.*确认批量交付/);
   assert.doesNotMatch(bulkDelivery, /(?:开启|勾选)「批量选择」|「多选」/);
   const filtering = guide.match(/<details><summary>项目筛选和操作在哪里？<\/summary>([\s\S]*?)<\/details>/)?.[1];
@@ -136,7 +134,8 @@ test('当前摘要、指南和更新源说明键盘确认、批量交付及工�
   assert.match(metadata.body, /Enter 或小键盘 Enter 确认.*Esc 取消/);
   assert.match(metadata.body, /下拉列表展开时，Enter 只选择版本/);
   assert.match(metadata.body, /Ctrl 点选.*Shift 点选.*Ctrl\+A 全选当前结果/);
-  assert.match(metadata.body, /至少两个项目.*批量操作.*清单底部.*分栏宽度/);
+  assert.match(metadata.body, /至少两个项目.*批量操作.*弹(?:窗|层|出的操作面板)/);
+  assert.match(metadata.body, /滚动位置.*分栏宽度/);
   assert.match(metadata.body, /选中多个待交付项目后可批量交付/);
   assert.doesNotMatch(metadata.body, /开启[^。]*「批量选择」|开启[^。]*“批量选择”/);
   assert.match(metadata.body, /全部材料校验通过后.*交付记录/);

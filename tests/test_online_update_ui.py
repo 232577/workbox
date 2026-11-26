@@ -85,6 +85,53 @@ def test_explicit_update_entry_checks_without_a_second_click(controller,monkeypa
     assert controller.update_dialog is None and controller.pending_update is None
 
 
+def test_legacy_team_install_checks_and_offers_the_release_page(controller, monkeypatch, tmp_path):
+    from PySide6.QtGui import QDesktopServices
+
+    ui = module()
+    monkeypatch.setattr(sys, 'frozen', True, raising=False)
+    monkeypatch.setattr(sys, '_MEIPASS', str(tmp_path), raising=False)
+    tag = 'v1.0.0.20991231'
+    installer = 'WorkBox-1.0.0-Setup-x64-20991231.exe'
+    release = update_client.Release(tag, installer, 256, '1' * 64,
+                                   f'{update_client.RELEASE_ROOT}download/{tag}/{installer}', '匿名发布说明')
+    monkeypatch.setattr(ui, 'check_for_update', lambda **_: release)
+    monkeypatch.setattr(QMessageBox, 'information', lambda *_: None)
+    monkeypatch.setattr(controller, 'prepare_update_install', lambda *_: pytest.fail('legacy team install was handed off'))
+    opened, observed = [], []
+    monkeypatch.setattr(QDesktopServices, 'openUrl', lambda url: opened.append(url.toString()) or True)
+
+    def inspect_dialog():
+        dialog = controller.update_dialog
+        if dialog is None or dialog.worker is not None:
+            return
+        observed.append((dialog.status_label.text(), dialog.mode_note.text(), dialog.update_button.text()))
+        dialog.download()  # Programmatic calls must also keep this mode check-only.
+        observed.append(dialog.worker)
+        dialog.update_button.click()
+        dialog.reject()
+
+    timer = QTimer()
+    timer.timeout.connect(inspect_dialog)
+    timeout = QTimer()
+    timeout.setSingleShot(True)
+    timeout.timeout.connect(lambda: controller.update_dialog.reject())
+    timer.start(10)
+    timeout.start(4000)
+    try:
+        controller.panel.update_button.click()
+    finally:
+        timer.stop()
+        timeout.stop()
+
+    assert opened == [f'{update_client.RELEASE_ROOT}tag/{tag}']
+    assert observed[0][0].startswith(f'可更新至 {tag}')
+    assert '工作站包仅更新桌面' in observed[0][1]
+    assert '办公室服务器' in observed[0][1]
+    assert observed[0][2] == '打开发布页' and observed[1] is None
+    assert controller.pending_update is None and not controller.closed
+
+
 def test_check_same_build_and_error_can_retry(qapp,tmp_path,monkeypatch):
     ui=module();called=[]
     monkeypatch.setattr(ui,'check_for_update',lambda **_:(called.append(True) or None))
@@ -121,6 +168,11 @@ def test_backup_precedes_unlock_and_launch_follows_shutdown(controller,tmp_path,
     release=object();sequence=[]
     assert hasattr(controller,'prepare_update_install'), 'Missing safe update integration'
     monkeypatch.setattr(sys,'frozen',True,raising=False)
+    monkeypatch.setattr(sys, '_MEIPASS', str(tmp_path / '_internal'), raising=False)
+    monkeypatch.setattr(sys, '_workbox_distribution_role', 'workstation', raising=False)
+    monkeypatch.setattr(sys, 'executable', str(tmp_path / 'WorkBox.exe'))
+    (tmp_path / 'Chromium').mkdir()
+    (tmp_path / 'TeamServer').mkdir()
     monkeypatch.setattr(update_client,'verify_installer',lambda p,r:sequence.append('verify'))
     def backup(database,root):
         assert controller.owns_lock and not controller.closed

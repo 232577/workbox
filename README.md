@@ -16,17 +16,16 @@ WorkBox 是 Windows 上的项目工作箱。个人项目、材料和交付记录
 
 支持 Windows 10 1809+ / Windows 11 x64，自带运行环境，未做商业代码签名。产品版本 **1.0.0**。各正式构建的安装包、来源及校验值见 [GitHub Releases](https://github.com/232577/workbox/releases/latest)。
 
-升级前备份 data、工作目录、归档目录及全部已登记历史文稿目录，再从“高级设置 → 检查更新”操作。[安装指南](https://workbox.ltxiangzi.dpdns.org/guide.html#installation) · [更新恢复](docs/UPDATE-RECOVERY.md)
+升级前备份 data、工作目录、归档目录及全部已登记历史文稿目录。旧个人版可在“高级设置 → 检查更新”里升级。团队试用版和 2026-11-25 r2 需先退出工作箱，再运行新版工作站完整安装包，选原安装目录。办公室服务器由管理员单独升级。[安装指南](https://workbox.ltxiangzi.dpdns.org/guide.html#installation) · [更新恢复](docs/UPDATE-RECOVERY.md)
 
 <details>
-<summary>2026-11-25 r1 安装包与校验信息</summary>
+<summary>2026-11-25 r2 安装包与校验信息</summary>
 
-[GitHub 备用下载](https://github.com/232577/workbox/releases/tag/v1.0.0.20261125.1)
+[GitHub 备用下载](https://github.com/232577/workbox/releases/tag/v1.0.0.20261125.2)
 
-- 文件：`WorkBox-1.0.0-Setup-x64-20261125-r1.exe`
-- 大小：47,961,533 字节
-- SHA-256：`ad935dd19d3e2717605492d5d1b9d1212aa3895a26a924eb02d534ff5bb5d295`
-- 来源提交：`5ececd9e3bef310bf08f9805aa2cd71b70d55e14`
+- 完整安装包 `WorkBox-1.0.0-Setup-x64-20261125-r2.exe`，135,264,533 字节。本次更新使用完整安装包。
+- SHA-256 `04d5a420c363a8ad19f028ab21e86596c2e7088fe0183a8e952164ee9c21463b`
+- 来源提交 `d337659261024ad3634154f75da26bcb49ac5a2c`
 - 来源及载荷校验信息见该 Release 的 `BUILD_PROVENANCE.json` 与 `PACKAGE_CONTENTS.sha256`。构建验证范围见发布说明。
 
 </details>

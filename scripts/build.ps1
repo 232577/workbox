@@ -8,7 +8,8 @@ function Get-FreezeConfiguration {
             BuildRoot = 'build/workstation'
             DistRoot = 'dist/workstation'
             EvidenceRoot = '.local/workstation-freeze'
-            MainOptions = @('--exclude-module', 'playwright', '--exclude-module', 'pyee',
+            MainOptions = @('--runtime-hook', 'scripts/workstation_runtime_hook.py',
+                '--exclude-module', 'playwright', '--exclude-module', 'pyee',
                 '--exclude-module', 'greenlet')
         }
     }
