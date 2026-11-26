@@ -1497,6 +1497,7 @@ class Database:
             d.due_date, d.archived_at, x.deleted_at,tl.type_id AS project_type_id,
             COALESCE(pt.name,'') AS project_type_name,
             COALESCE(o.task_id,'') AS original_task_id, COALESCE(o.account_username,'') AS original_account_username,
+            COALESCE(o.title,'') AS original_task_title,
             (SELECT COUNT(*) FROM zip_project_links l WHERE l.project_id=p.id) AS zip_count,
             (SELECT filename FROM zips z JOIN zip_project_links l ON l.zip_id=z.id WHERE l.project_id=p.id ORDER BY z.id DESC LIMIT 1) AS zip_name
             FROM projects p JOIN batches b ON b.id=p.batch_id

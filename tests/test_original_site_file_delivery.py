@@ -10,6 +10,20 @@ from workbox.team_delivery.contracts import Account, Stage, Task
 ACCOUNT = Account('anonymous-session', '匿名账号', 'material', 'anonymous-token', 'fixture')
 
 
+def test_regular_drop_after_upstream_rename_keeps_the_bound_local_project(service, site_projects, tmp_path):
+    original = Task('55', '匿名旧名称系统', ACCOUNT.id, Stage.READY, 'r1')
+    site_projects.sync(ACCOUNT, [original])
+    project_id = site_projects.binding_for_task(ACCOUNT, original)
+    renamed = Task('55', '匿名新名称系统', ACCOUNT.id, Stage.READY, 'r2')
+    site_projects.sync(ACCOUNT, [renamed])
+    document = tmp_path / (renamed.title + '.docx')
+    document.write_bytes(b'anonymous work file')
+    service.receive_path(document)
+    assert service.get_project(project_id)['status'] == '待交付'
+    assert service.get_project(project_id)['name'] == original.title
+    assert len(service.list_projects()) == 1
+
+
 @pytest.fixture
 def service(tmp_path):
     return DesktopService(tmp_path / 'data' / 'anonymous.db')

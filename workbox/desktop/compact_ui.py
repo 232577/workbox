@@ -2035,17 +2035,23 @@ class CompactPanel(DropSurface, QWidget):
         if self.busy or not 1 <= len(ids) <= 500:
             return
         try:
-            pending_ids = {project['id'] for project in self.service.list_projects(status='待交付')}
+            pending = {project['id']: project for project in self.service.list_projects(status='待交付')}
         except (OSError, RuntimeError, sqlite3.Error) as error:
             self.show_notice('暂时无法读取待交付项目。\n' + str(error))
             return
-        if not pending_ids.issuperset(ids):
+        if not pending.keys() >= set(ids):
             self.show_notice('批量交付要求所选项目均为日常列表中的待交付项目。')
             return
+        targets = [caption for pid in ids if (caption := original_task_caption(pending[pid]))]
+        site_note = ''
+        if targets:
+            numbers = '、'.join(targets[:5]) + (' 等' if len(targets) > 5 else '')
+            site_note = (f'\n\n其中 {len(targets)} 项会提交到原站（{numbers}）。'
+                         '未登录的任务会等对应材料账号重新登录后再提交。')
         answer = QMessageBox.question(
             self, '批量确认交付',
             f'归档并核对所选 {len(ids)} 个待交付项目的当前工作文件？\n\n'
-            '全部核验成功后将它们设为已交付并登记交付记录。',
+            '全部核验成功后将它们设为已交付并登记交付记录。' + site_note,
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
         )
         if answer == QMessageBox.Yes and not self.busy:

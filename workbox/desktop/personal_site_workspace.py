@@ -2,6 +2,7 @@
 from threading import Event
 from time import monotonic
 from sqlite3 import Error as DatabaseError
+from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer
 from PySide6.QtWidgets import QInputDialog
@@ -122,6 +123,20 @@ class PersonalSiteWorkspace(QObject):
 
     def _cancel_loading(self):
         self._loading = False
+
+    def resolve_dropped_file(self, filename):
+        """Ask for an upstream task number before ordinary intake could create an unbound namesake."""
+        path = Path(filename)
+        if path.suffix.casefold() != '.docx' or not any(task.title == path.stem for task in self._unlinked):
+            return False
+        if self.site.current_personal_snapshot() is None:
+            return False
+        self.desktop.panel.open_team_delivery()
+        if self.desktop.panel.team_page.busy:
+            self._message('正在核对待办', '请稍后再拖入此文件。')
+        else:
+            self.site.submit_file(filename, None)
+        return True
 
     def _resolve_binding(self, task, filename=None):
         snapshot = self.site.current_personal_snapshot()

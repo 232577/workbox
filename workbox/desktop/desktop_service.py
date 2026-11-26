@@ -515,6 +515,14 @@ class DesktopService(WorkBox):
         if not named['candidates']:
             # 明确材料规则仍可纠正已删除的误建名称；开放附注则必须先比较所有长名。
             named = match_work_file_projects(source.name, list(all_projects.values()))
+        if source.suffix.casefold() == '.docx':
+            title = project_name_key(source.stem)
+            original = {row['id']: row for row in all_projects.values() if row.get('original_task_title')
+                        and project_name_key(row['original_task_title']) == title}
+            if original:
+                candidates = {row['id']: row for row in named['candidates']}
+                candidates.update(original)
+                named = dict(candidates=list(candidates.values()), basis='文件名匹配已关联的原站任务全名')
         if any(row.get('archived_at') or row.get('deleted_at') for row in named['candidates']):
             return dict(candidates=[row for row in named['candidates'] if not row.get('archived_at') and not row.get('deleted_at')],
                 basis=named['basis'] + '，涉及已归档或已删除项目，请恢复项目或人工选择', requires_choice=True)

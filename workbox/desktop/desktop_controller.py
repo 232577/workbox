@@ -655,6 +655,8 @@ class FloatingController(QObject):
                 self.notify('一次最多接收 100 个文件或文件夹。')
                 return
             for path in dict.fromkeys(paths):
+                if self.personal_site is not None and self.personal_site.resolve_dropped_file(path):
+                    continue
                 self.enqueue('收进文件或文件夹：' + Path(path).name,
                     lambda p=path, **kw: self.service.receive_path(p, **kw),
                     on_cancel=lambda p=path: self.service.record_file_decision(p, 'cancelled', {},

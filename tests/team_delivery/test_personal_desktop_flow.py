@@ -5,7 +5,7 @@ from time import monotonic, sleep
 import pytest
 from PySide6.QtCore import QMimeData, QPointF, Qt, QTimer, QUrl
 from PySide6.QtGui import QDropEvent
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtWidgets import QApplication, QDialog, QInputDialog
 
 from anonymous_document import make_document
 from test_qt_site import site, writes
@@ -80,5 +80,40 @@ def test_drop_then_confirm_submits_only_the_bound_original_task(site, target, tm
         until(lambda: not desktop.busy)
         assert service.get_project(project_id)['status'] == '已交付'
         assert len(writes(history)) == 2
+    finally:
+        desktop.shutdown()
+
+
+def test_home_drop_with_two_unlinked_namesakes_uses_the_chosen_site_number(site, tmp_path, monkeypatch):
+    browser, _, _, _, rows, history, _ = site
+    monkeypatch.setattr(application, 'LIVE_SITE_URL', browser.origin)
+    service = DesktopService(tmp_path / 'data' / 'workbox.db')
+    desktop = FloatingController(service, tray_enabled=False)
+    choices = []
+
+    def select(_parent, title, _prompt, items, *_):
+        choices.append(title)
+        if '新建独立本机项目' in items:
+            return '新建独立本机项目', True
+        return next(item for item in items if '#202' in item), True
+
+    monkeypatch.setattr(QInputDialog, 'getItem', select)
+    try:
+        assert desktop.start()
+        desktop.monitor_timer.stop()
+        desktop.panel.nav_team.click()
+        page = desktop.panel.team_page
+        until(lambda: not page.busy)
+        page._login.click()
+        until(lambda: len(desktop.personal_site._unlinked) == 2, seconds=25)
+        path = tmp_path / (rows[0]['name'] + '.docx')
+        make_document(path)
+        desktop.panel.nav_projects.click()
+        desktop.panel.intake.emit({'kind': 'files', 'paths': [str(path)]})
+        until(lambda: not desktop.busy and bool(service.list_projects()))
+        project, = service.list_projects()
+        assert project['original_task_id'] == '202' and project['status'] == '待交付'
+        assert choices == ['核对交件项目', '关联本机项目']
+        assert not writes(history)
     finally:
         desktop.shutdown()
