@@ -93,6 +93,7 @@ class ProjectDocumentsPane(QWidget):
         super().__init__(parent)
         self.service = service
         self.project_id = None
+        self._preview_only = False
         self.worker = None
         self.documents = []
         self._generation = 0
@@ -244,8 +245,12 @@ class ProjectDocumentsPane(QWidget):
             finally:
                 self._fitting_columns = False
 
-    def set_project(self, project_id):
+    def set_project(self, project_id, *, preview_only=False):
+        preview_changed = self._preview_only != preview_only
+        self._preview_only = preview_only
         if project_id == self.project_id:
+            if preview_changed:
+                self.update_actions()
             self.request_refresh()
             return
         self.project_id = project_id
@@ -555,7 +560,7 @@ class ProjectDocumentsPane(QWidget):
                                     '文件已移动或删除。可查看所在目录或刷新文档。')
 
     def _team_document(self, record):
-        if (self._show_history or not record or not record['exists'] or record.get('is_directory')
+        if (self._preview_only or self._show_history or not record or not record['exists'] or record.get('is_directory')
                 or record['kind'] != '工作文件' or Path(record['path']).suffix.lower() != '.docx'):
             return None
         return record['path']
@@ -566,7 +571,7 @@ class ProjectDocumentsPane(QWidget):
             self.team_requested.emit(str(path))
 
     def _can_archive_history(self, record):
-        return bool(not self._show_history and record and record['exists']
+        return bool(not self._preview_only and not self._show_history and record and record['exists']
                     and record['kind'] == '工作文件' and type(record.get('work_file_id')) is int
                     and record['work_file_id'] > 0)
 

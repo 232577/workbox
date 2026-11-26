@@ -950,6 +950,7 @@ class CompactPanel(DropSurface, QWidget):
         self.added_date_filter.changed.connect(self._refresh_project_filters)
         self.unmatched.toggled.connect(self.refresh)
         self.project_list.itemSelectionChanged.connect(self.select_project)
+        self.project_list.currentItemChanged.connect(self._preview_current_project)
         self.project_list.itemClicked.connect(self._remember_clicked_project_detail)
         self.project_list.itemActivated.connect(self.show_project_detail)
         self.project_detail_button.clicked.connect(self.show_project_detail)
@@ -1589,17 +1590,19 @@ class CompactPanel(DropSurface, QWidget):
         self.refreshing = True
         try:
             items = self.project_list.selectedItems()
-            pid = items[0].data(Qt.UserRole) if len(items) == 1 else None
+            batch_preview = len(items) > 1
+            item = self._project_preview_item(items)
+            pid = item.data(Qt.UserRole) if item is not None else None
             self.current_project = None
-            if pid is not None:
+            if pid is not None and not batch_preview:
                 try:
                     self.current_project = self.service.get_project(pid)
                 except (OSError, RuntimeError, sqlite3.Error, KeyError) as error:
                     self.show_notice('项目详情读取失败，请刷新或重新选择项目重试。\n' + str(error))
-            p = self.current_project
+            p = self._project_rows.get(pid) if batch_preview else self.current_project
             self.project_title.setText(p['name'] if p else '')
             self.document_heading.setVisible(p is not None)
-            self.project_actions_row.setVisible(p is not None)
+            self.project_actions_row.setVisible(self.current_project is not None)
             self.project_status_badge.setVisible(p is not None)
             self.project_metadata.setVisible(p is not None)
             if p is not None:
@@ -1607,29 +1610,54 @@ class CompactPanel(DropSurface, QWidget):
                 self.project_status_badge.setProperty('state', p['status'])
                 self.project_status_badge.style().unpolish(self.project_status_badge)
                 self.project_status_badge.style().polish(self.project_status_badge)
-                markers = items[0].data(PROJECT_BATCH_MARKERS_ROLE) or []
+                markers = item.data(PROJECT_BATCH_MARKERS_ROLE) or []
                 codes = [marker.get('code', '') for marker in markers if marker.get('code')]
                 metadata = '类型：' + (p.get('project_type_name') or '未分类')
-                added_date = items[0].data(PROJECT_ADDED_DATE_ROLE)
+                added_date = item.data(PROJECT_ADDED_DATE_ROLE)
                 if added_date:
                     metadata += '  ·  新增：' + added_date
                 if codes:
                     metadata += '  ·  ' + ' / '.join(codes[:2])
                     if len(codes) > 2:
                         metadata += f' 等 {len(codes)} 批次'
-                self.project_metadata.setText(metadata)
-                self.project_metadata.setToolTip('类型：' + (p.get('project_type_name') or '未分类')
-                                                + ('\n新增日期：' + added_date if added_date else '')
-                                                + ('\n批次：' + ' / '.join(codes) if codes else ''))
+                details = ('类型：' + (p.get('project_type_name') or '未分类')
+                           + ('\n新增日期：' + added_date if added_date else '')
+                           + ('\n批次：' + ' / '.join(codes) if codes else ''))
+                if batch_preview:
+                    caption = f'已选 {len(items)} 项 · 文件预览'
+                    self.project_metadata.setText(caption + '  ·  ' + metadata)
+                    self.project_metadata.setToolTip(caption + '\n' + details)
+                else:
+                    self.project_metadata.setText(metadata)
+                    self.project_metadata.setToolTip(details)
             else:
                 self._project_detail_open = False
-            self.project_title.setToolTip('\n'.join((p['name'], '类型：' + (p.get('project_type_name') or '未分类'),
-                (p.get('workspace') or {}).get('path', '工作目录尚未创建'))) if p else '')
+            if p and batch_preview:
+                self.project_title.setToolTip(p['name'])
+            else:
+                self.project_title.setToolTip('\n'.join((p['name'], '类型：' + (p.get('project_type_name') or '未分类'),
+                    (p.get('workspace') or {}).get('path', '工作目录尚未创建'))) if p else '')
         finally:
             self.refreshing = False
         self.update_actions()
-        self.document_pane.set_project(self.current_project['id'] if self.current_project else None)
+        self.document_pane.set_project(pid if p is not None else None, preview_only=batch_preview)
         self._sync_project_layout()
+
+    def _project_preview_item(self, items):
+        if not items:
+            return None
+        current = self.project_list.currentItem()
+        if current in items:
+            return current
+        previous_id = self.document_pane.project_id
+        previous = next((item for item in items if item.data(Qt.UserRole) == previous_id), None)
+        return previous if previous is not None else min(items, key=self.project_list.row)
+
+    def _preview_current_project(self, current, _previous):
+        if (not self.refreshing and current is not None and current.isSelected()
+                and current.data(Qt.UserRole) != self.document_pane.project_id
+                and len(self.project_list.selectedItems()) > 1):
+            self.select_project()
 
     def update_actions(self, *_):
         project = self.current_project
@@ -1731,7 +1759,7 @@ class CompactPanel(DropSurface, QWidget):
             item.triggered.connect(callback)
             return item
 
-        batch_ids = tuple(item.data(Qt.UserRole) for item in self.project_list.selectedItems())
+        batch_ids = tuple(item.data(Qt.UserRole) for item in self.project_list.selectedItems() if not item.isHidden())
         if len(batch_ids) < 2 or project_id not in batch_ids or project.get('deleted_at'):
             batch_ids = ()
         if batch_ids:
@@ -1744,6 +1772,11 @@ class CompactPanel(DropSurface, QWidget):
                 (row := self._project_rows.get(pid)) is not None
                 and not any(row.get(key) for key in ('archived_at', 'deleted_at', 'merged_into_id', 'block_reason'))
                 for pid in batch_ids)
+            batch_delivery = add(
+                menu, f'批量确认交付（{len(batch_ids)} 项）…',
+                lambda: self.request_bulk_delivery(list(batch_ids)),
+                batch_editable and all(self._project_rows[pid]['status'] == '待交付' for pid in batch_ids))
+            batch_delivery.setToolTip('归档所选项目的工作文件。所选项目须为待交付。')
             add(menu, '标记加急', lambda: self.request_bulk(list(batch_ids), {'urgent': True}), batch_editable)
             add(menu, '取消加急', lambda: self.request_bulk(list(batch_ids), {'urgent': False}), batch_editable)
         heading_text = ('当前项目：' if batch_ids else '') + project['name']
@@ -1798,7 +1831,9 @@ class CompactPanel(DropSurface, QWidget):
         add(menu, '改项目名…', lambda: self.rename_project(project_id), editable)
         add(menu, '看原文', lambda: self.show_source(project_id), active)
         menu.addSeparator()
-        delivery = add(menu, '确认交付…', lambda: self.confirm_delivery(project_id), editable and project['status'] == '待交付')
+        delivery_label = '仅确认当前项目交付…' if batch_ids else '确认交付…'
+        delivery = add(menu, delivery_label, lambda: self.confirm_delivery(project_id),
+                       editable and project['status'] == '待交付')
         delivery.setToolTip('选择归档项目工作文件，或明确指定一个 ZIP 版本；首次交付计入当天统计，补交只保留记录。')
         positions = menu._positions_menu = QMenu('ZIP 位置', menu)
         menu.addMenu(positions)
@@ -2402,7 +2437,7 @@ class CompactPanel(DropSurface, QWidget):
             self.show_project_detail()
 
     def show_project_detail(self, *_):
-        if self.current_project is None:
+        if self.document_pane.project_id is None:
             return
         if not self._project_detail_open:
             item = self.project_list.itemAt(QPoint(2, 0))
@@ -2444,13 +2479,15 @@ class CompactPanel(DropSurface, QWidget):
             if all(sizes):
                 self._project_wide_sizes = sizes
         self._project_narrow = narrow
-        detail = self._project_detail_open and self.current_project is not None
+        has_preview = self.document_pane.project_id is not None
+        detail = self._project_detail_open and has_preview
         self.project_side.setVisible(not narrow or not detail)
         self.document_side.setVisible(not narrow or detail)
-        self.project_detail_button.setVisible(narrow and not detail and self.current_project is not None)
+        self.project_detail_button.setVisible(narrow and not detail and has_preview)
         detail_command = self.tabs.currentIndex() == 0 and narrow and detail
         if detail_command:
             self.project_filter_panel.hide()
+            self.bulk_bar.hide()
         self.project_back_button.setVisible(detail_command)
         if self.tabs.currentIndex() in (0, 1):
             self.search.setVisible(not detail_command)

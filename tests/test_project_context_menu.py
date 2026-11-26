@@ -94,6 +94,48 @@ def test_menu_keeps_other_actions_on_clicked_project_and_applies_urgency_to_sele
     assert folders == [2]
 
 
+def test_multi_project_menu_confirms_the_whole_pending_selection(panel, monkeypatch):
+    entries = panel.service.db.create_capture('丙系统', '其他批次', [('丙系统', False)])
+    project_ids = {1, 2, entries['project_ids'][0]}
+    for project_id in project_ids:
+        panel.service.set_status(project_id, '待交付')
+    panel.refresh()
+    panel.project_list.selectAll()
+    confirmed, single, questions = [], [], []
+    panel.bulk_delivery_requested.connect(lambda ids: confirmed.append(set(ids)))
+    panel.delivery_requested.connect(lambda *args: single.append(args))
+
+    def answer(*args):
+        questions.append(args)
+        return QMessageBox.Yes
+
+    monkeypatch.setattr(QMessageBox, 'question', answer)
+    menu = panel.project_context_menu(2)
+    texts = [item.text() for item in menu.actions()]
+    bulk_text = '批量确认交付（3 项）…'
+    assert texts.index('所选 3 个项目') < texts.index(bulk_text) < texts.index('当前项目：乙系统')
+    assert '确认交付…' not in texts
+    assert action(menu, '仅确认当前项目交付…').isEnabled()
+    action(menu, bulk_text).trigger()
+    assert confirmed == [project_ids] and single == []
+    assert '3 个待交付项目' in questions[0][2]
+    assert questions[0][-1] == QMessageBox.No
+
+
+def test_batch_menu_disables_delivery_for_a_mixed_status_selection(panel):
+    panel.service.set_status(1, '待交付')
+    panel.service.set_status(2, '开发中')
+    panel.refresh()
+    panel.project_list.selectAll()
+    menu = panel.project_context_menu(1)
+    assert not action(menu, '批量确认交付（2 项）…').isEnabled()
+    assert action(menu, '仅确认当前项目交付…').isEnabled()
+
+    panel.project_list.clearSelection()
+    panel.project_list.item(0).setSelected(True)
+    assert action(panel.project_context_menu(1), '确认交付…').isEnabled()
+
+
 def test_mouse_menu_resolves_item_at_position_and_blank_does_nothing(panel):
     panel.project_list.project_context_requested.disconnect()
     panel.show()
