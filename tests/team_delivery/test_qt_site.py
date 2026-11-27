@@ -10,7 +10,7 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWidget
 
 from workbox.team_delivery.contracts import ActionUncertain, GatewayError, Stage
 from workbox.team_delivery.qt_site import QtSiteGateway, QtSiteSession
@@ -393,6 +393,47 @@ def test_session_stays_offline_until_open_and_background_reads_only_own_projects
     user['account'] = 'replacement'
     switched = execute(worker, gateway.poll_snapshot)
     assert switched.account != first.account and switched.tasks == ()
+
+
+def test_original_site_window_is_independent_and_reopens_same_session(site):
+    session, gateway, worker, _, _, history, _ = site
+    owner = QWidget()
+    session.setParent(owner)
+    owner.show()
+    try:
+        open_site(site)
+        window, page = session.window, session.page
+        assert session.parent() is owner
+        assert window.parentWidget() is None and window.windowHandle().transientParent() is None
+        assert window.windowType() == Qt.WindowType.Window
+        flags = window.windowFlags()
+        assert flags & Qt.WindowType.WindowMinimizeButtonHint
+        assert flags & Qt.WindowType.WindowMaximizeButtonHint
+        assert flags & Qt.WindowType.WindowCloseButtonHint
+        assert not flags & Qt.WindowType.WindowStaysOnTopHint
+
+        before = execute(worker, gateway.poll_snapshot)
+        owner.hide()
+        assert window.isVisible()
+        window.showMaximized()
+        assert window.isMaximized()
+        window.showMinimized()
+        assert window.isMinimized()
+        assert execute(worker, gateway.poll_snapshot) == before
+        assert window.isMinimized()
+
+        execute(worker, gateway.open_login)
+        assert session.window is window and session.page is page
+        assert window.isVisible() and window.isMaximized() and not window.isMinimized()
+        window.close()
+        assert not window.isVisible()
+        execute(worker, gateway.open_login)
+        assert window.isVisible() and session.page is page
+        assert [entry for entry in history if entry[1] == '/'] == [('GET', '/', None)]
+        assert not writes(history)
+    finally:
+        session.setParent(None)
+        owner.close()
 
 
 def test_submit_transitions_only_the_verified_task_and_repeat_is_read_only(site):
