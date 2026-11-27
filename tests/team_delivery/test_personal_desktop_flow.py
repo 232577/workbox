@@ -5,7 +5,7 @@ from time import monotonic, sleep
 import pytest
 from PySide6.QtCore import QMimeData, QPointF, Qt, QTimer, QUrl
 from PySide6.QtGui import QDropEvent
-from PySide6.QtWidgets import QApplication, QDialog, QInputDialog
+from PySide6.QtWidgets import QApplication, QDialog, QInputDialog, QMessageBox
 
 from anonymous_document import make_document
 from test_qt_site import install_completion_view, page_script, site, writes
@@ -90,6 +90,67 @@ def test_drop_then_confirm_submits_only_the_bound_original_task(site, target, ve
         assert len(service.list_projects()) == 2
         assert len(writes(history)) == 2
     finally:
+        desktop.shutdown()
+
+
+def test_supplemental_sync_submits_only_existing_delivery_bound_after_archive(site, tmp_path, monkeypatch):
+    browser, _, _, _, rows, history, _ = site
+    title = '匿名旧交付系统'
+    rows[0].update(id=55, name=title)
+    monkeypatch.setattr(application, 'LIVE_SITE_URL', browser.origin)
+    service = DesktopService(tmp_path / 'data' / 'workbox.db')
+    project_id, = service.receive_text(title)['project_ids']
+    source = Path(service.workspaces.get_workspace(project_id)['path']) / (title + '.docx')
+    make_document(source)
+    original_bytes = source.read_bytes()
+    original_delivery = service.confirm_delivery(project_id, confirmed=True)
+    archive = Path(original_delivery['archive']['path']) / source.name
+    event_id = original_delivery['event_id']
+    original_events = service.db.delivery_events_for_project(project_id)
+    original_time = service.get_project(project_id)['delivered_at']
+    desktop = FloatingController(service, tray_enabled=False)
+    confirm_timer = QTimer()
+    confirmations = []
+
+    def confirm_existing_delivery():
+        dialog = QApplication.activeModalWidget()
+        if isinstance(dialog, QMessageBox):
+            confirm_timer.stop()
+            confirmations.append((dialog.text(), dialog.standardButton(dialog.defaultButton())))
+            dialog.button(QMessageBox.Yes).click()
+
+    try:
+        assert desktop.start()
+        desktop.monitor_timer.stop()
+        desktop.panel.nav_team.click()
+        client = desktop.panel.team_controller
+        until(lambda: not client._busy)
+        desktop.panel.team_page._login.click()
+        until(lambda: client.current_personal_snapshot() is not None, seconds=22)
+        until(lambda: service.get_project(project_id)['original_task_id'] == '55' and not desktop.busy)
+        assert not writes(history)
+        assert desktop.personal_site.projects.delivery_for_event(event_id) is None
+
+        desktop.panel.nav_projects.click()
+        menu = desktop.panel.project_context_menu(project_id)
+        action, = [item for item in menu.actions() if item.text() == '补同步到这是家…']
+        confirm_timer.timeout.connect(confirm_existing_delivery)
+        confirm_timer.start(30)
+        action.trigger()
+        until(lambda: rows[0]['matStatus'] == '已完成')
+        until(lambda: desktop.personal_site.projects.delivery_for_event(event_id).status == 'completed')
+
+        (message, default), = confirmations
+        assert f'这是家 #55 · {title}' in message and default == QMessageBox.No
+        assert writes(history) == [('/api/start-material', {'ids': [55]}),
+                                   ('/api/complete-material', {'ids': [55]})]
+        assert rows[1]['matStatus'] == '待制作'
+        assert service.db.delivery_events_for_project(project_id) == original_events
+        project = service.get_project(project_id)
+        assert project['status'] == '已交付' and project['delivered_at'] == original_time
+        assert archive.read_bytes() == source.read_bytes() == original_bytes
+    finally:
+        confirm_timer.stop()
         desktop.shutdown()
 
 

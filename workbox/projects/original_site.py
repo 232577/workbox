@@ -25,7 +25,8 @@ _AVAILABLE_BINDINGS = f'''
 '''
 _DELIVERY = '''
     SELECT s.*, e.project_id AS event_project_id,a.active_project_id,b.account_username,b.task_id,b.available,b.revision,
-           b.title AS observed_title,b.stage AS observed_stage,b.round AS current_round
+           b.title AS observed_title,b.stage AS observed_stage,b.round AS current_round,
+           b.return_revision AS observed_return_revision
     FROM original_site_deliveries s JOIN original_site_bindings b ON b.project_id=s.project_id
     JOIN delivery_events e ON e.id=s.event_id
     LEFT JOIN original_site_active_projects a ON a.project_id=b.project_id
@@ -56,6 +57,12 @@ class SiteDelivery:
     claim_token: str
     round_id: int
     source_revision: str
+
+
+@dataclass(frozen=True)
+class SiteDeliverySyncPreview:
+    event_id: int
+    occurred_at: str
 
 
 def _account(account):
@@ -93,7 +100,7 @@ def is_original_site_project(connection, project_id):
 
 def _latest_event(connection, project_id):
     return connection.execute('''
-        SELECT e.id,e.kind FROM delivery_events e JOIN projects p ON p.id=e.project_id
+        SELECT e.id,e.kind,e.occurred_at FROM delivery_events e JOIN projects p ON p.id=e.project_id
         WHERE p.id=? AND p.status='已交付' AND p.delivered_at=e.occurred_at
           AND NOT COALESCE((SELECT a.voided FROM delivery_event_actions a
                             WHERE a.event_id=e.id ORDER BY a.id DESC LIMIT 1),0)
@@ -164,9 +171,17 @@ def _current_local_event(connection, row):
     return event is not None and event['id'] == row['event_id']
 
 
+def _approved_revision_is_current(row):
+    return not row['approved_revision'] or (
+        row['approved_revision'] == row['revision'] and not row['observed_return_revision']
+        and row['observed_stage'] in (Stage.READY.value, Stage.WORKING.value)
+    )
+
+
 def _writable(connection, row):
     return (row['available'] and row['round'] == row['current_round']
-            and row['title'] == row['observed_title'] and not _remote_blocked(connection, row))
+            and row['title'] == row['observed_title'] and _approved_revision_is_current(row)
+            and not _remote_blocked(connection, row))
 
 
 class OriginalSiteProjects:
@@ -408,6 +423,68 @@ class OriginalSiteProjects:
             row = connection.execute(_DELIVERY + ' WHERE s.event_id=?', (event_id,)).fetchone()
             return _delivery(row) if row else None
 
+    @staticmethod
+    def _delivery_to_sync(connection, project_id, account, task):
+        username = _account(account)
+        if not username:
+            raise ValueError('请先登录这是家的材料账号。')
+        _task(account, task)
+        if task.stage is Stage.RETURNED:
+            raise ValueError('原站已退回，请先确认本轮材料。')
+        if task.stage not in (Stage.READY, Stage.WORKING):
+            raise ValueError('原站任务当前不需要提交，请核对原站状态。')
+        binding = connection.execute(
+            _AVAILABLE_BINDINGS + ' AND b.active_project_id=? AND b.task_id=? AND b.title=?'
+            ' AND b.stage=? AND b.revision=?',
+            (username, project_id, task.id, task.title, task.stage.value, task.revision),
+        ).fetchone()
+        if binding is None:
+            raise ValueError('当前项目或原站待办已变化，请刷新后核对关联。')
+        if binding['round'] != 1 or binding['return_revision']:
+            raise ValueError('原站已有退回记录，请先确认本轮材料。')
+        event = _latest_event(connection, project_id)
+        if event is None or event['kind'] not in ('manual-files', 'manual-zip'):
+            raise ValueError('找不到该项目当前有效的人工交付记录。')
+        prior = connection.execute(
+            'SELECT status FROM original_site_deliveries WHERE event_id=?', (event['id'],),
+        ).fetchone()
+        if prior is not None:
+            message = {
+                'pending': '这笔交付已在同步队列中。',
+                'needs_check': '这笔交付已有待核对的原站请求，请先核对回执。',
+                'completed': '原站已确认这笔交付。',
+                'superseded': '这笔交付已有同步记录，请核对原站状态。',
+            }
+            raise ValueError(message[prior['status']])
+        if _remote_blocked(connection, dict(binding, event_id=event['id'])) or connection.execute('''
+            SELECT 1 FROM original_site_deliveries s
+            JOIN original_site_bindings b ON b.project_id=s.project_id
+            WHERE b.task_id=? AND s.status='pending' LIMIT 1
+        ''', (task.id,)).fetchone():
+            raise ValueError('此原站任务已有提交或排队记录，请先核对原站结果。')
+        return event
+
+    def preview_delivery_sync(self, project_id, account, task):
+        """Read the exact existing local delivery available for explicit submission."""
+        with self.db.connect() as connection:
+            connection.execute('BEGIN')
+            event = self._delivery_to_sync(connection, project_id, account, task)
+            return SiteDeliverySyncPreview(event['id'], event['occurred_at'])
+
+    def queue_existing_delivery(self, project_id, account, task, *, expected_event_id, confirmed=False):
+        """Attach an existing delivery to the ordinary verified submission queue."""
+        if confirmed is not True:
+            raise ValueError('请先确认补同步的项目和交付记录。')
+        with self.db.connect() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            event = self._delivery_to_sync(connection, project_id, account, task)
+            if type(expected_event_id) is not int or event['id'] != expected_event_id:
+                raise ValueError('本机交付记录已变化，请重新核对。')
+            enqueue_delivery(connection, project_id, event['id'])
+            connection.execute('UPDATE original_site_deliveries SET approved_revision=? WHERE event_id=?',
+                               (task.revision, event['id']))
+            return _delivery(connection.execute(_DELIVERY + ' WHERE s.event_id=?', (event['id'],)).fetchone())
+
     def claim(self, event_id, account, current_task):
         username = _account(account)
         if not username or current_task is None:
@@ -486,6 +563,7 @@ class OriginalSiteProjects:
                 return row['receipt_id'] == delivery_id
             if row['status'] != 'needs_check' and (
                     row['status'] != 'pending' or row['round'] != row['current_round']
+                    or not _approved_revision_is_current(row)
                     or not _current_local_event(connection, row) or _remote_blocked(connection, row)):
                 return False
             connection.execute('''

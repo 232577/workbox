@@ -221,6 +221,105 @@ def test_versioned_task_does_not_duplicate_a_versionless_historical_name(persona
         site.bind_existing(ALICE, source, pid, confirmed=True)
 
 
+@pytest.fixture
+def delivery_before_binding(personal):
+    service, site = personal
+    current = task(stage=Stage.WORKING)
+    pid, = service.db.create_capture('本地消息', '匿名批次', [(current.title, False)])['project_ids']
+    service.ensure_workspaces(pid)
+    event_id = deliver(service, pid)
+    assert site.sync(ALICE, [current]) == 1
+    assert site.binding_for_task(ALICE, current) == pid
+    assert site.pending(ALICE) == ()
+    assert site.delivery_for_event(event_id) is None
+    return service, site, pid, current, event_id
+
+
+def test_existing_delivery_sync_reuses_confirmed_event_and_preserves_local_history(delivery_before_binding):
+    service, site, pid, current, event_id = delivery_before_binding
+    project = service.get_project(pid)
+    history = service.db.delivery_events_for_project(pid)
+    before = service.db.delivery_history()
+    archive = Path(history[0]['archive_path'])
+    archived_file = archive / '材料.txt'
+    original_bytes = archived_file.read_bytes()
+    archive_versions = sorted(path.name for path in archive.parent.iterdir())
+    preview = site.preview_delivery_sync(pid, ALICE, current)
+    assert (preview.event_id, preview.occurred_at) == (event_id, history[0]['occurred_at'])
+    with pytest.raises(ValueError, match='确认'):
+        site.queue_existing_delivery(pid, ALICE, current, expected_event_id=event_id)
+    assert site.delivery_for_event(event_id) is None
+
+    queued = site.queue_existing_delivery(pid, ALICE, current, expected_event_id=event_id, confirmed=True)
+    assert (queued.event_id, queued.task_id, queued.title, queued.status) == (
+        event_id, current.id, current.title, 'pending',
+    )
+    assert site.pending(ALICE) == (queued,)
+    with pytest.raises(ValueError, match='队列'):
+        site.queue_existing_delivery(pid, ALICE, current, expected_event_id=event_id, confirmed=True)
+
+    claimed = site.claim(event_id, ALICE, current)
+    assert claimed is not None
+    with pytest.raises(ValueError, match='核对'):
+        site.queue_existing_delivery(pid, ALICE, current, expected_event_id=event_id, confirmed=True)
+    assert site.record_receipt(event_id, account_username=ALICE.username, task_id=current.id,
+                               delivery_id='verified-receipt')
+    with pytest.raises(ValueError, match='已确认'):
+        site.queue_existing_delivery(pid, ALICE, current, expected_event_id=event_id, confirmed=True)
+    assert site.pending(ALICE) == ()
+    assert service.get_project(pid) == project
+    assert service.db.delivery_events_for_project(pid) == history
+    assert service.db.delivery_history() == before
+    assert archived_file.read_bytes() == original_bytes
+    assert sorted(path.name for path in archive.parent.iterdir()) == archive_versions
+
+
+def test_existing_delivery_sync_rechecks_account_observation_and_delivery_event(delivery_before_binding):
+    service, site, pid, current, event_id = delivery_before_binding
+    for account, task_view in (
+        (BOB, replace(current, owner_id=BOB.id)),
+        (ALICE, replace(current, revision='stale-revision')),
+        (ALICE, replace(current, title='相似但不同的匿名名称')),
+        (ALICE, replace(current, stage=Stage.COMPLETED)),
+    ):
+        with pytest.raises(ValueError):
+            site.queue_existing_delivery(pid, account, task_view, expected_event_id=event_id, confirmed=True)
+    with pytest.raises(ValueError):
+        site.queue_existing_delivery(pid, ALICE, current, expected_event_id=event_id + 1, confirmed=True)
+    service.set_status(pid, '待交付')
+    with pytest.raises(ValueError):
+        site.queue_existing_delivery(pid, ALICE, current, expected_event_id=event_id, confirmed=True)
+    assert site.delivery_for_event(event_id) is None
+
+
+def test_existing_delivery_sync_will_not_reuse_pre_return_material(delivery_before_binding):
+    _service, site, pid, current, event_id = delivery_before_binding
+    returned = replace(current, stage=Stage.RETURNED, revision='returned')
+    rework = replace(current, revision='rework')
+    for task_view in (returned, rework):
+        site.sync(ALICE, [task_view])
+        with pytest.raises(ValueError, match='退回'):
+            site.queue_existing_delivery(pid, ALICE, task_view, expected_event_id=event_id, confirmed=True)
+    assert site.delivery_for_event(event_id) is None
+
+
+@pytest.mark.parametrize('new_stage', [Stage.WORKING, Stage.RETURNED])
+def test_queued_existing_delivery_never_submits_a_new_site_revision(delivery_before_binding, new_stage):
+    _service, site, pid, current, event_id = delivery_before_binding
+    site.queue_existing_delivery(pid, ALICE, current, expected_event_id=event_id, confirmed=True)
+    claim = site.claim(event_id, ALICE, current)
+    assert site.claim_is_current(claim, ALICE)
+
+    changed = replace(current, revision='new-revision', stage=new_stage)
+    site.sync(ALICE, [changed])
+    assert not site.claim_is_current(claim, ALICE)
+    assert site.mark_not_sent(claim)
+    assert site.claim(event_id, ALICE, changed) is None
+    assert site.pending(ALICE)[0].status == 'needs_check'
+    assert not site.record_receipt(event_id, account_username=ALICE.username, task_id=current.id,
+                                   delivery_id='different-revision-receipt')
+
+
 def test_automatic_sync_reuses_manual_history_and_pins_only_new_deliveries(personal):
     service, site = personal
     current = task()

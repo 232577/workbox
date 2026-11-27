@@ -3,9 +3,11 @@ from threading import Event
 from time import monotonic
 from sqlite3 import Error as DatabaseError
 
-from PySide6.QtCore import QObject, QTimer
-from PySide6.QtWidgets import QInputDialog
+from PySide6.QtCore import QObject, Qt, QTimer
+from PySide6.QtWidgets import QInputDialog, QMessageBox
 
+from workbox.desktop.delivery_ui import beijing_timestamp
+from workbox.desktop.dialog_lifecycle import transient_dialog
 from workbox.projects.original_site import OriginalSiteProjects
 from workbox.projects.project_names import original_site_binding_name_keys, project_name_key
 from workbox.team_delivery.contracts import Outcome
@@ -162,6 +164,67 @@ class PersonalSiteWorkspace(QObject):
     def intake_account(self) -> str | None:
         snapshot = self.site.current_personal_snapshot()
         return site_account(snapshot.account.username) if snapshot is not None else None
+
+    def request_delivery_sync(self, project_id, task_id):
+        snapshot = self.site.current_personal_snapshot()
+        task = next((item for item in snapshot.tasks if item.id == task_id), None) if snapshot else None
+        if task is None:
+            self._message('暂时无法补同步', f'请用绑定的材料账号在「这是家」按编号 #{task_id} 核对当前任务。')
+            return
+        superseded = self._superseded
+        changed_notice = '原站账号或任务已变化，请刷新后重试。'
+        label = f'这是家 #{task.id} · {task.title}'
+
+        def still_current():
+            return not superseded.is_set() and self._available(snapshot)
+
+        def preview_worker(**_):
+            if superseded.is_set():
+                raise ValueError(changed_notice)
+            return self.projects.preview_delivery_sync(project_id, snapshot.account, task)
+
+        def confirm(worker):
+            if self.desktop.closed or self.desktop.quitting or worker.cancelled:
+                return
+            if not still_current():
+                self._message('暂时无法补同步', changed_notice)
+                return
+            if worker.error:
+                self._message('暂时无法补同步', worker.error)
+                return
+            preview = worker.result
+            text = (f'{label}\n材料账号 {snapshot.account.username}\n'
+                    f'本机交付时间（北京时间） {beijing_timestamp(preview.occurred_at)}\n\n'
+                    '沿用这次交付的本机归档、记录和工作量统计。确认补同步这项任务？')
+            with transient_dialog(QMessageBox(QMessageBox.Question, '补同步到这是家', text,
+                                               QMessageBox.Yes | QMessageBox.No, self.desktop.panel)) as dialog:
+                dialog.setTextFormat(Qt.PlainText)
+                dialog.setDefaultButton(QMessageBox.No)
+                if dialog.exec() != QMessageBox.Yes:
+                    return
+            if not still_current():
+                self._message('暂时无法补同步', changed_notice)
+                return
+
+            def queue_worker(**_):
+                if superseded.is_set():
+                    raise ValueError(changed_notice)
+                return self.projects.queue_existing_delivery(project_id, snapshot.account, task,
+                                                             expected_event_id=preview.event_id, confirmed=True)
+
+            def queued(result):
+                if self.desktop.closed or self.desktop.quitting or result.cancelled:
+                    return
+                if result.error:
+                    self._message('暂时无法补同步', result.error if still_current() else changed_notice)
+                    return
+                if still_current():
+                    self._message('已加入补同步队列', label)
+                self.wake()
+
+            self.desktop.enqueue('登记补同步任务', queue_worker, silent=True, on_complete=queued)
+
+        self.desktop.enqueue('核对本机交付', preview_worker, silent=True, on_complete=confirm)
 
     def _resolve_binding(self, task, filename=None):
         snapshot = self.site.current_personal_snapshot()
