@@ -146,15 +146,29 @@ class SnapshotManager:
             if existing:
                 # 已经显式收件或被用户修改的来源不能重新降为保留副本。
                 return dict(watching=True, source_path=str(path), project_id=existing['project_id'])
-            metadata = self._inspect(path)
-            result = self.watch_zip(path, project_id)
-            if metadata['sha256'] == baseline_sha256:
+            # Inspect outside the SQLite writer transaction, but keep the
+            # read-only file lease until both registration rows are committed.
+            with ZipLease(path, movable=False) as lease:
+                metadata = self._inspect_lease(lease)
                 with self.db.connect() as connection:
-                    row = connection.execute('SELECT id FROM zip_sources WHERE source_key=?', (self._key(path),)).fetchone()
-                    connection.execute('''INSERT INTO zip_work_copies
-                        (source_id,original_source_id,baseline_identity,baseline_sha256) VALUES (?,?,?,?)''',
-                        (row['id'], parent['id'], json.dumps(metadata['identity']), metadata['sha256']))
-            return result
+                    connection.execute('BEGIN IMMEDIATE')
+                    self._assert_project(connection, project_id)
+                    existing = connection.execute('SELECT project_id FROM zip_sources WHERE source_key=?',
+                                                  (self._key(path),)).fetchone()
+                    if existing:
+                        return dict(watching=True, source_path=str(path), project_id=existing['project_id'])
+                    current_parent = connection.execute('SELECT id FROM zip_sources WHERE source_key=?',
+                                                        (self._key(original),)).fetchone()
+                    if current_parent is None or current_parent['id'] != parent['id']:
+                        raise ValueError('ZIP 原始来源在登记期间已变化，工作副本未关联。')
+                    source_id = connection.execute('''INSERT INTO zip_sources
+                        (source_key,source_path,project_id) VALUES (?,?,?)''',
+                        (self._key(path), str(path), project_id)).lastrowid
+                    if metadata['sha256'] == baseline_sha256:
+                        connection.execute('''INSERT INTO zip_work_copies
+                            (source_id,original_source_id,baseline_identity,baseline_sha256) VALUES (?,?,?,?)''',
+                            (source_id, parent['id'], json.dumps(metadata['identity']), metadata['sha256']))
+            return dict(watching=True, source_path=str(path), project_id=project_id)
 
     def list_sources(self):
         with self.db.connect() as connection:
@@ -375,15 +389,19 @@ class SnapshotManager:
     @staticmethod
     def _inspect(path, *, cancel_event=None, progress=None):
         with ZipLease(path, movable=False) as lease:
-            try:
-                metadata = lease.inspect(cancel_event=cancel_event, progress=progress)
-                # 只检查目录结构；不解压或宣称通过 CRC/成品验收。
-                lease.stream.seek(0)
-                with ZipFile(lease.stream) as archive:
-                    archive.infolist()
-                return metadata
-            except (BadZipFile, ValueError, EOFError) as error:
-                raise InvalidZipStructure(str(error)) from error
+            return SnapshotManager._inspect_lease(lease, cancel_event=cancel_event, progress=progress)
+
+    @staticmethod
+    def _inspect_lease(lease, *, cancel_event=None, progress=None):
+        try:
+            metadata = lease.inspect(cancel_event=cancel_event, progress=progress)
+            # 只检查目录结构；不解压或宣称通过 CRC/成品验收。
+            lease.stream.seek(0)
+            with ZipFile(lease.stream) as archive:
+                archive.infolist()
+            return metadata
+        except (BadZipFile, ValueError, EOFError) as error:
+            raise InvalidZipStructure(str(error)) from error
 
     def _target(self, metadata, project_id):
         if project_id is None:

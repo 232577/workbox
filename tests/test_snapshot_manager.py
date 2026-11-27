@@ -1,6 +1,8 @@
 from concurrent.futures import CancelledError
 from contextlib import contextmanager
 from pathlib import Path
+import hashlib
+import sqlite3
 import threading
 from zipfile import ZipFile
 
@@ -53,6 +55,28 @@ def test_watch_waits_ten_seconds_and_copies_preserving_source(tmp_path):
     assert Path(result['path']).is_relative_to(Path(ws.settings()['archive_root']))
     assert service.get_project(1)['status'] == '待交付'
     assert not manager.list_versions(1)[0]['approved']
+
+
+def test_work_copy_baseline_failure_rolls_back_watcher_registration(tmp_path):
+    service, _, manager = setup_manager(tmp_path)
+    original = write_zip(tmp_path / 'source' / 'result.zip')
+    working = tmp_path / 'copy' / original.name
+    working.parent.mkdir()
+    working.write_bytes(original.read_bytes())
+    baseline_hash = hashlib.sha256(working.read_bytes()).hexdigest()
+    manager.watch_zip(original, 1)
+    with service.db.connect() as connection:
+        connection.execute("""CREATE TRIGGER reject_test_work_copy BEFORE INSERT ON zip_work_copies
+                              BEGIN SELECT RAISE(ABORT, 'isolated failed baseline write'); END""")
+    with pytest.raises(sqlite3.IntegrityError, match='isolated failed baseline'):
+        manager.watch_work_copy(working, original, 1, baseline_sha256=baseline_hash)
+    assert [row['source_path'] for row in manager.list_sources()] == [str(original)]
+    assert hashlib.sha256(working.read_bytes()).hexdigest() == baseline_hash
+    with service.db.connect() as connection:
+        connection.execute('DROP TRIGGER reject_test_work_copy')
+    assert manager.watch_work_copy(working, original, 1, baseline_sha256=baseline_hash)['watching']
+    copied = next(row for row in manager.list_sources() if row['source_path'] == str(working))
+    assert copied['state'] == 'copy-retained'
 
 
 def test_versions_repeat_revert_and_approval_are_independent(tmp_path):

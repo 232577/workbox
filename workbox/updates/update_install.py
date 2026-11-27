@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+from contextlib import closing
 from datetime import datetime, timezone
 import json
 import os
@@ -22,19 +23,29 @@ def backup_database(database: Path, backup_root: Path) -> Path:
     if not database.is_file():
         raise ValueError('数据库恢复点缺少源文件。')
     root.mkdir(parents=True, exist_ok=True)
-    if shutil.disk_usage(root).free < database.stat().st_size * 2 + 64 * 1024 * 1024:
-        raise OSError('空间不足，未创建数据库恢复点或执行升级。')
-    folder = root / (datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:12])
-    folder.mkdir()
-    target = folder / 'workbox.db'
+    target = None
     try:
-        with sqlite3.connect(database.as_uri() + '?mode=ro', uri=True, timeout=10) as source:
-            with sqlite3.connect(target) as destination:
+        with closing(sqlite3.connect(database.as_uri() + '?mode=ro', uri=True, timeout=10)) as source:
+            # A SQLite backup includes committed pages still in WAL.
+            pages = source.execute('PRAGMA page_count').fetchone()[0]
+            page_bytes = source.execute('PRAGMA page_size').fetchone()[0]
+            backup_bytes = max(database.stat().st_size, pages * page_bytes)
+            if shutil.disk_usage(root).free < backup_bytes * 2 + 64 * 1024 * 1024:
+                raise OSError('空间不足，未创建数据库恢复点或执行升级。')
+            folder = root / (datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:12])
+            folder.mkdir()
+            target = folder / 'workbox.db'
+            with closing(sqlite3.connect(target)) as destination, destination:
                 source.backup(destination)
                 if destination.execute('PRAGMA quick_check').fetchone() != ('ok',):
                     raise ValueError('数据库恢复点校验失败，未执行升级。')
-    except Exception:
-        target.unlink(missing_ok=True)
+    except Exception as error:
+        if target is not None:
+            try:
+                target.unlink(missing_ok=True)
+                target.parent.rmdir()
+            except OSError as cleanup_error:
+                error.add_note(f'本次未完成的恢复点未清理：{cleanup_error}')
         raise
     return target
 
