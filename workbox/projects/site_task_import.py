@@ -3,7 +3,7 @@
 from collections import Counter
 
 from workbox.projects.database import Database
-from workbox.projects.project_names import project_name_key
+from workbox.projects.project_names import original_site_binding_name_keys, project_name_key
 from workbox.projects.text_intake import create_intake_message, project_name_block, read_project_name_index
 
 
@@ -80,7 +80,17 @@ def import_site_tasks(connection, tasks, *, strict_identity=False, other_titles=
         elif len(matches) > 1:
             reason = '存在多个同名的本机项目，请先核对项目名称。'
         elif not matches:
-            reason = '同名历史项目需要人工核对。' if key in aliases else ''
+            if key in aliases:
+                reason = '同名历史项目需要人工核对。'
+            elif strict_identity and any(
+                project_id not in project_tasks
+                for base in original_site_binding_name_keys(title)[1:]
+                for names in (current_names, aliases)
+                for project_id in names.get(base, ())
+            ):
+                reason = '本机有未标版本的同名项目或历史名称，请核对。'
+            else:
+                reason = ''
         else:
             pid, row = next(iter(matches.items()))
             blocked = project_name_block(row)

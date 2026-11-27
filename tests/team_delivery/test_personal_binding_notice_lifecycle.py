@@ -1,11 +1,12 @@
 """Exercise the original-site review notice with anonymous snapshots and isolated storage."""
 
 from dataclasses import replace
+from pathlib import Path
 from threading import Event
 from time import monotonic, sleep
 
 import pytest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QInputDialog
 
 from workbox.desktop.desktop_controller import FloatingController
 from workbox.desktop.desktop_service import DesktopService
@@ -24,7 +25,7 @@ def wait_for(predicate, seconds=8):
 
 
 @pytest.fixture
-def personal_binding_review(tmp_path, monkeypatch):
+def binding_desktop(tmp_path, monkeypatch):
     app = QApplication.instance() or QApplication([])
     service = DesktopService(tmp_path / 'data' / 'workbox.db')
     desktop = FloatingController(service, tray_enabled=False)
@@ -37,26 +38,72 @@ def personal_binding_review(tmp_path, monkeypatch):
         page = desktop.panel.team_page
         site = desktop.panel.team_controller
         workspace = desktop.personal_site
-        account = Account('local-session', '匿名账号', 'material', 'browser-session', 'anonymous')
-        first = Task('15', '匿名同名项目', account.id, Stage.READY, 'first-revision')
-        second = Task('16', '匿名同名项目', account.id, Stage.READY, 'second-revision')
-
         def publish(snapshot, *, wait=True):
             site._show_snapshot(snapshot or Snapshot(None))
             if wait:
                 wait_for(lambda: not workspace._loading and workspace._imported == snapshot)
 
-        publish(Snapshot(account, (first, second)))
-        assert not service.list_projects()
-        assert '待办需要核对' in page._result.text() and '#15' in page._result.text()
-        assert '待办需要核对' in desktop.panel.notice.toolTip()
-        assert desktop.bubble.isVisible() and '#15' in desktop.bubble.text.toolTip()
-        page._tasks.selectRow(0)
-        assert not page._bind_task.isHidden()
-        yield desktop, page, publish, Snapshot(account, (first,))
+        yield desktop, page, publish
     finally:
         desktop.shutdown()
         app.processEvents()
+
+
+@pytest.fixture
+def personal_binding_review(binding_desktop):
+    desktop, page, publish = binding_desktop
+    account = Account('local-session', '匿名账号', 'material', 'browser-session', 'anonymous')
+    first = Task('15', '匿名同名项目', account.id, Stage.READY, 'first-revision')
+    second = Task('16', '匿名同名项目', account.id, Stage.READY, 'second-revision')
+
+    publish(Snapshot(account, (first, second)))
+    assert not desktop.service.list_projects()
+    assert '待办需要核对' in page._result.text() and '#15' in page._result.text()
+    assert '待办需要核对' in desktop.panel.notice.toolTip()
+    assert desktop.bubble.isVisible() and '#15' in desktop.bubble.text.toolTip()
+    page._tasks.selectRow(0)
+    assert not page._bind_task.isHidden()
+    return desktop, page, publish, Snapshot(account, (first,))
+
+
+def test_explicit_binding_reuses_existing_project_without_title_version(binding_desktop, monkeypatch):
+    desktop, page, publish = binding_desktop
+    service = desktop.service
+    account = Account('local-session', '匿名账号', 'material', 'browser-session', 'anonymous')
+    title = '匿名材料项目'
+    task = Task('27', title + 'V1.0', account.id, Stage.READY, 'first-revision')
+    project_id, = service.capture_message(title, '匿名原批次')['project_ids']
+    service.bulk_update_projects([project_id], status='开发中')
+    workspace = service.workspaces.get_workspace(project_id)
+    working_file = Path(workspace['path']) / '保留材料.txt'
+    working_file.write_bytes(b'original work')
+
+    publish(Snapshot(account, (task,)))
+
+    assert [project['id'] for project in service.list_projects()] == [project_id]
+    assert not service.get_project(project_id)['original_task_id']
+    assert '#27' in page._result.text()
+    page._tasks.selectRow(0)
+    assert not page._bind_task.isHidden()
+
+    def select(_parent, dialog_title, prompt, items, *_):
+        assert dialog_title == '关联本机项目'
+        assert task.title in prompt and '#27' in prompt
+        option, = [item for item in items if item.startswith(f'#{project_id} ·')]
+        assert title in option and '匿名原批次' in option
+        return option, True
+
+    monkeypatch.setattr(QInputDialog, 'getItem', select)
+    page._bind_task.click()
+    wait_for(lambda: '已关联本机项目' in page._result.text())
+
+    project, = service.list_projects()
+    assert project['id'] == project_id and project['name'] == title
+    assert project['status'] == '开发中' and project['original_task_id'] == '27'
+    assert service.workspaces.get_workspace(project_id) == workspace
+    assert working_file.read_bytes() == b'original work'
+    assert page._bind_task.isHidden()
+    assert '待办需要核对' not in desktop.panel.notice.toolTip()
 
 
 @pytest.mark.parametrize('resolved', ['linked_after_refresh', 'sign_out'])

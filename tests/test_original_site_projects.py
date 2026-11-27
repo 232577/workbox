@@ -157,6 +157,70 @@ def test_explicit_existing_binding_requires_confirmation_and_matching_name(perso
     assert service.db.counts()['projects'] == 2
 
 
+@pytest.mark.parametrize('suffix', ['V1.0', ' V1.0'])
+def test_versioned_task_requires_explicit_binding_to_existing_unversioned_project(personal, suffix):
+    service, site = personal
+    title = task().title
+    current = replace(task(), title=title + suffix)
+    pid, = service.db.create_capture('本地消息', '匿名批次', [(title, False)])['project_ids']
+    service.ensure_workspaces(pid)
+    history_event = deliver(service, pid, '原有文件.txt')
+    workspace = service.workspaces.get_workspace(pid)['path']
+    history = service.db.delivery_history()
+
+    assert site.sync(ALICE, [current]) == 0
+    assert site.unlinked_tasks(ALICE, [current]) == (current,)
+    assert service.db.counts()['projects'] == 1
+    with pytest.raises(ValueError):
+        site.bind_existing(ALICE, current, pid, confirmed=False)
+
+    assert site.bind_existing(ALICE, current, pid, confirmed=True) == pid
+    assert site.sync(ALICE, [current]) == 0
+    assert site.binding_for_task(ALICE, current) == pid
+    assert site.binding_for(pid).title == current.title
+    assert service.get_project(pid)['name'] == title and service.get_project(pid)['status'] == '已交付'
+    assert service.workspaces.get_workspace(pid)['path'] == workspace
+    assert (Path(workspace) / '原有文件.txt').read_text(encoding='utf-8') == 'anonymous material'
+    assert service.db.delivery_history() == history
+    assert site.delivery_for_event(history_event) is None
+
+
+def test_versioned_binding_checks_full_match_distinct_versions_and_source_number(personal):
+    service, site = personal
+    title = task().title
+    plain, wrong, exact = service.db.create_capture('本地消息', '匿名批次', [
+        (title, False), (title + ' V2.0', False), (title + ' V1.0', False),
+    ])['project_ids']
+    source = replace(task(), title=title + ' V1.0')
+    competing = replace(source, id='56')
+    with pytest.raises(ValueError, match='名称'):
+        site.bind_existing(ALICE, source, wrong, confirmed=True)
+    assert site.sync(ALICE, [source]) == 1
+    assert site.binding_for_task(ALICE, source) == exact
+    assert site.sync(ALICE, [source, competing]) == 0
+    assert site.unlinked_tasks(ALICE, [source, competing]) == (competing,)
+    assert site.bind_existing(ALICE, competing, plain, confirmed=True) == plain
+    with pytest.raises(ValueError, match='已有绑定'):
+        site.bind_existing(ALICE, replace(source, id='57'), plain, confirmed=True)
+    assert site.binding_for_task(ALICE, source) == exact
+    assert site.binding_for_task(ALICE, competing) == plain
+
+
+def test_versioned_task_does_not_duplicate_a_versionless_historical_name(personal):
+    service, site = personal
+    title = task().title
+    pid, = service.db.create_capture('本地消息', '匿名批次', [(title, False)])['project_ids']
+    rename = service.preview_project_rename(pid, '匿名现用名称')
+    service.rename_project(pid, '匿名现用名称', expected_token=rename['token'])
+    source = replace(task(), title=title + ' V1.0')
+
+    assert site.sync(ALICE, [source]) == 0
+    assert site.unlinked_tasks(ALICE, [source]) == (source,)
+    assert service.db.counts()['projects'] == 1
+    with pytest.raises(ValueError, match='名称'):
+        site.bind_existing(ALICE, source, pid, confirmed=True)
+
+
 def test_automatic_sync_reuses_manual_history_and_pins_only_new_deliveries(personal):
     service, site = personal
     current = task()

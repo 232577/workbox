@@ -29,3 +29,12 @@ def versionless_project_key(title: str) -> str | None:
     """Compare a Word stem to a task name with an explicit trailing version."""
     match = _VERSION_SUFFIX.fullmatch(normalized_project_name(title))
     return (project_name_key(match['base']) or None) if match else None
+
+
+def original_site_binding_name_keys(title: str) -> tuple[str, ...]:
+    """Allowed local names for an explicitly selected original-site task."""
+    full = project_name_key(title)
+    base = versionless_project_key(title)
+    if base and versionless_project_key(base) is None:
+        return full, base
+    return (full,)
