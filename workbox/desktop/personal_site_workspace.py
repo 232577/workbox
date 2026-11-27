@@ -194,11 +194,13 @@ class PersonalSiteWorkspace(QObject):
                 return
             preview = worker.result
             text = (f'{label}\n材料账号 {snapshot.account.username}\n'
-                    f'本机交付时间（北京时间） {beijing_timestamp(preview.occurred_at)}\n\n'
+                    f'本机交付时间（北京时间）\n{beijing_timestamp(preview.occurred_at)}\n\n'
                     '沿用这次交付的本机归档、记录和工作量统计。确认补同步这项任务？')
             with transient_dialog(QMessageBox(QMessageBox.Question, '补同步到这是家', text,
                                                QMessageBox.Yes | QMessageBox.No, self.desktop.panel)) as dialog:
                 dialog.setTextFormat(Qt.PlainText)
+                dialog.button(QMessageBox.Yes).setText('确认补同步')
+                dialog.button(QMessageBox.No).setText('取消')
                 dialog.setDefaultButton(QMessageBox.No)
                 if dialog.exec() != QMessageBox.Yes:
                     return

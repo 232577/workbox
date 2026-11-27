@@ -142,6 +142,8 @@ def test_supplemental_site_sync_uses_selected_existing_delivery(binding_desktop,
         assert '本机交付时间' in message
         assert dialog.standardButtons() == QMessageBox.Yes | QMessageBox.No
         assert dialog.standardButton(dialog.defaultButton()) == QMessageBox.No
+        assert dialog.button(QMessageBox.Yes).text() == '确认补同步'
+        assert dialog.button(QMessageBox.No).text() == '取消'
         if decision == 'changed-session':
             publish(Snapshot(replace(account, session='new-material-browser'), (task, other)), wait=False)
             woken.clear()
