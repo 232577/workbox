@@ -1,0 +1,57 @@
+cmake_minimum_required(VERSION 3.24)
+project(WorkBoxCppPrototype LANGUAGES CXX)
+
+option(WORKBOX_CPP_BUILD_GUI "Build the Qt Widgets prototype" ON)
+include(CTest)
+
+add_library(workbox_project_store src/project_store.cpp)
+target_include_directories(workbox_project_store PUBLIC src)
+target_compile_features(workbox_project_store PUBLIC cxx_std_20)
+if(MSVC)
+    target_compile_options(workbox_project_store PUBLIC /utf-8)
+endif()
+if(WIN32)
+    target_link_libraries(workbox_project_store PRIVATE winsqlite3)
+else()
+    find_package(SQLite3 REQUIRED)
+    target_link_libraries(workbox_project_store PRIVATE SQLite::SQLite3)
+endif()
+
+if(WORKBOX_CPP_BUILD_GUI)
+    find_package(Qt6 6.8 REQUIRED COMPONENTS Core Widgets)
+    add_library(workbox_original_site_snapshot STATIC src/original_site_snapshot.cpp)
+    target_include_directories(workbox_original_site_snapshot PUBLIC src)
+    target_compile_features(workbox_original_site_snapshot PUBLIC cxx_std_20)
+    target_link_libraries(workbox_original_site_snapshot PUBLIC Qt6::Core)
+    if(MSVC)
+        target_compile_options(workbox_original_site_snapshot PUBLIC /utf-8)
+    endif()
+
+    add_library(workbox_prototype_window STATIC src/prototype_window.cpp)
+    target_link_libraries(workbox_prototype_window PUBLIC workbox_project_store Qt6::Widgets)
+    qt_add_executable(WorkBoxCppPrototype src/main.cpp)
+    target_link_libraries(WorkBoxCppPrototype PRIVATE workbox_prototype_window)
+    set_target_properties(WorkBoxCppPrototype PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
+
+if(BUILD_TESTING)
+    find_package(Python3 3.11 REQUIRED COMPONENTS Interpreter)
+    add_executable(project_store_test tests/project_store_test.cpp)
+    target_link_libraries(project_store_test PRIVATE workbox_project_store)
+    add_test(NAME cpp_project_store_contract
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/create_fixture.py"
+                --test "$<TARGET_FILE:project_store_test>")
+    if(WORKBOX_CPP_BUILD_GUI)
+        find_package(Qt6 6.8 REQUIRED COMPONENTS Test)
+        add_executable(original_site_snapshot_test tests/original_site_snapshot_test.cpp)
+        target_link_libraries(original_site_snapshot_test PRIVATE workbox_original_site_snapshot)
+        add_test(NAME cpp_original_site_snapshot_contract COMMAND original_site_snapshot_test)
+
+        add_executable(project_window_test tests/project_window_test.cpp)
+        target_link_libraries(project_window_test PRIVATE workbox_prototype_window Qt6::Test)
+        add_test(NAME cpp_project_window_contract
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/create_fixture.py"
+                    --test "$<TARGET_FILE:project_window_test>" --extra-projects 695)
+        set_tests_properties(cpp_project_window_contract PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    endif()
+endif()
