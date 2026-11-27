@@ -15,7 +15,7 @@ from PySide6.QtWebEngineCore import (
     QWebEnginePage, QWebEngineProfile, QWebEngineScript, QWebEngineSettings, QWebEngineUrlRequestInterceptor,
 )
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from workbox.team_delivery.contracts import Account, ActionUncertain, GatewayError, Snapshot, Stage, Task
 from workbox.team_delivery.qt_site_script import OBSERVE, OPERATE
@@ -272,10 +272,9 @@ class QtSiteSession(QObject):
                                     f'delete globalThis[{key}];', _WORLD)
 
     def _new_window(self):
-        owner = self.parent()
-        window = QDialog(owner if isinstance(owner, QWidget) else None)
+        window = QWidget(None, Qt.WindowType.Window | Qt.WindowType.WindowMinMaxButtonsHint
+                         | Qt.WindowType.WindowCloseButtonHint)
         window.setWindowTitle('这是家 · 原站')
-        window.setWindowModality(Qt.WindowModality.NonModal)
         window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
         window.resize(1060, 720)
         layout = QVBoxLayout(window)
@@ -310,7 +309,7 @@ class QtSiteSession(QObject):
 
     def _show_window(self):
         if self.window.isMinimized():
-            self.window.showNormal()
+            self.window.setWindowState(self.window.windowState() & ~Qt.WindowState.WindowMinimized)
         self.window.show()
         self.window.raise_()
         self.window.activateWindow()
