@@ -69,7 +69,7 @@ def _main(argv: list[str] | None = None) -> int:
     try:
         service = DesktopService(data_dir / "workbox.db")
         install_theme(service)
-        controller = FloatingController(service, tray_enabled=not args.no_tray)
+        controller = FloatingController(service, tray_enabled=not args.no_tray, project_board_default=True)
         controller.exit_requested.connect(application.quit)
         def first_run_setup():
             with transient_dialog(FirstRunDialog(service)) as dialog:

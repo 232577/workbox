@@ -76,7 +76,7 @@ def test_advanced_menu_groups_tools_without_retired_workflows(panel):
             assert groups, 'Every tool needs a visible purpose group'
             groups[-1][1].append(action.text())
     assert groups == [
-        ('工作与规则', ['工作设置…', '归档分类']),
+        ('工作与规则', ['工作设置…', '交付联动', '归档分类']),
         ('核对与记录', ['名单核对', '待核对', '收录记录', 'ZIP 归档库', '监视详情']),
         ('应用', ['外观', '使用指南', '检查更新']),
     ]

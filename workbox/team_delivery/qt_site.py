@@ -28,6 +28,7 @@ _WRITES = frozenset({'start-material', 'complete-material'})
 _AUTH = frozenset({'/api/login', '/api/logout', '/api/change-password', '/api/setup'})
 _STAGES = {stage.value: stage for stage in (Stage.READY, Stage.WORKING, Stage.RETURNED)}
 _STAGES['已完成'] = Stage.COMPLETED
+_URGENCIES = frozenset({'非常紧急', '比较紧急', '紧急', '正常'})
 _MESSAGES = {
     'account': '原站登录已变化，请重新核对账号。',
     'target': '原站项目的编号、全名、负责人或工序发生变化，请重新核对。',
@@ -53,6 +54,11 @@ def _approved_origin(value):
 
 def _normalized(value):
     return normalize('NFC', value).strip().lower()
+
+
+def _metadata_text(value):
+    text = value.strip() if isinstance(value, str) else ''
+    return text if len(text) <= 200 and text.isprintable() else ''
 
 
 def _origin_key(url):
@@ -460,7 +466,11 @@ class QtSiteGateway:
             raise GatewayError('原站项目负责人或工序不完整，请在原站核对。')
         basis = (identifier, title, _normalized(account.username), owner, updated, status)
         digest = sha256(json.dumps(basis, ensure_ascii=False).encode()).hexdigest()
-        return Task(identifier, title, account.id, _STAGES.get(status, Stage.UNKNOWN), 'observed-' + digest)
+        urgency = _metadata_text(row.get('urgency'))
+        return Task(identifier, title, account.id, _STAGES.get(status, Stage.UNKNOWN), 'observed-' + digest,
+                    original_batch_id=_metadata_text(row.get('batchId')),
+                    original_batch_name=_metadata_text(row.get('batchName')),
+                    original_urgency=urgency if urgency in _URGENCIES else '')
 
     def snapshot(self):
         epoch, result = self._session.request('snapshot')

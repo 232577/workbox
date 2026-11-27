@@ -1,8 +1,9 @@
 """Resolve explicit text names without silently duplicating project identities."""
+import re
 from collections import OrderedDict
 
-from workbox.projects.parser import ParsedProject
-from workbox.projects.project_names import project_name_key as normalized_name
+from workbox.projects.parser import ParsedProject, parse_message
+from workbox.projects.project_names import numbered_project_key, project_name_key as normalized_name
 
 
 class TextProjectConflict(ValueError):
@@ -50,7 +51,38 @@ def create_intake_message(connection, batch_name, raw_text):
     return batch_id, batch_name, message_id
 
 
-def resolve_text_projects(connection, projects):
+def numbered_receipt_names(raw_text, *, parsed=False):
+    """Return the written numbers and their titles from the original clipboard text."""
+    names = set()
+    for line in re.split(r'[\r\n；;]+', raw_text):
+        key = numbered_project_key(line)
+        if not key:
+            continue
+        names.add(key)
+        if parsed:
+            try:
+                projects = parse_message(line)
+            except ValueError:
+                continue
+            names.update((key[0], normalized_name(project.name)) for project in projects)
+    return names
+
+
+def _original_projects_from_numbered_lines(connection, raw_text, by_id, names):
+    """The receipt can retain an exact source number its parsed project omits."""
+    lines = {key for key in numbered_receipt_names(raw_text) if key[1] in names}
+    if not lines:
+        return {}
+    matched = {}
+    for row in connection.execute('SELECT title,active_project_id FROM original_site_active_projects'):
+        key = numbered_project_key(row['title'])
+        project_id = row['active_project_id']
+        if key in lines and project_id in by_id:
+            matched.setdefault(key[1], {})[project_id] = by_id[project_id]
+    return matched
+
+
+def resolve_text_projects(connection, projects, *, raw_text=''):
     """Read-only plan within the caller's BEGIN IMMEDIATE transaction.
 
     A complete current name takes precedence over confirmed historical aliases.
@@ -67,10 +99,11 @@ def resolve_text_projects(connection, projects):
         prior = names.get(key)
         names[key] = ParsedProject(prior.name if prior else project.name.strip(),
                                    project.urgent or bool(prior and prior.urgent))
-    _, current, aliases = read_project_name_index(connection)
+    by_id, current, aliases = read_project_name_index(connection)
+    numbered = _original_projects_from_numbered_lines(connection, raw_text, by_id, names)
     planned = []
     for key, project in names.items():
-        matches = list((current.get(key) or aliases.get(key) or {}).values())
+        matches = list(((current.get(key) or aliases.get(key) or {}) | numbered.get(key, {})).values())
         if len(matches) > 1:
             choices = '、'.join(f"#{r['id']}（{r['status']}）" for r in matches[:8])
             raise TextProjectConflict(f'“{project.name}”已有多个同名项目：{choices}。请先核对并合并重名项目，或修正本次名称；未新建任何项目。')

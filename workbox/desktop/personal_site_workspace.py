@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QInputDialog, QMessageBox
 from workbox.desktop.delivery_ui import beijing_timestamp
 from workbox.desktop.dialog_lifecycle import transient_dialog
 from workbox.projects.original_site import OriginalSiteProjects
-from workbox.projects.project_names import original_site_binding_name_keys, project_name_key
+from workbox.projects.project_names import original_site_name_match
 from workbox.team_delivery.contracts import Outcome
 from workbox.team_delivery.personal_matching import matching_personal_word_tasks
 from workbox.team_delivery.site_attempt import site_account
@@ -232,10 +232,11 @@ class PersonalSiteWorkspace(QObject):
         snapshot = self.site.current_personal_snapshot()
         if snapshot is None or task not in snapshot.tasks or task not in self._unlinked:
             return
-        keys = original_site_binding_name_keys(task.title)
         candidates = [p for p in self.desktop.service.list_projects() if not p.get('original_task_id')]
+        ranked = sorted(((original_site_name_match(p['name'], task.title), p) for p in candidates),
+                        key=lambda item: item[0], reverse=True)
         choices = {f"#{p['id']} · {p['name']} · {p['batch_name']}": p['id']
-                   for key in keys for p in candidates if project_name_key(p['name']) == key}
+                   for rank, p in ranked if rank}
         create = '新建独立本机项目'
         selected, accepted = QInputDialog.getItem(
             self.desktop.panel, '关联本机项目', f'这是家 #{task.id} · {task.title}\n请选择此任务对应的本机项目。',

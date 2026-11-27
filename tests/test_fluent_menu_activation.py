@@ -71,7 +71,7 @@ def test_advanced_button_opens_native_menu_through_its_activation(qapp, tmp_path
                 break
             QTest.qWait(20)
         assert shown.count() == 1
-        assert observed == [(True, True, ['工作与规则', '工作设置…', '归档分类', '', '核对与记录',
+        assert observed == [(True, True, ['工作与规则', '工作设置…', '交付联动', '归档分类', '', '核对与记录',
                                         '名单核对', '待核对', '收录记录', 'ZIP 归档库', '监视详情',
                                         '', '应用', '外观', '使用指南', '检查更新'])]
         assert 'history' not in panel.advanced_actions

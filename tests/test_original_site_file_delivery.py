@@ -4,7 +4,8 @@ from zipfile import ZipFile
 import pytest
 
 from workbox.desktop.desktop_service import DesktopService
-from workbox.team_delivery.contracts import Account, Stage, Task
+from workbox.team_delivery.contracts import Account, Snapshot, Stage, Task
+from workbox.team_delivery.personal_matching import matching_personal_word_tasks
 
 
 ACCOUNT = Account('anonymous-session', '匿名账号', 'material', 'anonymous-token', 'fixture')
@@ -22,6 +23,117 @@ def test_regular_drop_after_upstream_rename_keeps_the_bound_local_project(servic
     assert service.get_project(project_id)['status'] == '待交付'
     assert service.get_project(project_id)['name'] == original.title
     assert len(service.list_projects()) == 1
+
+
+def test_numbered_original_tasks_link_projects_from_a_pasted_list(service, site_projects, tmp_path):
+    title = '匿名交件系统'
+    second_title = '匿名核对平台'
+    project_id, second_id = service.receive_text(f'1. {title}\n2.{second_title}')['project_ids']
+    original = Task('55', f'1. {title}', ACCOUNT.id, Stage.READY, 'r1')
+    second = Task('56', f'2.{second_title}', ACCOUNT.id, Stage.READY, 'r2')
+    site_projects.sync(ACCOUNT, [original, second])
+
+    assert site_projects.binding_for_task(ACCOUNT, original) == project_id
+    assert site_projects.binding_for_task(ACCOUNT, second) == second_id
+    assert service.get_project(project_id)['name'] == title
+    assert len(service.list_projects()) == 2
+
+    document = tmp_path / (title + '.docx')
+    document.write_bytes(b'anonymous document')
+    service.receive_path(document)
+    delivered = service.confirm_delivery(project_id, confirmed=True)
+    action, = site_projects.pending(ACCOUNT)
+    assert (action.event_id, action.task_id, action.title) == (delivered['event_id'], '55', original.title)
+    assert site_projects.claim(action.event_id, ACCOUNT, original) is not None
+
+
+@pytest.mark.parametrize(('title', 'filename'), [
+    ('１．匿名交件系统V1.0', '匿名交件系统.docx'),
+    ('匿名交件系统', '1. 匿名交件系统.docx'),
+    ('1. 匿名交件系统', '1.匿名交件系统.docx'),
+], ids=['number-in-task-and-optional-version', 'number-in-word', 'same-number-different-spacing'])
+def test_word_routes_to_original_project_with_or_without_list_number(service, site_projects, tmp_path, title, filename):
+    original = Task('55', title, ACCOUNT.id, Stage.READY, 'r1')
+    site_projects.sync(ACCOUNT, [original])
+    project_id = site_projects.binding_for_task(ACCOUNT, original)
+    document = tmp_path / filename
+    document.write_bytes(b'anonymous document')
+
+    service.receive_path(document, personal_account=ACCOUNT.username)
+
+    assert service.get_project(project_id)['status'] == '待交付'
+    assert len(service.list_projects()) == 1
+
+
+def test_pasted_list_reuses_a_numbered_project_already_imported_from_the_site(service, site_projects):
+    first = Task('55', '1. 匿名交件系统', ACCOUNT.id, Stage.READY, 'r1')
+    second = Task('56', '2.匿名核对平台', ACCOUNT.id, Stage.READY, 'r2')
+    site_projects.sync(ACCOUNT, [first, second])
+    first_id = site_projects.binding_for_task(ACCOUNT, first)
+    second_id = site_projects.binding_for_task(ACCOUNT, second)
+
+    result = service.receive_text('1.匿名交件系统\n2. 匿名核对平台')
+
+    assert result['project_ids'] == result['reused_project_ids'] == [first_id, second_id]
+    assert service.get_project(first_id)['name'] == first.title
+    assert service.get_project(second_id)['name'] == second.title
+    assert len(service.list_projects()) == 2
+
+
+def test_same_unnumbered_title_needs_choice_between_original_tasks(service, site_projects):
+    title = '匿名交件系统'
+    local_id, = service.receive_text(f'1. {title}')['project_ids']
+    first = Task('55', f'1. {title}', ACCOUNT.id, Stage.READY, 'r1')
+    second = Task('56', f'2. {title}', ACCOUNT.id, Stage.READY, 'r2')
+    site_projects.sync(ACCOUNT, [first, second])
+
+    assert site_projects.binding_for_task(ACCOUNT, first) is None
+    assert site_projects.binding_for_task(ACCOUNT, second) is None
+    assert len(service.list_projects()) == 1
+    site_projects.bind_existing(ACCOUNT, second, local_id, confirmed=True)
+    assert site_projects.binding_for_task(ACCOUNT, second) == local_id
+
+
+@pytest.mark.parametrize(('suffix', 'reuse_local'), [('', False), ('（加急）', False), ('', True)],
+                         ids=['numbered-receipt', 'numbered-receipt-with-urgency', 'numbered-receipt-reusing-local'])
+def test_pasted_number_does_not_auto_bind_to_a_different_visible_number(
+    service, site_projects, tmp_path, suffix, reuse_local,
+):
+    title = '匿名交件系统'
+    existing_ids = service.receive_text(title)['project_ids'] if reuse_local else None
+    local_id, = service.receive_text(f'2. {title}{suffix}')['project_ids']
+    if reuse_local:
+        assert existing_ids == [local_id]
+    first = Task('55', f'1. {title}', ACCOUNT.id, Stage.READY, 'r1')
+    intended = Task('56', f'2.{title}', ACCOUNT.id, Stage.READY, 'r2')
+
+    site_projects.sync(ACCOUNT, [first])
+    assert site_projects.binding_for_task(ACCOUNT, first) is None
+    assert site_projects.unlinked_tasks(ACCOUNT, [first]) == (first,)
+    assert len(service.list_projects()) == 1
+
+    source = tmp_path / (title + '.docx')
+    source.write_bytes(b'anonymous document')
+    service.receive_path(source)
+    event_id = service.confirm_delivery(local_id, confirmed=True)['event_id']
+    assert not site_projects.pending(ACCOUNT)
+
+    site_projects.sync(ACCOUNT, [intended])
+    assert site_projects.binding_for_task(ACCOUNT, intended) == local_id
+    assert site_projects.preview_delivery_sync(local_id, ACCOUNT, intended).event_id == event_id
+
+
+def test_word_number_preserves_exact_task_choice_and_decimal_title():
+    first = Task('55', '1. 匿名系统', ACCOUNT.id, Stage.READY, 'r1')
+    second = Task('56', '2.匿名系统', ACCOUNT.id, Stage.READY, 'r2')
+    another_owner = Task('57', '3.匿名系统', 'other', Stage.READY, 'r3')
+    decimal = Task('58', '3.0匿名系统', ACCOUNT.id, Stage.READY, 'r4')
+    snapshot = Snapshot(ACCOUNT, (first, second, another_owner, decimal))
+
+    assert matching_personal_word_tasks('匿名系统.docx', snapshot) == (first, second)
+    assert matching_personal_word_tasks('2.匿名系统.docx', snapshot) == (second,)
+    assert matching_personal_word_tasks('3.匿名系统.docx', snapshot) == ()
+    assert matching_personal_word_tasks('0匿名系统.docx', snapshot) == ()
 
 
 def test_versionless_word_requires_selection_between_bound_versions(service, site_projects, tmp_path):

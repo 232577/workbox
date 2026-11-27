@@ -3,8 +3,8 @@
 from collections import Counter
 
 from workbox.projects.database import Database
-from workbox.projects.project_names import original_site_binding_name_keys, project_name_key
-from workbox.projects.text_intake import create_intake_message, project_name_block, read_project_name_index
+from workbox.projects.project_names import numbered_project_key, numberless_project_key, project_name_key, versionless_project_key
+from workbox.projects.text_intake import create_intake_message, numbered_receipt_names, project_name_block, read_project_name_index
 
 
 def _read_tasks(tasks):
@@ -35,6 +35,37 @@ def create_site_task_project(connection, task_id, title):
                               (message_id, batch_id, title)).lastrowid
 
 
+def _numbered_names(names):
+    result = {}
+    for title, rows in names.items():
+        if key := numbered_project_key(title):
+            result.setdefault(key, {}).update(rows)
+            result.setdefault((None, key[1]), {}).update(rows)
+    return result
+
+
+def _matches_with_changed_number(names, numbered_names, title):
+    key = numbered_project_key(title)
+    if key:
+        return numbered_names.get(key, {}) | names.get(key[1], {})
+    return numbered_names.get((None, title), {})
+
+
+def _has_conflicting_receipt_number(connection, project_id, key):
+    texts = {row['raw_text'] for row in connection.execute('''SELECT m.raw_text
+        FROM projects p JOIN messages m ON m.id=p.message_id WHERE p.id=?''', (project_id,))}
+    # A later numbered receipt can also have explicitly reused this existing project.
+    if connection.execute("SELECT 1 FROM sqlite_master WHERE name='intake_receipts' AND type='table'").fetchone():
+        texts.update(row['raw_text'] for row in connection.execute('''
+            SELECT r.raw_text FROM intake_receipts r
+            WHERE r.state='committed' AND EXISTS (
+                SELECT 1 FROM json_each(r.project_ids) WHERE type='integer' AND value=?
+            )''', (project_id,)))
+    written_numbers = {number for text in texts for number, name in numbered_receipt_names(text, parsed=True)
+                       if name == key[1]}
+    return bool(written_numbers and written_numbers != {key[0]})
+
+
 def import_site_tasks(connection, tasks, *, strict_identity=False, other_titles=()):
     """Write new projects and source identities in the caller's write transaction."""
     tasks, invalid = _read_tasks(tasks)
@@ -54,8 +85,14 @@ def import_site_tasks(connection, tasks, *, strict_identity=False, other_titles=
         JOIN project_canonical c ON c.project_id=s.project_id
     '''):
         project_tasks.setdefault(row['canonical_id'], set()).add(row['task_id'])
-    title_counts = Counter(project_name_key(title) for task_id, title in tasks.items() if task_id not in invalid)
-    title_counts.update(project_name_key(title) for title in other_titles)
+    titles = [project_name_key(title) for task_id, title in tasks.items() if task_id not in invalid]
+    titles.extend(project_name_key(title) for title in other_titles)
+    if strict_identity:
+        title_counts = Counter(numbered_project_key(title) or title for title in titles)
+        numbered_title_counts = Counter(numberless_project_key(title) or title for title in titles)
+        numbered_current, numbered_aliases = _numbered_names(current_names), _numbered_names(aliases)
+    else:
+        title_counts = Counter(titles)
     for task_id, title in tasks.items():
         if task_id in invalid:
             conflicts.append(dict(task_id=task_id, title=title[:200], reason=invalid[task_id]))
@@ -74,29 +111,41 @@ def import_site_tasks(connection, tasks, *, strict_identity=False, other_titles=
             continue
 
         key = project_name_key(title)
+        numbered_key = numbered_project_key(key) if strict_identity else None
         matches = current_names.get(key, {})
-        if title_counts[key] > 1:
+        historical = aliases.get(key, {})
+        if numbered_key:
+            matches = matches or numbered_current.get(numbered_key, {})
+            historical = historical or numbered_aliases.get(numbered_key, {})
+        number_changed = strict_identity and not matches and not historical
+        if number_changed:
+            matches = _matches_with_changed_number(current_names, numbered_current, key)
+        if title_counts[numbered_key or key] > 1:
             reason = '存在多个同名的原站待办，请先核对任务名称。'
+        elif number_changed and matches and numbered_title_counts[numberless_project_key(key) or key] > 1:
+            reason = '去掉列表编号后有多个同名的原站待办，请先核对任务编号。'
         elif len(matches) > 1:
             reason = '存在多个同名的本机项目，请先核对项目名称。'
         elif not matches:
-            if key in aliases:
+            if historical or (number_changed and _matches_with_changed_number(aliases, numbered_aliases, key)):
                 reason = '同名历史项目需要人工核对。'
-            elif strict_identity and any(
-                project_id not in project_tasks
-                for base in original_site_binding_name_keys(title)[1:]
-                for names in (current_names, aliases)
-                for project_id in names.get(base, ())
-            ):
-                reason = '本机有未标版本的同名项目或历史名称，请核对。'
             else:
                 reason = ''
+                base = versionless_project_key(title) if strict_identity else None
+                if base and versionless_project_key(base) is None and any(
+                    project_id not in project_tasks
+                    for names, numbered_names in ((current_names, numbered_current), (aliases, numbered_aliases))
+                    for project_id in names.get(base, {}).keys() | _matches_with_changed_number(names, numbered_names, base).keys()
+                ):
+                    reason = '本机有未标版本的同名项目或历史名称，请核对。'
         else:
             pid, row = next(iter(matches.items()))
             blocked = project_name_block(row)
             reason = f'同名项目 #{pid} {blocked}。' if blocked else ''
             if pid in project_tasks and not reason:
                 reason = '同名项目已关联另一个原站待办。'
+            if not reason and number_changed and numbered_key and _has_conflicting_receipt_number(connection, pid, numbered_key):
+                reason = '本机收录原文与原站的列表编号不同，请先核对任务。'
         if reason:
             conflicts.append(dict(task_id=task_id, title=title, reason=reason))
             continue

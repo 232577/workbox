@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from re import fullmatch
 from uuid import uuid4
 
-from workbox.projects.project_names import original_site_binding_name_keys, project_name_key
+from workbox.projects.project_names import original_site_name_match
 from workbox.projects.site_task_import import create_site_task_project, import_site_tasks, source_project_links
 from workbox.team_delivery.contracts import Account, MATERIAL_PREPARATION_STAGES, Stage, Task
 from workbox.team_delivery.site_attempt import site_account
@@ -219,16 +219,19 @@ class OriginalSiteProjects:
         ''', (task.id, username))
         return connection.execute('''
             INSERT INTO original_site_bindings(account_username,task_id,project_id,title,revision,stage,round,
-                                               return_revision,available)
-            VALUES (?,?,?,?,?,?,?,?,?)
+                                               return_revision,available,source_batch_id,source_batch_name,source_urgency)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(account_username,task_id) DO UPDATE SET title=excluded.title,revision=excluded.revision,
                 stage=excluded.stage,round=excluded.round,return_revision=excluded.return_revision,
-                available=excluded.available
-            WHERE (title,revision,stage,round,return_revision,available) !=
+                available=excluded.available,source_batch_id=excluded.source_batch_id,
+                source_batch_name=excluded.source_batch_name,source_urgency=excluded.source_urgency
+            WHERE (title,revision,stage,round,return_revision,available,source_batch_id,source_batch_name,source_urgency) !=
                 (excluded.title,excluded.revision,excluded.stage,excluded.round,
-                 excluded.return_revision,excluded.available)
+                 excluded.return_revision,excluded.available,excluded.source_batch_id,
+                 excluded.source_batch_name,excluded.source_urgency)
         ''', (username, task.id, project_id, task.title, task.revision, task.stage.value,
-              round_id, return_revision, available)).rowcount
+              round_id, return_revision, available, task.original_batch_id, task.original_batch_name,
+              task.original_urgency)).rowcount
 
     def _ensure_workspaces(self, project_ids):
         if self.workspaces is not None:
@@ -314,8 +317,8 @@ class OriginalSiteProjects:
             connection.execute('BEGIN IMMEDIATE')
             self.db._assert_projects_editable(connection, project_id)
             local = connection.execute('SELECT name FROM projects WHERE id=?', (project_id,)).fetchone()
-            if project_name_key(local['name']) not in original_site_binding_name_keys(task.title):
-                raise ValueError('本机项目名称须与原站全名一致，或只省略末尾版本号。')
+            if not original_site_name_match(local['name'], task.title):
+                raise ValueError('本机项目名称须与原站全名一致，或仅有列表编号、末尾版本号差异。')
             if connection.execute('''
                 SELECT 1 FROM original_site_bindings b JOIN project_canonical c ON c.project_id=b.project_id
                 WHERE c.canonical_id=? OR b.task_id=?

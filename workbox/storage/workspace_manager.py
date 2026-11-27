@@ -138,17 +138,18 @@ def _zip_structure(stream, cancel_event=None):
 
 
 def copy_verified(source, target, *, cancel_event=None, progress=None, require_zip=False,
-                  expected_named_streams=None, destination_leases=None):
+                  expected_named_streams=None, destination_leases=None, allow_network_destination=False):
     """稳定读取原件，校验副本，再以无覆盖的原子改名发布。原件始终保留。"""
     preserve_named_streams = expected_named_streams is not None
-    source, target = _path(source, allow_network=True), _path(target)
+    source = _path(source, allow_network=True)
+    target = _path(target, allow_network=allow_network_destination)
     cancelled(cancel_event)
     if not source.is_file():
         raise ValueError('请选择本机普通文件，不能收录目录。')
     if source == target or target.exists():
         raise FileExistsError('目标已存在，不覆盖已有文件。')
     target.parent.mkdir(parents=True, exist_ok=True)
-    _path(target.parent)
+    _path(target.parent, allow_network=allow_network_destination)
     temporary = target.parent / ('~$workbox-' + uuid.uuid4().hex + '.partial')
     created_identity = None
     try:
@@ -191,7 +192,7 @@ def copy_verified(source, target, *, cancel_event=None, progress=None, require_z
                         raise RuntimeError('材料的命名数据流在复制期间变化，副本未发布。')
                 os.utime(temporary, ns=(before.st_atime_ns, before.st_mtime_ns))
             with ExitStack() as verified_leases:
-                copied = verified_leases.enter_context(ZipLease(temporary))
+                copied = verified_leases.enter_context(ZipLease(temporary, allow_network_move=allow_network_destination))
                 if (copied.initial.st_dev, copied.initial.st_ino) != created_identity:
                     raise RuntimeError('临时副本在校验前被替换，未发布。')
                 copied_digest, copied_size = _hash_stream(copied.stream, cancel_event=cancel_event)
@@ -205,7 +206,7 @@ def copy_verified(source, target, *, cancel_event=None, progress=None, require_z
                     raise RuntimeError('文件来源标记未能保留，副本未发布。')
                 cancelled(cancel_event)
                 # 用校验默认数据流的同一句柄发布，且不覆盖已有目标。
-                copied.rename_to(_path(target))
+                copied.rename_to(_path(target, allow_network=allow_network_destination))
                 created_identity = None
                 published = os.fstat(copied.stream.fileno())
                 metadata = dict(path=str(target), source_path=str(source), filename=source.name,
@@ -220,7 +221,7 @@ def copy_verified(source, target, *, cancel_event=None, progress=None, require_z
     finally:
         if created_identity is not None:
             try:
-                with ZipLease(temporary) as owned:
+                with ZipLease(temporary, allow_network_move=allow_network_destination) as owned:
                     if (owned.initial.st_dev, owned.initial.st_ino) == created_identity:
                         owned.remove_after_verified_commit()
             except (OSError, RuntimeError, ValueError):

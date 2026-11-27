@@ -62,20 +62,51 @@ OPERATE = r'''async ({origin, operation, expected, deadline, remaining, requestK
     const equivalent = (a, b) => a && b && key(a.username) === key(b.username) &&
         a.name === b.name && a.role === b.role && a.version === b.version;
     const owned = (project, account) => key(project.matOwner) === key(account.username);
-    const data = project => ({id: String(project.id), title: project.name, status: project.matStatus,
-        owner: project.matOwnerName || project.matOwner,
-        updated: typeof project.lastOperatedAt === 'string' ? project.lastOperatedAt :
-            (typeof project.updatedAt === 'string' ? project.updatedAt : '')});
+    const text = value => typeof value === 'string' ? value.trim() : '';
+    const urgencies = new Set(['非常紧急', '比较紧急', '紧急', '正常']);
+    const defaultUrgency = project => /预审|加急/.test(text(project.type)) ? '比较紧急' : '正常';
+    const chronology = (a, b) => {
+        const created = project => text(project.createdAt || project.created).replace('T', ' ');
+        return created(a).localeCompare(created(b)) || Number(a.id) - Number(b.id);
+    };
+    const batches = rows => {
+        const result = new Map();
+        for (const project of rows) {
+            const id = text(project?.batchId);
+            if (!id) continue;
+            if (!result.has(id)) result.set(id, {namedProject: null, urgency: '', defaultUrgency: '正常'});
+            const batch = result.get(id);
+            if (text(project.batchName) && (!batch.namedProject || chronology(project, batch.namedProject) < 0))
+                batch.namedProject = project;
+            if (urgencies.has(project.batchUrgency)) batch.urgency = project.batchUrgency;
+            if (defaultUrgency(project) === '比较紧急') batch.defaultUrgency = '比较紧急';
+        }
+        return result;
+    };
+    const data = (project, batchById) => {
+        const batchId = text(project.batchId);
+        const batch = batchById.get(batchId);
+        return {
+            id: String(project.id), title: project.name, status: project.matStatus,
+            owner: project.matOwnerName || project.matOwner,
+            updated: typeof project.lastOperatedAt === 'string' ? project.lastOperatedAt :
+                (typeof project.updatedAt === 'string' ? project.updatedAt : ''),
+            batchId,
+            batchName: text(batch?.namedProject?.batchName) || text(project.batchName),
+            urgency: batch ? batch.urgency || batch.defaultUrgency :
+                (urgencies.has(project.batchUrgency) ? project.batchUrgency : defaultUrgency(project)),
+        };
+    };
     const projects = async account => {
         const result = await get('/api/state');
         if (!Array.isArray(result?.projects) || !equivalent(account, await identity())) throw new Error('account');
         return result.projects;
     };
-    const target = (rows, account) => {
+    const target = (rows, account, batchById) => {
         const matching = rows.filter(row => String(row.id) === expected.id);
         if (matching.length !== 1 || matching[0].name !== expected.title || !owned(matching[0], account))
             throw new Error('target');
-        return data(matching[0]);
+        return data(matching[0], batchById);
     };
     const pageBusy = () => {
         const focus = document.activeElement;
@@ -179,8 +210,10 @@ OPERATE = r'''async ({origin, operation, expected, deadline, remaining, requestK
         if (operation === 'identity' || !account || account.role !== '材料') return {account, rows: []};
         if (expected && !equivalent(account, expected.account)) return {error: 'account'};
         const rows = await projects(account);
-        if (operation === 'snapshot') return {account, rows: rows.filter(row => owned(row, account)).map(data)};
-        const before = target(rows, account);
+        const batchById = batches(rows);
+        if (operation === 'snapshot')
+            return {account, rows: rows.filter(row => owned(row, account)).map(row => data(row, batchById))};
+        const before = target(rows, account, batchById);
         if (operation === 'target') return {account, target: before};
         if (before.status !== expected.status || before.owner !== expected.owner || before.updated !== expected.updated)
             return {error: 'target'};
@@ -207,7 +240,8 @@ OPERATE = r'''async ({origin, operation, expected, deadline, remaining, requestK
         const receipt = reply.ok ? await reply.json() : null;
         if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt) || receipt.error ||
             (receipt.ok !== undefined && receipt.ok !== true)) return {error: 'uncertain'};
-        const after = target(await projects(account), account);
+        const refreshed = await projects(account);
+        const after = target(refreshed, account, batches(refreshed));
         return after.status === desired ? {account, target: after} : {error: 'uncertain'};
     } catch (_) {
         return {error: sent ? 'uncertain' : 'read'};

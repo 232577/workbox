@@ -32,6 +32,8 @@ from workbox.desktop.fluent_views import (WorkbenchListWidget, WorkbenchTableWid
                           PROJECT_DETAIL_ROLE, PROJECT_BATCH_MARKERS_ROLE)
 from workbox.projects.database import STATUSES
 from workbox.desktop.project_date_filter import ProjectDateFilter
+from workbox.desktop.project_delivery_choice import resolve_board_delivery
+from workbox.desktop.toolbox_board import ProjectBoard
 from workbox.desktop.floating import DropSurface
 from workbox.projects.parser import ParsedProject
 from workbox.desktop.ui import app_icon, human_size, label as shared_label, local_timestamp
@@ -332,6 +334,9 @@ class CompactPanel(DropSurface, QWidget):
     state_requested = Signal(int, str)
     urgent_requested = Signal(int, bool)
     delivery_requested = Signal(int, object)
+    delivery_linkage_save_requested = Signal(str, str)
+    delivery_linkage_retry_requested = Signal(int, str)
+    board_file_drag_requested = Signal(int, object)
     site_delivery_sync_requested = Signal(int, str)
     history_archive_requested = Signal(int, int)
     rename_requested = Signal(int, str)
@@ -360,7 +365,7 @@ class CompactPanel(DropSurface, QWidget):
     personal_project_sync_requested = Signal(object)
     project_table_export_requested = Signal(object, str)
 
-    def __init__(self, service):
+    def __init__(self, service, *, project_board_default=False):
         super().__init__()
         self.service = service
         self.window_shortcut = None
@@ -374,6 +379,7 @@ class CompactPanel(DropSurface, QWidget):
         self.team_page = None
         self.team_page_container = None
         self.team_controller = None
+        self.delivery_linkage_page = None
         self._project_rows = {}
         self.project_scope = None
         self._refresh_after_drag = False
@@ -584,7 +590,7 @@ class CompactPanel(DropSurface, QWidget):
         self.clear_project_filters.hide()
         top.insertWidget(3, self.clear_project_filters)
         self.added_date_filter = ProjectDateFilter(self)
-        date_row = QHBoxLayout()
+        date_row = self.project_date_row = QHBoxLayout()
         date_row.setSpacing(8)
         self.project_count_context = label('首次记录\n日常项目', 'subtle')
         date_row.addWidget(self.project_count_context)
@@ -817,7 +823,33 @@ class CompactPanel(DropSurface, QWidget):
         self._project_queue_anchor = None
         self.project_splitter.splitterMoved.connect(self._remember_project_split)
         self.project_splitter.handle(1).setToolTip('左右拖动，调整项目与文件区域宽度')
-        pl.addWidget(self.project_splitter,1)
+        self.project_view_header = QWidget()
+        self.project_view_tools = QHBoxLayout(self.project_view_header)
+        self.project_view_tools.setContentsMargins(0, 0, 0, 0)
+        self.project_view_tools.setSpacing(6)
+        self.project_view_group = QButtonGroup(self)
+        self.project_board_button = button('看板', 'filter')
+        self.projects_list_button = button('全部项目', 'filter')
+        for control in (self.project_board_button, self.projects_list_button):
+            control.setCheckable(True)
+            self.project_view_group.addButton(control)
+            self.project_view_tools.addWidget(control)
+        self.project_view_tools.addStretch()
+        self.project_board_button.clicked.connect(self.show_project_board)
+        self.projects_list_button.clicked.connect(self.show_projects_list)
+        pl.addWidget(self.project_view_header)
+        self.project_board = ProjectBoard()
+        self.project_board.project_requested.connect(self.open_board_project)
+        self.project_board.delivery_requested.connect(self.deliver_from_board)
+        self.project_board.file_drag_requested.connect(self._drag_from_board)
+        self.project_view_stack = QStackedWidget()
+        self.project_view_stack.setFrameShape(QFrame.NoFrame)
+        self.project_view_stack.setContentsMargins(0, 0, 0, 0)
+        self.project_view_stack.layout().setContentsMargins(0, 0, 0, 0)
+        self.project_view_stack.addWidget(self.project_board)
+        self.project_view_stack.addWidget(self.project_splitter)
+        self.project_splitter.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
+        pl.addWidget(self.project_view_stack, 1)
         self.bulk_bar = ProjectPopup(self, self.bulk_tools_button, '批量操作', max_width=360, align_right=True)
         bulk_layout = QVBoxLayout(self.bulk_bar)
         bulk_layout.setContentsMargins(10, 8, 10, 8)
@@ -982,6 +1014,9 @@ class CompactPanel(DropSurface, QWidget):
             standard_list_scrolling(view)
         for view in (self.project_list, self.zip_list, self.receipt_list):
             view.verticalScrollBar().sliderReleased.connect(self._finish_scroll)
+        for lane in self.project_board.lanes.values():
+            lane.scroll.verticalScrollBar().sliderReleased.connect(self._finish_scroll)
+        self._show_project_view(project_board_default)
         self.refresh()
         self.task_groups_page = None
         self.build_advanced_menu(theme_menu)
@@ -999,6 +1034,7 @@ class CompactPanel(DropSurface, QWidget):
         # 普通禁用项保留 Windows 原生菜单里的分组标题；section 文字可能被样式隐藏。
         self.advanced_menu.addAction('工作与规则').setEnabled(False)
         add('settings', '工作设置…', lambda: self.edit_directories() if not self.business_page_busy() else None)
+        add('delivery_linkage', '交付联动', self.show_delivery_linkage_settings)
         add('classification', '归档分类', lambda: self.classification_requested.emit() if not self.business_page_busy() else None)
         self.advanced_menu.addSeparator()
         self.advanced_menu.addAction('核对与记录').setEnabled(False)
@@ -1039,7 +1075,7 @@ class CompactPanel(DropSurface, QWidget):
         self.scan_action.setEnabled(not busy)
         self.pending_export_button.setEnabled(not busy)
         self.sync_project_export_actions()
-        for key in ('settings', 'classification'):
+        for key in ('settings', 'delivery_linkage', 'classification'):
             if key in actions:
                 available = True
                 if key == 'classification':
@@ -1117,6 +1153,19 @@ class CompactPanel(DropSurface, QWidget):
         self.tabs.setCurrentWidget(page)
         self.sync_navigation()
 
+    def show_delivery_linkage_settings(self):
+        if self.business_page_busy():
+            return
+        if self.delivery_linkage_page is None:
+            from workbox.desktop.delivery_linkage_settings import DeliveryLinkageSettings
+
+            self.delivery_linkage_page = DeliveryLinkageSettings(self.service, self)
+            self.delivery_linkage_page.save_requested.connect(self.delivery_linkage_save_requested)
+            self.delivery_linkage_page.retry_requested.connect(self.delivery_linkage_retry_requested)
+            self.tabs.addTab(self.delivery_linkage_page, '交付联动')
+        self.delivery_linkage_page.load()
+        self.tabs.setCurrentWidget(self.delivery_linkage_page)
+
     def focus_receipt(self, receipt_id):
         self.refresh()
         self.tabs.setCurrentIndex(2)
@@ -1136,13 +1185,14 @@ class CompactPanel(DropSurface, QWidget):
             self.bulk_bar.hide()
         is_classification = getattr(self, 'archive_classification_page', None) is self.tabs.currentWidget()
         is_team = self.team_page_container is not None and self.tabs.currentWidget() is self.team_page_container
-        self.setAcceptDrops(not is_team)
+        is_linkage = self.delivery_linkage_page is not None and self.tabs.currentWidget() is self.delivery_linkage_page
+        self.setAcceptDrops(not (is_team or is_linkage))
         self.nav_team.setChecked(is_team)
-        self.header_surface.setVisible(not is_team and
+        self.header_surface.setVisible(not (is_team or is_linkage) and
             self.tabs.currentWidget() is not getattr(self, 'delivery_page_container', None))
         self.page_title.setText('归档分类' if is_classification else ('项目', 'ZIP 归档', '待核对', '交付记录管理')[min(3, max(0, index))])
         for position, control in enumerate((self.nav_projects, self.nav_zip, self.nav_review, self.today_button)):
-            control.setChecked(not is_team and not is_classification and position == index)
+            control.setChecked(not (is_team or is_classification or is_linkage) and position == index)
         receipts = getattr(self, 'receipt_list', None)
         self.nav_review.setVisible((receipts is not None and receipts.count() > 0) or index == 2)
         self.sync_zip_navigation()
@@ -1298,7 +1348,10 @@ class CompactPanel(DropSurface, QWidget):
         self.refresh(preserve_project_position=preserve_project_position, _project_only=True)
 
     def refresh(self, *_, preserve_project_position=False, _project_only=False):
-        if any(view.verticalScrollBar().isSliderDown() for view in (self.project_list, self.zip_list, self.receipt_list)):
+        showing_board = self.project_view_stack.currentWidget() is self.project_board
+        views = (self.project_list, self.zip_list, self.receipt_list,
+                 *(lane.scroll for lane in self.project_board.lanes.values()))
+        if getattr(self, '_board_dragging', False) or any(view.verticalScrollBar().isSliderDown() for view in views):
             self._refresh_after_drag = True
             self._deferred_refresh_full = getattr(self, '_deferred_refresh_full', False) or not _project_only
             self.sync_project_export_actions()
@@ -1311,7 +1364,7 @@ class CompactPanel(DropSurface, QWidget):
                 if not _project_only:
                     self.refresh_type_controls()
                 batch = self.batch_filter.currentData()
-                status = next((s for s, b in self.status_buttons.items() if b.isChecked()), None)
+                status = None if showing_board else next((s for s, b in self.status_buttons.items() if b.isChecked()), None)
                 scope = (self.search.text(), status, batch, self.archive_filter.currentData(), self.due_filter.currentData(), self.urgent_filter.isChecked(), self.type_filter.currentData(), self.added_date_filter.selection())
                 deleted_view = scope[3] == 'deleted'
                 snapshot = self.service.project_workbench_snapshot(
@@ -1367,9 +1420,12 @@ class CompactPanel(DropSurface, QWidget):
             self.project_filter_button.setAccessibleDescription(filter_description)
             self.clear_project_filters.setVisible(active_filters > 0)
             self._sync_filter_chips(scope)
-            populate(self.project_list, rows, self.project_caption,
-                     clear_selection=scope != self.project_scope and not preserve_project_position)
-            self.project_scope = scope
+            if showing_board:
+                self.project_board.update_projects(rows)
+            else:
+                populate(self.project_list, rows, self.project_caption,
+                         clear_selection=scope != self.project_scope and not preserve_project_position)
+                self.project_scope = scope
             self.empty.setVisible(not rows)
             self.empty_clear_filters_button.setVisible(not rows and bool(scope[0] or scope[1] or scope[2]
                 or scope[3] is not False or scope[4] or scope[5] or scope[6] is not None or scope[7]))
@@ -1396,7 +1452,10 @@ class CompactPanel(DropSurface, QWidget):
                     self.show_notice('ZIP 或待核对信息读取失败：' + str(error))
         finally:
             self.refreshing = False
-        self.select_project()
+        if showing_board:
+            self.sync_project_export_actions()
+        else:
+            self.select_project()
 
     def _refresh_other_views(self):
         self._zip_scope = None
@@ -1573,6 +1632,7 @@ class CompactPanel(DropSurface, QWidget):
         self.status_segments.setCurrentItem('all')
         self.project_list.clearSelection()
         self.tabs.setCurrentIndex(0)
+        self._show_project_view(False)
         self.refresh()
         if not self.focus_visible_project(ids[0], scroll_hint=QAbstractItemView.PositionAtCenter):
             self.show_notice('项目列表正在更新，请再次点击查看。')
@@ -1735,6 +1795,7 @@ class CompactPanel(DropSurface, QWidget):
 
     def set_busy(self, busy):
         self.busy = busy
+        self.project_board.set_busy(busy)
         self.cancel_button.setVisible(busy)
         self.update_actions()
 
@@ -2168,6 +2229,22 @@ class CompactPanel(DropSurface, QWidget):
             if zid is None or (version and version.get('bundle_state') != 'needs-review'):
                 self.delivery_requested.emit(project_id, zid)
 
+    def deliver_from_board(self, project_id):
+        if self.business_page_busy():
+            return
+        try:
+            project = self._action_project(project_id, editable=True)
+            if project is None:
+                return
+            if project['status'] != '待交付':
+                QTimer.singleShot(0, self, self._refresh_project_filters)
+                return
+            zip_id = resolve_board_delivery(self.service, project_id)
+        except (OSError, RuntimeError, sqlite3.Error, ValueError) as error:
+            self.show_notice(str(error), kind='delivery-error')
+            return
+        self.delivery_requested.emit(project_id, zip_id)
+
     def locate_project_zip(self, project_id, zip_id):
         project = self._action_project(project_id)
         version = next((version for version in project['zips'] if version['id'] == zip_id), None) if project else None
@@ -2490,6 +2567,51 @@ class CompactPanel(DropSurface, QWidget):
         if not self._project_narrow:
             self.show_project_detail()
 
+    def _show_project_view(self, board):
+        self.project_board_button.setChecked(board)
+        self.projects_list_button.setChecked(not board)
+        self.project_view_stack.setCurrentWidget(self.project_board if board else self.project_splitter)
+        if board:
+            self.project_view_tools.insertWidget(0, self.project_board_button)
+            self.project_view_tools.addWidget(self.added_date_filter)
+            self.project_board.layout().insertWidget(0, self.active_project_filters)
+            self.project_filter_panel.hide()
+            self.bulk_bar.hide()
+        else:
+            self.project_date_row.insertWidget(1, self.project_board_button)
+            self.project_date_row.addWidget(self.added_date_filter, 1)
+            self.project_queue_tools_layout.insertWidget(1, self.active_project_filters)
+        self.project_view_header.setVisible(board)
+        self.project_board_button.show()
+        self._sync_project_layout()
+
+    def show_project_board(self):
+        self.tabs.setCurrentIndex(0)
+        self._show_project_view(True)
+        self._refresh_project_filters(preserve_project_position=True)
+
+    def show_projects_list(self):
+        self.tabs.setCurrentIndex(0)
+        self._project_detail_open = False
+        self._show_project_view(False)
+        self._refresh_project_filters(preserve_project_position=True)
+
+    def open_board_project(self, project_id):
+        self.status_buttons[None].setChecked(True)
+        self.show_projects_list()
+        if self.focus_visible_project(project_id):
+            self.show_project_detail()
+
+    def _drag_from_board(self, project_id, source):
+        if self.busy:
+            return
+        self._board_dragging = True
+        try:
+            self.board_file_drag_requested.emit(project_id, source)
+        finally:
+            self._board_dragging = False
+            QTimer.singleShot(0, self, self._finish_scroll)
+
     def show_project_detail(self, *_):
         if self.document_pane.project_id is None:
             return
@@ -2538,7 +2660,8 @@ class CompactPanel(DropSurface, QWidget):
         self.project_side.setVisible(not narrow or not detail)
         self.document_side.setVisible(not narrow or detail)
         self.project_detail_button.setVisible(narrow and not detail and has_preview)
-        detail_command = self.tabs.currentIndex() == 0 and narrow and detail
+        detail_command = (self.tabs.currentIndex() == 0 and narrow and detail
+                          and self.project_view_stack.currentWidget() is self.project_splitter)
         if detail_command:
             self.project_filter_panel.hide()
             self.bulk_bar.hide()

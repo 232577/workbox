@@ -216,6 +216,32 @@ def writes(history):
     return [(path, body) for method, path, body in history if method == 'POST']
 
 
+def test_original_batch_metadata_follows_urgency_from_the_same_site_batch(site):
+    session, gateway, worker = open_site(site)
+    rows, history = site[4:6]
+    rows[0].update(batchId='source-1', batchUrgency='紧急', type='普通')
+    rows[2].update(batchId='source-1', batchName='匿名批次', type='预审加急')
+    rows[1].update(matStatus='预审退回', batchUrgency='进行中', type='普通')
+    snapshot = execute(worker, gateway.snapshot)
+    first, second = snapshot.tasks
+    assert (first.original_batch_id, first.original_batch_name, first.original_urgency) == (
+        'source-1', '匿名批次', '紧急')
+    assert (second.original_batch_id, second.original_batch_name, second.original_urgency) == ('', '', '正常')
+    assert second.stage is Stage.RETURNED
+
+    del rows[0]['batchUrgency']
+    updated = execute(worker, gateway.snapshot)
+    assert updated.tasks[0].original_urgency == '比较紧急'
+    assert updated.tasks[0] == first
+    assert updated != snapshot
+    assert execute(worker, gateway.read_material_task, snapshot.account, first).original_urgency == '比较紧急'
+
+    session.set_personal_writes_enabled(True)
+    started = execute(worker, gateway.start_verified, snapshot.account, first, personal=True)
+    assert started.stage is Stage.WORKING
+    assert writes(history) == [('/api/start-material', {'ids': [201]})]
+
+
 def test_personal_write_uses_original_login_alone_and_verified_same_task(site):
     session, gateway, worker = open_site(site)
     history = site[5]
