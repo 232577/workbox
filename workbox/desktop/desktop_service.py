@@ -12,6 +12,7 @@ from pathlib import Path
 
 from workbox.app import WorkBox
 from workbox.projects.database import Database, DELIVERY_TIMEZONE, STATUSES
+from workbox.projects.project_urgency import board_urgency
 from workbox.storage.managed_archive import ManagedArchive
 from workbox.projects.parser import (
     MAX_MESSAGE_LENGTH,
@@ -21,6 +22,7 @@ from workbox.projects.parser import (
     TITLE_END,
     ParsedProject,
     parse_message,
+    split_project_lines,
 )
 from workbox.storage.workspace_manager import MAX_PROJECTS_PER_WORKSPACE_CALL, WorkspaceManager, _path, _zip_structure
 from workbox.storage.snapshot_manager import SnapshotManager
@@ -31,7 +33,7 @@ from workbox.storage.bundle_analyzer import analyze_bundle, bundle_hint
 from workbox.projects.workflow_policy import read_policy, creation_disabled_message
 from workbox.projects.site_task_import import import_site_tasks
 from workbox.projects.text_intake import TextProjectConflict, create_intake_message, resolve_text_projects
-from workbox.projects.project_names import project_name_key, versionless_project_key
+from workbox.projects.project_names import OriginalSiteNameMatch, original_site_name_match, project_name_key, versionless_project_key
 from functools import wraps
 
 EXTENSIONS = '''
@@ -60,7 +62,7 @@ def classify_text(raw: str) -> tuple[list[ParsedProject], str]:
         return [], str(error)
     if re.search(r'https?://|(?:^|\s)[A-Za-z]:[\\/]|\.zip\b', raw, re.IGNORECASE):
         return candidates, '收到的是网址或文件名文字，不是实体 ZIP。请核对项目名，或拖入本地 ZIP 文件。'
-    lines = [line.strip() for line in re.split(r'[\r\n；;]+', cleaned) if line.strip()]
+    lines, _ = split_project_lines(cleaned)
     declared = []
     unclear = []
     titles = []
@@ -151,6 +153,8 @@ class DesktopService(WorkBox):
         self.task_groups = TaskGroups(self)
         from workbox.projects.archive_classification import ArchiveClassification
         self.archive_classification = ArchiveClassification(self.db)
+        from workbox.storage.delivery_linkage import DeliveryLinkage
+        self.delivery_linkage = DeliveryLinkage(self)
 
     def recover_project_changes(self):
         with self.archive._lock:
@@ -190,8 +194,9 @@ class DesktopService(WorkBox):
 
     def project_workbench_snapshot(self, query='', status=None, batch_key=None, urgent_only=False,
                                    *, archived=False, due_filter=None, today=None, deleted=False,
-                                   type_id=None, added_on=None, added_from=None, added_to=None):
-        """项目、批次和别名取自同一读取事务，沿用项目列表原排序与筛选。"""
+                                   type_id=None, added_on=None, added_from=None, added_to=None,
+                                   use_board_urgency=False):
+        """项目、批次和别名取自同一读取事务，保留项目排序并按当前视图筛选紧急度。"""
         from workbox.projects.project_batches import read_project_batch_index
         if not isinstance(query, str) or len(query) > 1000:
             raise ValueError('搜索文字过长。')
@@ -218,7 +223,8 @@ class DesktopService(WorkBox):
             except (ValueError, TypeError):
                 raise ValueError('新增日期筛选必须为 YYYY-MM-DD、日期未知或全部。') from None
         # 状态汇总与当前列表共用日期和其他条件，选中的状态仅决定显示哪些项目。
-        filters = dict(status=None, urgent_only=urgent_only, archived=archived,
+        filter_board_urgency = urgent_only and use_board_urgency
+        filters = dict(status=None, urgent_only=urgent_only and not use_board_urgency, archived=archived,
                        due_filter=due_filter, today=today, deleted=deleted, type_id=type_id)
         with self.db.connect() as connection:
             connection.execute('BEGIN')
@@ -239,6 +245,8 @@ class DesktopService(WorkBox):
             result = []
             status_counts = Counter(dict.fromkeys(STATUSES, 0))
             for project in projects:
+                if filter_board_urgency and not board_urgency(project):
+                    continue
                 pid = project['id']
                 project['added_on'] = added_dates.get(pid)
                 project['added_on_label'] = project['added_on'] or '日期未知'
@@ -280,7 +288,7 @@ class DesktopService(WorkBox):
     def _commit_text(connection, receipt, projects):
         # Resolve every name before creating any batch/project. The caller owns
         # the write transaction, including review confirmation and queued intake.
-        planned = resolve_text_projects(connection, projects)
+        planned = resolve_text_projects(connection, projects, raw_text=receipt['raw_text'])
         batch_id, batch_name, message_id = create_intake_message(connection, receipt['batch_name'], receipt['raw_text'])
         connection.execute('UPDATE intake_receipts SET batch_name=? WHERE id=?', (batch_name, receipt['id']))
         ids, created, reused = [], [], []
@@ -516,30 +524,32 @@ class DesktopService(WorkBox):
             # 明确材料规则仍可纠正已删除的误建名称；开放附注则必须先比较所有长名。
             named = match_work_file_projects(source.name, list(all_projects.values()))
         if source.suffix.casefold() == '.docx':
-            title = project_name_key(source.stem)
             file_base = versionless_project_key(source.stem)
-            original = {row['id']: row for row in all_projects.values() if row.get('original_task_title')
-                        and project_name_key(row['original_task_title']) == title}
-            basis = '文件名匹配已关联的原站任务全名'
-            version_fallback = not original and file_base is None
-            if version_fallback:
-                original = {row['id']: row for row in all_projects.values() if row.get('original_task_title')
-                            and versionless_project_key(row['original_task_title']) == title}
-                basis = '文件名省略已关联原站任务的版本号'
+            ranked = [(original_site_name_match(source.stem, row['original_task_title']), row)
+                      for row in all_projects.values() if row.get('original_task_title')]
+            best = max((rank for rank, _ in ranked), default=OriginalSiteNameMatch.NONE)
+            original = {row['id']: row for rank, row in ranked if rank and rank == best}
             if original:
+                basis = {
+                    OriginalSiteNameMatch.FULL: '文件名匹配已关联的原站任务全名',
+                    OriginalSiteNameMatch.FORMATTED_NUMBER: '文件名与已关联原站任务的列表编号格式不同',
+                    OriginalSiteNameMatch.OMITTED_NUMBER: '文件名与已关联原站任务仅有列表编号差异',
+                    OriginalSiteNameMatch.OMITTED_VERSION: '文件名省略已关联原站任务的版本号',
+                }[best]
+                fallback = best != OriginalSiteNameMatch.FULL
                 candidates = {row['id']: row for row in named['candidates']}
                 candidates.update(original)
                 named = dict(candidates=list(candidates.values()), basis=basis)
-                if version_fallback and len(original) > 1:
+                if fallback and len(original) > 1:
                     named['requires_choice'] = True
-                if version_fallback and personal_account and any(
+                if fallback and personal_account and any(
                         row['original_account_username'] != personal_account for row in original.values()):
                     named.update(requires_choice=True,
                                  basis=basis + '，涉及其他原站账号的项目，请明确选择')
             if file_base is not None:
                 candidates = {row['id']: row for row in named['candidates'] + inside}
-                if any(project_name_key(row['original_task_title']) != title
-                       and versionless_project_key(row['original_task_title']) == file_base
+                if any(not original_site_name_match(source.stem, row['original_task_title'])
+                       and original_site_name_match(file_base, row['original_task_title']) == OriginalSiteNameMatch.OMITTED_VERSION
                        for row in candidates.values()):
                     named = dict(candidates=list(candidates.values()), requires_choice=True,
                                  basis='文件名与已关联的原站任务版本不同，请明确选择')

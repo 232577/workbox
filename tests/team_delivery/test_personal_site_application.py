@@ -1,13 +1,22 @@
 from dataclasses import replace
+from time import monotonic, sleep
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QInputDialog
 
 from workbox.team_delivery.application import IntakeController
 from workbox.team_delivery.contracts import Account, Outcome, Snapshot, Stage, Task
 from workbox.team_delivery.desktop import DesktopWindow
+
+
+def _wait_for_worker(predicate):
+    # The first handoff can create and flush a SQLite journal before signaling.
+    deadline = monotonic() + 15
+    while not predicate() and monotonic() < deadline:
+        QApplication.processEvents()
+        # Let the Python worker finish before polling its queued Qt signal.
+        sleep(0.01)
 
 
 @pytest.fixture
@@ -209,10 +218,7 @@ def test_personal_recovery_reads_exact_completed_task_outside_current_list(tmp_p
         assert reads == []
         assert controller.submit_personal_delivery(actor.username, '55', verified.title, '1', verify_only=True,
                                                    source_revision='stale')
-        for _ in range(150):
-            if results:
-                break
-            QTest.qWait(20)
+        _wait_for_worker(lambda: bool(results))
         assert reads == [(actor, '55', verified.title)]
         assert len(results) == 1 and results[0].outcome is Outcome.SUBMITTED
         assert results[0].delivery_id == '1' and results[0].receipt_id == verified.revision
@@ -238,10 +244,7 @@ def test_manual_refresh_uses_only_the_binding_snapshot_in_personal_mode(tmp_path
         controller.personal_snapshot_changed.connect(bound.append)
         controller.personal_sync_requested.connect(legacy.append)
         page.personal_sync_requested.emit()
-        for _ in range(150):
-            if not controller._busy:
-                break
-            QTest.qWait(20)
+        _wait_for_worker(lambda: not controller._busy)
         assert bound == [fresh]
         assert legacy == []
         assert '按任务编号同步' in page._sync_notice.text()

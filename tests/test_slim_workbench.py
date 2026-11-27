@@ -38,7 +38,7 @@ def test_daily_navigation_and_advanced_tools_remain_reachable(panel):
                     panel.material_check_button, panel.intake_log_button):
         assert control.isHidden()
     captions = {item.text() for item in panel.advanced_menu.actions() if not item.isSeparator()}
-    assert captions == {'工作与规则', '工作设置…', '归档分类', '核对与记录', '名单核对',
+    assert captions == {'工作与规则', '工作设置…', '交付联动', '归档分类', '核对与记录', '名单核对',
                         'ZIP 归档库', '待核对', '收录记录', '监视详情', '应用', '外观', '使用指南', '检查更新'}
     assert action(panel, '外观').menu() is panel.appearance_button.menu()
     assert set(panel.theme_actions.values()) == set(action(panel, '外观').menu().actions())

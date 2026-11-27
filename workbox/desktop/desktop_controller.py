@@ -105,10 +105,11 @@ class FeedbackBubble(QFrame):
 class FloatingController(QObject):
     exit_requested = Signal()
 
-    def __init__(self, service, *, tray_enabled=True):
+    def __init__(self, service, *, tray_enabled=True, project_board_default=False):
         super().__init__()
         self.service = service
         self.tray_enabled = tray_enabled
+        self.project_board_default = project_board_default
         self.orb = self.panel = self.bubble = self.tray = self.server = None
         self.personal_site = None
         self.worker = None
@@ -215,7 +216,7 @@ class FloatingController(QObject):
         except (TypeError, ValueError):
             saved_size = DEFAULT_FLOATING_SIZE
         self.orb.set_orb_size(saved_size)
-        self.panel = CompactPanel(self.service)
+        self.panel = CompactPanel(self.service, project_board_default=self.project_board_default)
         self.panel.team_workspace_opened.connect(self._connect_personal_site)
         self.panel.window_shortcut = self.shortcut
         self._panel_minimum = self.panel.minimumSize()
@@ -263,6 +264,9 @@ class FloatingController(QObject):
         self.panel.approve_requested.connect(lambda zid: self.enqueue('已标记为可用版本', lambda **_: self.service.snapshots.approve_version(zid)))
         self.panel.bundle_requested.connect(lambda zid, batch: self.enqueue('核对包内项目', lambda **kw: self.service.snapshots.recognize_bundle(zid, batch_id=batch, **kw)))
         self.panel.delivery_requested.connect(self.deliver_project)
+        self.panel.board_file_drag_requested.connect(self.drag_project_file)
+        self.panel.delivery_linkage_save_requested.connect(self.save_delivery_linkage)
+        self.panel.delivery_linkage_retry_requested.connect(self.retry_delivery_linkage)
         self.panel.site_delivery_sync_requested.connect(self.request_site_delivery_sync)
         self.panel.history_archive_requested.connect(lambda pid, fid: self.enqueue(
             '移入历史文稿',
@@ -382,19 +386,120 @@ class FloatingController(QObject):
         if self.foreground_busy:
             return
         ids = list(project_ids)
+
+        def confirm(**kwargs):
+            result = self.service.confirm_project_deliveries(ids, confirmed=True, **kwargs)
+            event_results = ((pid, {'event_id': eid}) for pid, eid in
+                             zip(result['project_ids'], result['event_ids'], strict=True))
+            return self._with_linkage_plan(result, event_results)
+
         self.enqueue(
             f'正在归档并核对 {len(ids)} 个项目',
-            lambda **kw: self.service.confirm_project_deliveries(ids, confirmed=True, **kw),
+            confirm,
             on_cancel=lambda: self.notify(BULK_DELIVERY_CANCELLED),
             on_complete=self._complete_bulk_delivery,
         )
 
     def deliver_project(self, project_id, zip_id):
+        def confirm(**kwargs):
+            result = self.service.confirm_delivery(project_id, zip_id, confirmed=True, **kwargs)
+            return self._with_linkage_plan(result, ((project_id, result),))
+
         self.enqueue(
             '正在确认交付',
-            lambda **kw: self.service.confirm_delivery(project_id, zip_id, confirmed=True, **kw),
+            confirm,
             on_complete=self._complete_project_delivery,
         )
+
+    def drag_project_file(self, project_id, source):
+        from workbox.desktop.project_file_drag import drag_project_file
+
+        try:
+            drag_project_file(self.service, project_id, source)
+        except (OSError, RuntimeError, sqlite3.Error, ValueError) as error:
+            self.panel.show_notice(str(error))
+
+    def save_delivery_linkage(self, server, wechat):
+        page = self.panel.delivery_linkage_page
+        def done(worker):
+            if worker.cancelled:
+                page.show_result('已取消保存。')
+            elif worker.error:
+                page.show_result('保存交付联动失败。' + worker.error)
+            else:
+                page.show_result('已保存。', reload=True)
+        if not self.enqueue('保存交付联动', lambda **_: self.service.delivery_linkage.configure(server, wechat),
+                            silent=True, on_complete=done,
+                            on_cancel=lambda: page.show_result('已取消保存。')):
+            page.show_result('当前无法保存。')
+
+    @staticmethod
+    def _linkage_message(results):
+        names = {'server': '服务器目录', 'wechat': '微信待发送目录'}
+        outcomes = {'completed': '已复制', 'failed': '复制失败', 'cancelled': '已取消'}
+        messages = [f"{names[row['target']]}{outcomes[row['status']]}" for row in results]
+        if any(row['status'] != 'completed' for row in results):
+            messages.append('可在「高级设置 → 交付联动」重试')
+        return '。'.join(messages) + '。'
+
+    def retry_delivery_linkage(self, event_id, target):
+        page = self.panel.delivery_linkage_page
+        def done(worker):
+            if worker.cancelled:
+                page.show_result('已取消复制。', reload=True)
+            elif worker.error:
+                page.show_result('复制失败。' + worker.error, reload=True)
+            else:
+                page.show_result(self._linkage_message([worker.result]), reload=True)
+        if not self.enqueue('重试交付联动', lambda **kw: self.service.delivery_linkage.retry(event_id, target, **kw),
+                            on_complete=done, on_cancel=lambda: page.show_result('已取消复制。', reload=True)):
+            page.show_result('当前无法重试。')
+
+    def _with_linkage_plan(self, result, deliveries):
+        jobs, errors = [], []
+        for project_id, delivery in deliveries:
+            try:
+                jobs.extend(self.service.delivery_linkage.plan_delivery(project_id, delivery))
+            except (OSError, sqlite3.Error, ValueError) as error:
+                errors.append(f'项目 #{project_id} 的交付联动记录失败。{error}')
+        return dict(result, linkage_jobs=jobs, linkage_errors=errors)
+
+    def _start_delivery_linkage(self, worker):
+        if self.quitting:
+            return
+        jobs = worker.result.get('linkage_jobs')
+        errors = worker.result.get('linkage_errors') or []
+        if errors:
+            self.notify('本机已交付。\n' + '\n'.join(errors), kind='delivery-error')
+        if not jobs:
+            return
+
+        def cancelled():
+            if not self.quitting:
+                self.notify('本机已交付，复制已取消。可在「交付联动」重试。')
+
+        if worker.cancel_event.is_set():
+            cancelled()
+            return
+
+        def copy(**kwargs):
+            return [self.service.delivery_linkage.retry(row['event_id'], row['target'], **kwargs) for row in jobs]
+
+        def done(worker):
+            if self.quitting:
+                return
+            if page := self.panel.delivery_linkage_page:
+                page.load()
+            if worker.cancelled:
+                cancelled()
+            elif worker.error:
+                self.notify('本机已交付，交付联动失败。' + worker.error)
+            else:
+                message = self._linkage_message(worker.result)
+                self.notify(message + ('\n' + '\n'.join(errors) if errors else ''),
+                            kind='delivery-error' if errors else 'persistent')
+
+        self.enqueue('本机已交付，正在复制交付文件', copy, on_complete=done, on_cancel=cancelled)
 
     def _complete_project_delivery(self, worker):
         self.refresh()
@@ -409,6 +514,7 @@ class FloatingController(QObject):
             self.personal_site.wake()
         if 'archive' not in result:
             self.notify('已确认交付。')
+            self._start_delivery_linkage(worker)
             return
         event = next(
             (row for row in self.service.db.delivery_events_for_project(result['project']['id'])
@@ -427,6 +533,7 @@ class FloatingController(QObject):
             '项目工作文件已按原名归档，已设为已交付。' + counting + '\n' + result['archive']['path'],
             target=self._result_target(result),
         )
+        self._start_delivery_linkage(worker)
 
     def _complete_bulk_delivery(self, worker):
         self.refresh()
@@ -439,6 +546,7 @@ class FloatingController(QObject):
             self.notify(f'已归档并确认交付 {len(ids)} 个项目。', kind='page-success')
             if self.personal_site is not None:
                 self.personal_site.wake()
+            self._start_delivery_linkage(worker)
 
     def set_project_deleted(self, project_id, deleted):
         if self.foreground_busy:

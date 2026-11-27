@@ -73,17 +73,18 @@ class ProjectDeliveryArchive:
         with self._lock, self.db.connect() as connection:
             connection.executescript(SCHEMA)
 
-    def _source(self, project_id):
-        with self.db.connect() as connection:
-            self.db._assert_projects_editable(connection, project_id)
-        workspace = self.workspaces.get_workspace(project_id)
+    @staticmethod
+    def _source(service, workspaces, project_id):
+        with service.db.connect() as connection:
+            service.db._assert_projects_editable(connection, project_id)
+        workspace = workspaces.get_workspace(project_id)
         if not workspace:
             raise ValueError('项目尚未登记工作目录，请先收录文件或创建工作目录。')
         root = plain_path(workspace['path'])
         if not root.is_dir():
             raise ValueError('项目工作目录不存在，未确认交付。')
         excluded = []
-        for other in self.workspaces.list_workspaces(include_archived=True):
+        for other in workspaces.list_workspaces(include_archived=True):
             if other['project_id'] == project_id:
                 continue
             path = Path(os.path.abspath(Path(other['path']).expanduser()))
@@ -91,14 +92,19 @@ class ProjectDeliveryArchive:
                 raise ValueError('多个项目登记了同一工作目录，无法确认材料归属。')
             if path.is_relative_to(root):
                 excluded.append(path)
-        archive_root = plain_path(self.workspaces.settings()['archive_root'])
+        archive_root = plain_path(workspaces.settings()['archive_root'])
         if archive_root == root or archive_root.is_relative_to(root) or root.is_relative_to(archive_root):
             raise ValueError('项目工作目录与归档库不能重叠，未确认交付。')
-        for value in getattr(self.workspaces, 'history_roots', lambda: [])():
+        for value in getattr(workspaces, 'history_roots', lambda: [])():
             history_root = plain_path(value)
             if history_root == root or history_root.is_relative_to(root) or root.is_relative_to(history_root):
                 raise ValueError('项目工作目录与历史文稿存储重叠，未确认交付。')
         return root, tuple(sorted(excluded, key=str)), archive_root
+
+    @classmethod
+    def has_workspace_files(cls, service, project_id):
+        root, excluded, _ = cls._source(service, service.workspaces, project_id)
+        return bool(cls._files(root, excluded))
 
     @staticmethod
     def _files(root, excluded=(), *, cancel_event=None, include_temporary=False):
@@ -154,7 +160,7 @@ class ProjectDeliveryArchive:
         return manifest, identities
 
     def _assert_unchanged(self, project_id, root, excluded, original, *, cancel_event=None, leases=None):
-        current_root, current_excluded, _ = self._source(project_id)
+        current_root, current_excluded, _ = self._source(self.service, self.workspaces, project_id)
         if current_root != root or current_excluded != excluded:
             raise RuntimeError('项目登记目录或材料归属在归档期间变化，未确认交付。')
         if self._snapshot(root, excluded, cancel_event=cancel_event, leases=leases) != original:
@@ -293,7 +299,7 @@ class ProjectDeliveryArchive:
 
     def _prepare(self, project_id, *, cancel_event=None):
         cancelled(cancel_event)
-        root, excluded, archive_root = self._source(project_id)
+        root, excluded, archive_root = self._source(self.service, self.workspaces, project_id)
         original = self._snapshot(root, excluded, cancel_event=cancel_event)
         manifest = original[0]
         if not manifest:

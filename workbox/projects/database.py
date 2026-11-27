@@ -253,6 +253,9 @@ CREATE TABLE IF NOT EXISTS original_site_bindings (
     round INTEGER NOT NULL DEFAULT 1 CHECK(round>=1),
     return_revision TEXT NOT NULL DEFAULT '',
     available INTEGER NOT NULL DEFAULT 1 CHECK(available IN (0,1)),
+    source_batch_id TEXT NOT NULL DEFAULT '',
+    source_batch_name TEXT NOT NULL DEFAULT '',
+    source_urgency TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (account_username,task_id)
 );
 CREATE INDEX IF NOT EXISTS idx_original_site_bindings_task ON original_site_bindings(task_id);
@@ -301,6 +304,10 @@ class Database:
             columns = connection.execute('PRAGMA table_info(original_site_deliveries)').fetchall()
             if not any(row['name'] == 'approved_revision' for row in columns):
                 connection.execute("ALTER TABLE original_site_deliveries ADD COLUMN approved_revision TEXT NOT NULL DEFAULT ''")
+            binding_columns = {row['name'] for row in connection.execute('PRAGMA table_info(original_site_bindings)')}
+            for column in ('source_batch_id', 'source_batch_name', 'source_urgency'):
+                if column not in binding_columns:
+                    connection.execute(f"ALTER TABLE original_site_bindings ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
             self._migrate_delivery_events(connection)
             self._migrate_project_type_presets(connection)
             self._migrate_default_project_type(connection)
@@ -1543,6 +1550,8 @@ class Database:
             COALESCE(pt.name,'') AS project_type_name,
             COALESCE(o.task_id,'') AS original_task_id, COALESCE(o.account_username,'') AS original_account_username,
             COALESCE(o.title,'') AS original_task_title,
+            COALESCE(o.source_batch_id,'') AS original_batch_id, COALESCE(o.source_batch_name,'') AS original_batch_name,
+            COALESCE(o.source_urgency,'') AS original_urgency,
             (SELECT COUNT(*) FROM zip_project_links l WHERE l.project_id=p.id) AS zip_count,
             (SELECT filename FROM zips z JOIN zip_project_links l ON l.zip_id=z.id WHERE l.project_id=p.id ORDER BY z.id DESC LIMIT 1) AS zip_name
             FROM projects p JOIN batches b ON b.id=p.batch_id
@@ -1581,6 +1590,8 @@ class Database:
                     COALESCE(d.notes,'') AS notes, d.due_date, d.archived_at, x.deleted_at,
                     tl.type_id AS project_type_id,COALESCE(pt.name,'') AS project_type_name,
                     COALESCE(o.task_id,'') AS original_task_id, COALESCE(o.account_username,'') AS original_account_username,
+                    COALESCE(o.source_batch_id,'') AS original_batch_id, COALESCE(o.source_batch_name,'') AS original_batch_name,
+                    COALESCE(o.source_urgency,'') AS original_urgency,
                     pm.target_id AS merged_into_id,COALESCE(pb.reason,'') AS block_reason FROM projects p
                 JOIN batches b ON b.id=p.batch_id JOIN messages m ON m.id=p.message_id
                 LEFT JOIN project_details d ON d.project_id=p.id

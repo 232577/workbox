@@ -165,9 +165,10 @@ def _volume_supports_named_streams(path: Path, api) -> bool | None:
 
 
 class ZipLease:
-    def __init__(self, path, *, movable=True):
-        self.path = plain_path(path, allow_network=not movable)
+    def __init__(self, path, *, movable=True, allow_network_move=False):
+        self.path = plain_path(path, allow_network=not movable or allow_network_move)
         self.movable = movable
+        self.allow_network_move = allow_network_move
         self.stream = None
         self.api = _api()
 
@@ -222,7 +223,7 @@ class ZipLease:
     def rename_to(self, target):
         if not self.movable:
             raise ValueError('只读校验句柄不能移动文件。')
-        target = plain_path(target)
+        target = plain_path(target, allow_network=self.allow_network_move)
         if target.exists():
             raise FileExistsError('目标已存在；不覆盖旧文件。')
         from ctypes import wintypes as w

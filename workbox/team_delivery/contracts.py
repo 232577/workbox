@@ -1,6 +1,6 @@
 """桌面、交件处理和网页操作共用的业务数据。"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Protocol
@@ -48,12 +48,23 @@ class Task:
     stage: Stage
     revision: str
     handoff: Handoff | None = None
+    # These display fields do not change the identity of a reviewed delivery target.
+    original_batch_id: str = field(default='', compare=False)
+    original_batch_name: str = field(default='', compare=False)
+    original_urgency: str = field(default='', compare=False)
 
 
 @dataclass(frozen=True, slots=True)
 class Snapshot:
     account: Account | None
     tasks: tuple[Task, ...] = ()
+    _display_metadata: tuple[tuple[str, str, str], ...] = field(init=False, repr=False)
+
+    def __post_init__(self):
+        # Display-only changes must still reach listeners that compare snapshots.
+        object.__setattr__(self, '_display_metadata', tuple(
+            (task.original_batch_id, task.original_batch_name, task.original_urgency) for task in self.tasks
+        ))
 
 
 @dataclass(frozen=True, slots=True)

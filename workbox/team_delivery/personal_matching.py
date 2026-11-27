@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from workbox.projects.project_names import project_name_key, versionless_project_key
+from workbox.projects.project_names import original_site_name_match
 from workbox.team_delivery.contracts import MATERIAL_PREPARATION_STAGES, Snapshot, Task
 
 
@@ -15,8 +15,6 @@ def matching_personal_word_tasks(filename: str, snapshot: Snapshot) -> tuple[Tas
     exact = tuple(task for task in tasks if task.title == path.stem)
     if exact:
         return exact
-    name = project_name_key(path.stem)
-    full_name = tuple(task for task in tasks if project_name_key(task.title) == name)
-    if full_name or versionless_project_key(path.stem) is not None:
-        return full_name
-    return tuple(task for task in tasks if versionless_project_key(task.title) == name)
+    ranked = [(original_site_name_match(path.stem, task.title), task) for task in tasks]
+    best = max((rank for rank, _ in ranked), default=0)
+    return tuple(task for rank, task in ranked if rank and rank == best)

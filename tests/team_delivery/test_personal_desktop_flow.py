@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QInputDialog, QMessageBox
 
 from anonymous_document import make_document
 from test_qt_site import install_completion_view, page_script, site, writes
+from workbox.desktop.compact_ui import ProjectDeliveryDialog
 from workbox.desktop.desktop_controller import FloatingController
 from workbox.desktop.desktop_service import DesktopService
 from workbox.team_delivery import application
@@ -26,12 +27,18 @@ def until(predicate, seconds=15):
 
 
 @pytest.mark.parametrize('target', ['workspace', 'team'])
-@pytest.mark.parametrize('version', ['', 'V1.0'], ids=['exact', 'versionless-word'])
-def test_drop_then_confirm_submits_only_the_bound_original_task(site, target, version, tmp_path, monkeypatch):
+@pytest.mark.parametrize(('number', 'version'), [('', ''), ('', 'V1.0'), ('1. ', '')],
+                         ids=['exact', 'versionless-word', 'pasted-numbered-title'])
+def test_drop_then_confirm_submits_only_the_bound_original_task(site, target, number, version, tmp_path, monkeypatch):
     browser, _, _, _, rows, history, _ = site
-    rows[0].update(id=55, name='匿名待交件系统' + version)
+    rows[0].update(id=55, name=number + '匿名待交件系统' + version)
     monkeypatch.setattr(application, 'LIVE_SITE_URL', browser.origin)
     service = DesktopService(tmp_path / 'data' / 'workbox.db')
+    pasted_project_id = pasted_second_id = None
+    if number:
+        rows[1]['name'] = '2. 匿名第二资料平台'
+        pasted_project_id, pasted_second_id = service.receive_text(
+            rows[0]['name'] + rows[1]['name'])['project_ids']
     desktop = FloatingController(service, tray_enabled=False)
     try:
         assert desktop.start()
@@ -46,8 +53,11 @@ def test_drop_then_confirm_submits_only_the_bound_original_task(site, target, ve
         site_page = client._site_session.page
         install_completion_view(site_page)
         until(lambda: len(service.list_projects()) == 2 and not desktop.busy)
-        project = next(p for p in service.list_projects() if p['name'] == rows[0]['name'])
+        project = next(p for p in service.list_projects() if p['original_task_id'] == '55')
         project_id = project['id']
+        if pasted_project_id is not None:
+            assert project_id == pasted_project_id and project['name'] == '匿名待交件系统'
+            assert service.get_project(pasted_second_id)['name'] == '匿名第二资料平台'
         assert project['status'] == '待开发' and not writes(history)
         path = tmp_path / '匿名待交件系统.docx'
         make_document(path)
@@ -68,14 +78,23 @@ def test_drop_then_confirm_submits_only_the_bound_original_task(site, target, ve
         assert not writes(history) and rows[0]['matStatus'] == '待制作'
 
         desktop.panel.nav_projects.click()
-        def accept_delivery():
-            dialog = QApplication.activeModalWidget()
-            if isinstance(dialog, QDialog):
-                dialog.accept()
-        QTimer.singleShot(50, accept_delivery)
-        desktop.panel.confirm_delivery(project_id)
+        if number:
+            monkeypatch.setattr(ProjectDeliveryDialog, 'exec', lambda *_: pytest.fail('Unexpected delivery dialog'))
+            desktop.panel.show_project_board()
+            lanes = desktop.panel.project_board.lanes
+            lanes['待交付'].actions[project_id].click()
+            assert QApplication.activeModalWidget() is None
+            until(lambda: project_id in lanes['已完成'].rows and project_id not in lanes['待交付'].rows)
+        else:
+            def accept_delivery():
+                dialog = QApplication.activeModalWidget()
+                if isinstance(dialog, QDialog):
+                    dialog.accept()
+            QTimer.singleShot(50, accept_delivery)
+            desktop.panel.confirm_delivery(project_id)
         until(lambda: service.get_project(project_id)['status'] == '已交付')
         until(lambda: rows[0]['matStatus'] == '已完成')
+        assert rows[1]['matStatus'] == '待制作'
         until(lambda: tuple(task.id for task in page._own_tasks()) == ('202',))
         until(lambda: page_script(site_page, """
             document.querySelector('.is-completed-project input.mat-check[value="55"]')?.dataset.status === '已完成'
