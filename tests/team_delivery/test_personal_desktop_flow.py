@@ -34,7 +34,11 @@ def test_drop_then_confirm_submits_only_the_bound_original_task(site, target, nu
     rows[0].update(id=55, name=number + '匿名待交件系统' + version)
     monkeypatch.setattr(application, 'LIVE_SITE_URL', browser.origin)
     service = DesktopService(tmp_path / 'data' / 'workbox.db')
-    pasted_project_id = service.receive_text(rows[0]['name'])['project_ids'][0] if number else None
+    pasted_project_id = pasted_second_id = None
+    if number:
+        rows[1]['name'] = '2. 匿名第二资料平台'
+        pasted_project_id, pasted_second_id = service.receive_text(
+            rows[0]['name'] + rows[1]['name'])['project_ids']
     desktop = FloatingController(service, tray_enabled=False)
     try:
         assert desktop.start()
@@ -53,6 +57,7 @@ def test_drop_then_confirm_submits_only_the_bound_original_task(site, target, nu
         project_id = project['id']
         if pasted_project_id is not None:
             assert project_id == pasted_project_id and project['name'] == '匿名待交件系统'
+            assert service.get_project(pasted_second_id)['name'] == '匿名第二资料平台'
         assert project['status'] == '待开发' and not writes(history)
         path = tmp_path / '匿名待交件系统.docx'
         make_document(path)
@@ -89,6 +94,7 @@ def test_drop_then_confirm_submits_only_the_bound_original_task(site, target, nu
             desktop.panel.confirm_delivery(project_id)
         until(lambda: service.get_project(project_id)['status'] == '已交付')
         until(lambda: rows[0]['matStatus'] == '已完成')
+        assert rows[1]['matStatus'] == '待制作'
         until(lambda: tuple(task.id for task in page._own_tasks()) == ('202',))
         until(lambda: page_script(site_page, """
             document.querySelector('.is-completed-project input.mat-check[value="55"]')?.dataset.status === '已完成'

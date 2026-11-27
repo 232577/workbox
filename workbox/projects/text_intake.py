@@ -1,8 +1,7 @@
 """Resolve explicit text names without silently duplicating project identities."""
-import re
 from collections import OrderedDict
 
-from workbox.projects.parser import ParsedProject, parse_message
+from workbox.projects.parser import ParsedProject, parse_message, split_project_lines
 from workbox.projects.project_names import numbered_project_key, project_name_key as normalized_name
 
 
@@ -54,7 +53,8 @@ def create_intake_message(connection, batch_name, raw_text):
 def numbered_receipt_names(raw_text, *, parsed=False):
     """Return the written numbers and their titles from the original clipboard text."""
     names = set()
-    for line in re.split(r'[\r\n；;]+', raw_text):
+    lines, _ = split_project_lines(raw_text)
+    for line in lines:
         key = numbered_project_key(line)
         if not key:
             continue

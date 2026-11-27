@@ -16,6 +16,34 @@ URGENCY = re.compile(
     re.IGNORECASE,
 )
 TITLE_END = re.compile(r"(?:系统|平台|工具|软件|应用|小程序|网站|助手|工作箱|APP)(?:\s*v?\d+(?:\.\d+)*)?$", re.IGNORECASE)
+_INLINE_NUMBER = re.compile(r"(?<![\dA-Za-z_.．])(\d{1,3})[.)、．](?=\s*(?:[^\W\d_]|《))")
+
+
+def split_project_lines(text: str) -> tuple[list[str], bool]:
+    lines = []
+    ambiguous = False
+    for value in re.split(r"[\r\n；;]+", text.lstrip("\ufeff")):
+        line = value.strip()
+        if not line:
+            continue
+        markers = list(_INLINE_NUMBER.finditer(line)) if _INLINE_NUMBER.match(line) else []
+        if len(markers) < 2:
+            lines.append(line)
+            continue
+        numbers = [int(marker[1]) for marker in markers]
+        ends = [marker.start() for marker in markers[1:]] + [len(line)]
+        names = [URGENCY.sub("", line[marker.end():end]).strip(" \t《》,，。")
+                 for marker, end in zip(markers, ends, strict=True)]
+        # Consecutive numbering and recognizable project title endings distinguish
+        # pasted list entries from a number or description inside one title.
+        if numbers != list(range(numbers[0], numbers[0] + len(numbers))) or not all(
+                TITLE_END.search(name) for name in names):
+            lines.append(line)
+            ambiguous = True
+            continue
+        lines.extend(line[marker.start():end].strip(" \t,，。")
+                     for marker, end in zip(markers, ends, strict=True))
+    return lines, ambiguous
 
 
 def _project(value: str, urgent: bool = False) -> "ParsedProject | None":
@@ -39,7 +67,9 @@ def parse_message(text: str) -> list[ParsedProject]:
         raise ValueError("项目消息必须是文本。")
     if len(text) > MAX_MESSAGE_LENGTH:
         raise ValueError("单条消息不能超过 200,000 个字符。")
-    lines = [line.strip() for line in re.split(r"[\r\n；;]+", text.lstrip("\ufeff")) if line.strip()]
+    lines, ambiguous = split_project_lines(text)
+    if ambiguous:
+        raise ValueError("同一行有多个编号，请核对项目名并将每个项目分成一行。")
     structured: list[ParsedProject] = []
     plain: list[str] = []
     for line in lines:

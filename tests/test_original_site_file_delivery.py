@@ -25,10 +25,11 @@ def test_regular_drop_after_upstream_rename_keeps_the_bound_local_project(servic
     assert len(service.list_projects()) == 1
 
 
-def test_numbered_original_tasks_link_projects_from_a_pasted_list(service, site_projects, tmp_path):
+@pytest.mark.parametrize('separator', ['\n', ' ', ''], ids=['separate-lines', 'same-line', 'touching-titles'])
+def test_numbered_original_tasks_link_projects_from_a_pasted_list(service, site_projects, tmp_path, separator):
     title = '匿名交件系统'
     second_title = '匿名核对平台'
-    project_id, second_id = service.receive_text(f'1. {title}\n2.{second_title}')['project_ids']
+    project_id, second_id = service.receive_text(f'1. {title}{separator}2.{second_title}')['project_ids']
     original = Task('55', f'1. {title}', ACCOUNT.id, Stage.READY, 'r1')
     second = Task('56', f'2.{second_title}', ACCOUNT.id, Stage.READY, 'r2')
     site_projects.sync(ACCOUNT, [original, second])
@@ -65,19 +66,35 @@ def test_word_routes_to_original_project_with_or_without_list_number(service, si
     assert len(service.list_projects()) == 1
 
 
-def test_pasted_list_reuses_a_numbered_project_already_imported_from_the_site(service, site_projects):
+@pytest.mark.parametrize('separator', ['\n', ' '], ids=['separate-lines', 'same-line'])
+def test_pasted_list_reuses_a_numbered_project_already_imported_from_the_site(service, site_projects, separator):
     first = Task('55', '1. 匿名交件系统', ACCOUNT.id, Stage.READY, 'r1')
     second = Task('56', '2.匿名核对平台', ACCOUNT.id, Stage.READY, 'r2')
     site_projects.sync(ACCOUNT, [first, second])
     first_id = site_projects.binding_for_task(ACCOUNT, first)
     second_id = site_projects.binding_for_task(ACCOUNT, second)
 
-    result = service.receive_text('1.匿名交件系统\n2. 匿名核对平台')
+    result = service.receive_text(f'1.匿名交件系统{separator}2. 匿名核对平台')
 
     assert result['project_ids'] == result['reused_project_ids'] == [first_id, second_id]
     assert service.get_project(first_id)['name'] == first.title
     assert service.get_project(second_id)['name'] == second.title
     assert len(service.list_projects()) == 2
+
+
+def test_unclear_inline_numbering_does_not_create_a_combined_project(service):
+    result = service.receive_text('1. 匿名交件说明 2. 计划确认事项')
+
+    assert result['state'] == 'needs-review'
+    assert '编号' in result['reason']
+    assert service.list_projects() == []
+
+
+def test_decimal_version_is_kept_in_an_inline_numbered_list(service):
+    result = service.receive_text('1. 匿名交件系统 V1.2 2.匿名核对平台')
+
+    assert result['state'] == 'committed'
+    assert {project['name'] for project in service.list_projects()} == {'匿名交件系统 V1.2', '匿名核对平台'}
 
 
 def test_same_unnumbered_title_needs_choice_between_original_tasks(service, site_projects):

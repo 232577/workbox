@@ -21,6 +21,7 @@ from workbox.projects.parser import (
     TITLE_END,
     ParsedProject,
     parse_message,
+    split_project_lines,
 )
 from workbox.storage.workspace_manager import MAX_PROJECTS_PER_WORKSPACE_CALL, WorkspaceManager, _path, _zip_structure
 from workbox.storage.snapshot_manager import SnapshotManager
@@ -60,7 +61,7 @@ def classify_text(raw: str) -> tuple[list[ParsedProject], str]:
         return [], str(error)
     if re.search(r'https?://|(?:^|\s)[A-Za-z]:[\\/]|\.zip\b', raw, re.IGNORECASE):
         return candidates, '收到的是网址或文件名文字，不是实体 ZIP。请核对项目名，或拖入本地 ZIP 文件。'
-    lines = [line.strip() for line in re.split(r'[\r\n；;]+', cleaned) if line.strip()]
+    lines, _ = split_project_lines(cleaned)
     declared = []
     unclear = []
     titles = []
