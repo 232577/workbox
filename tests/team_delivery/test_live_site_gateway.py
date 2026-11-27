@@ -251,11 +251,10 @@ def _short_action_timeout(live, monkeypatch, timeout_ms):
 
 def test_desktop_timer_updates_own_tasks_without_manual_refresh(anonymous_site, tmp_path, monkeypatch):
     from concurrent.futures import Future
-    from time import monotonic
+    from time import monotonic, sleep
     from types import SimpleNamespace
 
     from PySide6.QtCore import Qt
-    from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication
 
     from workbox.team_delivery.application import IntakeController
@@ -302,7 +301,9 @@ def test_desktop_timer_updates_own_tasks_without_manual_refresh(anonymous_site, 
     def wait_for(check, seconds, operation):
         deadline = monotonic() + seconds
         while not check() and monotonic() < deadline:
-            QTest.qWait(25)
+            app.processEvents()
+            # Browser commands and the anonymous HTTP server run on Python threads.
+            sleep(0.01)
         assert check(), (operation, app.applicationState(), window._sync_notice.text(), displayed_ids(), requests)
 
     def displayed_ids():
@@ -311,7 +312,8 @@ def test_desktop_timer_updates_own_tasks_without_manual_refresh(anonymous_site, 
     controller._commands.put((sign_in, ()))
     controller.start()
     try:
-        wait_for(signed_in.done, 25, '匿名原站登录')
+        # The isolated browser may try Chrome and Edge, each with a 30-second launch timeout.
+        wait_for(signed_in.done, 75, '启动匿名浏览器并登录')
         actor = signed_in.result()
         assert actor is not None and actor.role == 'material'
         window.show()
