@@ -332,6 +332,7 @@ class CompactPanel(DropSurface, QWidget):
     state_requested = Signal(int, str)
     urgent_requested = Signal(int, bool)
     delivery_requested = Signal(int, object)
+    site_delivery_sync_requested = Signal(int, str)
     history_archive_requested = Signal(int, int)
     rename_requested = Signal(int, str)
     project_change_preview_requested = Signal(object, object)
@@ -1853,6 +1854,10 @@ class CompactPanel(DropSurface, QWidget):
         delivery = add(menu, delivery_label, lambda: self.confirm_delivery(project_id),
                        editable and project['status'] == '待交付')
         delivery.setToolTip('选择归档项目工作文件，或明确指定一个 ZIP 版本；首次交付计入当天统计，补交只保留记录。')
+        original_task_id = project.get('original_task_id')
+        if not batch_ids and editable and project['status'] == '已交付' and original_task_id:
+            add(menu, '补同步到这是家…',
+                lambda: self.site_delivery_sync_requested.emit(project_id, original_task_id))
         positions = menu._positions_menu = QMenu('ZIP 位置', menu)
         menu.addMenu(positions)
         positions.setEnabled(active and bool(project['zips']))

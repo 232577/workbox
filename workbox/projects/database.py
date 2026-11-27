@@ -276,6 +276,7 @@ CREATE TABLE IF NOT EXISTS original_site_deliveries (
     status TEXT NOT NULL CHECK(status IN ('pending','needs_check','completed','superseded')),
     claim_token TEXT NOT NULL DEFAULT '',
     claim_revision TEXT NOT NULL DEFAULT '',
+    approved_revision TEXT NOT NULL DEFAULT '',
     return_revision TEXT NOT NULL DEFAULT '',
     receipt_id TEXT NOT NULL DEFAULT '',
     reason TEXT NOT NULL DEFAULT ''
@@ -297,6 +298,9 @@ class Database:
             connection.execute("PRAGMA journal_mode=WAL")
             connection.executescript(SCHEMA)
             connection.execute('BEGIN IMMEDIATE')
+            columns = connection.execute('PRAGMA table_info(original_site_deliveries)').fetchall()
+            if not any(row['name'] == 'approved_revision' for row in columns):
+                connection.execute("ALTER TABLE original_site_deliveries ADD COLUMN approved_revision TEXT NOT NULL DEFAULT ''")
             self._migrate_delivery_events(connection)
             self._migrate_project_type_presets(connection)
             self._migrate_default_project_type(connection)

@@ -263,6 +263,7 @@ class FloatingController(QObject):
         self.panel.approve_requested.connect(lambda zid: self.enqueue('已标记为可用版本', lambda **_: self.service.snapshots.approve_version(zid)))
         self.panel.bundle_requested.connect(lambda zid, batch: self.enqueue('核对包内项目', lambda **kw: self.service.snapshots.recognize_bundle(zid, batch_id=batch, **kw)))
         self.panel.delivery_requested.connect(self.deliver_project)
+        self.panel.site_delivery_sync_requested.connect(self.request_site_delivery_sync)
         self.panel.history_archive_requested.connect(lambda pid, fid: self.enqueue(
             '移入历史文稿',
             lambda **kw: self.service.archive_work_file(pid, fid, confirmed=True, **kw)))
@@ -367,6 +368,15 @@ class FloatingController(QObject):
     def _connect_personal_site(self, site):
         from workbox.desktop.personal_site_workspace import PersonalSiteWorkspace
         self.personal_site = PersonalSiteWorkspace(self, site)
+
+    def request_site_delivery_sync(self, project_id, task_id):
+        if self.foreground_busy or self.closed or self.quitting:
+            return
+        if self.personal_site is not None and self.personal_site.site.current_personal_snapshot() is not None:
+            self.personal_site.request_delivery_sync(project_id, task_id)
+            return
+        self.panel.open_team_delivery()
+        self.notify('请在团队交件登录「这是家」材料账号并刷新任务，再对该项目补同步。')
 
     def deliver_projects(self, project_ids):
         if self.foreground_busy:

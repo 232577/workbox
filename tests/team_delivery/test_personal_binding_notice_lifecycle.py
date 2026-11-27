@@ -6,7 +6,7 @@ from threading import Event
 from time import monotonic, sleep
 
 import pytest
-from PySide6.QtWidgets import QApplication, QInputDialog
+from PySide6.QtWidgets import QApplication, QInputDialog, QMessageBox
 
 from workbox.desktop.desktop_controller import FloatingController
 from workbox.desktop.desktop_service import DesktopService
@@ -104,6 +104,70 @@ def test_explicit_binding_reuses_existing_project_without_title_version(binding_
     assert working_file.read_bytes() == b'original work'
     assert page._bind_task.isHidden()
     assert '待办需要核对' not in desktop.panel.notice.toolTip()
+
+
+@pytest.mark.parametrize('decision', ['cancel', 'confirm', 'changed-session'])
+def test_supplemental_site_sync_uses_selected_existing_delivery(binding_desktop, monkeypatch, decision):
+    desktop, _, publish = binding_desktop
+    service = desktop.service
+    title = '匿名已交付项目'
+    project_id, = service.capture_message(title, '匿名旧交付批次')['project_ids']
+    working_file = Path(service.workspaces.get_workspace(project_id)['path']) / '原材料.txt'
+    working_file.write_bytes(b'original work')
+    delivery = service.confirm_delivery(project_id, confirmed=True)
+    event_id = delivery['event_id']
+    original_events = service.db.delivery_events_for_project(project_id)
+    original_time = service.get_project(project_id)['delivered_at']
+    archived_file = Path(delivery['archive']['path']) / working_file.name
+    account = Account('material-session', '匿名材料账号', 'material', 'material-browser', 'material')
+    task = Task('624', title, account.id, Stage.READY, 'revision-624')
+    other = Task('641', '匿名其他任务', account.id, Stage.READY, 'revision-641')
+    publish(Snapshot(account, (task, other)))
+    workspace = desktop.personal_site
+    assert not workspace.projects.pending(account)
+    assert workspace.projects.delivery_for_event(event_id) is None
+    desktop.panel.nav_projects.click()
+    desktop.panel.project_list.selectAll()
+    caption = '补同步到这是家…'
+    assert all(action.text() != caption for action in desktop.panel.project_context_menu(project_id).actions())
+    desktop.panel.project_list.clearSelection()
+    action, = [item for item in desktop.panel.project_context_menu(project_id).actions() if item.text() == caption]
+    assert action.isEnabled()
+    prompts, woken = [], []
+
+    def answer(dialog):
+        message = dialog.text()
+        prompts.append(message)
+        assert '#624' in message and title in message and '#641' not in message
+        assert '本机交付时间' in message
+        assert dialog.standardButtons() == QMessageBox.Yes | QMessageBox.No
+        assert dialog.standardButton(dialog.defaultButton()) == QMessageBox.No
+        assert dialog.button(QMessageBox.Yes).text() == '确认补同步'
+        assert dialog.button(QMessageBox.No).text() == '取消'
+        if decision == 'changed-session':
+            publish(Snapshot(replace(account, session='new-material-browser'), (task, other)), wait=False)
+            woken.clear()
+        return QMessageBox.No if decision == 'cancel' else QMessageBox.Yes
+
+    monkeypatch.setattr(QMessageBox, 'exec', answer)
+    monkeypatch.setattr(workspace, 'wake', lambda: woken.append(True))
+    action.trigger()
+    wait_for(lambda: prompts and not desktop.busy)
+
+    assert len(prompts) == 1
+    if decision == 'confirm':
+        queued, = workspace.projects.pending(account)
+        assert (queued.project_id, queued.event_id, queued.task_id) == (project_id, event_id, '624')
+        assert woken
+    else:
+        assert not workspace.projects.pending(account)
+        assert not woken
+        if decision == 'changed-session':
+            assert '原站账号或任务已变化' in desktop.panel.notice.toolTip()
+    assert service.db.delivery_events_for_project(project_id) == original_events
+    assert service.get_project(project_id)['status'] == '已交付'
+    assert service.get_project(project_id)['delivered_at'] == original_time
+    assert archived_file.read_bytes() == working_file.read_bytes() == b'original work'
 
 
 @pytest.mark.parametrize('resolved', ['linked_after_refresh', 'sign_out'])
