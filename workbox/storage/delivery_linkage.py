@@ -16,6 +16,7 @@ from workbox.storage.workspace_manager import _path, copy_verified
 
 
 _TARGETS = ('server', 'wechat')
+_STALE_DELIVERY = '交付状态已变更，已暂停复制这份材料。'
 _SCHEMA = '''
 CREATE TABLE IF NOT EXISTS delivery_linkage_settings (target TEXT PRIMARY KEY, root TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS delivery_linkage_plans (
@@ -190,24 +191,35 @@ class DeliveryLinkage:
                 return [self._report(job) for job in jobs]
             return [self.retry(event_id, job['target'], cancel_event=cancel_event, progress=progress) for job in jobs]
 
+    @staticmethod
+    def _is_current_delivery(connection, event_id):
+        return connection.execute('''SELECT 1 FROM delivery_events e JOIN projects p ON p.id=e.project_id
+            WHERE e.id=? AND p.status='已交付' AND p.delivered_at=e.occurred_at
+                AND p.delivered_zip_id IS e.zip_id
+                AND NOT EXISTS (SELECT 1 FROM project_merges m WHERE m.source_id=p.id)
+                AND NOT EXISTS (SELECT 1 FROM delivery_events newer
+                    WHERE newer.project_id=e.project_id AND newer.occurred_at=e.occurred_at AND newer.id>e.id)
+                AND NOT COALESCE((SELECT voided FROM delivery_event_actions WHERE event_id=e.id
+                    ORDER BY id DESC LIMIT 1),0)''', (event_id,)).fetchone() is not None
+
     def retry(self, event_id, target, *, cancel_event=None, progress=None):
         if type(event_id) is not int or event_id <= 0 or target not in _TARGETS:
             raise ValueError('联动记录编号或目的地无效。')
         with self._lock:
             with self.db.connect() as connection:
-                row = connection.execute('''SELECT j.*,p.archive_path,p.manifest,e.kind,
-                    COALESCE((SELECT voided FROM delivery_event_actions WHERE event_id=e.id ORDER BY id DESC LIMIT 1),0) AS voided
+                row = connection.execute('''SELECT j.*,p.archive_path,p.manifest,e.kind
                     FROM delivery_linkage_jobs j JOIN delivery_linkage_plans p USING(event_id)
                     JOIN delivery_events e ON e.id=j.event_id WHERE j.event_id=? AND j.target=?''',
                     (event_id, target)).fetchone()
-            if row is None:
-                raise ValueError('没有对应的已登记联动任务。')
-            if row['status'] == 'completed':
-                return self._report(row)
+                if row is None:
+                    raise ValueError('没有对应的已登记联动任务。')
+                if row['status'] == 'completed':
+                    return self._report(row)
+                current_delivery = self._is_current_delivery(connection, event_id)
             try:
                 cancelled(cancel_event)
-                if row['voided']:
-                    raise ValueError('交付已撤销，未发布联动副本。')
+                if not current_delivery:
+                    raise ValueError(_STALE_DELIVERY)
                 self.service.assert_storage_ready()
                 self._publish(row, cancel_event=cancel_event, progress=progress)
                 status, message = 'completed', ''
@@ -264,10 +276,16 @@ class DeliveryLinkage:
         self._verify_directory(stage, files, remote, cancel_event)
         cancelled(cancel_event)
         self._check_root(row['target'], str(root))
-        if _directory_identity(stage) != owned or final.exists():
-            raise FileExistsError('联动目录已变化，未覆盖已有文件。')
-        cancelled(cancel_event)
-        os.rename(stage, final)  # On Windows, same-volume rename never replaces an existing folder.
+        # Serialize publication with delivery corrections without keeping a SQLite
+        # write lock while copying or verifying the materials.
+        with self.db.connect() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            if not self._is_current_delivery(connection, row['event_id']):
+                raise ValueError(_STALE_DELIVERY)
+            if _directory_identity(stage) != owned or final.exists():
+                raise FileExistsError('联动目录已变化，未覆盖已有文件。')
+            cancelled(cancel_event)
+            os.rename(stage, final)  # On Windows, same-volume rename never replaces an existing folder.
 
     @staticmethod
     def _verify_directory(directory, files, remote, cancel_event):

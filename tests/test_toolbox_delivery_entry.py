@@ -44,6 +44,9 @@ def test_drag_pins_only_unambiguous_current_file_or_delivered_archive(project):
     assert resolve_drag_file(service, project_id) == frozen
     source.write_bytes(b'edited after handoff')
     assert frozen.read_bytes() == b'anonymous manual'
+    frozen.write_bytes(b'x' * len(b'anonymous manual'))
+    with pytest.raises(ValueError, match='归档内容已变化'):
+        resolve_drag_file(service, project_id)
 
 
 def test_drag_uses_the_linked_completed_zip_without_extracting(tmp_path, project):
@@ -56,13 +59,21 @@ def test_drag_uses_the_linked_completed_zip_without_extracting(tmp_path, project
         archive.writestr('匿名材料.txt', '匿名资料')
     record = service.import_zip(package)['zip']
     service.confirm_delivery(project_id, record['id'], confirmed=True)
-    assert resolve_drag_file(service, project_id) == Path(record['path'])
+    frozen_zip = Path(record['path'])
+    assert resolve_drag_file(service, project_id) == frozen_zip
+    frozen_zip.write_bytes(b'x' * frozen_zip.stat().st_size)
+    with pytest.raises(ValueError, match='归档内容已变化'):
+        resolve_drag_file(service, project_id)
 
 
-def test_title_drag_offers_copy_and_releases_mime_after_cancel(project, monkeypatch):
+@pytest.mark.parametrize('delivered', [False, True], ids=['working-file', 'delivered-archive'])
+def test_title_drag_offers_copy_and_releases_mime_after_cancel(project, monkeypatch, delivered):
     from workbox.desktop import project_file_drag
 
     service, project_id, source = project
+    if delivered:
+        result = service.confirm_delivery(project_id, confirmed=True)
+        source = Path(result['archive']['path']) / source.name
     trace = []
 
     class Drag:
@@ -74,6 +85,10 @@ def test_title_drag_offers_copy_and_releases_mime_after_cancel(project, monkeypa
 
         def exec(self, supported, default):
             trace.append((supported, default))
+            if delivered:
+                with pytest.raises(PermissionError):
+                    with source.open('r+b'):
+                        pass
             return Qt.IgnoreAction
 
         def deleteLater(self):
@@ -84,7 +99,9 @@ def test_title_drag_offers_copy_and_releases_mime_after_cancel(project, monkeypa
     project_file_drag.drag_project_file(service, project_id, title)
     assert trace == [title, source.as_posix(), (Qt.CopyAction, Qt.CopyAction), 'released']
     assert source.read_bytes() == b'anonymous manual'
-    assert service.db.delivery_history()['event_count'] == 0
+    with source.open('r+b'):
+        pass
+    assert service.db.delivery_history()['event_count'] == int(delivered)
 
 
 def test_actual_controller_wires_board_linkage_settings_and_retry(project, tmp_path, monkeypatch):

@@ -1278,12 +1278,15 @@ class CompactPanel(DropSurface, QWidget):
         self.search.setFocus()
 
     def project_export_ids(self, *, checked=False):
+        if self.project_view_stack.currentWidget() is self.project_board:
+            return () if checked else tuple(self._project_rows)
         return tuple(item.data(Qt.UserRole) for index in range(self.project_list.count())
                      if (item := self.project_list.item(index)) is not None
                      and (not checked or item.isSelected()))
 
     def sync_project_export_actions(self):
-        count = self.project_list.count()
+        showing_board = self.project_view_stack.currentWidget() is self.project_board
+        count = len(self._project_rows) if showing_board else self.project_list.count()
         checked = len(self.project_export_ids(checked=True))
         available = (not self.business_page_busy() and not self._project_read_error
                      and not self._refresh_after_drag)
@@ -1292,8 +1295,9 @@ class CompactPanel(DropSurface, QWidget):
         self.project_export_filtered_action.setEnabled(available and count > 0)
         self.project_export_checked_action.setText(f'导出所选项目（{checked}项）')
         self.project_export_checked_action.setEnabled(available and checked > 0)
+        self.project_export_checked_action.setVisible(not showing_board)
         self.project_export_checked_action.setToolTip('导出当前选中项目。Ctrl 点选增减，Shift 连选。')
-        self.pending_export_action.setVisible(self.status_buttons['待开发'].isChecked())
+        self.pending_export_action.setVisible(not showing_board and self.status_buttons['待开发'].isChecked())
         self.pending_export_action.setEnabled(not self.business_page_busy())
 
     def request_project_table_export(self, mode):
@@ -1304,7 +1308,10 @@ class CompactPanel(DropSurface, QWidget):
         if not project_ids:
             return
         title = '所选项目' if mode == 'checked' else '当前筛选结果'
-        state = next((state for state, control in self.status_buttons.items() if control.isChecked()), None)
+        showing_board = self.project_view_stack.currentWidget() is self.project_board
+        state = None
+        if not showing_board:
+            state = next((state for state, control in self.status_buttons.items() if control.isChecked()), None)
         date_caption = self.added_date_filter.caption()
         details = [f'{title}（{len(project_ids)}项）', f'状态：{state or "全部"}',
                    f'首次新增日期（北京时间）：{date_caption}', '类型：' + self.type_filter.currentText(),
@@ -1314,7 +1321,7 @@ class CompactPanel(DropSurface, QWidget):
         if self.due_filter.currentData() is not None:
             details.append('截止日期：' + self.due_filter.currentText())
         if self.urgent_filter.isChecked():
-            details.append('只看加急')
+            details.append('只看加急（按看板标记筛选，表内「加急」为本机设置）' if showing_board else '只看加急')
         self.project_table_export_requested.emit(project_ids, '；'.join(details))
 
     def _sync_filter_chips(self, scope):
@@ -1370,7 +1377,8 @@ class CompactPanel(DropSurface, QWidget):
                 snapshot = self.service.project_workbench_snapshot(
                     scope[0], scope[1], scope[2], scope[5],
                     archived=None if deleted_view else scope[3], due_filter=scope[4],
-                    deleted=deleted_view, type_id=scope[6], **self.added_date_filter.filter_kwargs())
+                    deleted=deleted_view, type_id=scope[6], use_board_urgency=showing_board,
+                    **self.added_date_filter.filter_kwargs())
                 active_batch = next((item for item in snapshot['batch_options'] if item['key'] == batch), None)
                 if batch is not None and active_batch is None:
                     batch = None
@@ -1378,7 +1386,8 @@ class CompactPanel(DropSurface, QWidget):
                     snapshot = self.service.project_workbench_snapshot(
                         scope[0], scope[1], None, scope[5],
                         archived=None if deleted_view else scope[3], due_filter=scope[4],
-                        deleted=deleted_view, type_id=scope[6], **self.added_date_filter.filter_kwargs())
+                        deleted=deleted_view, type_id=scope[6], use_board_urgency=showing_board,
+                        **self.added_date_filter.filter_kwargs())
             except (OSError, RuntimeError, sqlite3.Error, ValueError) as error:
                 self._project_read_error = ('项目清单读取失败，保留上次结果；请调整搜索或筛选重试。\n'
                                             + str(error))
@@ -2573,16 +2582,21 @@ class CompactPanel(DropSurface, QWidget):
         self.project_view_stack.setCurrentWidget(self.project_board if board else self.project_splitter)
         if board:
             self.project_view_tools.insertWidget(0, self.project_board_button)
+            self.project_view_tools.addWidget(self.project_export_button)
             self.project_view_tools.addWidget(self.added_date_filter)
             self.project_board.layout().insertWidget(0, self.active_project_filters)
             self.project_filter_panel.hide()
             self.bulk_bar.hide()
         else:
+            if self.project_export_button.parentWidget() is not self.project_queue_header:
+                self.project_queue_header.layout().insertWidget(2, self.project_export_button)
             self.project_date_row.insertWidget(1, self.project_board_button)
             self.project_date_row.addWidget(self.added_date_filter, 1)
             self.project_queue_tools_layout.insertWidget(1, self.active_project_filters)
         self.project_view_header.setVisible(board)
         self.project_board_button.show()
+        self.project_export_button.show()
+        self.urgent_filter.setToolTip('按看板的紧急度标记筛选。' if board else '筛选已在本机标为加急的项目。')
         self._sync_project_layout()
 
     def show_project_board(self):

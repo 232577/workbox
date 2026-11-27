@@ -416,7 +416,7 @@ class FloatingController(QObject):
 
         try:
             drag_project_file(self.service, project_id, source)
-        except (OSError, sqlite3.Error, ValueError) as error:
+        except (OSError, RuntimeError, sqlite3.Error, ValueError) as error:
             self.panel.show_notice(str(error))
 
     def save_delivery_linkage(self, server, wechat):

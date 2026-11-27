@@ -12,6 +12,7 @@ from pathlib import Path
 
 from workbox.app import WorkBox
 from workbox.projects.database import Database, DELIVERY_TIMEZONE, STATUSES
+from workbox.projects.project_urgency import board_urgency
 from workbox.storage.managed_archive import ManagedArchive
 from workbox.projects.parser import (
     MAX_MESSAGE_LENGTH,
@@ -193,8 +194,9 @@ class DesktopService(WorkBox):
 
     def project_workbench_snapshot(self, query='', status=None, batch_key=None, urgent_only=False,
                                    *, archived=False, due_filter=None, today=None, deleted=False,
-                                   type_id=None, added_on=None, added_from=None, added_to=None):
-        """项目、批次和别名取自同一读取事务，沿用项目列表原排序与筛选。"""
+                                   type_id=None, added_on=None, added_from=None, added_to=None,
+                                   use_board_urgency=False):
+        """项目、批次和别名取自同一读取事务，保留项目排序并按当前视图筛选紧急度。"""
         from workbox.projects.project_batches import read_project_batch_index
         if not isinstance(query, str) or len(query) > 1000:
             raise ValueError('搜索文字过长。')
@@ -221,7 +223,8 @@ class DesktopService(WorkBox):
             except (ValueError, TypeError):
                 raise ValueError('新增日期筛选必须为 YYYY-MM-DD、日期未知或全部。') from None
         # 状态汇总与当前列表共用日期和其他条件，选中的状态仅决定显示哪些项目。
-        filters = dict(status=None, urgent_only=urgent_only, archived=archived,
+        filter_board_urgency = urgent_only and use_board_urgency
+        filters = dict(status=None, urgent_only=urgent_only and not use_board_urgency, archived=archived,
                        due_filter=due_filter, today=today, deleted=deleted, type_id=type_id)
         with self.db.connect() as connection:
             connection.execute('BEGIN')
@@ -242,6 +245,8 @@ class DesktopService(WorkBox):
             result = []
             status_counts = Counter(dict.fromkeys(STATUSES, 0))
             for project in projects:
+                if filter_board_urgency and not board_urgency(project):
+                    continue
                 pid = project['id']
                 project['added_on'] = added_dates.get(pid)
                 project['added_on_label'] = project['added_on'] or '日期未知'

@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 )
 
 from workbox.desktop.theme import apply_scrollbar, theme_signal, tokens
+from workbox.projects.project_urgency import board_urgency
 
 
 _LANES = (
@@ -29,13 +30,6 @@ def _original_batch(project):
     batch_id = project.get('original_batch_id')
     name = str(project.get('original_batch_name') or '').strip()
     return (batch_id, name) if batch_id else (None, '未分批')
-
-
-def _urgency(project):
-    urgency = str(project.get('original_urgency') or '').strip()
-    if urgency:
-        return '' if urgency in ('普通', '正常', '一般', '默认') else urgency
-    return '加急' if project.get('urgent') else ''
 
 
 class ProjectTitle(QPushButton):
@@ -160,7 +154,7 @@ class ProjectLane(QFrame):
             if duplicates[name] > 1:
                 label = f"原站 #{project['original_task_id']}" if project.get('original_task_id') else f'工作箱 #{pid}'
                 name = f'{name} · {label}'
-            entries.append((pid, name, _urgency(project), project['status'], archived,
+            entries.append((pid, name, board_urgency(project), project['status'], archived,
                             _original_batch(project) if group_batches else None))
         signature = tuple(entries)
         if signature == self._signature:

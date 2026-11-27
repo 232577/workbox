@@ -82,6 +82,45 @@ def test_board_groups_verified_original_batches_and_displays_urgency_only(board_
     assert not any(label.text() == '预审退回' for label in lane.findChildren(QLabel))
 
 
+def test_board_urgent_filter_matches_badges_counts_and_export(board_panel):
+    panel, ids = board_panel
+    service = panel.service
+    account = Account('fixture', '匿名材料员', 'material', 'fixture-session', 'fixture-material')
+    source_urgent = Task('55', '匿名原站紧急项目', account.id, Stage.READY, '55-1', original_urgency='非常紧急')
+    source_normal = Task('56', '匿名原站普通项目', account.id, Stage.READY, '56-1', original_urgency='正常')
+    assert service.sync_personal_site_snapshot(Snapshot(account, (source_urgent, source_normal))) == 2
+    source_ids = {row['original_task_id']: row['id'] for row in service.list_projects()}
+    remote_urgent = source_ids['55']
+    remote_normal = source_ids['56']
+    local_urgent = ids['匿名待交付项目']
+    service.set_urgent(remote_normal, True)
+    service.set_urgent(local_urgent, True)
+    panel.show_projects_list()
+    panel.status_buttons['待开发'].click()
+    panel.show_project_board()
+    panel.urgent_filter.setChecked(True)
+
+    lanes = panel.project_board.lanes
+    assert set(lanes['待开发'].rows) == {remote_urgent}
+    assert set(lanes['待交付'].rows) == {local_urgent}
+    assert not lanes['已完成'].rows
+    assert [lane.count.text() for lane in lanes.values()] == ['1', '1', '0']
+    assert panel.project_status_counts['待开发'] == panel.project_status_counts['待交付'] == 1
+    assert panel.project_export_button.isVisible()
+    assert panel.project_export_filtered_action.text() == '导出当前筛选结果（2项）'
+    export = QSignalSpy(panel.project_table_export_requested)
+    panel.project_export_filtered_action.trigger()
+    assert export.count() == 1
+    project_ids, scope = export.at(0)
+    assert set(project_ids) == {remote_urgent, local_urgent}
+    assert '状态：全部' in scope and '只看加急' in scope
+    assert not service.get_project(remote_urgent)['urgent']
+    assert service.get_project(remote_normal)['urgent']
+
+    panel.show_projects_list()
+    assert panel.project_export_ids() == (remote_normal,)
+
+
 def test_board_delivery_click_emits_once_without_a_dialog(board_panel, monkeypatch):
     panel, ids = board_panel
     pending = ids['匿名待交付项目']

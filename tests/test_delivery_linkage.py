@@ -130,6 +130,68 @@ def test_interrupt_during_copy_releases_temporary_file_and_can_resume(tmp_path, 
     assert (Path(done['path']) / material.name).read_bytes() == b'anonymous exact original'
 
 
+def test_revoking_during_copy_stops_final_publication(tmp_path, delivery):
+    service, project_id, result, _ = delivery
+    event_id = result['event_id']
+    root = tmp_path / 'server'
+    root.mkdir()
+    linkage = service.delivery_linkage
+    linkage.configure(str(root), '')
+    linkage.plan_delivery(project_id, result)
+    revoked = []
+
+    def revoke(*_):
+        if not revoked:
+            revoked.extend(service.db.void_delivery_events([event_id], confirmed=True)['changed_event_ids'])
+
+    stopped = linkage.retry(event_id, 'server', progress=revoke)
+
+    assert revoked == [event_id]
+    assert service.get_project(project_id)['status'] == '待交付'
+    assert stopped['status'] == 'failed'
+    assert not Path(stopped['path']).exists()
+
+
+def test_restoring_statistics_does_not_authorize_old_linkage_retry(tmp_path, delivery):
+    service, project_id, result, material = delivery
+    event_id = result['event_id']
+    root = tmp_path / 'server'
+    root.mkdir()
+    linkage = service.delivery_linkage
+    linkage.configure(str(root), '')
+    cancel = Event()
+    cancel.set()
+    (stopped,) = linkage.process_delivery(project_id, result, cancel_event=cancel)
+    assert stopped['status'] == 'cancelled'
+    service.db.void_delivery_events([event_id], confirmed=True)
+    assert linkage.retry(event_id, 'server')['status'] == 'failed'
+
+    service.db.restore_delivery_events([event_id], confirmed=True)
+    assert service.get_project(project_id)['status'] == '待交付'
+    assert linkage.retry(event_id, 'server')['status'] == 'failed'
+    assert not list(root.iterdir())
+
+    updated = service.confirm_delivery(project_id, confirmed=True)
+    assert updated['event_id'] != event_id
+    assert linkage.retry(event_id, 'server')['status'] == 'failed'
+    (confirmed,) = linkage.process_delivery(project_id, updated)
+    assert confirmed['status'] == 'completed'
+    assert (Path(confirmed['path']) / material.name).read_bytes() == b'anonymous exact original'
+
+
+def test_revoking_keeps_a_completed_linkage_receipt_and_copy(tmp_path, delivery):
+    service, project_id, result, material = delivery
+    root = tmp_path / 'server'
+    root.mkdir()
+    linkage = service.delivery_linkage
+    linkage.configure(str(root), '')
+    (done,) = linkage.process_delivery(project_id, result)
+    service.db.void_delivery_events([result['event_id']], confirmed=True)
+
+    assert linkage.retry(result['event_id'], 'server') == done
+    assert (Path(done['path']) / material.name).read_bytes() == b'anonymous exact original'
+
+
 def test_zip_uses_registered_archive_and_preserves_origin_marker(tmp_path):
     service = DesktopService(tmp_path / 'data' / 'anonymous.db')
     project_id, = service.receive_text('匿名流程系统')['project_ids']
